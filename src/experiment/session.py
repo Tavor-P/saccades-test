@@ -7,6 +7,7 @@ from include.eye_tracking.types import GazeZone
 from include.experiment.constants import (
     CROSS_POSITION,
     DOT_POSITION,
+    FALSE_ALARM_RATE_THRESHOLD,
     FOREPERIOD_MAX_MS,
     FOREPERIOD_MIN_MS,
     GAZE_LANDING_STABILITY_MS,
@@ -253,8 +254,16 @@ class ExperimentSession:
 
         square_shown_count = hits + misses
         hit_rate = hits / square_shown_count if square_shown_count else 0.0
-        fa_rate = false_alarms / (false_alarms + rejections) if (false_alarms + rejections) else 0.0
-        return f"Hit rate: {hits}/{square_shown_count} ({hit_rate:.0%}) | False alarms: {fa_rate:.0%}"
+        catch_trial_count = false_alarms + rejections
+        fa_rate = false_alarms / catch_trial_count if catch_trial_count else 0.0
+
+        # Diamond, Ross & Morrone (2000) report false-alarm rates <1/200 as their
+        # bar for a reliably attentive observer (not guessing/spamming responses).
+        reliability = "reliable" if fa_rate < FALSE_ALARM_RATE_THRESHOLD else "check reliability"
+        return (
+            f"Hit rate: {hits}/{square_shown_count} ({hit_rate:.0%}) | "
+            f"False alarms: {false_alarms}/{catch_trial_count} ({fa_rate:.1%}, {reliability})"
+        )
 
     def _instructions(self) -> str:
         if self._phase is Phase.COMPLETE:

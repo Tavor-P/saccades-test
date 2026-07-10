@@ -6,7 +6,7 @@ from src.experiment.session import ExperimentSession
 
 FADE_DURATION_S = 0.4  # dot/cross opacity fade; softens onset so it doesn't trigger a reflexive saccade
 WARNING_TONE_HZ = 880
-WARNING_TONE_DURATION_S = 0.1
+WARNING_TONE_DURATION_S = 0.5  # matches Diamond, Ross & Morrone (2000)'s 500ms warning tone
 
 # Trial-start cue: a big peripheral green flash instead of text, since reading
 # text means shifting gaze off the fixation target and ruining the trial.

@@ -16,15 +16,18 @@ BACKGROUND_LUMINANCE = 0.5  # 0=black, 1=white; mid-grey so the flash reads as a
 
 SQUARE_FLASH_PROBABILITY = 0.5  # remainder are zero-contrast catch trials
 CONTRAST_LEVELS = (0.01, 0.02, 0.03, 0.05, 0.08)  # luminance increment ABOVE the background, near-threshold
-SQUARE_DURATION_FRAMES = 1  # a single display refresh, matching the literature's single-frame flash
+SQUARE_DURATION_FRAMES = 1  # single display refresh, matching Diamond et al.'s single-frame (~8ms) flash
 RESPONSE_WINDOW_MS = 1000
 
-# Jittered foreperiod before each trial's target (go-cue) appears, during which
-# only the current fixation symbol is shown. Diamond, Ross & Morrone (2000,
-# J Neurosci 20:3449-3455) randomize this foreperiod (they use 800-1200ms) so
-# participants can't anticipate the saccade cue.
-FOREPERIOD_MIN_MS = 1000
-FOREPERIOD_MAX_MS = 2000
+# Diamond, Ross & Morrone (2000, J Neurosci 20:3449-3455): each trial begins
+# with a 500ms warning tone, then a foreperiod randomized 800-1200ms during
+# which the observer fixates, before the target (go-cue) appears.
+FOREPERIOD_MIN_MS = 800
+FOREPERIOD_MAX_MS = 1200
+
+# Same paper's data-quality check: they report false-alarm rates <1/200 as
+# evidence the observer was reliably attentive, not guessing/spamming responses.
+FALSE_ALARM_RATE_THRESHOLD = 1 / 200
 
 SACCADE_TIMEOUT_MS = 15_000  # force-advance a trial if gaze never lands (broken tracking)
 GAZE_LANDING_STABILITY_MS = 150  # gaze must hold in the target zone this long to count as "landed"
