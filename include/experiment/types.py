@@ -8,6 +8,15 @@ class Target(str, Enum):
 
 
 @dataclass(frozen=True)
+class FlashTrialSpec:
+    """A presaccade-phase trial: just fixate center, maybe a flash, no saccade."""
+
+    index: int
+    square_shown: bool
+    contrast: float | None
+
+
+@dataclass(frozen=True)
 class TrialSpec:
     index: int
     source: Target
@@ -19,8 +28,9 @@ class TrialSpec:
 @dataclass
 class TrialResult:
     index: int
-    source: Target
-    target: Target
+    phase: str  # "presaccade" | "saccade"
+    source: Target | None
+    target: Target | None
     saccade_duration_ms: float | None
     square_shown: bool
     contrast: float | None

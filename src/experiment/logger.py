@@ -8,6 +8,7 @@ DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 
 FIELDNAMES = [
     "trial_index",
+    "phase",
     "source",
     "target",
     "saccade_duration_ms",
@@ -20,7 +21,12 @@ FIELDNAMES = [
 
 
 class ResultLogger:
-    """Appends one CSV row per completed trial to data/results_<timestamp>.csv."""
+    """Appends one CSV row per completed trial to data/results_<timestamp>.csv.
+
+    Shared across both phases of a run (presaccade + saccade), so the whole
+    session lands in one file distinguished by the `phase` column - that's
+    what the end-of-run comparison graph reads from.
+    """
 
     def __init__(self) -> None:
         DATA_DIR.mkdir(exist_ok=True)
@@ -33,8 +39,9 @@ class ResultLogger:
         self._writer.writerow(
             {
                 "trial_index": result.index,
-                "source": result.source.value,
-                "target": result.target.value,
+                "phase": result.phase,
+                "source": result.source.value if result.source is not None else "",
+                "target": result.target.value if result.target is not None else "",
                 "saccade_duration_ms": result.saccade_duration_ms,
                 "square_shown": result.square_shown,
                 "contrast": result.contrast,
