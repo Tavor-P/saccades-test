@@ -1,0 +1,5 @@
+# PsychoPy itself is not installed via this file - use the PsychoPy Standalone
+# installer (psychopy.org), which bundles its own Python + opencv-python.
+# Install the one extra dependency into THAT Python, e.g. on Windows:
+#   "C:\Program Files\PsychoPy\python.exe" -m pip install -r requirements.txt
+mediapipe
