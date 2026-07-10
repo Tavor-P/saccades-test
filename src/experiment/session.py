@@ -1,5 +1,4 @@
 import random
-import time
 from enum import Enum, auto
 
 from include.eye_tracking.interfaces import GazeSource
@@ -7,10 +6,11 @@ from include.eye_tracking.types import GazeZone
 from include.experiment.constants import (
     CROSS_POSITION,
     DOT_POSITION,
+    FALSE_ALARM_RATE_THRESHOLD,
     FOREPERIOD_MAX_MS,
     FOREPERIOD_MIN_MS,
     GAZE_LANDING_STABILITY_MS,
-    NUM_TRIALS,
+    MIN_CATCH_TRIALS_FOR_RELIABILITY,
     RESPONSE_WINDOW_MS,
     SACCADE_ONSET_STABILITY_MS,
     SACCADE_TIMEOUT_MS,
@@ -19,7 +19,8 @@ from include.experiment.constants import (
 )
 from include.experiment.types import Target, TrialResult
 from src.experiment.logger import ResultLogger
-from src.experiment.trial_factory import build_trial_sequence
+from src.experiment.pausable_clock import PausableClock
+from src.experiment.trial_factory import build_saccade_sequence
 
 
 class Phase(Enum):
@@ -42,26 +43,27 @@ class ExperimentSession:
     Trial structure follows Diamond, Ross & Morrone (2000, J Neurosci
     20:3449-3455): a jittered foreperiod during which only the current
     fixation symbol is shown, then the other symbol's appearance is the go-cue
-    for the saccade; a brief flash may occur around saccade onset (contrast
-    varied, ~50% zero-contrast catch trials) and is scored yes/no against a
-    button response, with false-alarm rate tracked as a data-quality check
-    exactly as in that paper.
+    for the saccade; a brief flash may occur around saccade onset and is
+    scored yes/no against a button response, with false-alarm rate tracked as
+    a data-quality check exactly as in that paper. Contrast follows the same
+    fixed 8-level x 2-repeat schedule as the presaccade phase (see
+    trial_factory.build_saccade_sequence), so the two phases land on
+    identical contrast points and can be directly compared afterward.
 
     Framework-agnostic: `on_space()` and `tick()` are called synchronously by
     the PsychoPy frame loop, and `render_state()` returns a plain dict the
     runner applies to its stimuli. It owns no camera/tracker state itself
     (that lives in the injected GazeSource) so ticking never blocks on camera
-    IO or MediaPipe inference.
+    IO or MediaPipe inference. Doesn't own the logger either - it's shared
+    with the presaccade phase so both land in one CSV file.
     """
 
-    def __init__(self, gaze_source: GazeSource) -> None:
+    def __init__(self, gaze_source: GazeSource, logger: ResultLogger, clock: PausableClock) -> None:
         self._gaze = gaze_source
-        self._logger = ResultLogger()
-        self._reset()
-
-    def _reset(self) -> None:
+        self._logger = logger
+        self._clock = clock
         self._phase = Phase.WAITING_TO_START
-        self._trials = build_trial_sequence(NUM_TRIALS)
+        self._trials = build_saccade_sequence()
         self._trial_index = 0
         self._dot_visible = False
         self._cross_visible = False
@@ -78,15 +80,18 @@ class ExperimentSession:
         self._square_visible = False
         self._square_frames_remaining = 0
         self._square_actually_shown = False
+        self._trial_contrast: float | None = None  # contrast actually used for this trial's flash, if any
         self._response_window_open = False
         self._response_deadline = 0.0
         self._responded = False
         self._response_time_ms: float | None = None
+        self._landed = False
         self._foreperiod_start = 0.0
         self._foreperiod_duration = 0.0
 
-    def close(self) -> None:
-        self._logger.close()
+    @property
+    def results(self) -> list[TrialResult]:
+        return self._results
 
     # -- key handling ----------------------------------------------------------
 
@@ -107,15 +112,12 @@ class ExperimentSession:
                 self._begin_foreperiod()
         elif self._phase is Phase.TRIAL_ACTIVE:
             self._on_response()
-        elif self._phase is Phase.COMPLETE:
-            self._logger.close()
-            self._logger = ResultLogger()
-            self._reset()
+        # COMPLETE: space does nothing here - the runner decides when to move on
 
     def _on_response(self) -> None:
         if self._responded or not self._response_window_open:
             return
-        now = time.monotonic()
+        now = self._clock.now()
         if now <= self._response_deadline:
             self._responded = True
             self._response_time_ms = (now - self._square_shown_at) * 1000 if self._square_shown_at else None
@@ -125,7 +127,7 @@ class ExperimentSession:
     def _begin_foreperiod(self) -> None:
         self._clear_trial_state()
         self._phase = Phase.FOREPERIOD
-        self._foreperiod_start = time.monotonic()
+        self._foreperiod_start = self._clock.now()
         self._foreperiod_duration = random.uniform(FOREPERIOD_MIN_MS, FOREPERIOD_MAX_MS) / 1000
 
     def _reveal_target_and_start_trial(self) -> None:
@@ -135,7 +137,7 @@ class ExperimentSession:
         else:
             self._cross_visible = True
         self._phase = Phase.TRIAL_ACTIVE
-        self._trial_start_time = time.monotonic()
+        self._trial_start_time = self._clock.now()
 
     def _current_trial(self):
         return self._trials[self._trial_index]
@@ -147,13 +149,13 @@ class ExperimentSession:
             self._tick_trial_active()
 
     def _tick_foreperiod(self) -> None:
-        if time.monotonic() - self._foreperiod_start >= self._foreperiod_duration:
+        if self._clock.now() - self._foreperiod_start >= self._foreperiod_duration:
             self._reveal_target_and_start_trial()
 
     def _tick_trial_active(self) -> None:
         trial = self._current_trial()
         sample = self._gaze.latest_sample()
-        now = time.monotonic()
+        now = self._clock.now()
         source_zone = _zone_for(trial.source)
         target_zone = _zone_for(trial.target)
 
@@ -172,6 +174,7 @@ class ExperimentSession:
                         self._square_visible = True
                         self._square_frames_remaining = SQUARE_DURATION_FRAMES
                         self._square_actually_shown = True
+                        self._trial_contrast = trial.contrast
             else:
                 self._away_from_source_since = None
 
@@ -187,21 +190,37 @@ class ExperimentSession:
         if self._response_window_open and now > self._response_deadline:
             self._response_window_open = False
 
-        if sample.face_found and sample.zone is target_zone:
-            if self._target_landed_since is None:
-                self._target_landed_since = now
-            elif now - self._target_landed_since >= GAZE_LANDING_STABILITY_MS / 1000:
-                self._finish_trial(landed=True)
-                return
-        else:
-            self._target_landed_since = None
+        if not self._landed:
+            if sample.face_found and sample.zone is target_zone:
+                if self._target_landed_since is None:
+                    self._target_landed_since = now
+                elif now - self._target_landed_since >= GAZE_LANDING_STABILITY_MS / 1000:
+                    # Land immediately (visual feedback: hide the source symbol),
+                    # but don't finalize/log the trial yet - a real reaction time
+                    # can easily outlast how quickly landing gets detected, so
+                    # ending the trial here would cut off a still-valid response.
+                    self._landed = True
+                    self._hide_source_symbol()
+            else:
+                self._target_landed_since = None
 
-        if now - self._trial_start_time >= SACCADE_TIMEOUT_MS / 1000:
-            self._finish_trial(landed=False)
+            if now - self._trial_start_time >= SACCADE_TIMEOUT_MS / 1000:
+                self._finish_trial(landed=False)
+                return
+
+        if self._landed and (self._responded or not self._response_window_open):
+            self._finish_trial(landed=True)
+
+    def _hide_source_symbol(self) -> None:
+        trial = self._current_trial()
+        if trial.source is Target.DOT:
+            self._dot_visible = False
+        else:
+            self._cross_visible = False
 
     def _finish_trial(self, landed: bool) -> None:
         trial = self._current_trial()
-        now = time.monotonic()
+        now = self._clock.now()
 
         saccade_duration_ms = (now - self._trial_start_time) * 1000 if self._gaze_left_source else None
         if not landed and not self._gaze_left_source:
@@ -217,11 +236,12 @@ class ExperimentSession:
 
         result = TrialResult(
             index=trial.index,
+            phase="saccade",
             source=trial.source,
             target=trial.target,
             saccade_duration_ms=saccade_duration_ms,
             square_shown=self._square_actually_shown,
-            contrast=trial.contrast,
+            contrast=self._trial_contrast,
             responded=self._responded,
             response_time_ms=self._response_time_ms,
             outcome=outcome,
@@ -229,10 +249,7 @@ class ExperimentSession:
         self._logger.log(result)
         self._results.append(result)
 
-        if trial.source is Target.DOT:
-            self._dot_visible = False
-        else:
-            self._cross_visible = False
+        self._hide_source_symbol()  # no-op if landing already hid it; needed for the timeout path
         self._square_visible = False
 
         self._trial_index += 1
@@ -253,18 +270,37 @@ class ExperimentSession:
 
         square_shown_count = hits + misses
         hit_rate = hits / square_shown_count if square_shown_count else 0.0
-        fa_rate = false_alarms / (false_alarms + rejections) if (false_alarms + rejections) else 0.0
-        return f"Hit rate: {hits}/{square_shown_count} ({hit_rate:.0%}) | False alarms: {fa_rate:.0%}"
+        catch_trial_count = false_alarms + rejections
+        fa_rate = false_alarms / catch_trial_count if catch_trial_count else 0.0
+
+        # Diamond, Ross & Morrone (2000) report false-alarm rates <1/200 as their
+        # bar for a reliably attentive observer (not guessing/spamming responses).
+        # That assumes hundreds of catch trials though - with only a handful,
+        # even a genuinely careless observer could show 0 false alarms by luck,
+        # so don't claim "reliable" until there's enough data to back it up.
+        if catch_trial_count < MIN_CATCH_TRIALS_FOR_RELIABILITY:
+            reliability = "not enough data"
+        elif fa_rate < FALSE_ALARM_RATE_THRESHOLD:
+            reliability = "reliable"
+        else:
+            reliability = "unreliable"
+        return (
+            f"Hit rate: {hits}/{square_shown_count} ({hit_rate:.0%}) | "
+            f"False alarms: {false_alarms}/{catch_trial_count} ({fa_rate:.1%}, {reliability})"
+        )
 
     def _instructions(self) -> str:
         if self._phase is Phase.COMPLETE:
-            return f"Session complete — thank you! {self._summary()} — Press SPACE to run again"
+            return f"Saccade test complete! {self._summary()} — Press SPACE to see your results"
+        # FOREPERIOD and TRIAL_ACTIVE deliberately share one constant message -
+        # switching text every trial would flicker in peripheral vision, which
+        # is exactly the kind of onset we've been trying to avoid elsewhere.
+        if self._phase in (Phase.FOREPERIOD, Phase.TRIAL_ACTIVE):
+            return "Press SPACE if you see the square"
         return {
             Phase.WAITING_TO_START: "Press SPACE to begin calibration",
             Phase.CALIBRATE_LEFT: "Look at the dot, then press SPACE",
             Phase.CALIBRATE_RIGHT: "Now look at the other circle, then press SPACE",
-            Phase.FOREPERIOD: "Hold your gaze — get ready",
-            Phase.TRIAL_ACTIVE: "Press SPACE if you see the square",
         }[self._phase]
 
     def _symbol_visibility(self) -> tuple[bool, bool]:
@@ -289,7 +325,7 @@ class ExperimentSession:
                 "visible": self._square_visible,
                 "x": SQUARE_POSITION[0],
                 "y": SQUARE_POSITION[1],
-                "contrast": trial.contrast if (trial is not None and self._square_visible) else 0,
+                "contrast": self._trial_contrast if self._square_visible else 0,
             },
             "hud": {
                 "phase": self._phase.name,
