@@ -17,6 +17,10 @@
   .muted { color: #8b8c99; }
   button.graph-toggle { background: #3a5bd9; border: none; color: white; border-radius: 4px; padding: 0.4rem 0.75rem; cursor: pointer; }
   button.graph-toggle:hover { background: #4a6bf0; }
+  button.btn-danger { background: #7a2530; border: none; color: white; border-radius: 4px; padding: 0.4rem 0.75rem; cursor: pointer; }
+  button.btn-danger:hover { background: #9c2f3d; }
+  button.btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }
+  .row-actions { display: flex; gap: 0.5rem; align-items: center; }
   .graph-row img { max-width: 100%; margin-top: 0.75rem; border-radius: 6px; }
   .empty { color: #8b8c99; margin-top: 2rem; }
   .filters { display: flex; flex-wrap: wrap; gap: 1.25rem; align-items: flex-end; margin-bottom: 1.25rem; padding: 1rem; background: #24252e; border-radius: 8px; }
@@ -56,6 +60,7 @@
       <label><input type="checkbox" id="filter-exclude"> Exclude matches instead of showing them</label>
     </div>
     <button type="button" id="filter-clear" class="graph-toggle">Clear filters</button>
+    <button type="button" id="delete-all-visible" class="btn-danger">Delete all visible</button>
     <span id="filter-count" class="muted"></span>
   </div>
   <table>
@@ -83,7 +88,10 @@
           {% if not session.trial_counts %}no trials{% endif %}
         </td>
         <td>
-          <button class="graph-toggle" type="button">Show graph</button>
+          <div class="row-actions">
+            <button class="graph-toggle" type="button">Show graph</button>
+            <button class="btn-danger delete-session" type="button">Delete</button>
+          </div>
           <div class="graph-row" style="display:none"></div>
         </td>
       </tr>
@@ -93,8 +101,26 @@
   {% endif %}
 
 <script>
+async function deleteSessionByTimestamp(timestamp) {
+  const response = await fetch(`/sessions/${timestamp}`, { method: "DELETE" });
+  return response.ok;
+}
+
 document.querySelectorAll("tr[data-timestamp]").forEach((row) => {
   const timestamp = row.dataset.timestamp;
+
+  const deleteButton = row.querySelector(".delete-session");
+  deleteButton.addEventListener("click", async () => {
+    if (!confirm("Delete this session permanently? This cannot be undone.")) return;
+    deleteButton.disabled = true;
+    const ok = await deleteSessionByTimestamp(timestamp);
+    if (ok) {
+      location.reload();
+    } else {
+      deleteButton.disabled = false;
+      alert("Couldn't delete this session - see the server log for details.");
+    }
+  });
 
   row.querySelectorAll("input.field").forEach((input) => {
     input.addEventListener("change", async () => {
@@ -186,6 +212,26 @@ if (filterName) {
     filterAgeMax.value = "";
     filterExclude.checked = false;
     applyFilters();
+  });
+
+  const deleteAllButton = document.getElementById("delete-all-visible");
+  deleteAllButton.addEventListener("click", async () => {
+    const visibleRows = Array.from(rows).filter((row) => !row.classList.contains("filtered-out"));
+    if (visibleRows.length === 0) {
+      alert("No visible sessions to delete - adjust or clear your filters first.");
+      return;
+    }
+    const noun = visibleRows.length === 1 ? "session" : "sessions";
+    if (!confirm(`Delete ${visibleRows.length} visible ${noun} permanently? This cannot be undone.`)) return;
+
+    deleteAllButton.disabled = true;
+    const results = await Promise.all(visibleRows.map((row) => deleteSessionByTimestamp(row.dataset.timestamp)));
+    const failures = results.filter((ok) => !ok).length;
+    if (failures > 0) {
+      deleteAllButton.disabled = false;
+      alert(`${failures} of ${visibleRows.length} sessions failed to delete - see the server log for details.`);
+    }
+    location.reload();
   });
 
   applyFilters();

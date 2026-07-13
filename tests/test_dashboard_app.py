@@ -22,12 +22,12 @@ _FIELDNAMES = [
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
-    # data_access's own functions read DATA_DIR from their own module globals,
-    # so patching it there is enough for them - but app.py did `from ... import
-    # GRAPH_CACHE_DIR`, a separate name binding, so that one needs patching
-    # where app.py actually looks it up.
+    # app.py only ever reaches data_access's DATA_DIR/GRAPH_CACHE_DIR through
+    # data_access's own functions (graph_cache_path_for, delete_session, ...),
+    # so patching them here is enough - app.py holds no separate binding of
+    # its own to go stale.
     monkeypatch.setattr(data_access, "DATA_DIR", tmp_path)
-    monkeypatch.setattr(app_module, "GRAPH_CACHE_DIR", tmp_path / "cache")
+    monkeypatch.setattr(data_access, "GRAPH_CACHE_DIR", tmp_path / "cache")
     app_module.app.config.update(TESTING=True)
     return app_module.app.test_client()
 
@@ -85,3 +85,23 @@ def test_session_graph_renders_a_png(client, tmp_path):
 def test_session_graph_404s_for_unknown_timestamp(client):
     response = client.get("/sessions/000000/graph.png")
     assert response.status_code == 404
+
+
+def test_delete_session_removes_the_session(client, tmp_path):
+    _write_session(tmp_path, "654")
+    response = client.delete("/sessions/654")
+    assert response.status_code == 200
+    assert response.get_json() == {"ok": True}
+    assert not (tmp_path / "results_654.csv").exists()
+
+
+def test_delete_session_404s_for_unknown_timestamp(client):
+    response = client.delete("/sessions/000000")
+    assert response.status_code == 404
+
+
+def test_deleted_session_no_longer_appears_in_the_index(client, tmp_path):
+    _write_session(tmp_path, "111", meta={"participant_id": "gone"})
+    client.delete("/sessions/111")
+    response = client.get("/")
+    assert b"gone" not in response.data

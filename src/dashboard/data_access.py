@@ -32,6 +32,10 @@ def meta_path_for(timestamp: str) -> Path:
     return DATA_DIR / f"results_{timestamp}_meta.json"
 
 
+def graph_cache_path_for(timestamp: str) -> Path:
+    return GRAPH_CACHE_DIR / f"{timestamp}.png"
+
+
 def load_session_trials(timestamp: str) -> list[TrialResult]:
     """Reparses a session's logged CSV back into TrialResult objects, so it
     can be fed straight into results_graph.build_comparison_graph - the exact
@@ -78,6 +82,15 @@ def save_participant_info(timestamp: str, name: str, gender: str, age: str) -> N
     meta["gender"] = gender.strip() or None
     meta["age"] = int(age) if age.strip() else None
     meta_path_for(timestamp).write_text(json.dumps(meta, indent=2))
+
+
+def delete_session(timestamp: str) -> None:
+    """Removes a session's CSV, metadata sidecar, and cached graph, if they
+    exist. Permanent - there's no trash/undo, same as deleting the files by
+    hand would be."""
+    csv_path_for(timestamp).unlink(missing_ok=True)
+    meta_path_for(timestamp).unlink(missing_ok=True)
+    graph_cache_path_for(timestamp).unlink(missing_ok=True)
 
 
 @dataclass

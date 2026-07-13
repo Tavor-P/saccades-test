@@ -121,3 +121,39 @@ def test_discover_sessions_counts_trials_per_phase_and_sorts_newest_first(tmp_pa
     by_timestamp = {s.timestamp: s for s in sessions}
     assert by_timestamp["100"].trial_counts == {"presaccade": 2, "saccade": 1}
     assert by_timestamp["200"].trial_counts == {}
+
+
+def test_delete_session_removes_csv_meta_and_cached_graph(tmp_path, monkeypatch):
+    monkeypatch.setattr(data_access, "DATA_DIR", tmp_path)
+    cache_dir = tmp_path / "dashboard_cache"
+    monkeypatch.setattr(data_access, "GRAPH_CACHE_DIR", cache_dir)
+    _write_session(tmp_path, "666", rows=[], meta={"name": "Old Name"})
+    cache_dir.mkdir()
+    (cache_dir / "666.png").write_bytes(b"fake png")
+
+    data_access.delete_session("666")
+
+    assert not data_access.csv_path_for("666").exists()
+    assert not data_access.meta_path_for("666").exists()
+    assert not data_access.graph_cache_path_for("666").exists()
+
+
+def test_delete_session_tolerates_missing_meta_and_cached_graph(tmp_path, monkeypatch):
+    monkeypatch.setattr(data_access, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(data_access, "GRAPH_CACHE_DIR", tmp_path / "dashboard_cache")
+    _write_session(tmp_path, "777", rows=[])  # no meta.json, no cached graph
+
+    data_access.delete_session("777")  # should not raise
+
+    assert not data_access.csv_path_for("777").exists()
+
+
+def test_delete_session_removes_it_from_discover_sessions(tmp_path, monkeypatch):
+    monkeypatch.setattr(data_access, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(data_access, "GRAPH_CACHE_DIR", tmp_path / "dashboard_cache")
+    _write_session(tmp_path, "888", rows=[])
+    _write_session(tmp_path, "999", rows=[])
+
+    data_access.delete_session("888")
+
+    assert [s.timestamp for s in data_access.discover_sessions()] == ["999"]
