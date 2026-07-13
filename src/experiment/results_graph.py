@@ -6,43 +6,65 @@ matplotlib.use("Agg")  # headless: just rendering to a PNG file, no GUI backend 
 import matplotlib.pyplot as plt
 
 from include.experiment.types import TrialResult
+from src.experiment.zest import ZestStaircase
 
 OUTPUT_PATH = Path(__file__).resolve().parents[2] / "data" / "accuracy_comparison.png"
 
 
-def _accuracy_by_contrast(results: list[TrialResult], phase: str) -> dict[float, float]:
-    shown: dict[float, int] = {}
-    hits: dict[float, int] = {}
-    for result in results:
-        if result.phase != phase or not result.square_shown or result.contrast is None:
-            continue
-        shown[result.contrast] = shown.get(result.contrast, 0) + 1
-        if result.outcome == "hit":
-            hits[result.contrast] = hits.get(result.contrast, 0) + 1
-    return {level: hits.get(level, 0) / count for level, count in shown.items()}
+def _threshold_estimate(results: list[TrialResult], phase: str) -> float | None:
+    """Replays this phase's grating-shown trials, in trial order, through a
+    fresh ZEST staircase to recover the threshold its posterior converged on -
+    the same summary Diamond, Ross & Morrone (2000) report (a contrast
+    threshold per condition), rather than a per-level accuracy curve, since
+    contrast here is chosen adaptively rather than from a fixed set of levels."""
+    trials = sorted(
+        (r for r in results if r.phase == phase and r.grating_shown and r.contrast is not None),
+        key=lambda r: r.index,
+    )
+    if not trials:
+        return None
+    zest = ZestStaircase()
+    for trial in trials:
+        zest.update(trial.contrast, detected=trial.outcome == "hit")
+    return zest.threshold_estimate
 
 
 def build_comparison_graph(results: list[TrialResult], output_path: Path = OUTPUT_PATH) -> Path:
-    """Plots detection accuracy vs. contrast for the presaccade and saccade
-    phases on one graph, so the saccadic suppression effect is directly
-    visible as the gap between the two lines at matching contrast levels."""
-    presaccade = _accuracy_by_contrast(results, "presaccade")
-    saccade = _accuracy_by_contrast(results, "saccade")
+    """Bar chart of estimated contrast detection threshold, presaccade vs.
+    saccade, so the saccadic suppression effect reads directly as the height
+    difference between the two bars (the paper reported roughly a 10-fold
+    threshold elevation during saccades)."""
+    presaccade_threshold = _threshold_estimate(results, "presaccade")
+    saccade_threshold = _threshold_estimate(results, "saccade")
 
-    fig, ax = plt.subplots(figsize=(8, 6))
-    for label, data, marker in (("Presaccade (baseline)", presaccade, "o"), ("Saccade", saccade, "s")):
-        if not data:
-            continue
-        levels = sorted(data)
-        accuracies = [data[level] * 100 for level in levels]
-        ax.plot(levels, accuracies, marker=marker, label=label)
+    labels = []
+    thresholds = []
+    if presaccade_threshold is not None:
+        labels.append("Presaccade\n(baseline)")
+        thresholds.append(presaccade_threshold * 100)
+    if saccade_threshold is not None:
+        labels.append("Saccade")
+        thresholds.append(saccade_threshold * 100)
 
-    ax.set_xlabel("Contrast")
-    ax.set_ylabel("Accuracy (%)")
-    ax.set_title("Detection accuracy by contrast: presaccade vs. saccade")
-    ax.set_ylim(-5, 105)
-    ax.legend()
-    ax.grid(True, alpha=0.3)
+    fig, ax = plt.subplots(figsize=(6, 6))
+    bars = ax.bar(labels, thresholds, color=["#4C72B0", "#C44E52"][: len(labels)])
+    for bar, value in zip(bars, thresholds):
+        ax.annotate(
+            f"{value:.2f}%",
+            xy=(bar.get_x() + bar.get_width() / 2, value),
+            xytext=(0, 4),
+            textcoords="offset points",
+            ha="center",
+        )
+
+    if presaccade_threshold and saccade_threshold:
+        ratio = saccade_threshold / presaccade_threshold
+        ax.set_title(f"Contrast detection threshold: presaccade vs. saccade\n({ratio:.1f}x elevation)")
+    else:
+        ax.set_title("Contrast detection threshold: presaccade vs. saccade")
+
+    ax.set_ylabel("Detection threshold (contrast, %)")
+    ax.grid(True, alpha=0.3, axis="y")
 
     output_path.parent.mkdir(exist_ok=True)
     fig.savefig(output_path, dpi=150, bbox_inches="tight")
