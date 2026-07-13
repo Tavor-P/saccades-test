@@ -53,6 +53,12 @@ class ExperimentSession:
     procedure the paper used, run independently from the presaccade phase's
     staircase so each condition converges on its own threshold.
 
+    Uses a "step" gap/overlap paradigm: the old fixation symbol starts
+    fading out the instant the new one appears (both crossfade over
+    FADE_DURATION_S in run_experiment.py), rather than staying fully lit
+    until gaze lands on the target - two identical, fully-opaque symbols on
+    screen at once made it genuinely ambiguous which one was the new go-cue.
+
     Framework-agnostic: `on_space()` and `tick()` are called synchronously by
     the PsychoPy frame loop, and `render_state()` returns a plain dict the
     runner applies to its stimuli. It owns no camera/tracker state itself
@@ -149,6 +155,13 @@ class ExperimentSession:
             self._dot_visible = True
         else:
             self._cross_visible = True
+        # Hide the source the instant the target appears (not at landing) so
+        # the two crossfade - the renderer already fades opacity toward
+        # whatever `visible` says over FADE_DURATION_S, so this alone turns
+        # "new symbol pops in next to an already-full-brightness old one"
+        # into "old fades out as new fades in", with no ambiguity about which
+        # one is the one to look at.
+        self._hide_source_symbol()
         self._phase = Phase.TRIAL_ACTIVE
         self._trial_start_time = self._clock.now()
 
@@ -208,12 +221,13 @@ class ExperimentSession:
                 if self._target_landed_since is None:
                     self._target_landed_since = now
                 elif now - self._target_landed_since >= GAZE_LANDING_STABILITY_MS / 1000:
-                    # Land immediately (visual feedback: hide the source symbol),
-                    # but don't finalize/log the trial yet - a real reaction time
-                    # can easily outlast how quickly landing gets detected, so
-                    # ending the trial here would cut off a still-valid response.
+                    # Land immediately, but don't finalize/log the trial yet -
+                    # a real reaction time can easily outlast how quickly
+                    # landing gets detected, so ending the trial here would
+                    # cut off a still-valid response. (The source symbol is
+                    # already gone by now - it started fading out back when
+                    # the target first appeared - so there's nothing to hide.)
                     self._landed = True
-                    self._hide_source_symbol()
             else:
                 self._target_landed_since = None
 
@@ -260,7 +274,6 @@ class ExperimentSession:
             self._logger.log(result)
             self._results.append(result)
 
-        self._hide_source_symbol()  # no-op if landing already hid it; needed for the timeout path
         self._grating_visible = False
 
         self._trial_index += 1

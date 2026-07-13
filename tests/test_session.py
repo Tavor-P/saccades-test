@@ -162,3 +162,18 @@ def test_practice_trial_is_not_logged_or_staircased(fake_gaze, fake_time):
     assert session.results == []  # practice trials never get logged
     assert session._zest.threshold_estimate == initial_threshold  # staircase untouched
     assert session.render_state()["hud"]["phase"] == "COMPLETE"
+
+
+def test_source_symbol_hides_the_instant_the_target_appears(fake_gaze, fake_time):
+    # Regression test for the "two fully-opaque circles on screen at once"
+    # confusion: the source's `visible` flag must flip off in the same tick
+    # the target's flips on, not wait for gaze to land on the target.
+    session = _make_session(fake_gaze)
+    session._trials = [TrialSpec(index=0, source=Target.DOT, target=Target.CROSS, grating_shown=False)]
+    _complete_calibration_and_enter_foreperiod(session)
+    assert session.render_state()["dot"]["visible"] is True  # source lit during the foreperiod
+
+    _enter_trial_active(session, fake_time)
+    state = session.render_state()
+    assert state["cross"]["visible"] is True  # target just appeared
+    assert state["dot"]["visible"] is False  # source already hidden, before any landing
