@@ -106,6 +106,11 @@ name/gender/age save automatically as you tab out of the field. This is a
 plain local Flask dev server (not meant to be exposed beyond your own
 machine).
 
+The filter bar above the table searches by name (substring), gender
+(substring), and age range - live, no page reload. Check "Exclude matches
+instead of showing them" to flip it into a hide filter (e.g. "hide anyone
+named Test").
+
 ## Troubleshooting
 
 - **`ModuleNotFoundError: No module named 'src'`** — you have to `cd` into
