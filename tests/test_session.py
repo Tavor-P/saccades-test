@@ -57,6 +57,25 @@ def test_calibration_flow_calls_gaze_calibrate(fake_gaze):
     assert session.render_state()["hud"]["phase"] == "FOREPERIOD"
 
 
+def test_calibration_starts_a_fresh_sample_window_for_each_target(fake_gaze):
+    # Regression test: without resetting the gaze source's rolling ratio
+    # window before each of the two calibration targets, the left/right
+    # averages could be contaminated by stale samples from whatever the
+    # participant was looking at previously, collapsing the calibration span
+    # toward zero.
+    session = _make_session(fake_gaze)
+    assert fake_gaze.calibration_samples_begun == 0
+
+    session.on_space()  # WAITING_TO_START -> CALIBRATE_LEFT
+    assert fake_gaze.calibration_samples_begun == 1  # fresh window before the dot
+
+    session.on_space()  # CALIBRATE_LEFT -> CALIBRATE_RIGHT
+    assert fake_gaze.calibration_samples_begun == 2  # fresh window before the cross
+
+    session.on_space()  # CALIBRATE_RIGHT -> FOREPERIOD
+    assert fake_gaze.calibration_samples_begun == 2  # no new target after this
+
+
 def test_hit_scores_and_updates_zest(fake_gaze, fake_time):
     session = _make_session(fake_gaze)
     session._trials = [TrialSpec(index=0, source=Target.DOT, target=Target.CROSS, grating_shown=True)]

@@ -94,9 +94,20 @@ class GazeTracker:
         self._span = abs(right_ratio - left_ratio) or 0.2
 
     def average_recent_ratio(self) -> float | None:
-        if not self._ratio_history:
+        # Requires a *full* window, not just a non-empty one - otherwise a
+        # participant who presses SPACE the instant a calibration target
+        # appears gets an average of only one or two fresh samples, still
+        # mostly reflecting wherever they were looking a moment ago.
+        if len(self._ratio_history) < self._ratio_history.maxlen:
             return None
         return sum(self._ratio_history) / len(self._ratio_history)
+
+    def reset_ratio_history(self) -> None:
+        """Call this right as a new calibration target is presented, so the
+        next average_recent_ratio() reflects only samples gathered while the
+        participant is actually looking at it - not a stale mix left over
+        from whatever they were fixating before."""
+        self._ratio_history.clear()
 
     def _classify(self, ratio: float) -> GazeZone:
         dead_zone = GAZE_DEAD_ZONE * self._span
