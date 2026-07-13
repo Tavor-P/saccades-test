@@ -111,6 +111,13 @@ The filter bar above the table searches by name (substring), gender
 instead of showing them" to flip it into a hide filter (e.g. "hide anyone
 named Test").
 
+Each row also has a **Delete** button, and **Delete all visible** (in the
+filter bar) removes every session currently shown - so filtering down to
+junk sessions first and then deleting them in bulk is the intended
+workflow. Both ask for confirmation first and are permanent - a session's
+CSV, metadata, and cached graph are gone for good, same as deleting the
+files by hand.
+
 ## Troubleshooting
 
 - **`ModuleNotFoundError: No module named 'src'`** — you have to `cd` into
