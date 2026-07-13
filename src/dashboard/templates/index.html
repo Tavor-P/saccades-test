@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Saccade sessions</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 2rem; background: #1e1f26; color: #e8e8ec; }
+  h1 { font-weight: 600; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { padding: 0.5rem 0.75rem; border-bottom: 1px solid #3a3b45; text-align: left; vertical-align: top; }
+  th { color: #9a9ba8; font-weight: 500; font-size: 0.85rem; text-transform: uppercase; }
+  tr:hover { background: #24252e; }
+  input { background: #2a2b34; border: 1px solid #454654; color: #e8e8ec; border-radius: 4px; padding: 0.3rem 0.5rem; width: 100%; box-sizing: border-box; }
+  input.age { width: 5rem; }
+  input.saved { border-color: #4caf82; }
+  input.error { border-color: #d9534f; }
+  .muted { color: #8b8c99; }
+  button.graph-toggle { background: #3a5bd9; border: none; color: white; border-radius: 4px; padding: 0.4rem 0.75rem; cursor: pointer; }
+  button.graph-toggle:hover { background: #4a6bf0; }
+  .graph-row img { max-width: 100%; margin-top: 0.75rem; border-radius: 6px; }
+  .empty { color: #8b8c99; margin-top: 2rem; }
+</style>
+</head>
+<body>
+  <h1>Saccade sessions</h1>
+
+  {% if not sessions %}
+    <p class="empty">No sessions logged yet in data/ - run the experiment first.</p>
+  {% else %}
+  <table>
+    <thead>
+      <tr>
+        <th>Run at</th>
+        <th>Participant ID</th>
+        <th>Name</th>
+        <th>Gender</th>
+        <th>Age</th>
+        <th>Trials</th>
+        <th>Graph</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for session in sessions %}
+      <tr data-timestamp="{{ session.timestamp }}">
+        <td>{{ session.timestamp | session_datetime }}</td>
+        <td class="muted">{{ session.metadata.participant_id if session.metadata.participant_id is not none else "-" }}</td>
+        <td><input type="text" class="field name" value="{{ session.metadata.name or '' }}" placeholder="-"></td>
+        <td><input type="text" class="field gender" value="{{ session.metadata.gender or '' }}" placeholder="-"></td>
+        <td><input type="number" class="field age" min="0" value="{{ session.metadata.age if session.metadata.age is not none else '' }}" placeholder="-"></td>
+        <td class="muted">
+          {% for phase, count in session.trial_counts.items() %}{{ phase }}: {{ count }}{% if not loop.last %}, {% endif %}{% endfor %}
+          {% if not session.trial_counts %}no trials{% endif %}
+        </td>
+        <td>
+          <button class="graph-toggle" type="button">Show graph</button>
+          <div class="graph-row" style="display:none"></div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+<script>
+document.querySelectorAll("tr[data-timestamp]").forEach((row) => {
+  const timestamp = row.dataset.timestamp;
+
+  row.querySelectorAll("input.field").forEach((input) => {
+    input.addEventListener("change", async () => {
+      const name = row.querySelector(".name").value;
+      const gender = row.querySelector(".gender").value;
+      const age = row.querySelector(".age").value;
+      input.classList.remove("saved", "error");
+      try {
+        const response = await fetch(`/sessions/${timestamp}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, gender, age }),
+        });
+        input.classList.add(response.ok ? "saved" : "error");
+      } catch (err) {
+        input.classList.add("error");
+      }
+    });
+  });
+
+  const toggleButton = row.querySelector(".graph-toggle");
+  const graphRow = row.querySelector(".graph-row");
+  toggleButton.addEventListener("click", () => {
+    const showing = graphRow.style.display !== "none";
+    if (showing) {
+      graphRow.style.display = "none";
+      toggleButton.textContent = "Show graph";
+      return;
+    }
+    if (!graphRow.querySelector("img")) {
+      const img = document.createElement("img");
+      img.src = `/sessions/${timestamp}/graph.png?_=${Date.now()}`;
+      graphRow.appendChild(img);
+    }
+    graphRow.style.display = "block";
+    toggleButton.textContent = "Hide graph";
+  });
+});
+</script>
+</body>
+</html>

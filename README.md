@@ -13,7 +13,8 @@ installer from [psychopy.org/download](https://www.psychopy.org/download.html)
 and install it normally. It bundles its own Python — you don't need a
 separate Python install.
 
-**2. Install the one extra dependency** into PsychoPy's bundled Python:
+**2. Install the extra dependencies** into PsychoPy's bundled Python
+(mediapipe for the webcam eye tracker, Flask for the session dashboard):
 
 ```
 "C:\Program Files\PsychoPy\python.exe" -m pip install -r requirements.txt
@@ -75,7 +76,8 @@ comparison graph is saved to `data/accuracy_comparison.png`.
 
 ## Running the tests
 
-PsychoPy's bundled Python already includes pytest and matplotlib, so there's
+PsychoPy's bundled Python already includes pytest and matplotlib, so as long
+as you've done step 2 above (for Flask, used by the dashboard tests) there's
 nothing extra to install:
 
 ```
@@ -83,20 +85,38 @@ nothing extra to install:
 ```
 
 Run this from the project folder (same requirement as running the experiment
-itself). The suite covers the trial-scheduling/staircase/scoring logic and
-the session state machines using fake gaze/clock doubles — it doesn't open a
-real PsychoPy window or touch a camera, so it runs in a few seconds.
+itself). The suite covers the trial-scheduling/staircase/scoring logic, the
+session state machines, and the dashboard's data access + routes, all using
+fake gaze/clock doubles and Flask's test client — it doesn't open a real
+PsychoPy window, touch a camera, or start a real server, so it runs in a few
+seconds.
+
+## Browsing past sessions
+
+A small local web dashboard lists every session in `data/`, lets you attach a
+name/gender/age to each one (saved into that session's `_meta.json`), and
+shows its detection-threshold graph on demand:
+
+```
+"C:\Program Files\PsychoPy\python.exe" -m src.dashboard.app
+```
+
+Then open [http://localhost:5000](http://localhost:5000). Edits to
+name/gender/age save automatically as you tab out of the field. This is a
+plain local Flask dev server (not meant to be exposed beyond your own
+machine).
 
 ## Troubleshooting
 
 - **`ModuleNotFoundError: No module named 'src'`** — you have to `cd` into
   this project's folder *first*; `-m` needs the current directory to be here
   so `src`/`include` resolve as top-level packages.
-- **`ModuleNotFoundError: No module named 'mediapipe'`** — step 2 above
-  didn't take. If `Program Files` isn't writable, pip silently installs to
-  your per-user site-packages instead, which can go unnoticed in a different
-  shell. Simplest fix: open the terminal **as Administrator** and re-run the
-  step 2 command so it installs directly into PsychoPy's own folder.
+- **`ModuleNotFoundError: No module named 'mediapipe'`** (or `'flask'`) —
+  step 2 above didn't take. If `Program Files` isn't writable, pip silently
+  installs to your per-user site-packages instead, which can go unnoticed in
+  a different shell. Simplest fix: open the terminal **as Administrator** and
+  re-run the step 2 command so it installs directly into PsychoPy's own
+  folder.
 - **Webcam eye tracking seems off** — the calibration step (look at each
   circle, press Space) has to actually happen for gaze detection to be
   accurate; if you skip it or don't hold your gaze steady during it,
@@ -113,8 +133,11 @@ src/
   experiment/       the two session state machines, trial scheduling, ZEST
                      staircase, shared outcome scoring, CSV/metadata logging,
                      results graph, and run_experiment.py (entry point)
-tests/             pytest suite for everything in src/experiment (no PsychoPy
-                     window or camera needed - see "Running the tests" above)
+  dashboard/        local Flask app for browsing past sessions - see
+                     "Browsing past sessions" above
+tests/             pytest suite for everything in src/experiment and
+                     src/dashboard (no PsychoPy window or camera needed -
+                     see "Running the tests" above)
 ```
 
 `src/eye_tracking/iohub_source.py` is a not-yet-tested placeholder for
