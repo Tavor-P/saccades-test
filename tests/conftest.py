@@ -14,6 +14,7 @@ class FakeGazeSource(GazeSource):
         self.face_found = True
         self._available = True
         self.calibrated: tuple[float, float] | None = None
+        self.calibration_samples_begun = 0
 
     def start(self) -> None:
         pass
@@ -33,6 +34,9 @@ class FakeGazeSource(GazeSource):
 
     def average_recent_ratio(self) -> float | None:
         return 0.5
+
+    def begin_calibration_sample(self) -> None:
+        self.calibration_samples_begun += 1
 
 
 @pytest.fixture

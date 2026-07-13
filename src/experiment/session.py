@@ -115,11 +115,13 @@ class ExperimentSession:
 
     def on_space(self) -> None:
         if self._phase is Phase.WAITING_TO_START:
+            self._gaze.begin_calibration_sample()  # fresh window before the dot appears
             self._phase = Phase.CALIBRATE_LEFT
         elif self._phase is Phase.CALIBRATE_LEFT:
             ratio = self._gaze.average_recent_ratio()
             if ratio is not None:
                 self._pending_left_ratio = ratio
+                self._gaze.begin_calibration_sample()  # fresh window before the cross appears
                 self._phase = Phase.CALIBRATE_RIGHT
         elif self._phase is Phase.CALIBRATE_RIGHT:
             ratio = self._gaze.average_recent_ratio()

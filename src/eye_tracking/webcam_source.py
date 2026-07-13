@@ -50,6 +50,9 @@ class WebcamGazeSource(GazeSource):
     def average_recent_ratio(self) -> float | None:
         return self._tracker.average_recent_ratio()
 
+    def begin_calibration_sample(self) -> None:
+        self._tracker.reset_ratio_history()
+
     def stop(self) -> None:
         self._running = False
         if self._thread is not None:

@@ -66,6 +66,9 @@ class IOHubGazeSource(GazeSource):
     def average_recent_ratio(self) -> float | None:
         return None  # ioHub reports real gaze position, not our webcam ratio concept
 
+    def begin_calibration_sample(self) -> None:
+        pass  # no rolling sample window here - calibrate() runs the vendor's own routine
+
     def _classify(self, position: tuple[float, float]) -> GazeZone:
         best_zone = GazeZone.CENTER
         best_distance = self._hit_radius

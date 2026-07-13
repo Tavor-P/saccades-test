@@ -38,3 +38,11 @@ class GazeSource(ABC):
     def average_recent_ratio(self) -> float | None:
         """Recent gaze-ratio average, used while the participant holds a fixation
         during calibration. Returns None if no reading is currently available."""
+
+    @abstractmethod
+    def begin_calibration_sample(self) -> None:
+        """Call this right before asking the participant to fixate a new
+        calibration target, so average_recent_ratio() reflects only samples
+        gathered after this point - not whatever they were looking at
+        previously. A no-op for sources that don't use a rolling sample
+        window (e.g. ioHub, which runs its own vendor calibration routine)."""
