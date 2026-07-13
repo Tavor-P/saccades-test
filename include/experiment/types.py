@@ -11,10 +11,12 @@ class Target(str, Enum):
 class FlashTrialSpec:
     """A presaccade-phase trial: just fixate center, maybe a flash, no saccade.
     Contrast isn't known ahead of time - it's picked from the ZEST staircase
-    right when the trial actually flashes."""
+    right when the trial actually flashes (or fixed at PRACTICE_CONTRAST for
+    practice trials, which also skip the staircase update and logging)."""
 
     index: int
     grating_shown: bool
+    practice: bool = False
 
 
 @dataclass(frozen=True)
@@ -23,6 +25,7 @@ class TrialSpec:
     source: Target
     target: Target
     grating_shown: bool
+    practice: bool = False
 
 
 @dataclass

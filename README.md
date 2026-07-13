@@ -30,19 +30,27 @@ That's it — a window opens and the experiment starts.
 
 ## What running it looks like
 
-The session has two phases, back to back, then a results graph:
+A small dialog asks for a participant ID first (cancel it to quit before the
+window even opens). Then the session runs two phases back to back, each
+starting with a few throwaway practice trials, then a results graph:
 
 1. **Baseline phase** — fixate the center of the screen. A faint grating
    flashes briefly for a single frame, its contrast adjusted trial-by-trial
    by an adaptive staircase (sometimes it doesn't flash at all). Press
-   **Space** whenever you see it.
+   **Space** whenever you see it. The first couple of trials are marked
+   "Practice" on screen and don't count toward your results.
 2. **Saccade phase** — press Space to calibrate (look at each circle when
    asked), then saccade back and forth between two circles as they appear.
    The same grating may flash around each saccade — press **Space** if you
-   see it.
+   see it. Again, a couple of practice trials run first.
 3. **Results** — a graph comparing the estimated contrast detection
-   threshold for both phases, so you can see the size of the
-   saccadic-suppression effect.
+   threshold for both phases (with a credible interval) plus the fitted
+   psychometric curve each threshold came from, so you can see both the size
+   of the saccadic-suppression effect and how good the underlying fit is.
+
+`include/experiment/constants.py` has a `TEST_MODE` flag for quick smoke
+tests: 25 trials/phase and the saccade phase first, instead of the full
+100-trial, baseline-first run.
 
 ## Controls
 
@@ -58,8 +66,26 @@ window) picks up exactly where it left off, no matter how long you pause for.
 ## Output
 
 Every trial from both phases is logged to one file:
-`data/results_<timestamp>.csv` (a `phase` column tells the two apart). The
-final comparison graph is saved to `data/accuracy_comparison.png`.
+`data/results_<timestamp>.csv` (a `phase` column tells the two apart;
+practice trials aren't included). Alongside it,
+`data/results_<timestamp>_meta.json` records the participant ID, start time,
+`TEST_MODE` state, the viewing-distance/screen/grating assumptions used, and
+the webcam calibration ratios once calibration completes. The final
+comparison graph is saved to `data/accuracy_comparison.png`.
+
+## Running the tests
+
+PsychoPy's bundled Python already includes pytest and matplotlib, so there's
+nothing extra to install:
+
+```
+"C:\Program Files\PsychoPy\python.exe" -m pytest
+```
+
+Run this from the project folder (same requirement as running the experiment
+itself). The suite covers the trial-scheduling/staircase/scoring logic and
+the session state machines using fake gaze/clock doubles — it doesn't open a
+real PsychoPy window or touch a camera, so it runs in a few seconds.
 
 ## Troubleshooting
 
@@ -84,8 +110,11 @@ include/          shared types, enums, and constants (no logic)
   experiment/       Target/TrialSpec/TrialResult types, trial+timing constants
 src/
   eye_tracking/     webcam gaze tracker (MediaPipe iris tracking) + camera capture
-  experiment/       the two session state machines, trial scheduling, CSV
-                     logging, results graph, and run_experiment.py (entry point)
+  experiment/       the two session state machines, trial scheduling, ZEST
+                     staircase, shared outcome scoring, CSV/metadata logging,
+                     results graph, and run_experiment.py (entry point)
+tests/             pytest suite for everything in src/experiment (no PsychoPy
+                     window or camera needed - see "Running the tests" above)
 ```
 
 `src/eye_tracking/iohub_source.py` is a not-yet-tested placeholder for

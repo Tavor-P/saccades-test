@@ -1,0 +1,54 @@
+import pytest
+
+from include.eye_tracking.interfaces import GazeSource
+from include.eye_tracking.types import GazeSample, GazeZone
+from src.experiment import pausable_clock as pausable_clock_module
+
+
+class FakeGazeSource(GazeSource):
+    """Minimal in-memory GazeSource double: tests set `.zone`/`.face_found`
+    directly instead of driving a real camera/tracker."""
+
+    def __init__(self) -> None:
+        self.zone = GazeZone.CENTER
+        self.face_found = True
+        self._available = True
+        self.calibrated: tuple[float, float] | None = None
+
+    def start(self) -> None:
+        pass
+
+    def stop(self) -> None:
+        pass
+
+    @property
+    def is_available(self) -> bool:
+        return self._available
+
+    def latest_sample(self) -> GazeSample:
+        return GazeSample(zone=self.zone, ratio=None, face_found=self.face_found, timestamp=0.0)
+
+    def calibrate(self, left_ratio: float, right_ratio: float) -> None:
+        self.calibrated = (left_ratio, right_ratio)
+
+    def average_recent_ratio(self) -> float | None:
+        return 0.5
+
+
+@pytest.fixture
+def fake_gaze() -> FakeGazeSource:
+    return FakeGazeSource()
+
+
+@pytest.fixture
+def fake_time(monkeypatch):
+    """Monkeypatches PausableClock's time source to a controllable counter, so
+    tests can jump the clock forward deterministically instead of racing real
+    wall-clock time through stability/response/timeout windows."""
+    state = {"t": 0.0}
+    monkeypatch.setattr(pausable_clock_module.time, "monotonic", lambda: state["t"])
+
+    def advance(seconds: float) -> None:
+        state["t"] += seconds
+
+    return advance

@@ -50,6 +50,13 @@ NUM_TRIALS_PER_PHASE = 25 if TEST_MODE else 100
 CATCH_TRIAL_FRACTION = 0.2
 CATCH_TRIAL_COUNT = round(NUM_TRIALS_PER_PHASE * CATCH_TRIAL_FRACTION)  # rest drive/query the adaptive staircase
 
+# A few throwaway trials before each phase's real block, so a participant
+# doesn't learn the response mapping on data that counts. Fixed at a high,
+# easily-visible contrast (not drawn from the staircase) and excluded from
+# both the ZEST update and the logged CSV/results.
+NUM_PRACTICE_TRIALS = 2 if TEST_MODE else 5
+PRACTICE_CONTRAST = 0.25
+
 # ZEST (Zippy Estimation by Sequential Testing, King-Smith et al. 1994)
 # adaptive contrast staircase - the paper's actual contrast-selection method:
 # "their contrast varying according to a ZEST procedure, which independently
