@@ -19,6 +19,14 @@
   button.graph-toggle:hover { background: #4a6bf0; }
   .graph-row img { max-width: 100%; margin-top: 0.75rem; border-radius: 6px; }
   .empty { color: #8b8c99; margin-top: 2rem; }
+  .filters { display: flex; flex-wrap: wrap; gap: 1.25rem; align-items: flex-end; margin-bottom: 1.25rem; padding: 1rem; background: #24252e; border-radius: 8px; }
+  .filter-field { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.8rem; color: #9a9ba8; }
+  .filter-field input[type="text"], .filter-field input[type="number"] { width: 10rem; }
+  .filter-toggle { flex-direction: row; align-items: center; gap: 0.4rem; color: #e8e8ec; font-size: 0.9rem; }
+  .filter-toggle input { width: auto; }
+  #filter-clear { background: #454654; }
+  #filter-clear:hover { background: #565768; }
+  tr.filtered-out { display: none; }
 </style>
 </head>
 <body>
@@ -27,6 +35,29 @@
   {% if not sessions %}
     <p class="empty">No sessions logged yet in data/ - run the experiment first.</p>
   {% else %}
+  <div class="filters">
+    <div class="filter-field">
+      <label for="filter-name">Name contains</label>
+      <input type="text" id="filter-name" placeholder="e.g. Alex">
+    </div>
+    <div class="filter-field">
+      <label for="filter-gender">Gender contains</label>
+      <input type="text" id="filter-gender" placeholder="e.g. woman">
+    </div>
+    <div class="filter-field">
+      <label for="filter-age-min">Age min</label>
+      <input type="number" id="filter-age-min" min="0">
+    </div>
+    <div class="filter-field">
+      <label for="filter-age-max">Age max</label>
+      <input type="number" id="filter-age-max" min="0">
+    </div>
+    <div class="filter-field filter-toggle">
+      <label><input type="checkbox" id="filter-exclude"> Exclude matches instead of showing them</label>
+    </div>
+    <button type="button" id="filter-clear" class="graph-toggle">Clear filters</button>
+    <span id="filter-count" class="muted"></span>
+  </div>
   <table>
     <thead>
       <tr>
@@ -81,6 +112,7 @@ document.querySelectorAll("tr[data-timestamp]").forEach((row) => {
       } catch (err) {
         input.classList.add("error");
       }
+      if (typeof applyFilters === "function") applyFilters();
     });
   });
 
@@ -102,6 +134,62 @@ document.querySelectorAll("tr[data-timestamp]").forEach((row) => {
     toggleButton.textContent = "Hide graph";
   });
 });
+
+const filterName = document.getElementById("filter-name");
+if (filterName) {
+  const filterGender = document.getElementById("filter-gender");
+  const filterAgeMin = document.getElementById("filter-age-min");
+  const filterAgeMax = document.getElementById("filter-age-max");
+  const filterExclude = document.getElementById("filter-exclude");
+  const filterCount = document.getElementById("filter-count");
+  const filterClear = document.getElementById("filter-clear");
+  const rows = document.querySelectorAll("tr[data-timestamp]");
+
+  const rowMatchesFilters = (row) => {
+    const name = row.querySelector(".name").value.trim().toLowerCase();
+    const gender = row.querySelector(".gender").value.trim().toLowerCase();
+    const ageRaw = row.querySelector(".age").value.trim();
+    const age = ageRaw === "" ? null : Number(ageRaw);
+
+    const nameFilter = filterName.value.trim().toLowerCase();
+    const genderFilter = filterGender.value.trim().toLowerCase();
+    const ageMin = filterAgeMin.value.trim() === "" ? null : Number(filterAgeMin.value);
+    const ageMax = filterAgeMax.value.trim() === "" ? null : Number(filterAgeMax.value);
+
+    if (nameFilter && !name.includes(nameFilter)) return false;
+    if (genderFilter && !gender.includes(genderFilter)) return false;
+    if (ageMin !== null && (age === null || age < ageMin)) return false;
+    if (ageMax !== null && (age === null || age > ageMax)) return false;
+    return true;
+  };
+
+  window.applyFilters = () => {
+    const exclude = filterExclude.checked;
+    let visibleCount = 0;
+    rows.forEach((row) => {
+      const matches = rowMatchesFilters(row);
+      const show = exclude ? !matches : matches;
+      row.classList.toggle("filtered-out", !show);
+      if (show) visibleCount += 1;
+    });
+    filterCount.textContent = `Showing ${visibleCount} of ${rows.length} sessions`;
+  };
+
+  [filterName, filterGender, filterAgeMin, filterAgeMax].forEach((input) => {
+    input.addEventListener("input", applyFilters);
+  });
+  filterExclude.addEventListener("change", applyFilters);
+  filterClear.addEventListener("click", () => {
+    filterName.value = "";
+    filterGender.value = "";
+    filterAgeMin.value = "";
+    filterAgeMax.value = "";
+    filterExclude.checked = false;
+    applyFilters();
+  });
+
+  applyFilters();
+}
 </script>
 </body>
 </html>
