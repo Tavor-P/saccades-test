@@ -13,6 +13,7 @@ from include.experiment.constants import (
     GRATING_DURATION_FRAMES,
     GRATING_POSITION,
     MIN_CATCH_TRIALS_FOR_RELIABILITY,
+    PRACTICE_CONTRAST,
     RESPONSE_WINDOW_MS,
     SACCADE_ONSET_STABILITY_MS,
     SACCADE_TIMEOUT_MS,
@@ -20,6 +21,7 @@ from include.experiment.constants import (
 from include.experiment.types import Target, TrialResult
 from src.experiment.logger import ResultLogger
 from src.experiment.pausable_clock import PausableClock
+from src.experiment.scoring import score_outcome
 from src.experiment.trial_factory import build_saccade_sequence
 from src.experiment.zest import ZestStaircase
 
@@ -65,13 +67,21 @@ class ExperimentSession:
         self._clock = clock
         self._phase = Phase.WAITING_TO_START
         self._trials = build_saccade_sequence()
+        self._num_practice = sum(1 for t in self._trials if t.practice)
         self._trial_index = 0
         self._dot_visible = False
         self._cross_visible = False
         self._pending_left_ratio: float | None = None
+        self._calibration_ratios: tuple[float, float] | None = None
         self._results: list[TrialResult] = []
         self._zest = ZestStaircase()
         self._clear_trial_state()
+
+    @property
+    def calibration_ratios(self) -> tuple[float, float] | None:
+        """(left_ratio, right_ratio) from the 2-point webcam calibration, once
+        it's completed - None before that. Session metadata reads this."""
+        return self._calibration_ratios
 
     def _clear_trial_state(self) -> None:
         self._trial_start_time = 0.0
@@ -109,6 +119,7 @@ class ExperimentSession:
             ratio = self._gaze.average_recent_ratio()
             if ratio is not None and self._pending_left_ratio is not None:
                 self._gaze.calibrate(self._pending_left_ratio, ratio)
+                self._calibration_ratios = (self._pending_left_ratio, ratio)
                 self._dot_visible = True  # trial 0's source
                 self._cross_visible = False
                 self._begin_foreperiod()
@@ -176,7 +187,7 @@ class ExperimentSession:
                         self._grating_visible = True
                         self._grating_frames_remaining = GRATING_DURATION_FRAMES
                         self._grating_actually_shown = True
-                        self._trial_contrast = self._zest.next_contrast()
+                        self._trial_contrast = PRACTICE_CONTRAST if trial.practice else self._zest.next_contrast()
             else:
                 self._away_from_source_since = None
 
@@ -227,32 +238,27 @@ class ExperimentSession:
         saccade_duration_ms = (now - self._trial_start_time) * 1000 if self._gaze_left_source else None
         if not landed and not self._gaze_left_source:
             outcome = "timeout"
-        elif self._grating_actually_shown and self._responded:
-            outcome = "hit"
-        elif self._grating_actually_shown and not self._responded:
-            outcome = "miss"
-        elif not self._grating_actually_shown and self._responded:
-            outcome = "false_alarm"
         else:
-            outcome = "correct_rejection"
+            outcome = score_outcome(self._grating_actually_shown, self._responded)
 
-        if self._grating_actually_shown and outcome in ("hit", "miss"):
-            self._zest.update(self._trial_contrast, detected=outcome == "hit")
+        if not trial.practice:
+            if self._grating_actually_shown and outcome in ("hit", "miss"):
+                self._zest.update(self._trial_contrast, detected=outcome == "hit")
 
-        result = TrialResult(
-            index=trial.index,
-            phase="saccade",
-            source=trial.source,
-            target=trial.target,
-            saccade_duration_ms=saccade_duration_ms,
-            grating_shown=self._grating_actually_shown,
-            contrast=self._trial_contrast,
-            responded=self._responded,
-            response_time_ms=self._response_time_ms,
-            outcome=outcome,
-        )
-        self._logger.log(result)
-        self._results.append(result)
+            result = TrialResult(
+                index=trial.index,
+                phase="saccade",
+                source=trial.source,
+                target=trial.target,
+                saccade_duration_ms=saccade_duration_ms,
+                grating_shown=self._grating_actually_shown,
+                contrast=self._trial_contrast,
+                responded=self._responded,
+                response_time_ms=self._response_time_ms,
+                outcome=outcome,
+            )
+            self._logger.log(result)
+            self._results.append(result)
 
         self._hide_source_symbol()  # no-op if landing already hid it; needed for the timeout path
         self._grating_visible = False
@@ -302,12 +308,21 @@ class ExperimentSession:
         # switching text every trial would flicker in peripheral vision, which
         # is exactly the kind of onset we've been trying to avoid elsewhere.
         if self._phase in (Phase.FOREPERIOD, Phase.TRIAL_ACTIVE):
-            return "Press SPACE if you see the grating"
+            prefix = "Practice (doesn't count) — " if self._current_trial().practice else ""
+            return f"{prefix}Press SPACE if you see the grating"
         return {
             Phase.WAITING_TO_START: "Press SPACE to begin calibration",
             Phase.CALIBRATE_LEFT: "Look at the dot, then press SPACE",
             Phase.CALIBRATE_RIGHT: "Now look at the other circle, then press SPACE",
         }[self._phase]
+
+    def _trial_label(self) -> str:
+        trial = self._current_trial()
+        if trial.practice:
+            return f"practice {self._trial_index + 1}/{self._num_practice}"
+        real_total = len(self._trials) - self._num_practice
+        real_index = self._trial_index - self._num_practice
+        return f"{real_index + 1}/{real_total}"
 
     def _symbol_visibility(self) -> tuple[bool, bool]:
         if self._phase is Phase.CALIBRATE_LEFT:
@@ -338,6 +353,6 @@ class ExperimentSession:
                 "gaze_zone": sample.zone.value,
                 "face_found": sample.face_found,
                 "source_available": self._gaze.is_available,
-                "trial": f"{self._trial_index + 1}/{len(self._trials)}" if trial is not None else "-",
+                "trial": self._trial_label() if trial is not None else "-",
             },
         }

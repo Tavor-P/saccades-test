@@ -1,4 +1,4 @@
-from psychopy import core, event, sound, visual
+from psychopy import core, event, gui, sound, visual
 
 from include.experiment.constants import (
     BACKGROUND_LUMINANCE,
@@ -250,6 +250,16 @@ def run_saccade_phase(win: visual.Window, stimuli: dict, logger: ResultLogger) -
         gaze.stop()
 
 
+def prompt_participant_id() -> str | None:
+    """Standard PsychoPy participant-info dialog, shown before the window
+    opens. Returns None if the participant cancelled the dialog."""
+    info = {"Participant ID": ""}
+    dlg = gui.DlgFromDict(info, title="Saccade experiment")
+    if not dlg.OK:
+        return None
+    return info["Participant ID"].strip() or "anonymous"
+
+
 def show_results_graph(win: visual.Window, results: list) -> None:
     png_path = build_comparison_graph(results)
     image = visual.ImageStim(win, image=str(png_path), size=(1.2, 0.9), pos=(0, 0.05))
@@ -265,7 +275,11 @@ def show_results_graph(win: visual.Window, results: list) -> None:
 
 
 def main() -> None:
-    logger = ResultLogger()
+    participant_id = prompt_participant_id()
+    if participant_id is None:
+        return  # cancelled the participant-info dialog
+
+    logger = ResultLogger(participant_id)
     win = build_window(fullscreen=True)
     stimuli = build_stimuli(win)
 
@@ -282,7 +296,11 @@ def main() -> None:
                 return  # quit early
             results_by_phase[phase_fn] = result
 
-        all_results = results_by_phase[run_presaccade_phase].results + results_by_phase[run_saccade_phase].results
+        saccade_session = results_by_phase[run_saccade_phase]
+        if saccade_session.calibration_ratios is not None:
+            logger.set_calibration(*saccade_session.calibration_ratios)
+
+        all_results = results_by_phase[run_presaccade_phase].results + saccade_session.results
         show_results_graph(win, all_results)
     finally:
         logger.close()

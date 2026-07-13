@@ -7,11 +7,13 @@ from include.experiment.constants import (
     FOREPERIOD_MIN_MS,
     GRATING_DURATION_FRAMES,
     GRATING_POSITION,
+    PRACTICE_CONTRAST,
     RESPONSE_WINDOW_MS,
 )
 from include.experiment.types import TrialResult
 from src.experiment.logger import ResultLogger
 from src.experiment.pausable_clock import PausableClock
+from src.experiment.scoring import score_outcome
 from src.experiment.trial_factory import build_presaccade_sequence
 from src.experiment.zest import ZestStaircase
 
@@ -31,7 +33,8 @@ class PresaccadeSession:
     comparison against the saccade-phase results. Contrast is picked trial by
     trial by its own ZEST staircase (see src.experiment.zest), run
     independently from the saccade phase's staircase so each condition
-    converges on its own threshold.
+    converges on its own threshold. A few practice trials (fixed, easily-visible
+    contrast) run first and are excluded from the staircase and logged results.
 
     Framework-agnostic like ExperimentSession: `on_space()`/`tick()` are called
     synchronously by the PsychoPy frame loop, `render_state()` returns a plain
@@ -42,6 +45,7 @@ class PresaccadeSession:
         self._logger = logger
         self._clock = clock
         self._trials = build_presaccade_sequence()
+        self._num_practice = sum(1 for t in self._trials if t.practice)
         self._trial_index = 0
         self._phase = Phase.WAITING_TO_START
         self._results: list[TrialResult] = []
@@ -108,7 +112,7 @@ class PresaccadeSession:
             self._response_window_open = True
             self._response_deadline = now + RESPONSE_WINDOW_MS / 1000
             if trial.grating_shown:
-                self._trial_contrast = self._zest.next_contrast()
+                self._trial_contrast = PRACTICE_CONTRAST if trial.practice else self._zest.next_contrast()
                 self._grating_shown_at = now
                 self._grating_visible = True
                 self._grating_frames_remaining = GRATING_DURATION_FRAMES
@@ -130,33 +134,26 @@ class PresaccadeSession:
 
     def _finish_trial(self) -> None:
         trial = self._current_trial()
+        outcome = score_outcome(trial.grating_shown, self._responded)
 
-        if trial.grating_shown and self._responded:
-            outcome = "hit"
-        elif trial.grating_shown and not self._responded:
-            outcome = "miss"
-        elif not trial.grating_shown and self._responded:
-            outcome = "false_alarm"
-        else:
-            outcome = "correct_rejection"
+        if not trial.practice:
+            if trial.grating_shown:
+                self._zest.update(self._trial_contrast, detected=outcome == "hit")
 
-        if trial.grating_shown:
-            self._zest.update(self._trial_contrast, detected=outcome == "hit")
-
-        result = TrialResult(
-            index=trial.index,
-            phase="presaccade",
-            source=None,
-            target=None,
-            saccade_duration_ms=None,
-            grating_shown=trial.grating_shown,
-            contrast=self._trial_contrast,
-            responded=self._responded,
-            response_time_ms=self._response_time_ms,
-            outcome=outcome,
-        )
-        self._logger.log(result)
-        self._results.append(result)
+            result = TrialResult(
+                index=trial.index,
+                phase="presaccade",
+                source=None,
+                target=None,
+                saccade_duration_ms=None,
+                grating_shown=trial.grating_shown,
+                contrast=self._trial_contrast,
+                responded=self._responded,
+                response_time_ms=self._response_time_ms,
+                outcome=outcome,
+            )
+            self._logger.log(result)
+            self._results.append(result)
 
         self._trial_index += 1
         if self._trial_index >= len(self._trials):
@@ -167,12 +164,22 @@ class PresaccadeSession:
     # -- rendering ----------------------------------------------------------
 
     def _instructions(self) -> str:
-        return {
-            Phase.WAITING_TO_START: "Fixate the center of the screen. Press SPACE to begin",
-            Phase.FOREPERIOD: "Press SPACE if you see the grating",
-            Phase.FLASH_WINDOW: "Press SPACE if you see the grating",
-            Phase.COMPLETE: "Baseline done — starting the saccade test next",
-        }[self._phase]
+        if self._phase is Phase.COMPLETE:
+            return "Baseline done — starting the saccade test next"
+        if self._phase is Phase.WAITING_TO_START:
+            return "Fixate the center of the screen. Press SPACE to begin"
+        prefix = "Practice (doesn't count) — " if self._current_trial().practice else ""
+        return f"{prefix}Press SPACE if you see the grating"
+
+    def _trial_label(self) -> str:
+        real_total = len(self._trials) - self._num_practice
+        if self._phase is Phase.COMPLETE:
+            return f"{real_total}/{real_total}"
+        trial = self._current_trial()
+        if trial.practice:
+            return f"practice {self._trial_index + 1}/{self._num_practice}"
+        real_index = self._trial_index - self._num_practice
+        return f"{real_index + 1}/{real_total}"
 
     def render_state(self) -> dict:
         # No fixation dot: it sits at the same position as the flash (both
@@ -195,8 +202,6 @@ class PresaccadeSession:
                 "gaze_zone": "n/a",
                 "face_found": True,
                 "source_available": True,
-                "trial": f"{self._trial_index + 1}/{len(self._trials)}"
-                if self._phase != Phase.COMPLETE
-                else f"{len(self._trials)}/{len(self._trials)}",
+                "trial": self._trial_label(),
             },
         }
