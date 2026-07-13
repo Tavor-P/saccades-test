@@ -10,17 +10,18 @@ from include.experiment.constants import (
     FOREPERIOD_MAX_MS,
     FOREPERIOD_MIN_MS,
     GAZE_LANDING_STABILITY_MS,
+    GRATING_DURATION_FRAMES,
+    GRATING_POSITION,
     MIN_CATCH_TRIALS_FOR_RELIABILITY,
     RESPONSE_WINDOW_MS,
     SACCADE_ONSET_STABILITY_MS,
     SACCADE_TIMEOUT_MS,
-    SQUARE_DURATION_FRAMES,
-    SQUARE_POSITION,
 )
 from include.experiment.types import Target, TrialResult
 from src.experiment.logger import ResultLogger
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.trial_factory import build_saccade_sequence
+from src.experiment.zest import ZestStaircase
 
 
 class Phase(Enum):
@@ -38,17 +39,17 @@ def _zone_for(target: Target) -> GazeZone:
 
 class ExperimentSession:
     """Gaze-contingent saccade experiment: calibration, an alternating dot/cross
-    trial loop, perisaccadic square flashes, response scoring, and CSV logging.
+    trial loop, perisaccadic grating flashes, response scoring, and CSV logging.
 
     Trial structure follows Diamond, Ross & Morrone (2000, J Neurosci
     20:3449-3455): a jittered foreperiod during which only the current
     fixation symbol is shown, then the other symbol's appearance is the go-cue
     for the saccade; a brief flash may occur around saccade onset and is
     scored yes/no against a button response, with false-alarm rate tracked as
-    a data-quality check exactly as in that paper. Contrast follows the same
-    fixed 8-level x 2-repeat schedule as the presaccade phase (see
-    trial_factory.build_saccade_sequence), so the two phases land on
-    identical contrast points and can be directly compared afterward.
+    a data-quality check exactly as in that paper. Contrast is picked trial by
+    trial by a ZEST staircase (see src.experiment.zest), the same adaptive
+    procedure the paper used, run independently from the presaccade phase's
+    staircase so each condition converges on its own threshold.
 
     Framework-agnostic: `on_space()` and `tick()` are called synchronously by
     the PsychoPy frame loop, and `render_state()` returns a plain dict the
@@ -69,6 +70,7 @@ class ExperimentSession:
         self._cross_visible = False
         self._pending_left_ratio: float | None = None
         self._results: list[TrialResult] = []
+        self._zest = ZestStaircase()
         self._clear_trial_state()
 
     def _clear_trial_state(self) -> None:
@@ -76,10 +78,10 @@ class ExperimentSession:
         self._gaze_left_source = False
         self._away_from_source_since: float | None = None
         self._target_landed_since: float | None = None
-        self._square_shown_at: float | None = None
-        self._square_visible = False
-        self._square_frames_remaining = 0
-        self._square_actually_shown = False
+        self._grating_shown_at: float | None = None
+        self._grating_visible = False
+        self._grating_frames_remaining = 0
+        self._grating_actually_shown = False
         self._trial_contrast: float | None = None  # contrast actually used for this trial's flash, if any
         self._response_window_open = False
         self._response_deadline = 0.0
@@ -120,7 +122,7 @@ class ExperimentSession:
         now = self._clock.now()
         if now <= self._response_deadline:
             self._responded = True
-            self._response_time_ms = (now - self._square_shown_at) * 1000 if self._square_shown_at else None
+            self._response_time_ms = (now - self._grating_shown_at) * 1000 if self._grating_shown_at else None
 
     # -- trial state machine ----------------------------------------------------
 
@@ -169,23 +171,23 @@ class ExperimentSession:
                     self._response_window_open = True
                     self._response_deadline = now + RESPONSE_WINDOW_MS / 1000
                     onset_this_tick = True
-                    if trial.square_shown:
-                        self._square_shown_at = now
-                        self._square_visible = True
-                        self._square_frames_remaining = SQUARE_DURATION_FRAMES
-                        self._square_actually_shown = True
-                        self._trial_contrast = trial.contrast
+                    if trial.grating_shown:
+                        self._grating_shown_at = now
+                        self._grating_visible = True
+                        self._grating_frames_remaining = GRATING_DURATION_FRAMES
+                        self._grating_actually_shown = True
+                        self._trial_contrast = self._zest.next_contrast()
             else:
                 self._away_from_source_since = None
 
         # Frame-counted (not time-based) so the flash lasts exactly N drawn
         # frames regardless of the display's refresh rate. Skipped on the tick
-        # that just turned the square on, so it isn't docked a frame before
+        # that just turned the grating on, so it isn't docked a frame before
         # it's even been drawn once.
-        if self._square_visible and not onset_this_tick:
-            self._square_frames_remaining -= 1
-            if self._square_frames_remaining <= 0:
-                self._square_visible = False
+        if self._grating_visible and not onset_this_tick:
+            self._grating_frames_remaining -= 1
+            if self._grating_frames_remaining <= 0:
+                self._grating_visible = False
 
         if self._response_window_open and now > self._response_deadline:
             self._response_window_open = False
@@ -225,14 +227,17 @@ class ExperimentSession:
         saccade_duration_ms = (now - self._trial_start_time) * 1000 if self._gaze_left_source else None
         if not landed and not self._gaze_left_source:
             outcome = "timeout"
-        elif self._square_actually_shown and self._responded:
+        elif self._grating_actually_shown and self._responded:
             outcome = "hit"
-        elif self._square_actually_shown and not self._responded:
+        elif self._grating_actually_shown and not self._responded:
             outcome = "miss"
-        elif not self._square_actually_shown and self._responded:
+        elif not self._grating_actually_shown and self._responded:
             outcome = "false_alarm"
         else:
             outcome = "correct_rejection"
+
+        if self._grating_actually_shown and outcome in ("hit", "miss"):
+            self._zest.update(self._trial_contrast, detected=outcome == "hit")
 
         result = TrialResult(
             index=trial.index,
@@ -240,7 +245,7 @@ class ExperimentSession:
             source=trial.source,
             target=trial.target,
             saccade_duration_ms=saccade_duration_ms,
-            square_shown=self._square_actually_shown,
+            grating_shown=self._grating_actually_shown,
             contrast=self._trial_contrast,
             responded=self._responded,
             response_time_ms=self._response_time_ms,
@@ -250,7 +255,7 @@ class ExperimentSession:
         self._results.append(result)
 
         self._hide_source_symbol()  # no-op if landing already hid it; needed for the timeout path
-        self._square_visible = False
+        self._grating_visible = False
 
         self._trial_index += 1
         if self._trial_index >= len(self._trials):
@@ -261,15 +266,15 @@ class ExperimentSession:
     # -- rendering ----------------------------------------------------------
 
     def _summary(self) -> str:
-        # Hit rate = (times SPACE was pressed while the square was actually shown)
-        # divided by (times the square was actually shown).
+        # Hit rate = (times SPACE was pressed while the grating was actually shown)
+        # divided by (times the grating was actually shown).
         hits = sum(1 for r in self._results if r.outcome == "hit")
         misses = sum(1 for r in self._results if r.outcome == "miss")
         false_alarms = sum(1 for r in self._results if r.outcome == "false_alarm")
         rejections = sum(1 for r in self._results if r.outcome == "correct_rejection")
 
-        square_shown_count = hits + misses
-        hit_rate = hits / square_shown_count if square_shown_count else 0.0
+        grating_shown_count = hits + misses
+        hit_rate = hits / grating_shown_count if grating_shown_count else 0.0
         catch_trial_count = false_alarms + rejections
         fa_rate = false_alarms / catch_trial_count if catch_trial_count else 0.0
 
@@ -285,8 +290,9 @@ class ExperimentSession:
         else:
             reliability = "unreliable"
         return (
-            f"Hit rate: {hits}/{square_shown_count} ({hit_rate:.0%}) | "
-            f"False alarms: {false_alarms}/{catch_trial_count} ({fa_rate:.1%}, {reliability})"
+            f"Hit rate: {hits}/{grating_shown_count} ({hit_rate:.0%}) | "
+            f"False alarms: {false_alarms}/{catch_trial_count} ({fa_rate:.1%}, {reliability}) | "
+            f"Threshold estimate: {self._zest.threshold_estimate:.1%} contrast"
         )
 
     def _instructions(self) -> str:
@@ -296,7 +302,7 @@ class ExperimentSession:
         # switching text every trial would flicker in peripheral vision, which
         # is exactly the kind of onset we've been trying to avoid elsewhere.
         if self._phase in (Phase.FOREPERIOD, Phase.TRIAL_ACTIVE):
-            return "Press SPACE if you see the square"
+            return "Press SPACE if you see the grating"
         return {
             Phase.WAITING_TO_START: "Press SPACE to begin calibration",
             Phase.CALIBRATE_LEFT: "Look at the dot, then press SPACE",
@@ -321,11 +327,11 @@ class ExperimentSession:
             "instructions": self._instructions(),
             "dot": {"visible": dot_visible, "x": DOT_POSITION[0], "y": DOT_POSITION[1]},
             "cross": {"visible": cross_visible, "x": CROSS_POSITION[0], "y": CROSS_POSITION[1]},
-            "square": {
-                "visible": self._square_visible,
-                "x": SQUARE_POSITION[0],
-                "y": SQUARE_POSITION[1],
-                "contrast": self._trial_contrast if self._square_visible else 0,
+            "grating": {
+                "visible": self._grating_visible,
+                "x": GRATING_POSITION[0],
+                "y": GRATING_POSITION[1],
+                "contrast": self._trial_contrast if self._grating_visible else 0,
             },
             "hud": {
                 "phase": self._phase.name,

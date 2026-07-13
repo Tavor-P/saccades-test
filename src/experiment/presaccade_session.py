@@ -5,15 +5,15 @@ from include.experiment.constants import (
     CENTER_POSITION,
     FOREPERIOD_MAX_MS,
     FOREPERIOD_MIN_MS,
+    GRATING_DURATION_FRAMES,
+    GRATING_POSITION,
     RESPONSE_WINDOW_MS,
-    SQUARE_DURATION_FRAMES,
-    SQUARE_POSITION,
-    TRIALS_PER_PHASE,
 )
 from include.experiment.types import TrialResult
 from src.experiment.logger import ResultLogger
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.trial_factory import build_presaccade_sequence
+from src.experiment.zest import ZestStaircase
 
 
 class Phase(Enum):
@@ -25,10 +25,13 @@ class Phase(Enum):
 
 class PresaccadeSession:
     """Baseline (non-saccade) contrast detection: fixate the center dot the
-    whole time; after a foreperiod, a square flashes (or not, on catch
+    whole time; after a foreperiod, a grating flashes (or not, on catch
     trials); score a yes/no button response. No eye tracking involved at all -
     this measures detection accuracy without any saccade in the mix, for
-    comparison against the saccade-phase results at the same contrast levels.
+    comparison against the saccade-phase results. Contrast is picked trial by
+    trial by its own ZEST staircase (see src.experiment.zest), run
+    independently from the saccade phase's staircase so each condition
+    converges on its own threshold.
 
     Framework-agnostic like ExperimentSession: `on_space()`/`tick()` are called
     synchronously by the PsychoPy frame loop, `render_state()` returns a plain
@@ -42,15 +45,17 @@ class PresaccadeSession:
         self._trial_index = 0
         self._phase = Phase.WAITING_TO_START
         self._results: list[TrialResult] = []
+        self._zest = ZestStaircase()
         self._clear_trial_state()
 
     def _clear_trial_state(self) -> None:
         self._foreperiod_start = 0.0
         self._foreperiod_duration = 0.0
         self._flash_triggered_at = 0.0
-        self._square_shown_at: float | None = None
-        self._square_visible = False
-        self._square_frames_remaining = 0
+        self._grating_shown_at: float | None = None
+        self._grating_visible = False
+        self._grating_frames_remaining = 0
+        self._trial_contrast: float | None = None
         self._response_window_open = False
         self._response_deadline = 0.0
         self._responded = False
@@ -79,7 +84,7 @@ class PresaccadeSession:
         now = self._clock.now()
         if now <= self._response_deadline:
             self._responded = True
-            self._response_time_ms = (now - self._square_shown_at) * 1000 if self._square_shown_at else None
+            self._response_time_ms = (now - self._grating_shown_at) * 1000 if self._grating_shown_at else None
 
     # -- trial state machine ----------------------------------------------------
 
@@ -102,19 +107,20 @@ class PresaccadeSession:
             self._flash_triggered_at = now
             self._response_window_open = True
             self._response_deadline = now + RESPONSE_WINDOW_MS / 1000
-            if trial.square_shown:
-                self._square_shown_at = now
-                self._square_visible = True
-                self._square_frames_remaining = SQUARE_DURATION_FRAMES
+            if trial.grating_shown:
+                self._trial_contrast = self._zest.next_contrast()
+                self._grating_shown_at = now
+                self._grating_visible = True
+                self._grating_frames_remaining = GRATING_DURATION_FRAMES
             self._phase = Phase.FLASH_WINDOW
 
     def _tick_flash_window(self) -> None:
         now = self._clock.now()
 
-        if self._square_visible:
-            self._square_frames_remaining -= 1
-            if self._square_frames_remaining <= 0:
-                self._square_visible = False
+        if self._grating_visible:
+            self._grating_frames_remaining -= 1
+            if self._grating_frames_remaining <= 0:
+                self._grating_visible = False
 
         if self._response_window_open and now > self._response_deadline:
             self._response_window_open = False
@@ -125,14 +131,17 @@ class PresaccadeSession:
     def _finish_trial(self) -> None:
         trial = self._current_trial()
 
-        if trial.square_shown and self._responded:
+        if trial.grating_shown and self._responded:
             outcome = "hit"
-        elif trial.square_shown and not self._responded:
+        elif trial.grating_shown and not self._responded:
             outcome = "miss"
-        elif not trial.square_shown and self._responded:
+        elif not trial.grating_shown and self._responded:
             outcome = "false_alarm"
         else:
             outcome = "correct_rejection"
+
+        if trial.grating_shown:
+            self._zest.update(self._trial_contrast, detected=outcome == "hit")
 
         result = TrialResult(
             index=trial.index,
@@ -140,8 +149,8 @@ class PresaccadeSession:
             source=None,
             target=None,
             saccade_duration_ms=None,
-            square_shown=trial.square_shown,
-            contrast=trial.contrast,
+            grating_shown=trial.grating_shown,
+            contrast=self._trial_contrast,
             responded=self._responded,
             response_time_ms=self._response_time_ms,
             outcome=outcome,
@@ -160,8 +169,8 @@ class PresaccadeSession:
     def _instructions(self) -> str:
         return {
             Phase.WAITING_TO_START: "Fixate the center of the screen. Press SPACE to begin",
-            Phase.FOREPERIOD: "Press SPACE if you see the square",
-            Phase.FLASH_WINDOW: "Press SPACE if you see the square",
+            Phase.FOREPERIOD: "Press SPACE if you see the grating",
+            Phase.FLASH_WINDOW: "Press SPACE if you see the grating",
             Phase.COMPLETE: "Baseline done — starting the saccade test next",
         }[self._phase]
 
@@ -175,11 +184,11 @@ class PresaccadeSession:
             "instructions": self._instructions(),
             "dot": {"visible": False, "x": CENTER_POSITION[0], "y": CENTER_POSITION[1]},
             "cross": {"visible": False, "x": CENTER_POSITION[0], "y": CENTER_POSITION[1]},
-            "square": {
-                "visible": self._square_visible,
-                "x": SQUARE_POSITION[0],
-                "y": SQUARE_POSITION[1],
-                "contrast": self._current_trial().contrast if (self._square_visible and self._trials) else 0,
+            "grating": {
+                "visible": self._grating_visible,
+                "x": GRATING_POSITION[0],
+                "y": GRATING_POSITION[1],
+                "contrast": self._trial_contrast if (self._grating_visible and self._trials) else 0,
             },
             "hud": {
                 "phase": self._phase.name,

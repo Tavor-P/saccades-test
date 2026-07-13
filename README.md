@@ -32,14 +32,17 @@ That's it — a window opens and the experiment starts.
 
 The session has two phases, back to back, then a results graph:
 
-1. **Baseline phase** — fixate the center of the screen. A square flashes
-   briefly at various contrast levels (sometimes not at all). Press
+1. **Baseline phase** — fixate the center of the screen. A faint grating
+   flashes briefly for a single frame, its contrast adjusted trial-by-trial
+   by an adaptive staircase (sometimes it doesn't flash at all). Press
    **Space** whenever you see it.
 2. **Saccade phase** — press Space to calibrate (look at each circle when
    asked), then saccade back and forth between two circles as they appear.
-   A square may flash around each saccade — press **Space** if you see it.
-3. **Results** — a graph comparing detection accuracy vs. contrast for both
-   phases, so you can see the size of the saccadic-suppression effect.
+   The same grating may flash around each saccade — press **Space** if you
+   see it.
+3. **Results** — a graph comparing the estimated contrast detection
+   threshold for both phases, so you can see the size of the
+   saccadic-suppression effect.
 
 ## Controls
 

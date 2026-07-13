@@ -1,6 +1,12 @@
 from psychopy import core, event, sound, visual
 
-from include.experiment.constants import BACKGROUND_LUMINANCE, CIRCLE_RADIUS_RATIO, SQUARE_SIZE_RATIO
+from include.experiment.constants import (
+    BACKGROUND_LUMINANCE,
+    CIRCLE_RADIUS_RATIO,
+    GRATING_SF_CYCLES_PER_HEIGHT_UNIT,
+    GRATING_SIZE_HEIGHT_UNITS,
+    TEST_MODE,
+)
 from src.eye_tracking.webcam_source import WebcamGazeSource
 from src.experiment.logger import ResultLogger
 from src.experiment.pausable_clock import PausableClock
@@ -75,8 +81,19 @@ def build_stimuli(win: visual.Window) -> dict:
         ),
         "dot": visual.Circle(win, radius=CIRCLE_RADIUS_RATIO, fillColor="white", lineColor="white", opacity=0),
         "cross": visual.Circle(win, radius=CIRCLE_RADIUS_RATIO, fillColor="white", lineColor="white", opacity=0),
-        "square": visual.Rect(
-            win, width=SQUARE_SIZE_RATIO, height=SQUARE_SIZE_RATIO, fillColor="white", lineColor=None, opacity=0
+        # Diamond, Ross & Morrone (2000)'s probe: a horizontal sinusoidal
+        # luminance grating (bars parallel to the saccade direction) windowed
+        # by a Gaussian envelope - not a flat square.
+        "grating": visual.GratingStim(
+            win,
+            tex="sin",
+            mask="gauss",
+            sf=GRATING_SF_CYCLES_PER_HEIGHT_UNIT,
+            ori=90,
+            size=GRATING_SIZE_HEIGHT_UNITS,
+            color="white",
+            contrast=0,
+            opacity=0,
         ),
         "instructions": visual.TextStim(win, text="", pos=(0, -0.4), color="white", height=0.035, wrapWidth=1.5),
         "pause_text": visual.TextStim(
@@ -111,12 +128,14 @@ def apply_render_state(state: dict, stimuli: dict, fade_opacities: dict, dt: flo
         stim.opacity = fade_opacities[name]
         stim.pos = ratio_to_pos(state[name]["x"], state[name]["y"], aspect)
 
-    square = stimuli["square"]
-    square.opacity = 1.0 if state["square"]["visible"] else 0.0
-    if state["square"]["visible"]:
-        square.pos = ratio_to_pos(state["square"]["x"], state["square"]["y"], aspect)
-        contrast = state["square"]["contrast"]
-        square.fillColor = luminance_to_color(BACKGROUND_LUMINANCE + contrast)
+    grating = stimuli["grating"]
+    grating.opacity = 1.0 if state["grating"]["visible"] else 0.0
+    if state["grating"]["visible"]:
+        grating.pos = ratio_to_pos(state["grating"]["x"], state["grating"]["y"], aspect)
+        # Window background is mid-grey at rgb 0 (see luminance_to_color), so the
+        # grating's own contrast parameter is exactly the Michelson contrast of
+        # the flash around that background - no extra luminance math needed.
+        grating.contrast = state["grating"]["contrast"]
 
     stimuli["instructions"].text = state["instructions"]
     hud = state["hud"]
@@ -129,7 +148,7 @@ def apply_render_state(state: dict, stimuli: dict, fade_opacities: dict, dt: flo
 def draw_all(stimuli: dict) -> None:
     # start_flash first so it sits behind the fixation stimuli, which stay
     # visible/fixatable on top of it during the flash.
-    for name in ("start_flash", "dot", "cross", "square", "instructions", "hud"):
+    for name in ("start_flash", "dot", "cross", "grating", "instructions", "hud"):
         stimuli[name].draw()
 
 
@@ -251,15 +270,19 @@ def main() -> None:
     stimuli = build_stimuli(win)
 
     try:
-        presaccade_result = run_presaccade_phase(win, stimuli, logger)
-        if presaccade_result is None:
-            return  # quit early
+        # TEST_MODE runs the saccade phase first - that's the one under active
+        # development, so a smoke test shouldn't have to sit through the
+        # baseline phase first just to reach it.
+        phases = [run_saccade_phase, run_presaccade_phase] if TEST_MODE else [run_presaccade_phase, run_saccade_phase]
 
-        saccade_result = run_saccade_phase(win, stimuli, logger)
-        if saccade_result is None:
-            return  # quit early
+        results_by_phase = {}
+        for phase_fn in phases:
+            result = phase_fn(win, stimuli, logger)
+            if result is None:
+                return  # quit early
+            results_by_phase[phase_fn] = result
 
-        all_results = presaccade_result.results + saccade_result.results
+        all_results = results_by_phase[run_presaccade_phase].results + results_by_phase[run_saccade_phase].results
         show_results_graph(win, all_results)
     finally:
         logger.close()
