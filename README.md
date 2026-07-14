@@ -31,9 +31,12 @@ That's it — a window opens and the experiment starts.
 
 ## What running it looks like
 
-A small dialog asks for a participant ID first (cancel it to quit before the
-window even opens). Then the session runs two phases back to back, each
-starting with a few throwaway practice trials, then a results graph:
+A small dialog asks for a participant ID and which camera to use first
+(cancel it to quit before the window even opens) - it lists every camera
+index that actually opens, so if you've got more than one connected (e.g. a
+laptop's built-in webcam plus an external one) you pick per run, no code
+edit needed. Then the session runs two phases back to back, each starting
+with a few throwaway practice trials, then a results graph:
 
 1. **Baseline phase** — fixate the center of the screen. A faint grating
    flashes briefly for a single frame, its contrast adjusted trial-by-trial
@@ -43,7 +46,12 @@ starting with a few throwaway practice trials, then a results graph:
 2. **Saccade phase** — press Space to calibrate (look at each circle when
    asked), then saccade back and forth between two circles as they appear.
    The same grating may flash around each saccade — press **Space** if you
-   see it. Again, a couple of practice trials run first.
+   see it. Again, a couple of practice trials run first. A small faint dot
+   snaps onto whichever of the two circles (or the midpoint) the tracker
+   currently thinks you're looking at, the whole phase through - it's the
+   exact same left/center/right classification the experiment itself uses,
+   so if the dot isn't landing where you're actually looking, that's real
+   evidence tracking has gone wrong, not just visual noise.
 3. **Results** — a graph comparing the estimated contrast detection
    threshold for both phases (with a credible interval) plus the fitted
    psychometric curve each threshold came from, so you can see both the size
@@ -132,7 +140,22 @@ files by hand.
 - **Webcam eye tracking seems off** — the calibration step (look at each
   circle, press Space) has to actually happen for gaze detection to be
   accurate; if you skip it or don't hold your gaze steady during it,
-  detection will be unreliable for the rest of the saccade phase.
+  detection will be unreliable for the rest of the saccade phase. Also
+  double check the startup dialog's camera picker actually selected the
+  camera facing you - it's easy to pick the wrong one when two are listed.
+- **HUD shows `face: no`** — the camera is opening fine but MediaPipe isn't
+  finding a face in its frames. Run the diagnostic script to see exactly
+  what the tracker is looking at, without needing to run the full
+  experiment to hit the problem:
+  ```
+  "C:\Program Files\PsychoPy\python.exe" -m src.eye_tracking.diagnose_camera
+  ```
+  It saves a captured frame to `data/camera_diagnostic.png` and reports
+  whether a face was found in it. If the saved image doesn't look like a
+  normal, well-lit photo of your face (black, grayscale/IR-washed, garbled
+  colors, or not actually you), the camera itself is the problem - some
+  budget/generic USB cameras are IR-only or have unusual color handling
+  that a visible-light face detector can't work with.
 
 ## Project layout
 

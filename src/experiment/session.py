@@ -348,6 +348,34 @@ class ExperimentSession:
             return self._dot_visible, self._cross_visible
         return False, False
 
+    def _gaze_indicator_state(self, sample) -> dict:
+        """Live gaze cursor, shown throughout the saccade phase (every trial,
+        not just practice): snaps directly to whichever zone (left/center/
+        right) the gaze classifier currently reports - the exact same
+        classification onset/landing detection relies on - rather than
+        interpolating a continuous position from the raw ratio. The raw
+        ratio is far noisier than the classifier's own debounced zone
+        decision; showing it directly made the indicator look jittery and
+        inaccurate even when the underlying classification was fine. This
+        way, if the indicator looks wrong, that's real evidence the
+        classification itself is wrong - not an artifact of extra
+        interpolation math on top of it."""
+        show = (
+            self._phase in (Phase.FOREPERIOD, Phase.TRIAL_ACTIVE)
+            and sample.face_found
+            and sample.zone is not GazeZone.UNKNOWN
+            and self._calibration_ratios is not None
+        )
+        if not show:
+            return {"visible": False, "x": 0.0, "y": 0.0}
+
+        zone_position = {
+            GazeZone.LEFT: DOT_POSITION,
+            GazeZone.RIGHT: CROSS_POSITION,
+            GazeZone.CENTER: GRATING_POSITION,  # the midpoint between dot and cross
+        }[sample.zone]
+        return {"visible": True, "x": zone_position[0], "y": zone_position[1]}
+
     def render_state(self) -> dict:
         sample = self._gaze.latest_sample()
         dot_visible, cross_visible = self._symbol_visibility()
@@ -363,6 +391,7 @@ class ExperimentSession:
                 "y": GRATING_POSITION[1],
                 "contrast": self._trial_contrast if self._grating_visible else 0,
             },
+            "gaze_indicator": self._gaze_indicator_state(sample),
             "hud": {
                 "phase": self._phase.name,
                 "gaze_zone": sample.zone.value,

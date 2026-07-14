@@ -1,4 +1,5 @@
-CAMERA_INDEX = 0
+CAMERA_INDEX = 0  # fallback used if camera probing at startup finds nothing
+CAMERA_PROBE_LIMIT = 5  # how many device indices to check when listing available cameras
 FRAME_WIDTH = 640
 FRAME_HEIGHT = 480
 MODEL_PATH = "models/face_landmarker.task"

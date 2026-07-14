@@ -3,7 +3,28 @@ import time
 
 import cv2
 
-from include.eye_tracking.constants import CAMERA_INDEX, FRAME_HEIGHT, FRAME_WIDTH
+from include.eye_tracking.constants import CAMERA_INDEX, CAMERA_PROBE_LIMIT, FRAME_HEIGHT, FRAME_WIDTH
+
+
+def _open_capture(index: int) -> cv2.VideoCapture:
+    capture = cv2.VideoCapture(index, cv2.CAP_DSHOW)
+    if not capture.isOpened():
+        capture = cv2.VideoCapture(index)
+    return capture
+
+
+def list_available_cameras(max_index: int = CAMERA_PROBE_LIMIT) -> list[int]:
+    """Probes indices 0..max_index-1 and returns the ones that actually open
+    - used to offer a camera picker when more than one is connected (e.g. a
+    laptop's built-in webcam plus a newly added external one), rather than
+    requiring CAMERA_INDEX to be hand-edited to switch between them."""
+    available = []
+    for index in range(max_index):
+        capture = _open_capture(index)
+        if capture.isOpened():
+            available.append(index)
+        capture.release()
+    return available
 
 
 class Camera:
@@ -22,9 +43,7 @@ class Camera:
         return self._capture is not None and self._capture.isOpened()
 
     def start(self) -> None:
-        capture = cv2.VideoCapture(self._index, cv2.CAP_DSHOW)
-        if not capture.isOpened():
-            capture = cv2.VideoCapture(self._index)
+        capture = _open_capture(self._index)
         capture.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
         capture.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
         self._capture = capture

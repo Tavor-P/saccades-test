@@ -1,6 +1,7 @@
 import threading
 import time
 
+from include.eye_tracking.constants import CAMERA_INDEX
 from include.eye_tracking.interfaces import GazeSource
 from include.eye_tracking.types import GazeSample, GazeZone
 from src.eye_tracking.camera import Camera
@@ -12,8 +13,8 @@ class WebcamGazeSource(GazeSource):
     the latest GazeSample so the experiment loop can poll it cheaply each frame
     without blocking on camera IO or MediaPipe inference."""
 
-    def __init__(self) -> None:
-        self._camera = Camera()
+    def __init__(self, camera_index: int = CAMERA_INDEX) -> None:
+        self._camera = Camera(camera_index)
         self._tracker = GazeTracker()
         self._latest = GazeSample(zone=GazeZone.UNKNOWN, ratio=None, face_found=False, timestamp=time.monotonic())
         self._lock = threading.Lock()
