@@ -45,8 +45,8 @@ class WebcamGazeSource(GazeSource):
         with self._lock:
             return self._latest
 
-    def calibrate(self, left_ratio: float, right_ratio: float) -> None:
-        self._tracker.calibrate(left_ratio, right_ratio)
+    def calibrate(self, left_ratio: float, center_ratio: float, right_ratio: float) -> None:
+        self._tracker.calibrate(left_ratio, center_ratio, right_ratio)
 
     def average_recent_ratio(self) -> float | None:
         return self._tracker.average_recent_ratio()

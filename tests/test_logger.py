@@ -49,11 +49,11 @@ def test_metadata_camera_defaults_to_none(tmp_path, monkeypatch):
 
 def test_set_calibration_updates_metadata(tmp_path, monkeypatch):
     log = _make_logger(tmp_path, monkeypatch)
-    log.set_calibration(0.3, 0.7)
+    log.set_calibration(0.3, 0.5, 0.7)
     log.close()
     meta_files = list(tmp_path.glob("results_*_meta.json"))
     meta = json.loads(meta_files[0].read_text())
-    assert meta["calibration"] == {"left_ratio": 0.3, "right_ratio": 0.7}
+    assert meta["calibration"] == {"left_ratio": 0.3, "center_ratio": 0.5, "right_ratio": 0.7}
 
 
 def test_log_writes_a_row(tmp_path, monkeypatch):
