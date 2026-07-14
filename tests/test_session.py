@@ -31,7 +31,8 @@ def _make_session(fake_gaze) -> ExperimentSession:
 
 def _complete_calibration_and_enter_foreperiod(session) -> None:
     session.on_space()  # WAITING_TO_START -> CALIBRATE_LEFT
-    session.on_space()  # CALIBRATE_LEFT -> CALIBRATE_RIGHT
+    session.on_space()  # CALIBRATE_LEFT -> CALIBRATE_CENTER
+    session.on_space()  # CALIBRATE_CENTER -> CALIBRATE_RIGHT
     session.on_space()  # CALIBRATE_RIGHT -> FOREPERIOD (+ gaze.calibrate() call)
 
 
@@ -57,15 +58,15 @@ def _trigger_onset_and_landing(session, fake_gaze, fake_time, target_zone) -> No
 def test_calibration_flow_calls_gaze_calibrate(fake_gaze):
     session = _make_session(fake_gaze)
     _complete_calibration_and_enter_foreperiod(session)
-    assert fake_gaze.calibrated == (0.5, 0.5)  # FakeGazeSource always reports ratio 0.5
-    assert session.calibration_ratios == (0.5, 0.5)
+    assert fake_gaze.calibrated == (0.5, 0.5, 0.5)  # FakeGazeSource always reports ratio 0.5
+    assert session.calibration_ratios == (0.5, 0.5, 0.5)
     assert session.render_state()["hud"]["phase"] == "FOREPERIOD"
 
 
 def test_calibration_starts_a_fresh_sample_window_for_each_target(fake_gaze):
     # Regression test: without resetting the gaze source's rolling ratio
-    # window before each of the two calibration targets, the left/right
-    # averages could be contaminated by stale samples from whatever the
+    # window before each of the three calibration targets, the left/center/
+    # right averages could be contaminated by stale samples from whatever the
     # participant was looking at previously, collapsing the calibration span
     # toward zero.
     session = _make_session(fake_gaze)
@@ -74,11 +75,14 @@ def test_calibration_starts_a_fresh_sample_window_for_each_target(fake_gaze):
     session.on_space()  # WAITING_TO_START -> CALIBRATE_LEFT
     assert fake_gaze.calibration_samples_begun == 1  # fresh window before the dot
 
-    session.on_space()  # CALIBRATE_LEFT -> CALIBRATE_RIGHT
-    assert fake_gaze.calibration_samples_begun == 2  # fresh window before the cross
+    session.on_space()  # CALIBRATE_LEFT -> CALIBRATE_CENTER
+    assert fake_gaze.calibration_samples_begun == 2  # fresh window before the center target
+
+    session.on_space()  # CALIBRATE_CENTER -> CALIBRATE_RIGHT
+    assert fake_gaze.calibration_samples_begun == 3  # fresh window before the cross
 
     session.on_space()  # CALIBRATE_RIGHT -> FOREPERIOD
-    assert fake_gaze.calibration_samples_begun == 2  # no new target after this
+    assert fake_gaze.calibration_samples_begun == 3  # no new target after this
 
 
 def test_hit_scores_and_updates_zest(fake_gaze, fake_time):

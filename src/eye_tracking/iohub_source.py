@@ -15,7 +15,7 @@ class IOHubGazeSource(GazeSource):
         "eyetracker.hw.tobii.EyeTracker" or "eyetracker.hw.sr_research.eyelink.EyeTracker".
       - Unlike the webcam source, calibration is normally a full built-in
         routine the vendor SDK drives (`runSetupProcedure()`), not a simple
-        2-point average - `calibrate()` here just triggers that routine and
+        3-point average - `calibrate()` here just triggers that routine and
         ignores its arguments.
       - `target_positions` must be in the same unit system as the ioHub/vendor
         gaze-position output (usually matches the PsychoPy Window's `units`).
@@ -59,7 +59,7 @@ class IOHubGazeSource(GazeSource):
         zone = self._classify(position)
         return GazeSample(zone=zone, ratio=None, face_found=True, timestamp=timestamp)
 
-    def calibrate(self, left_ratio: float, right_ratio: float) -> None:
+    def calibrate(self, left_ratio: float, center_ratio: float, right_ratio: float) -> None:
         if self._tracker is not None:
             self._tracker.runSetupProcedure()
 

@@ -4,6 +4,7 @@ from enum import Enum, auto
 from include.eye_tracking.interfaces import GazeSource
 from include.eye_tracking.types import GazeZone
 from include.experiment.constants import (
+    CENTER_POSITION,
     CROSS_POSITION,
     DOT_POSITION,
     FALSE_ALARM_RATE_THRESHOLD,
@@ -29,6 +30,7 @@ from src.experiment.zest import ZestStaircase
 class Phase(Enum):
     WAITING_TO_START = auto()
     CALIBRATE_LEFT = auto()
+    CALIBRATE_CENTER = auto()
     CALIBRATE_RIGHT = auto()
     FOREPERIOD = auto()  # only the current fixation symbol shown; next target not revealed yet
     TRIAL_ACTIVE = auto()
@@ -78,15 +80,17 @@ class ExperimentSession:
         self._dot_visible = False
         self._cross_visible = False
         self._pending_left_ratio: float | None = None
-        self._calibration_ratios: tuple[float, float] | None = None
+        self._pending_center_ratio: float | None = None
+        self._calibration_ratios: tuple[float, float, float] | None = None
         self._results: list[TrialResult] = []
         self._zest = ZestStaircase()
         self._clear_trial_state()
 
     @property
-    def calibration_ratios(self) -> tuple[float, float] | None:
-        """(left_ratio, right_ratio) from the 2-point webcam calibration, once
-        it's completed - None before that. Session metadata reads this."""
+    def calibration_ratios(self) -> tuple[float, float, float] | None:
+        """(left_ratio, center_ratio, right_ratio) from the 3-point webcam
+        calibration, once it's completed - None before that. Session metadata
+        reads this."""
         return self._calibration_ratios
 
     def _clear_trial_state(self) -> None:
@@ -121,13 +125,19 @@ class ExperimentSession:
             ratio = self._gaze.average_recent_ratio()
             if ratio is not None:
                 self._pending_left_ratio = ratio
+                self._gaze.begin_calibration_sample()  # fresh window before the center target appears
+                self._phase = Phase.CALIBRATE_CENTER
+        elif self._phase is Phase.CALIBRATE_CENTER:
+            ratio = self._gaze.average_recent_ratio()
+            if ratio is not None:
+                self._pending_center_ratio = ratio
                 self._gaze.begin_calibration_sample()  # fresh window before the cross appears
                 self._phase = Phase.CALIBRATE_RIGHT
         elif self._phase is Phase.CALIBRATE_RIGHT:
             ratio = self._gaze.average_recent_ratio()
-            if ratio is not None and self._pending_left_ratio is not None:
-                self._gaze.calibrate(self._pending_left_ratio, ratio)
-                self._calibration_ratios = (self._pending_left_ratio, ratio)
+            if ratio is not None and self._pending_left_ratio is not None and self._pending_center_ratio is not None:
+                self._gaze.calibrate(self._pending_left_ratio, self._pending_center_ratio, ratio)
+                self._calibration_ratios = (self._pending_left_ratio, self._pending_center_ratio, ratio)
                 self._dot_visible = True  # trial 0's source
                 self._cross_visible = False
                 self._begin_foreperiod()
@@ -328,6 +338,7 @@ class ExperimentSession:
         return {
             Phase.WAITING_TO_START: "Press SPACE to begin calibration",
             Phase.CALIBRATE_LEFT: "Look at the dot, then press SPACE",
+            Phase.CALIBRATE_CENTER: "Now look at the center, then press SPACE",
             Phase.CALIBRATE_RIGHT: "Now look at the other circle, then press SPACE",
         }[self._phase]
 
@@ -340,13 +351,16 @@ class ExperimentSession:
         return f"{real_index + 1}/{real_total}"
 
     def _symbol_visibility(self) -> tuple[bool, bool]:
-        if self._phase is Phase.CALIBRATE_LEFT:
-            return True, False
+        if self._phase in (Phase.CALIBRATE_LEFT, Phase.CALIBRATE_CENTER):
+            return True, False  # CALIBRATE_CENTER reuses the "dot" symbol, repositioned - see _dot_position()
         if self._phase is Phase.CALIBRATE_RIGHT:
             return False, True
         if self._phase in (Phase.FOREPERIOD, Phase.TRIAL_ACTIVE):
             return self._dot_visible, self._cross_visible
         return False, False
+
+    def _dot_position(self) -> tuple[float, float]:
+        return CENTER_POSITION if self._phase is Phase.CALIBRATE_CENTER else DOT_POSITION
 
     def _gaze_indicator_state(self, sample) -> dict:
         """Live gaze cursor, shown throughout the saccade phase (every trial,
@@ -381,9 +395,10 @@ class ExperimentSession:
         dot_visible, cross_visible = self._symbol_visibility()
         trial = self._current_trial() if self._phase in (Phase.FOREPERIOD, Phase.TRIAL_ACTIVE) else None
 
+        dot_position = self._dot_position()
         return {
             "instructions": self._instructions(),
-            "dot": {"visible": dot_visible, "x": DOT_POSITION[0], "y": DOT_POSITION[1]},
+            "dot": {"visible": dot_visible, "x": dot_position[0], "y": dot_position[1]},
             "cross": {"visible": cross_visible, "x": CROSS_POSITION[0], "y": CROSS_POSITION[1]},
             "grating": {
                 "visible": self._grating_visible,

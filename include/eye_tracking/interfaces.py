@@ -24,14 +24,16 @@ class GazeSource(ABC):
     def latest_sample(self) -> GazeSample: ...
 
     @abstractmethod
-    def calibrate(self, left_ratio: float, right_ratio: float) -> None:
-        """Set the left/right reference points used to classify gaze zone.
+    def calibrate(self, left_ratio: float, center_ratio: float, right_ratio: float) -> None:
+        """Set the left/center/right reference points used to classify gaze zone.
 
-        The webcam source takes these as literal iris-position ratios. A future
-        ioHub-backed source would more likely ignore the arguments and run its
-        own vendor calibration routine (e.g. `tracker.runSetupProcedure()`)
-        instead - this method exists on the interface as the "do a 2-point
-        calibration now" trigger, not a strict shared data contract.
+        The webcam source takes these as literal iris-position ratios and fits
+        a ratio->position mapping across all three, rather than assuming
+        center sits exactly at the left/right midpoint. A future ioHub-backed
+        source would more likely ignore the arguments and run its own vendor
+        calibration routine (e.g. `tracker.runSetupProcedure()`) instead - this
+        method exists on the interface as the "do a 3-point calibration now"
+        trigger, not a strict shared data contract.
         """
 
     @abstractmethod

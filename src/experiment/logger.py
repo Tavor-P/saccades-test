@@ -67,8 +67,12 @@ class ResultLogger:
     def _write_metadata(self) -> None:
         self._meta_path.write_text(json.dumps(self._metadata, indent=2))
 
-    def set_calibration(self, left_ratio: float, right_ratio: float) -> None:
-        self._metadata["calibration"] = {"left_ratio": left_ratio, "right_ratio": right_ratio}
+    def set_calibration(self, left_ratio: float, center_ratio: float, right_ratio: float) -> None:
+        self._metadata["calibration"] = {
+            "left_ratio": left_ratio,
+            "center_ratio": center_ratio,
+            "right_ratio": right_ratio,
+        }
         self._write_metadata()
 
     def log(self, result: TrialResult) -> None:

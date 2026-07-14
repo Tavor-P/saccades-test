@@ -5,6 +5,7 @@ from pathlib import Path
 
 import cv2
 import mediapipe as mp
+import numpy as np
 from mediapipe.tasks.python import vision
 from mediapipe.tasks.python.core.base_options import BaseOptions
 
@@ -44,12 +45,13 @@ class GazeTracker:
     """Estimates horizontal gaze direction from webcam frames via MediaPipe FaceLandmarker.
 
     Produces a horizontal ratio (mean of both eyes' iris-within-corners position)
-    and classifies it against two calibrated reference points into a screen-side
-    zone. Distance-to-baseline classification means it doesn't matter which
-    physical direction raises or lowers the ratio. Live classification uses the
-    raw per-frame ratio (unsmoothed) so it isn't lagged behind actual eye
-    movement; the experiment session is responsible for debouncing noise via
-    its onset/landing stability windows.
+    and classifies it into a screen-side zone via a linear fit against three
+    calibrated reference points (left/center/right), rather than assuming
+    center sits exactly at the left/right midpoint - real center gaze isn't
+    always perfectly symmetric between the two extremes. Live classification
+    uses the raw per-frame ratio (unsmoothed) so it isn't lagged behind actual
+    eye movement; the experiment session is responsible for debouncing noise
+    via its onset/landing stability windows.
     """
 
     def __init__(self, model_path: str = MODEL_PATH) -> None:
@@ -62,10 +64,10 @@ class GazeTracker:
         self._landmarker = vision.FaceLandmarker.create_from_options(options)
         self._ratio_history: deque[float] = deque(maxlen=CALIBRATION_SAMPLE_WINDOW)
 
-        self._left_baseline = 0.4
-        self._right_baseline = 0.6
-        self._midpoint = 0.5
-        self._span = 0.2
+        # position = _position_slope * ratio + _position_intercept, where
+        # position 0.0/0.5/1.0 = left/center/right; these defaults reproduce
+        # the pre-calibration assumption of a symmetric 0.4-0.6 ratio span.
+        self._position_slope, self._position_intercept = np.polyfit([0.4, 0.5, 0.6], [0.0, 0.5, 1.0], 1)
 
     def process(self, frame) -> GazeSample:
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -85,13 +87,15 @@ class GazeTracker:
 
         return GazeSample(zone=self._classify(ratio), ratio=ratio, face_found=True, timestamp=timestamp)
 
-    def calibrate(self, left_ratio: float, right_ratio: float) -> None:
-        """`left_ratio`/`right_ratio`: mean smoothed ratio observed while the
-        participant fixated the dot (left target) / cross (right target)."""
-        self._left_baseline = left_ratio
-        self._right_baseline = right_ratio
-        self._midpoint = (left_ratio + right_ratio) / 2
-        self._span = abs(right_ratio - left_ratio) or 0.2
+    def calibrate(self, left_ratio: float, center_ratio: float, right_ratio: float) -> None:
+        """`left_ratio`/`center_ratio`/`right_ratio`: mean smoothed ratio
+        observed while the participant fixated the dot (left target) / true
+        center / cross (right target). Fits ratio->position (0=left,
+        0.5=center, 1=right) by least squares across all three points instead
+        of assuming center is exactly the left/right midpoint."""
+        self._position_slope, self._position_intercept = np.polyfit(
+            [left_ratio, center_ratio, right_ratio], [0.0, 0.5, 1.0], 1
+        )
 
     def average_recent_ratio(self) -> float | None:
         # Requires a *full* window, not just a non-empty one - otherwise a
@@ -110,9 +114,7 @@ class GazeTracker:
         self._ratio_history.clear()
 
     def _classify(self, ratio: float) -> GazeZone:
-        dead_zone = GAZE_DEAD_ZONE * self._span
-        if abs(ratio - self._midpoint) < dead_zone:
+        position = self._position_slope * ratio + self._position_intercept
+        if abs(position - 0.5) < GAZE_DEAD_ZONE:
             return GazeZone.CENTER
-        dist_left = abs(ratio - self._left_baseline)
-        dist_right = abs(ratio - self._right_baseline)
-        return GazeZone.LEFT if dist_left < dist_right else GazeZone.RIGHT
+        return GazeZone.LEFT if position < 0.5 else GazeZone.RIGHT
