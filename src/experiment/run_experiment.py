@@ -1,12 +1,18 @@
+from functools import partial
+
 from psychopy import core, event, gui, sound, visual
 
 from include.experiment.constants import (
     BACKGROUND_LUMINANCE,
     CIRCLE_RADIUS_RATIO,
+    GAZE_INDICATOR_OPACITY,
+    GAZE_INDICATOR_RADIUS_RATIO,
     GRATING_SF_CYCLES_PER_HEIGHT_UNIT,
     GRATING_SIZE_HEIGHT_UNITS,
     TEST_MODE,
 )
+from include.eye_tracking.constants import CAMERA_INDEX
+from src.eye_tracking.camera import list_available_cameras
 from src.eye_tracking.webcam_source import WebcamGazeSource
 from src.experiment.logger import ResultLogger
 from src.experiment.pausable_clock import PausableClock
@@ -81,6 +87,9 @@ def build_stimuli(win: visual.Window) -> dict:
         ),
         "dot": visual.Circle(win, radius=CIRCLE_RADIUS_RATIO, fillColor="white", lineColor="white", opacity=0),
         "cross": visual.Circle(win, radius=CIRCLE_RADIUS_RATIO, fillColor="white", lineColor="white", opacity=0),
+        "gaze_indicator": visual.Circle(
+            win, radius=GAZE_INDICATOR_RADIUS_RATIO, fillColor="white", lineColor=None, opacity=0
+        ),
         # Diamond, Ross & Morrone (2000)'s probe: a horizontal sinusoidal
         # luminance grating (bars parallel to the saccade direction) windowed
         # by a Gaussian envelope - not a flat square.
@@ -137,6 +146,17 @@ def apply_render_state(state: dict, stimuli: dict, fade_opacities: dict, dt: flo
         # the flash around that background - no extra luminance math needed.
         grating.contrast = state["grating"]["contrast"]
 
+    # Only the saccade phase's render_state() includes this - presaccade has
+    # no gaze tracking at all. Snaps straight to its target (no fade): it's a
+    # live cursor, so smoothing it would just make it lag behind real gaze.
+    gaze_indicator = stimuli["gaze_indicator"]
+    indicator_state = state.get("gaze_indicator")
+    if indicator_state and indicator_state["visible"]:
+        gaze_indicator.opacity = GAZE_INDICATOR_OPACITY
+        gaze_indicator.pos = ratio_to_pos(indicator_state["x"], indicator_state["y"], aspect)
+    else:
+        gaze_indicator.opacity = 0.0
+
     stimuli["instructions"].text = state["instructions"]
     hud = state["hud"]
     stimuli["hud"].text = (
@@ -148,7 +168,7 @@ def apply_render_state(state: dict, stimuli: dict, fade_opacities: dict, dt: flo
 def draw_all(stimuli: dict) -> None:
     # start_flash first so it sits behind the fixation stimuli, which stay
     # visible/fixatable on top of it during the flash.
-    for name in ("start_flash", "dot", "cross", "grating", "instructions", "hud"):
+    for name in ("start_flash", "dot", "cross", "gaze_indicator", "grating", "instructions", "hud"):
         stimuli[name].draw()
 
 
@@ -191,10 +211,12 @@ def run_presaccade_phase(win: visual.Window, stimuli: dict, logger: ResultLogger
         win.flip()
 
 
-def run_saccade_phase(win: visual.Window, stimuli: dict, logger: ResultLogger) -> ExperimentSession | None:
+def run_saccade_phase(
+    win: visual.Window, stimuli: dict, logger: ResultLogger, camera_index: int = CAMERA_INDEX
+) -> ExperimentSession | None:
     """Phase 2: the gaze-contingent saccade test. Returns the completed
     session, or None if the participant quit early."""
-    gaze = WebcamGazeSource()
+    gaze = WebcamGazeSource(camera_index)
     gaze.start()
     clock = PausableClock()
     session = ExperimentSession(gaze, logger=logger, clock=clock)
@@ -250,14 +272,32 @@ def run_saccade_phase(win: visual.Window, stimuli: dict, logger: ResultLogger) -
         gaze.stop()
 
 
-def prompt_participant_id() -> str | None:
+def _camera_labels(camera_indices: list[int]) -> list[str]:
+    return [f"Camera {i}" + (" (default)" if i == CAMERA_INDEX else "") for i in camera_indices]
+
+
+def _resolve_camera_choice(camera_indices: list[int], camera_labels: list[str], selected_label: str) -> tuple[int, str]:
+    position = camera_labels.index(selected_label)
+    return camera_indices[position], camera_labels[position]
+
+
+def prompt_session_info() -> tuple[str, int, str] | None:
     """Standard PsychoPy participant-info dialog, shown before the window
-    opens. Returns None if the participant cancelled the dialog."""
-    info = {"Participant ID": ""}
+    opens - also offers a camera picker (a dropdown of every camera index
+    that actually opens) so switching between multiple connected cameras
+    doesn't require hand-editing CAMERA_INDEX. Returns None if the dialog
+    was cancelled."""
+    camera_indices = list_available_cameras() or [CAMERA_INDEX]
+    camera_labels = _camera_labels(camera_indices)
+
+    info = {"Participant ID": "", "Camera": camera_labels}
     dlg = gui.DlgFromDict(info, title="Saccade experiment")
     if not dlg.OK:
         return None
-    return info["Participant ID"].strip() or "anonymous"
+
+    participant_id = info["Participant ID"].strip() or "anonymous"
+    camera_index, camera_label = _resolve_camera_choice(camera_indices, camera_labels, info["Camera"])
+    return participant_id, camera_index, camera_label
 
 
 def show_results_graph(win: visual.Window, results: list) -> None:
@@ -275,19 +315,21 @@ def show_results_graph(win: visual.Window, results: list) -> None:
 
 
 def main() -> None:
-    participant_id = prompt_participant_id()
-    if participant_id is None:
+    session_info = prompt_session_info()
+    if session_info is None:
         return  # cancelled the participant-info dialog
+    participant_id, camera_index, camera_label = session_info
 
-    logger = ResultLogger(participant_id)
+    logger = ResultLogger(participant_id, camera_label=camera_label)
     win = build_window(fullscreen=True)
     stimuli = build_stimuli(win)
+    saccade_phase = partial(run_saccade_phase, camera_index=camera_index)
 
     try:
         # TEST_MODE runs the saccade phase first - that's the one under active
         # development, so a smoke test shouldn't have to sit through the
         # baseline phase first just to reach it.
-        phases = [run_saccade_phase, run_presaccade_phase] if TEST_MODE else [run_presaccade_phase, run_saccade_phase]
+        phases = [saccade_phase, run_presaccade_phase] if TEST_MODE else [run_presaccade_phase, saccade_phase]
 
         results_by_phase = {}
         for phase_fn in phases:
@@ -296,7 +338,7 @@ def main() -> None:
                 return  # quit early
             results_by_phase[phase_fn] = result
 
-        saccade_session = results_by_phase[run_saccade_phase]
+        saccade_session = results_by_phase[saccade_phase]
         if saccade_session.calibration_ratios is not None:
             logger.set_calibration(*saccade_session.calibration_ratios)
 

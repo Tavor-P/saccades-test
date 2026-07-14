@@ -2,6 +2,7 @@ from unittest.mock import Mock
 
 import pytest
 
+from include.eye_tracking.constants import CAMERA_INDEX
 from include.eye_tracking.types import GazeZone
 from src.eye_tracking.gaze_tracker import GazeTracker
 from src.eye_tracking.iohub_source import IOHubGazeSource
@@ -61,3 +62,23 @@ def test_webcam_source_begin_calibration_sample_delegates_to_tracker(monkeypatch
 def test_iohub_source_begin_calibration_sample_is_a_noop():
     source = IOHubGazeSource(device_config={}, target_positions={GazeZone.LEFT: (0.0, 0.0)}, hit_radius=1.0)
     source.begin_calibration_sample()  # should not raise
+
+
+def test_webcam_source_passes_camera_index_to_camera(monkeypatch):
+    mock_camera_cls = Mock()
+    monkeypatch.setattr("src.eye_tracking.webcam_source.Camera", mock_camera_cls)
+    monkeypatch.setattr("src.eye_tracking.webcam_source.GazeTracker", Mock())
+
+    WebcamGazeSource(camera_index=3)
+
+    mock_camera_cls.assert_called_once_with(3)
+
+
+def test_webcam_source_defaults_to_the_configured_camera_index(monkeypatch):
+    mock_camera_cls = Mock()
+    monkeypatch.setattr("src.eye_tracking.webcam_source.Camera", mock_camera_cls)
+    monkeypatch.setattr("src.eye_tracking.webcam_source.GazeTracker", Mock())
+
+    WebcamGazeSource()
+
+    mock_camera_cls.assert_called_once_with(CAMERA_INDEX)

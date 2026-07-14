@@ -41,7 +41,7 @@ class ResultLogger:
     what the end-of-run comparison graph reads from.
     """
 
-    def __init__(self, participant_id: str) -> None:
+    def __init__(self, participant_id: str, camera_label: str | None = None) -> None:
         DATA_DIR.mkdir(exist_ok=True)
         timestamp = int(time.time())
         csv_path = DATA_DIR / f"results_{timestamp}.csv"
@@ -55,6 +55,7 @@ class ResultLogger:
             "participant_id": participant_id,
             "started_at": datetime.now().isoformat(timespec="seconds"),
             "test_mode": TEST_MODE,
+            "camera": camera_label,
             "viewing_distance_cm": VIEWING_DISTANCE_CM,
             "screen_height_cm": SCREEN_HEIGHT_CM,
             "grating_spatial_frequency_cpd": GRATING_SPATIAL_FREQUENCY_CPD,

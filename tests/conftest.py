@@ -11,6 +11,7 @@ class FakeGazeSource(GazeSource):
 
     def __init__(self) -> None:
         self.zone = GazeZone.CENTER
+        self.ratio: float | None = None
         self.face_found = True
         self._available = True
         self.calibrated: tuple[float, float] | None = None
@@ -27,7 +28,7 @@ class FakeGazeSource(GazeSource):
         return self._available
 
     def latest_sample(self) -> GazeSample:
-        return GazeSample(zone=self.zone, ratio=None, face_found=self.face_found, timestamp=0.0)
+        return GazeSample(zone=self.zone, ratio=self.ratio, face_found=self.face_found, timestamp=0.0)
 
     def calibrate(self, left_ratio: float, right_ratio: float) -> None:
         self.calibrated = (left_ratio, right_ratio)
