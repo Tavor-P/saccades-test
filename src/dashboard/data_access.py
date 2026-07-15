@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from include.experiment.types import Target, TrialResult
+from include.experiment.types import Orientation, Target, TrialResult
 
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 GRAPH_CACHE_DIR = DATA_DIR / "dashboard_cache"
@@ -22,6 +22,10 @@ def _parse_bool(value: str) -> bool:
 
 def _parse_target(value: str) -> Target | None:
     return Target(value) if value else None
+
+
+def _parse_orientation(value: str) -> Orientation | None:
+    return Orientation(value) if value else None
 
 
 def csv_path_for(timestamp: str) -> Path:
@@ -52,9 +56,17 @@ def load_session_trials(timestamp: str) -> list[TrialResult]:
                     saccade_duration_ms=_parse_optional_float(row["saccade_duration_ms"]),
                     grating_shown=_parse_bool(row["grating_shown"]),
                     contrast=_parse_optional_float(row["contrast"]),
+                    # .get(): sessions logged before orientation discrimination existed have no
+                    # orientation/response_orientation columns at all - treat that as "unknown".
+                    orientation=_parse_orientation(row.get("orientation", "")),
                     responded=_parse_bool(row["responded"]),
+                    response_orientation=_parse_orientation(row.get("response_orientation", "")),
                     response_time_ms=_parse_optional_float(row["response_time_ms"]),
                     outcome=row["outcome"],
+                    # .get(): sessions logged before onset-latency instrumentation existed
+                    # have no reaction_latency_ms/onset_detection_lag_ms columns at all.
+                    reaction_latency_ms=_parse_optional_float(row.get("reaction_latency_ms", "")),
+                    onset_detection_lag_ms=_parse_optional_float(row.get("onset_detection_lag_ms", "")),
                 )
             )
     return trials

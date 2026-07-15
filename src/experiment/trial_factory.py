@@ -1,7 +1,11 @@
 import random
 
 from include.experiment.constants import CATCH_TRIAL_COUNT, NUM_PRACTICE_TRIALS, NUM_TRIALS_PER_PHASE
-from include.experiment.types import FlashTrialSpec, Target, TrialSpec
+from include.experiment.types import FlashTrialSpec, Orientation, Target, TrialSpec
+
+
+def _random_orientation() -> Orientation:
+    return random.choice([Orientation.VERTICAL, Orientation.HORIZONTAL])
 
 
 def _build_shown_schedule() -> list[bool]:
@@ -25,11 +29,12 @@ def build_presaccade_sequence() -> list[FlashTrialSpec]:
     """Phase 1: fixate center only, no saccade - just detect the flash (or not).
     Practice trials come first, then the real (ZEST-staircased, logged) block."""
     practice = [
-        FlashTrialSpec(index=index, grating_shown=shown, practice=True)
+        FlashTrialSpec(index=index, grating_shown=shown, orientation=_random_orientation() if shown else None, practice=True)
         for index, shown in enumerate(_build_practice_schedule())
     ]
     real = [
-        FlashTrialSpec(index=index, grating_shown=shown) for index, shown in enumerate(_build_shown_schedule())
+        FlashTrialSpec(index=index, grating_shown=shown, orientation=_random_orientation() if shown else None)
+        for index, shown in enumerate(_build_shown_schedule())
     ]
     return practice + real
 
@@ -39,7 +44,16 @@ def _build_saccade_trials(schedule: list[bool], practice: bool, start_source: Ta
     source = start_source
     for index, shown in enumerate(schedule):
         target = Target.CROSS if source is Target.DOT else Target.DOT
-        trials.append(TrialSpec(index=index, source=source, target=target, grating_shown=shown, practice=practice))
+        trials.append(
+            TrialSpec(
+                index=index,
+                source=source,
+                target=target,
+                grating_shown=shown,
+                orientation=_random_orientation() if shown else None,
+                practice=practice,
+            )
+        )
         source = target
     return trials, source
 

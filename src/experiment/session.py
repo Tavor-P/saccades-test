@@ -19,7 +19,7 @@ from include.experiment.constants import (
     SACCADE_ONSET_STABILITY_MS,
     SACCADE_TIMEOUT_MS,
 )
-from include.experiment.types import Target, TrialResult
+from include.experiment.types import Orientation, Target, TrialResult
 from src.experiment.logger import ResultLogger
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.scoring import score_outcome
@@ -48,12 +48,15 @@ class ExperimentSession:
     Trial structure follows Diamond, Ross & Morrone (2000, J Neurosci
     20:3449-3455): a jittered foreperiod during which only the current
     fixation symbol is shown, then the other symbol's appearance is the go-cue
-    for the saccade; a brief flash may occur around saccade onset and is
-    scored yes/no against a button response, with false-alarm rate tracked as
-    a data-quality check exactly as in that paper. Contrast is picked trial by
-    trial by a ZEST staircase (see src.experiment.zest), the same adaptive
-    procedure the paper used, run independently from the presaccade phase's
-    staircase so each condition converges on its own threshold.
+    for the saccade; a brief flash may occur around saccade onset, oriented
+    either vertically or horizontally at random, and is scored as a
+    2-alternative forced-choice orientation discrimination (up/down arrow =
+    vertical, left/right arrow = horizontal) rather than plain yes/no
+    detection, with false-alarm rate tracked as a data-quality check exactly
+    as in that paper. Contrast is picked trial by trial by a ZEST staircase
+    (see src.experiment.zest), the same adaptive procedure the paper used, run
+    independently from the presaccade phase's staircase so each condition
+    converges on its own threshold.
 
     Uses a "step" gap/overlap paradigm: the old fixation symbol starts
     fading out the instant the new one appears (both crossfade over
@@ -103,9 +106,12 @@ class ExperimentSession:
         self._grating_frames_remaining = 0
         self._grating_actually_shown = False
         self._trial_contrast: float | None = None  # contrast actually used for this trial's flash, if any
+        self._reaction_latency_ms: float | None = None
+        self._onset_detection_lag_ms: float | None = None
         self._response_window_open = False
         self._response_deadline = 0.0
         self._responded = False
+        self._response_orientation: Orientation | None = None
         self._response_time_ms: float | None = None
         self._landed = False
         self._foreperiod_start = 0.0
@@ -141,16 +147,22 @@ class ExperimentSession:
                 self._dot_visible = True  # trial 0's source
                 self._cross_visible = False
                 self._begin_foreperiod()
-        elif self._phase is Phase.TRIAL_ACTIVE:
-            self._on_response()
-        # COMPLETE: space does nothing here - the runner decides when to move on
+        # TRIAL_ACTIVE: responses come from arrow keys (see on_response_key),
+        # not SPACE. COMPLETE: space does nothing here - the runner decides
+        # when to move on.
 
-    def _on_response(self) -> None:
+    def on_response_key(self, orientation: Orientation) -> None:
+        """Called when an arrow key is pressed during a trial: up/down report
+        `Orientation.VERTICAL`, left/right report `Orientation.HORIZONTAL` -
+        see run_experiment.py's key dispatch."""
+        if self._phase is not Phase.TRIAL_ACTIVE:
+            return
         if self._responded or not self._response_window_open:
             return
         now = self._clock.now()
         if now <= self._response_deadline:
             self._responded = True
+            self._response_orientation = orientation
             self._response_time_ms = (now - self._grating_shown_at) * 1000 if self._grating_shown_at else None
 
     # -- trial state machine ----------------------------------------------------
@@ -207,6 +219,8 @@ class ExperimentSession:
                     self._response_window_open = True
                     self._response_deadline = now + RESPONSE_WINDOW_MS / 1000
                     onset_this_tick = True
+                    self._reaction_latency_ms = (self._away_from_source_since - self._trial_start_time) * 1000
+                    self._onset_detection_lag_ms = (now - self._away_from_source_since) * 1000
                     if trial.grating_shown:
                         self._grating_shown_at = now
                         self._grating_visible = True
@@ -265,11 +279,20 @@ class ExperimentSession:
         if not landed and not self._gaze_left_source:
             outcome = "timeout"
         else:
-            outcome = score_outcome(self._grating_actually_shown, self._responded)
+            outcome = score_outcome(
+                self._grating_actually_shown, self._responded, self._response_orientation, trial.orientation
+            )
 
         if not trial.practice:
-            if self._grating_actually_shown and outcome in ("hit", "miss"):
-                self._zest.update(self._trial_contrast, detected=outcome == "hit")
+            # "miss" (no response within the window) counts as a non-detection
+            # here too, not just "correct"/"incorrect" - a participant who
+            # never saw the grating well enough to answer in time is exactly
+            # the signal ZEST needs to stop drifting the contrast down further.
+            # Matches what results_graph.py's replay already does from the
+            # logged CSV, so the live in-session estimate and the end-of-run
+            # graph agree.
+            if self._grating_actually_shown and outcome in ("correct", "incorrect", "miss"):
+                self._zest.update(self._trial_contrast, detected=outcome == "correct")
 
             result = TrialResult(
                 index=trial.index,
@@ -279,9 +302,13 @@ class ExperimentSession:
                 saccade_duration_ms=saccade_duration_ms,
                 grating_shown=self._grating_actually_shown,
                 contrast=self._trial_contrast,
+                orientation=trial.orientation if self._grating_actually_shown else None,
                 responded=self._responded,
+                response_orientation=self._response_orientation,
                 response_time_ms=self._response_time_ms,
                 outcome=outcome,
+                reaction_latency_ms=self._reaction_latency_ms,
+                onset_detection_lag_ms=self._onset_detection_lag_ms,
             )
             self._logger.log(result)
             self._results.append(result)
@@ -297,15 +324,18 @@ class ExperimentSession:
     # -- rendering ----------------------------------------------------------
 
     def _summary(self) -> str:
-        # Hit rate = (times SPACE was pressed while the grating was actually shown)
-        # divided by (times the grating was actually shown).
-        hits = sum(1 for r in self._results if r.outcome == "hit")
+        # Accuracy = (times the arrow-key response correctly reported the
+        # grating's orientation) divided by (times the grating was actually
+        # shown) - "incorrect" (wrong orientation guessed) and "miss" (no
+        # response at all) both count against it.
+        correct = sum(1 for r in self._results if r.outcome == "correct")
+        incorrect = sum(1 for r in self._results if r.outcome == "incorrect")
         misses = sum(1 for r in self._results if r.outcome == "miss")
         false_alarms = sum(1 for r in self._results if r.outcome == "false_alarm")
         rejections = sum(1 for r in self._results if r.outcome == "correct_rejection")
 
-        grating_shown_count = hits + misses
-        hit_rate = hits / grating_shown_count if grating_shown_count else 0.0
+        grating_shown_count = correct + incorrect + misses
+        accuracy = correct / grating_shown_count if grating_shown_count else 0.0
         catch_trial_count = false_alarms + rejections
         fa_rate = false_alarms / catch_trial_count if catch_trial_count else 0.0
 
@@ -321,7 +351,7 @@ class ExperimentSession:
         else:
             reliability = "unreliable"
         return (
-            f"Hit rate: {hits}/{grating_shown_count} ({hit_rate:.0%}) | "
+            f"Accuracy: {correct}/{grating_shown_count} ({accuracy:.0%}) | "
             f"False alarms: {false_alarms}/{catch_trial_count} ({fa_rate:.1%}, {reliability}) | "
             f"Threshold estimate: {self._zest.threshold_estimate:.1%} contrast"
         )
@@ -334,7 +364,7 @@ class ExperimentSession:
         # is exactly the kind of onset we've been trying to avoid elsewhere.
         if self._phase in (Phase.FOREPERIOD, Phase.TRIAL_ACTIVE):
             prefix = "Practice (doesn't count) — " if self._current_trial().practice else ""
-            return f"{prefix}Press SPACE if you see the grating"
+            return f"{prefix}UP/DOWN if the grating is vertical, LEFT/RIGHT if horizontal"
         return {
             Phase.WAITING_TO_START: "Press SPACE to begin calibration",
             Phase.CALIBRATE_LEFT: "Look at the dot, then press SPACE",
@@ -350,63 +380,45 @@ class ExperimentSession:
         real_index = self._trial_index - self._num_practice
         return f"{real_index + 1}/{real_total}"
 
-    def _symbol_visibility(self) -> tuple[bool, bool]:
-        if self._phase in (Phase.CALIBRATE_LEFT, Phase.CALIBRATE_CENTER):
-            return True, False  # CALIBRATE_CENTER reuses the "dot" symbol, repositioned - see _dot_position()
+    def _symbol_visibility(self) -> tuple[bool, bool, bool]:
+        """(dot, cross, calibration_center) - a dedicated stimulus for the
+        center calibration target, rather than repositioning "dot" onto it:
+        reusing "dot" made it teleport instantly from the dot position to
+        center while staying fully opaque throughout, with no fade cue that a
+        new step had even started (easy to mistake for the step being
+        skipped) - the same ambiguity this app already fixed for the
+        dot/cross source/target crossfade."""
+        if self._phase is Phase.CALIBRATE_LEFT:
+            return True, False, False
+        if self._phase is Phase.CALIBRATE_CENTER:
+            return False, False, True
         if self._phase is Phase.CALIBRATE_RIGHT:
-            return False, True
+            return False, True, False
         if self._phase in (Phase.FOREPERIOD, Phase.TRIAL_ACTIVE):
-            return self._dot_visible, self._cross_visible
-        return False, False
-
-    def _dot_position(self) -> tuple[float, float]:
-        return CENTER_POSITION if self._phase is Phase.CALIBRATE_CENTER else DOT_POSITION
-
-    def _gaze_indicator_state(self, sample) -> dict:
-        """Live gaze cursor, shown throughout the saccade phase (every trial,
-        not just practice): snaps directly to whichever zone (left/center/
-        right) the gaze classifier currently reports - the exact same
-        classification onset/landing detection relies on - rather than
-        interpolating a continuous position from the raw ratio. The raw
-        ratio is far noisier than the classifier's own debounced zone
-        decision; showing it directly made the indicator look jittery and
-        inaccurate even when the underlying classification was fine. This
-        way, if the indicator looks wrong, that's real evidence the
-        classification itself is wrong - not an artifact of extra
-        interpolation math on top of it."""
-        show = (
-            self._phase in (Phase.FOREPERIOD, Phase.TRIAL_ACTIVE)
-            and sample.face_found
-            and sample.zone is not GazeZone.UNKNOWN
-            and self._calibration_ratios is not None
-        )
-        if not show:
-            return {"visible": False, "x": 0.0, "y": 0.0}
-
-        zone_position = {
-            GazeZone.LEFT: DOT_POSITION,
-            GazeZone.RIGHT: CROSS_POSITION,
-            GazeZone.CENTER: GRATING_POSITION,  # the midpoint between dot and cross
-        }[sample.zone]
-        return {"visible": True, "x": zone_position[0], "y": zone_position[1]}
+            return self._dot_visible, self._cross_visible, False
+        return False, False, False
 
     def render_state(self) -> dict:
         sample = self._gaze.latest_sample()
-        dot_visible, cross_visible = self._symbol_visibility()
+        dot_visible, cross_visible, calibration_center_visible = self._symbol_visibility()
         trial = self._current_trial() if self._phase in (Phase.FOREPERIOD, Phase.TRIAL_ACTIVE) else None
 
-        dot_position = self._dot_position()
         return {
             "instructions": self._instructions(),
-            "dot": {"visible": dot_visible, "x": dot_position[0], "y": dot_position[1]},
+            "dot": {"visible": dot_visible, "x": DOT_POSITION[0], "y": DOT_POSITION[1]},
             "cross": {"visible": cross_visible, "x": CROSS_POSITION[0], "y": CROSS_POSITION[1]},
+            "calibration_center": {
+                "visible": calibration_center_visible,
+                "x": CENTER_POSITION[0],
+                "y": CENTER_POSITION[1],
+            },
             "grating": {
                 "visible": self._grating_visible,
                 "x": GRATING_POSITION[0],
                 "y": GRATING_POSITION[1],
                 "contrast": self._trial_contrast if self._grating_visible else 0,
+                "orientation": trial.orientation if trial is not None else None,
             },
-            "gaze_indicator": self._gaze_indicator_state(sample),
             "hud": {
                 "phase": self._phase.name,
                 "gaze_zone": sample.zone.value,

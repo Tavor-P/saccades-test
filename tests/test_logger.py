@@ -1,6 +1,6 @@
 import json
 
-from include.experiment.types import TrialResult
+from include.experiment.types import Orientation, TrialResult
 from src.experiment import logger as logger_module
 from src.experiment.logger import FIELDNAMES, ResultLogger
 
@@ -67,13 +67,16 @@ def test_log_writes_a_row(tmp_path, monkeypatch):
             saccade_duration_ms=None,
             grating_shown=True,
             contrast=0.05,
+            orientation=Orientation.VERTICAL,
             responded=True,
+            response_orientation=Orientation.VERTICAL,
             response_time_ms=250.0,
-            outcome="hit",
+            outcome="correct",
         )
     )
     log.close()
     csv_files = list(tmp_path.glob("results_*.csv"))
     lines = csv_files[0].read_text().splitlines()
     assert len(lines) == 2  # header + one row
-    assert "hit" in lines[1]
+    assert "correct" in lines[1]
+    assert "vertical" in lines[1]

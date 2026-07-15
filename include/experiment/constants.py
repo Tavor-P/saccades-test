@@ -27,7 +27,22 @@ SCREEN_HEIGHT_DEG = 2 * math.degrees(math.atan((SCREEN_HEIGHT_CM / 2) / VIEWING_
 # to the saccade direction, so the saccade's own motion doesn't smear the
 # pattern into a spurious signal) windowed by a Gaussian envelope, flashed for
 # a single frame.
-GRATING_SPATIAL_FREQUENCY_CPD = 0.04  # cycles/degree
+#
+# At the paper's literal 0.04 cpd, fewer than 1.2 full cycles fit inside the
+# Gaussian-windowed patch (cycles = GRATING_SPATIAL_FREQUENCY_CPD *
+# GRATING_ENVELOPE_SIGMA_DEG * 6, independent of screen size) - so instead of
+# a grating, the patch looks like a single lopsided light/dark gradient, which
+# is trivially visible in peripheral vision even at low contrast (peripheral
+# acuity is far coarser than foveal, but a single gradient has no fine detail
+# to lose). Bumped up so multiple cycles fit in the patch instead - fine
+# enough that peripheral vision blurs it toward flat gray, resolvable mainly
+# with foveal acuity - but pulled back from an earlier, more aggressive value
+# (0.35 cpd, ~10 cycles) that made the ZEST-driven low-contrast trials come
+# back essentially invisible even to a directly-fixating eye. This is still a
+# deviation from the paper's own value, and its correctness depends on
+# VIEWING_DISTANCE_CM/SCREEN_HEIGHT_CM above actually matching your physical
+# setup - adjust further if it's still too faint or too easy.
+GRATING_SPATIAL_FREQUENCY_CPD = 0.12  # cycles/degree, ~3.5 cycles across the patch
 GRATING_ENVELOPE_SIGMA_DEG = 4.8  # Gaussian envelope space constant
 GRATING_DURATION_FRAMES = 1  # a single frame, exactly as in the paper (their 120Hz CRT -> ~8ms;
 # on a typical 60Hz display this is ~16.7ms instead - still "one frame", just a longer one)
@@ -57,27 +72,39 @@ CATCH_TRIAL_COUNT = round(NUM_TRIALS_PER_PHASE * CATCH_TRIAL_FRACTION)  # rest d
 NUM_PRACTICE_TRIALS = 2 if TEST_MODE else 5
 PRACTICE_CONTRAST = 0.25
 
-# Live gaze cursor, shown throughout the saccade phase (every trial, not just
-# practice) so tracking quality can be visually checked at any time - a
-# small faint circle at the participant's current estimated horizontal gaze
-# position. Smaller and dimmer than the fixation symbols so it never reads
-# as a third target.
-GAZE_INDICATOR_RADIUS_RATIO = CIRCLE_RADIUS_RATIO * 0.6
-GAZE_INDICATOR_OPACITY = 0.35
-
 # ZEST (Zippy Estimation by Sequential Testing, King-Smith et al. 1994)
 # adaptive contrast staircase - the paper's actual contrast-selection method:
 # "their contrast varying according to a ZEST procedure, which independently
 # estimated the most informative contrast at which to present the next
-# stimulus." Beta/guess/lapse follow the standard Weibull psychometric-function
+# stimulus." Beta/lapse follow the standard Weibull psychometric-function
 # assumptions used for staircases on simple detection tasks (Watson & Pelli,
 # 1983); the paper doesn't publish these fitting constants itself.
-ZEST_LOG_CONTRAST_MIN = -3.0  # 0.001
+
+# A contrast of `c` here becomes a peak luminance deviation of `c/2` around the
+# mid-grey background (see luminance_to_color / apply_render_state in
+# run_experiment.py). On a standard 8-bit panel (256 levels), one quantization
+# step is 1/255 of luminance, so anything below `c = 2/255` can't move a pixel
+# value at all - it's bit-identical to the background regardless of the
+# observer's actual threshold. Floor the staircase one step above that (not
+# exactly at it) so the lowest testable contrast is still guaranteed
+# renderable rather than sitting right on the rounding boundary.
+ZEST_LOG_CONTRAST_MIN = math.log10(2 / 255) + 0.05  # ~0.0088 (0.88%)
 ZEST_LOG_CONTRAST_MAX = math.log10(0.5)
 ZEST_GRID_SIZE = 120
 ZEST_BETA = 3.5
-ZEST_GUESS_RATE = 0.02
+# The task is a 2-alternative forced choice (report vertical vs horizontal),
+# not plain yes/no detection - so chance performance is 50%, not a small
+# guess-rate floor. Using anything lower than 0.5 here would systematically
+# bias the fitted threshold, since the model would wrongly attribute
+# above-floor "guessing" accuracy to genuine detection.
+ZEST_GUESS_RATE = 0.5
 ZEST_LAPSE_RATE = 0.02
+
+# Trial responses: report the grating's orientation via arrow key rather than
+# a plain yes/no SPACE press, so accuracy can't be inflated by just always
+# pressing "I saw it".
+VERTICAL_RESPONSE_KEYS = ("up", "down")
+HORIZONTAL_RESPONSE_KEYS = ("left", "right")
 
 RESPONSE_WINDOW_MS = 1000
 
@@ -97,4 +124,15 @@ MIN_CATCH_TRIALS_FOR_RELIABILITY = 8  # each phase has 20 catch trials, comforta
 
 SACCADE_TIMEOUT_MS = 15_000  # force-advance a trial if gaze never lands (broken tracking)
 GAZE_LANDING_STABILITY_MS = 150  # gaze must hold in the target zone this long to count as "landed"
-SACCADE_ONSET_STABILITY_MS = 60  # gaze must hold outside the source zone this long before it counts as a real saccade onset (debounces classifier noise so the flash doesn't fire on a single jittery frame)
+# Gaze must hold outside the source zone this long before it counts as a real
+# saccade onset (debounces classifier noise so the flash doesn't fire on a
+# single jittery frame). At the dot/cross separation this experiment uses
+# (~20 degrees), a real saccade's flight time is only ~65ms (main-sequence
+# estimate) - so the previous 60ms value ate almost the entire saccade before
+# the flash could even fire, meaning it landed after the eye had already
+# reached the target instead of during the movement. Halved so more of the
+# flight time is still ahead of the flash, at the cost of being a thinner
+# margin against classifier noise - reaction_latency_ms/onset_detection_lag_ms
+# in the logged CSV (see TrialResult) let you check empirically whether this
+# is catching real saccade onsets or still firing late/early.
+SACCADE_ONSET_STABILITY_MS = 30

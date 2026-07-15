@@ -23,9 +23,13 @@ FIELDNAMES = [
     "saccade_duration_ms",
     "grating_shown",
     "contrast",
+    "orientation",
     "responded",
+    "response_orientation",
     "response_time_ms",
     "outcome",
+    "reaction_latency_ms",
+    "onset_detection_lag_ms",
 ]
 
 
@@ -85,9 +89,13 @@ class ResultLogger:
                 "saccade_duration_ms": result.saccade_duration_ms,
                 "grating_shown": result.grating_shown,
                 "contrast": result.contrast,
+                "orientation": result.orientation.value if result.orientation is not None else "",
                 "responded": result.responded,
+                "response_orientation": result.response_orientation.value if result.response_orientation is not None else "",
                 "response_time_ms": result.response_time_ms,
                 "outcome": result.outcome,
+                "reaction_latency_ms": result.reaction_latency_ms,
+                "onset_detection_lag_ms": result.onset_detection_lag_ms,
             }
         )
         self._file.flush()

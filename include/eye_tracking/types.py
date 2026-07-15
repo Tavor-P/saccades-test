@@ -15,3 +15,9 @@ class GazeSample:
     ratio: float | None
     face_found: bool
     timestamp: float
+    # Continuous calibrated gaze position (0=left target, 0.5=center, 1=right
+    # target), for smooth display purposes only - onset/landing timing
+    # detection deliberately uses `zone` (the classifier's own debounced,
+    # unsmoothed reading) instead, so it isn't lagged behind actual eye
+    # movement. None whenever no face was found.
+    position: float | None = None

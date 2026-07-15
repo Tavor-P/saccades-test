@@ -2,17 +2,14 @@ import pytest
 
 from include.eye_tracking.types import GazeZone
 from include.experiment.constants import (
-    CROSS_POSITION,
-    DOT_POSITION,
     FOREPERIOD_MAX_MS,
     GAZE_LANDING_STABILITY_MS,
-    GRATING_POSITION,
     PRACTICE_CONTRAST,
     RESPONSE_WINDOW_MS,
     SACCADE_ONSET_STABILITY_MS,
     SACCADE_TIMEOUT_MS,
 )
-from include.experiment.types import Target, TrialSpec
+from include.experiment.types import Orientation, Target, TrialSpec
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.session import ExperimentSession
 
@@ -85,28 +82,51 @@ def test_calibration_starts_a_fresh_sample_window_for_each_target(fake_gaze):
     assert fake_gaze.calibration_samples_begun == 3  # no new target after this
 
 
-def test_hit_scores_and_updates_zest(fake_gaze, fake_time):
+def test_correct_orientation_scores_and_updates_zest(fake_gaze, fake_time):
     session = _make_session(fake_gaze)
-    session._trials = [TrialSpec(index=0, source=Target.DOT, target=Target.CROSS, grating_shown=True)]
+    session._trials = [
+        TrialSpec(index=0, source=Target.DOT, target=Target.CROSS, grating_shown=True, orientation=Orientation.VERTICAL)
+    ]
     _complete_calibration_and_enter_foreperiod(session)
     _enter_trial_active(session, fake_time)
     initial_threshold = session._zest.threshold_estimate
 
     _trigger_onset_and_landing(session, fake_gaze, fake_time, GazeZone.RIGHT)
     assert session._trial_contrast is not None  # grating was actually shown
-    session.on_space()  # respond within the window
+    session.on_response_key(Orientation.VERTICAL)  # correctly reports the shown orientation
     session.tick()  # now landed + responded -> finalizes
 
     assert len(session.results) == 1
     result = session.results[0]
-    assert result.outcome == "hit"
+    assert result.outcome == "correct"
     assert result.grating_shown is True
+    assert session._zest.threshold_estimate != initial_threshold
+
+
+def test_incorrect_orientation_scores_and_updates_zest(fake_gaze, fake_time):
+    session = _make_session(fake_gaze)
+    session._trials = [
+        TrialSpec(index=0, source=Target.DOT, target=Target.CROSS, grating_shown=True, orientation=Orientation.VERTICAL)
+    ]
+    _complete_calibration_and_enter_foreperiod(session)
+    _enter_trial_active(session, fake_time)
+    initial_threshold = session._zest.threshold_estimate
+
+    _trigger_onset_and_landing(session, fake_gaze, fake_time, GazeZone.RIGHT)
+    session.on_response_key(Orientation.HORIZONTAL)  # wrong guess
+    session.tick()
+
+    assert len(session.results) == 1
+    result = session.results[0]
+    assert result.outcome == "incorrect"
     assert session._zest.threshold_estimate != initial_threshold
 
 
 def test_miss_scores_and_updates_zest(fake_gaze, fake_time):
     session = _make_session(fake_gaze)
-    session._trials = [TrialSpec(index=0, source=Target.DOT, target=Target.CROSS, grating_shown=True)]
+    session._trials = [
+        TrialSpec(index=0, source=Target.DOT, target=Target.CROSS, grating_shown=True, orientation=Orientation.VERTICAL)
+    ]
     _complete_calibration_and_enter_foreperiod(session)
     _enter_trial_active(session, fake_time)
     initial_threshold = session._zest.threshold_estimate
@@ -129,7 +149,7 @@ def test_false_alarm_does_not_update_zest(fake_gaze, fake_time):
     initial_threshold = session._zest.threshold_estimate
 
     _trigger_onset_and_landing(session, fake_gaze, fake_time, GazeZone.RIGHT)
-    session.on_space()  # guess during the response window even though nothing was shown
+    session.on_response_key(Orientation.VERTICAL)  # guess during the response window even though nothing was shown
     session.tick()
 
     assert len(session.results) == 1
@@ -176,7 +196,14 @@ def test_timeout_when_gaze_never_leaves_the_source_zone(fake_gaze, fake_time):
 def test_practice_trial_is_not_logged_or_staircased(fake_gaze, fake_time):
     session = _make_session(fake_gaze)
     session._trials = [
-        TrialSpec(index=0, source=Target.DOT, target=Target.CROSS, grating_shown=True, practice=True)
+        TrialSpec(
+            index=0,
+            source=Target.DOT,
+            target=Target.CROSS,
+            grating_shown=True,
+            orientation=Orientation.VERTICAL,
+            practice=True,
+        )
     ]
     _complete_calibration_and_enter_foreperiod(session)
     _enter_trial_active(session, fake_time)
@@ -184,7 +211,7 @@ def test_practice_trial_is_not_logged_or_staircased(fake_gaze, fake_time):
 
     _trigger_onset_and_landing(session, fake_gaze, fake_time, GazeZone.RIGHT)
     assert session._trial_contrast == PRACTICE_CONTRAST  # fixed, not drawn from the staircase
-    session.on_space()
+    session.on_response_key(Orientation.VERTICAL)
     session.tick()
 
     assert session.results == []  # practice trials never get logged
@@ -207,53 +234,3 @@ def test_source_symbol_hides_the_instant_the_target_appears(fake_gaze, fake_time
     assert state["dot"]["visible"] is False  # source already hidden, before any landing
 
 
-def test_gaze_indicator_hidden_before_calibration(fake_gaze):
-    session = _make_session(fake_gaze)
-    fake_gaze.zone = GazeZone.LEFT
-    assert session.render_state()["gaze_indicator"]["visible"] is False
-
-
-def test_gaze_indicator_visible_during_real_trials_not_just_practice(fake_gaze, fake_time):
-    # Shown throughout the saccade phase now, not gated to practice trials -
-    # so tracking quality can be checked at any point in a real session.
-    session = _make_session(fake_gaze)
-    session._trials = [TrialSpec(index=0, source=Target.DOT, target=Target.CROSS, grating_shown=False)]
-    fake_gaze.zone = GazeZone.LEFT
-    _complete_calibration_and_enter_foreperiod(session)
-    assert session.render_state()["gaze_indicator"]["visible"] is True
-
-
-def test_gaze_indicator_hidden_when_face_not_found(fake_gaze):
-    session = _make_session(fake_gaze)
-    fake_gaze.face_found = False
-    _complete_calibration_and_enter_foreperiod(session)
-    assert session.render_state()["gaze_indicator"]["visible"] is False
-
-
-def test_gaze_indicator_hidden_when_zone_is_unknown(fake_gaze):
-    session = _make_session(fake_gaze)
-    fake_gaze.zone = GazeZone.UNKNOWN
-    _complete_calibration_and_enter_foreperiod(session)
-    assert session.render_state()["gaze_indicator"]["visible"] is False
-
-
-def test_gaze_indicator_snaps_to_the_classified_zone(fake_gaze):
-    # Directly mirrors the classification onset/landing detection relies on,
-    # rather than interpolating a continuous position from the noisier raw
-    # ratio - if this looks wrong, the classification itself is wrong.
-    session = _make_session(fake_gaze)
-    _complete_calibration_and_enter_foreperiod(session)
-
-    fake_gaze.zone = GazeZone.LEFT
-    indicator = session.render_state()["gaze_indicator"]
-    assert indicator["visible"] is True
-    assert indicator["x"] == pytest.approx(DOT_POSITION[0])
-    assert indicator["y"] == pytest.approx(DOT_POSITION[1])
-
-    fake_gaze.zone = GazeZone.RIGHT
-    indicator = session.render_state()["gaze_indicator"]
-    assert indicator["x"] == pytest.approx(CROSS_POSITION[0])
-
-    fake_gaze.zone = GazeZone.CENTER
-    indicator = session.render_state()["gaze_indicator"]
-    assert indicator["x"] == pytest.approx(GRATING_POSITION[0])

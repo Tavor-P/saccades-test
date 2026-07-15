@@ -6,12 +6,13 @@ from src.experiment import pausable_clock as pausable_clock_module
 
 
 class FakeGazeSource(GazeSource):
-    """Minimal in-memory GazeSource double: tests set `.zone`/`.face_found`
-    directly instead of driving a real camera/tracker."""
+    """Minimal in-memory GazeSource double: tests set `.zone`/`.face_found`/
+    `.position` directly instead of driving a real camera/tracker."""
 
     def __init__(self) -> None:
         self.zone = GazeZone.CENTER
         self.ratio: float | None = None
+        self.position: float | None = 0.5  # 0=left target, 0.5=center, 1=right target
         self.face_found = True
         self._available = True
         self.calibrated: tuple[float, float, float] | None = None
@@ -28,7 +29,9 @@ class FakeGazeSource(GazeSource):
         return self._available
 
     def latest_sample(self) -> GazeSample:
-        return GazeSample(zone=self.zone, ratio=self.ratio, face_found=self.face_found, timestamp=0.0)
+        return GazeSample(
+            zone=self.zone, ratio=self.ratio, face_found=self.face_found, timestamp=0.0, position=self.position
+        )
 
     def calibrate(self, left_ratio: float, center_ratio: float, right_ratio: float) -> None:
         self.calibrated = (left_ratio, center_ratio, right_ratio)

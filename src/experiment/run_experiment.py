@@ -5,12 +5,13 @@ from psychopy import core, event, gui, sound, visual
 from include.experiment.constants import (
     BACKGROUND_LUMINANCE,
     CIRCLE_RADIUS_RATIO,
-    GAZE_INDICATOR_OPACITY,
-    GAZE_INDICATOR_RADIUS_RATIO,
     GRATING_SF_CYCLES_PER_HEIGHT_UNIT,
     GRATING_SIZE_HEIGHT_UNITS,
+    HORIZONTAL_RESPONSE_KEYS,
     TEST_MODE,
+    VERTICAL_RESPONSE_KEYS,
 )
+from include.experiment.types import Orientation
 from include.eye_tracking.constants import CAMERA_INDEX
 from src.eye_tracking.camera import list_available_cameras
 from src.eye_tracking.webcam_source import WebcamGazeSource
@@ -28,6 +29,21 @@ WARNING_TONE_DURATION_S = 0.5  # matches Diamond, Ross & Morrone (2000)'s 500ms 
 # text means shifting gaze off the fixation target and ruining the trial.
 START_FLASH_COLOR = [-1, 1, -1]  # pure green
 START_FLASH_DURATION_FRAMES = 8
+
+# Orientation response keys, and the GratingStim `ori` degrees each orientation
+# renders as (0=vertical stripes, 90=horizontal stripes).
+_RESPONSE_KEY_ORIENTATION = {key: Orientation.VERTICAL for key in VERTICAL_RESPONSE_KEYS} | {
+    key: Orientation.HORIZONTAL for key in HORIZONTAL_RESPONSE_KEYS
+}
+_ORIENTATION_DEGREES = {Orientation.VERTICAL: 0, Orientation.HORIZONTAL: 90}
+RESPONSE_KEYS = list(_RESPONSE_KEY_ORIENTATION)
+
+
+def dispatch_response_keys(session, keys: list[str]) -> None:
+    for key in keys:
+        orientation = _RESPONSE_KEY_ORIENTATION.get(key)
+        if orientation is not None:
+            session.on_response_key(orientation)
 
 
 class ClickPauseToggle:
@@ -87,8 +103,8 @@ def build_stimuli(win: visual.Window) -> dict:
         ),
         "dot": visual.Circle(win, radius=CIRCLE_RADIUS_RATIO, fillColor="white", lineColor="white", opacity=0),
         "cross": visual.Circle(win, radius=CIRCLE_RADIUS_RATIO, fillColor="white", lineColor="white", opacity=0),
-        "gaze_indicator": visual.Circle(
-            win, radius=GAZE_INDICATOR_RADIUS_RATIO, fillColor="white", lineColor=None, opacity=0
+        "calibration_center": visual.Circle(
+            win, radius=CIRCLE_RADIUS_RATIO, fillColor="white", lineColor="white", opacity=0
         ),
         # Diamond, Ross & Morrone (2000)'s probe: a horizontal sinusoidal
         # luminance grating (bars parallel to the saccade direction) windowed
@@ -130,12 +146,15 @@ def apply_render_state(state: dict, stimuli: dict, fade_opacities: dict, dt: flo
     aspect = stimuli["aspect"]
     fade_step = dt / FADE_DURATION_S
 
-    for name in ("dot", "cross"):
-        target_opacity = 1.0 if state[name]["visible"] else 0.0
+    # calibration_center is only present in the saccade phase's render_state()
+    # (the presaccade phase has no gaze calibration) - default it to hidden.
+    for name in ("dot", "cross", "calibration_center"):
+        symbol_state = state.get(name, {"visible": False, "x": 0.0, "y": 0.0})
+        target_opacity = 1.0 if symbol_state["visible"] else 0.0
         fade_opacities[name] = _move_toward(fade_opacities[name], target_opacity, fade_step)
         stim = stimuli[name]
         stim.opacity = fade_opacities[name]
-        stim.pos = ratio_to_pos(state[name]["x"], state[name]["y"], aspect)
+        stim.pos = ratio_to_pos(symbol_state["x"], symbol_state["y"], aspect)
 
     grating = stimuli["grating"]
     grating.opacity = 1.0 if state["grating"]["visible"] else 0.0
@@ -145,17 +164,9 @@ def apply_render_state(state: dict, stimuli: dict, fade_opacities: dict, dt: flo
         # grating's own contrast parameter is exactly the Michelson contrast of
         # the flash around that background - no extra luminance math needed.
         grating.contrast = state["grating"]["contrast"]
-
-    # Only the saccade phase's render_state() includes this - presaccade has
-    # no gaze tracking at all. Snaps straight to its target (no fade): it's a
-    # live cursor, so smoothing it would just make it lag behind real gaze.
-    gaze_indicator = stimuli["gaze_indicator"]
-    indicator_state = state.get("gaze_indicator")
-    if indicator_state and indicator_state["visible"]:
-        gaze_indicator.opacity = GAZE_INDICATOR_OPACITY
-        gaze_indicator.pos = ratio_to_pos(indicator_state["x"], indicator_state["y"], aspect)
-    else:
-        gaze_indicator.opacity = 0.0
+        orientation = state["grating"]["orientation"]
+        if orientation is not None:
+            grating.ori = _ORIENTATION_DEGREES[orientation]
 
     stimuli["instructions"].text = state["instructions"]
     hud = state["hud"]
@@ -168,7 +179,7 @@ def apply_render_state(state: dict, stimuli: dict, fade_opacities: dict, dt: flo
 def draw_all(stimuli: dict) -> None:
     # start_flash first so it sits behind the fixation stimuli, which stay
     # visible/fixatable on top of it during the flash.
-    for name in ("start_flash", "dot", "cross", "gaze_indicator", "grating", "instructions", "hud"):
+    for name in ("start_flash", "dot", "cross", "calibration_center", "grating", "instructions", "hud"):
         stimuli[name].draw()
 
 
@@ -178,11 +189,11 @@ def run_presaccade_phase(win: visual.Window, stimuli: dict, logger: ResultLogger
     clock = PausableClock()
     session = PresaccadeSession(logger=logger, clock=clock)
     pause_toggle = ClickPauseToggle(win, clock)
-    fade_opacities = {"dot": 0.0, "cross": 0.0}
+    fade_opacities = {"dot": 0.0, "cross": 0.0, "calibration_center": 0.0}
     frame_clock = core.Clock()
 
     while True:
-        keys = event.getKeys(keyList=["space", "escape"])
+        keys = event.getKeys(keyList=["space", "escape", *RESPONSE_KEYS])
         if "escape" in keys:
             return None
 
@@ -195,6 +206,7 @@ def run_presaccade_phase(win: visual.Window, stimuli: dict, logger: ResultLogger
 
         for _ in range(keys.count("space")):  # no-op if already COMPLETE
             session.on_space()
+        dispatch_response_keys(session, keys)
 
         session.tick()
         state = session.render_state()
@@ -222,7 +234,7 @@ def run_saccade_phase(
     session = ExperimentSession(gaze, logger=logger, clock=clock)
     pause_toggle = ClickPauseToggle(win, clock)
 
-    fade_opacities = {"dot": 0.0, "cross": 0.0}
+    fade_opacities = {"dot": 0.0, "cross": 0.0, "calibration_center": 0.0}
     warning_tone = sound.Sound(value=WARNING_TONE_HZ, secs=WARNING_TONE_DURATION_S)
     frame_clock = core.Clock()
     last_phase = None
@@ -231,7 +243,7 @@ def run_saccade_phase(
 
     try:
         while True:
-            keys = event.getKeys(keyList=["space", "escape"])
+            keys = event.getKeys(keyList=["space", "escape", *RESPONSE_KEYS])
             if "escape" in keys:
                 return None
 
@@ -244,6 +256,7 @@ def run_saccade_phase(
 
             for _ in range(keys.count("space")):  # no-op if already COMPLETE
                 session.on_space()
+            dispatch_response_keys(session, keys)
 
             session.tick()
             state = session.render_state()
@@ -302,7 +315,9 @@ def prompt_session_info() -> tuple[str, int, str] | None:
 
 def show_results_graph(win: visual.Window, results: list) -> None:
     png_path = build_comparison_graph(results)
-    image = visual.ImageStim(win, image=str(png_path), size=(1.2, 0.9), pos=(0, 0.05))
+    # The graph is now a 2x2 panel figure (aspect ~1.2, not the old 2-panel
+    # 2:1) - sized/positioned to match so it isn't stretched.
+    image = visual.ImageStim(win, image=str(png_path), size=(1.02, 0.85), pos=(0, 0.02))
     text = visual.TextStim(win, text="Press SPACE or ESCAPE to exit", pos=(0, -0.47), color="white", height=0.03)
 
     while True:

@@ -10,7 +10,7 @@ from include.experiment.constants import (
     PRACTICE_CONTRAST,
     RESPONSE_WINDOW_MS,
 )
-from include.experiment.types import TrialResult
+from include.experiment.types import Orientation, TrialResult
 from src.experiment.logger import ResultLogger
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.scoring import score_outcome
@@ -63,6 +63,7 @@ class PresaccadeSession:
         self._response_window_open = False
         self._response_deadline = 0.0
         self._responded = False
+        self._response_orientation: Orientation | None = None
         self._response_time_ms: float | None = None
 
     @property
@@ -77,17 +78,22 @@ class PresaccadeSession:
     def on_space(self) -> None:
         if self._phase is Phase.WAITING_TO_START:
             self._begin_foreperiod()
-        elif self._phase is Phase.FLASH_WINDOW:
-            self._on_response()
-        # FOREPERIOD and COMPLETE: space does nothing (nothing to respond to yet
-        # / the runner is responsible for advancing past COMPLETE)
+        # FOREPERIOD: nothing to respond to yet. FLASH_WINDOW: responses come
+        # from arrow keys (see on_response_key), not SPACE. COMPLETE: the
+        # runner is responsible for advancing past it.
 
-    def _on_response(self) -> None:
+    def on_response_key(self, orientation: Orientation) -> None:
+        """Called when an arrow key is pressed during the flash window:
+        up/down report `Orientation.VERTICAL`, left/right report
+        `Orientation.HORIZONTAL` - see run_experiment.py's key dispatch."""
+        if self._phase is not Phase.FLASH_WINDOW:
+            return
         if self._responded or not self._response_window_open:
             return
         now = self._clock.now()
         if now <= self._response_deadline:
             self._responded = True
+            self._response_orientation = orientation
             self._response_time_ms = (now - self._grating_shown_at) * 1000 if self._grating_shown_at else None
 
     # -- trial state machine ----------------------------------------------------
@@ -134,11 +140,16 @@ class PresaccadeSession:
 
     def _finish_trial(self) -> None:
         trial = self._current_trial()
-        outcome = score_outcome(trial.grating_shown, self._responded)
+        outcome = score_outcome(trial.grating_shown, self._responded, self._response_orientation, trial.orientation)
 
         if not trial.practice:
-            if trial.grating_shown:
-                self._zest.update(self._trial_contrast, detected=outcome == "hit")
+            # "miss" (no response within the window) counts as a non-detection
+            # here too, not just "correct"/"incorrect" - see session.py's
+            # identical change for why, and results_graph.py's replay, which
+            # already treated misses this way when rebuilding the staircase
+            # from the logged CSV.
+            if trial.grating_shown and outcome in ("correct", "incorrect", "miss"):
+                self._zest.update(self._trial_contrast, detected=outcome == "correct")
 
             result = TrialResult(
                 index=trial.index,
@@ -148,7 +159,9 @@ class PresaccadeSession:
                 saccade_duration_ms=None,
                 grating_shown=trial.grating_shown,
                 contrast=self._trial_contrast,
+                orientation=trial.orientation if trial.grating_shown else None,
                 responded=self._responded,
+                response_orientation=self._response_orientation,
                 response_time_ms=self._response_time_ms,
                 outcome=outcome,
             )
@@ -169,7 +182,7 @@ class PresaccadeSession:
         if self._phase is Phase.WAITING_TO_START:
             return "Fixate the center of the screen. Press SPACE to begin"
         prefix = "Practice (doesn't count) — " if self._current_trial().practice else ""
-        return f"{prefix}Press SPACE if you see the grating"
+        return f"{prefix}UP/DOWN if the grating is vertical, LEFT/RIGHT if horizontal"
 
     def _trial_label(self) -> str:
         real_total = len(self._trials) - self._num_practice
@@ -187,6 +200,7 @@ class PresaccadeSession:
         # itself be a huge, confounding contrast step - neither is a clean
         # contrast-detection trial. The participant just holds gaze on center
         # without a marker.
+        trial = self._current_trial() if self._phase is not Phase.COMPLETE and self._trials else None
         return {
             "instructions": self._instructions(),
             "dot": {"visible": False, "x": CENTER_POSITION[0], "y": CENTER_POSITION[1]},
@@ -196,6 +210,7 @@ class PresaccadeSession:
                 "x": GRATING_POSITION[0],
                 "y": GRATING_POSITION[1],
                 "contrast": self._trial_contrast if (self._grating_visible and self._trials) else 0,
+                "orientation": trial.orientation if trial is not None else None,
             },
             "hud": {
                 "phase": self._phase.name,

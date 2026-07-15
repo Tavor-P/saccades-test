@@ -49,3 +49,20 @@ def test_saccade_schedule_is_shuffled_not_fixed():
     # matching every time would indicate the shuffle isn't happening at all.
     schedules = {tuple(t.grating_shown for t in build_saccade_sequence() if not t.practice) for _ in range(20)}
     assert len(schedules) > 1
+
+
+def test_orientation_is_set_only_when_grating_is_shown():
+    for trials in (build_presaccade_sequence(), build_saccade_sequence()):
+        for trial in trials:
+            if trial.grating_shown:
+                assert trial.orientation is not None
+            else:
+                assert trial.orientation is None
+
+
+def test_orientation_is_randomized_not_fixed():
+    # A single build has both a large trial count and a random per-trial
+    # choice, so a run that comes back all-one-orientation would indicate the
+    # randomization isn't happening at all.
+    orientations = {t.orientation for t in build_saccade_sequence() if t.grating_shown}
+    assert len(orientations) > 1
