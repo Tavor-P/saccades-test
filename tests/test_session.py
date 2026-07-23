@@ -1,3 +1,5 @@
+import math
+
 import pytest
 
 from include.eye_tracking.types import GazeZone
@@ -8,6 +10,7 @@ from include.experiment.constants import (
     RESPONSE_WINDOW_MS,
     SACCADE_ONSET_STABILITY_MS,
     SACCADE_TIMEOUT_MS,
+    ZEST_LOG_CONTRAST_MAX,
 )
 from include.experiment.types import Orientation, Target, TrialSpec
 from src.experiment.pausable_clock import PausableClock
@@ -50,6 +53,15 @@ def _trigger_onset_and_landing(session, fake_gaze, fake_time, target_zone) -> No
     session.tick()  # starts both the onset and landing stability timers
     fake_time(max(SACCADE_ONSET_STABILITY_MS, GAZE_LANDING_STABILITY_MS) / 1000 + 0.01)
     session.tick()  # onset fires (grating maybe flashes) and landing fires
+
+
+def test_contrast_floor_overrides_the_zest_staircase_minimum(fake_gaze):
+    # See the matching test in test_presaccade_session.py for why the
+    # midpoint is the right thing to check.
+    floor = 0.2
+    session = ExperimentSession(fake_gaze, logger=_NullLogger(), clock=PausableClock(), contrast_floor=floor)
+    expected = 10 ** ((math.log10(floor) + ZEST_LOG_CONTRAST_MAX) / 2)
+    assert session._zest.next_contrast() == pytest.approx(expected)
 
 
 def test_calibration_flow_calls_gaze_calibrate(fake_gaze):

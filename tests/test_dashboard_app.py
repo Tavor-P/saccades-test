@@ -5,6 +5,8 @@ import pytest
 
 from src.dashboard import app as app_module
 from src.dashboard import data_access
+from src.experiment import settings as settings_module
+from src.experiment.settings import DEFAULT_CONTRAST_FLOOR_PERCENT, MIN_CONTRAST_FLOOR_PERCENT
 
 _FIELDNAMES = [
     "trial_index",
@@ -28,6 +30,7 @@ def client(tmp_path, monkeypatch):
     # its own to go stale.
     monkeypatch.setattr(data_access, "DATA_DIR", tmp_path)
     monkeypatch.setattr(data_access, "GRAPH_CACHE_DIR", tmp_path / "cache")
+    monkeypatch.setattr(settings_module, "DATA_DIR", tmp_path)
     app_module.app.config.update(TESTING=True)
     return app_module.app.test_client()
 
@@ -105,3 +108,30 @@ def test_deleted_session_no_longer_appears_in_the_index(client, tmp_path):
     client.delete("/sessions/111")
     response = client.get("/")
     assert b"gone" not in response.data
+
+
+def test_index_shows_the_default_contrast_floor(client):
+    response = client.get("/")
+    assert f'value="{DEFAULT_CONTRAST_FLOOR_PERCENT:.2f}"'.encode() in response.data
+
+
+def test_update_settings_persists_the_contrast_floor(client, tmp_path):
+    response = client.post("/settings", json={"contrast_floor_percent": 4.5})
+    assert response.status_code == 200
+    assert response.get_json() == {"ok": True}
+    assert json.loads((tmp_path / "settings.json").read_text()) == {"contrast_floor_percent": 4.5}
+
+    # Takes effect on the next page load without restarting anything.
+    response = client.get("/")
+    assert b'value="4.50"' in response.data
+
+
+def test_update_settings_rejects_below_the_hardware_floor(client, tmp_path):
+    response = client.post("/settings", json={"contrast_floor_percent": MIN_CONTRAST_FLOOR_PERCENT / 2})
+    assert response.status_code == 400
+    assert not (tmp_path / "settings.json").exists()
+
+
+def test_update_settings_rejects_non_numeric_value(client):
+    response = client.post("/settings", json={"contrast_floor_percent": "not a number"})
+    assert response.status_code == 400

@@ -1,3 +1,4 @@
+import math
 import random
 from enum import Enum, auto
 
@@ -41,7 +42,7 @@ class PresaccadeSession:
     dict the runner applies to its stimuli.
     """
 
-    def __init__(self, logger: ResultLogger, clock: PausableClock) -> None:
+    def __init__(self, logger: ResultLogger, clock: PausableClock, contrast_floor: float | None = None) -> None:
         self._logger = logger
         self._clock = clock
         self._trials = build_presaccade_sequence()
@@ -49,7 +50,8 @@ class PresaccadeSession:
         self._trial_index = 0
         self._phase = Phase.WAITING_TO_START
         self._results: list[TrialResult] = []
-        self._zest = ZestStaircase()
+        zest_kwargs = {"log_contrast_min": math.log10(contrast_floor)} if contrast_floor is not None else {}
+        self._zest = ZestStaircase(**zest_kwargs)
         self._clear_trial_state()
 
     def _clear_trial_state(self) -> None:
@@ -182,7 +184,7 @@ class PresaccadeSession:
         if self._phase is Phase.WAITING_TO_START:
             return "Fixate the center of the screen. Press SPACE to begin"
         prefix = "Practice (doesn't count) — " if self._current_trial().practice else ""
-        return f"{prefix}UP/DOWN if the grating is vertical, LEFT/RIGHT if horizontal"
+        return f"{prefix}UP/DOWN if the grating is vertical, LEFT/RIGHT if horizontal — not sure? Guess"
 
     def _trial_label(self) -> str:
         real_total = len(self._trials) - self._num_practice

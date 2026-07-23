@@ -45,7 +45,12 @@ class ResultLogger:
     what the end-of-run comparison graph reads from.
     """
 
-    def __init__(self, participant_id: str, camera_label: str | None = None) -> None:
+    def __init__(
+        self,
+        participant_id: str,
+        camera_label: str | None = None,
+        contrast_floor_percent: float | None = None,
+    ) -> None:
         DATA_DIR.mkdir(exist_ok=True)
         timestamp = int(time.time())
         csv_path = DATA_DIR / f"results_{timestamp}.csv"
@@ -64,6 +69,7 @@ class ResultLogger:
             "screen_height_cm": SCREEN_HEIGHT_CM,
             "grating_spatial_frequency_cpd": GRATING_SPATIAL_FREQUENCY_CPD,
             "grating_envelope_sigma_deg": GRATING_ENVELOPE_SIGMA_DEG,
+            "contrast_floor_percent": contrast_floor_percent,
             "calibration": None,
         }
         self._write_metadata()

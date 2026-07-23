@@ -20,6 +20,7 @@ from src.experiment.pausable_clock import PausableClock
 from src.experiment.presaccade_session import PresaccadeSession
 from src.experiment.results_graph import build_comparison_graph
 from src.experiment.session import ExperimentSession
+from src.experiment.settings import load_contrast_floor_percent, validate_contrast_floor_percent
 
 FADE_DURATION_S = 0.4  # dot/cross opacity fade; softens onset so it doesn't trigger a reflexive saccade
 WARNING_TONE_HZ = 880
@@ -183,11 +184,13 @@ def draw_all(stimuli: dict) -> None:
         stimuli[name].draw()
 
 
-def run_presaccade_phase(win: visual.Window, stimuli: dict, logger: ResultLogger) -> PresaccadeSession | None:
+def run_presaccade_phase(
+    win: visual.Window, stimuli: dict, logger: ResultLogger, contrast_floor: float | None = None
+) -> PresaccadeSession | None:
     """Phase 1: fixate center, detect flashes, no eye tracking. Returns the
     completed session, or None if the participant quit early."""
     clock = PausableClock()
-    session = PresaccadeSession(logger=logger, clock=clock)
+    session = PresaccadeSession(logger=logger, clock=clock, contrast_floor=contrast_floor)
     pause_toggle = ClickPauseToggle(win, clock)
     fade_opacities = {"dot": 0.0, "cross": 0.0, "calibration_center": 0.0}
     frame_clock = core.Clock()
@@ -224,14 +227,18 @@ def run_presaccade_phase(win: visual.Window, stimuli: dict, logger: ResultLogger
 
 
 def run_saccade_phase(
-    win: visual.Window, stimuli: dict, logger: ResultLogger, camera_index: int = CAMERA_INDEX
+    win: visual.Window,
+    stimuli: dict,
+    logger: ResultLogger,
+    camera_index: int = CAMERA_INDEX,
+    contrast_floor: float | None = None,
 ) -> ExperimentSession | None:
     """Phase 2: the gaze-contingent saccade test. Returns the completed
     session, or None if the participant quit early."""
     gaze = WebcamGazeSource(camera_index)
     gaze.start()
     clock = PausableClock()
-    session = ExperimentSession(gaze, logger=logger, clock=clock)
+    session = ExperimentSession(gaze, logger=logger, clock=clock, contrast_floor=contrast_floor)
     pause_toggle = ClickPauseToggle(win, clock)
 
     fade_opacities = {"dot": 0.0, "cross": 0.0, "calibration_center": 0.0}
@@ -294,23 +301,43 @@ def _resolve_camera_choice(camera_indices: list[int], camera_labels: list[str], 
     return camera_indices[position], camera_labels[position]
 
 
-def prompt_session_info() -> tuple[str, int, str] | None:
+def _resolve_contrast_floor_percent(raw: str, default_percent: float) -> float:
+    """Falls back to the dashboard-configured default if the dialog's field
+    was left blank/non-numeric, or set outside ZEST's own renderable range
+    (see settings.validate_contrast_floor_percent) - a typo in a text field
+    shouldn't be able to crash the whole session."""
+    try:
+        return validate_contrast_floor_percent(float(raw))
+    except (TypeError, ValueError):
+        return default_percent
+
+
+def prompt_session_info() -> tuple[str, int, str, float] | None:
     """Standard PsychoPy participant-info dialog, shown before the window
     opens - also offers a camera picker (a dropdown of every camera index
     that actually opens) so switching between multiple connected cameras
-    doesn't require hand-editing CAMERA_INDEX. Returns None if the dialog
+    doesn't require hand-editing CAMERA_INDEX, and a contrast-floor field
+    pre-filled with the dashboard-configured default (see
+    src/experiment/settings.py and the dashboard's settings box) so a run can
+    override it per-session without editing code. Returns None if the dialog
     was cancelled."""
     camera_indices = list_available_cameras() or [CAMERA_INDEX]
     camera_labels = _camera_labels(camera_indices)
+    default_contrast_floor_percent = load_contrast_floor_percent()
 
-    info = {"Participant ID": "", "Camera": camera_labels}
+    info = {
+        "Participant ID": "",
+        "Camera": camera_labels,
+        "Contrast floor (%)": f"{default_contrast_floor_percent:.2f}",
+    }
     dlg = gui.DlgFromDict(info, title="Saccade experiment")
     if not dlg.OK:
         return None
 
     participant_id = info["Participant ID"].strip() or "anonymous"
     camera_index, camera_label = _resolve_camera_choice(camera_indices, camera_labels, info["Camera"])
-    return participant_id, camera_index, camera_label
+    contrast_floor_percent = _resolve_contrast_floor_percent(info["Contrast floor (%)"], default_contrast_floor_percent)
+    return participant_id, camera_index, camera_label, contrast_floor_percent
 
 
 def show_results_graph(win: visual.Window, results: list) -> None:
@@ -333,18 +360,20 @@ def main() -> None:
     session_info = prompt_session_info()
     if session_info is None:
         return  # cancelled the participant-info dialog
-    participant_id, camera_index, camera_label = session_info
+    participant_id, camera_index, camera_label, contrast_floor_percent = session_info
+    contrast_floor = contrast_floor_percent / 100
 
-    logger = ResultLogger(participant_id, camera_label=camera_label)
+    logger = ResultLogger(participant_id, camera_label=camera_label, contrast_floor_percent=contrast_floor_percent)
     win = build_window(fullscreen=True)
     stimuli = build_stimuli(win)
-    saccade_phase = partial(run_saccade_phase, camera_index=camera_index)
+    saccade_phase = partial(run_saccade_phase, camera_index=camera_index, contrast_floor=contrast_floor)
+    presaccade_phase = partial(run_presaccade_phase, contrast_floor=contrast_floor)
 
     try:
         # TEST_MODE runs the saccade phase first - that's the one under active
         # development, so a smoke test shouldn't have to sit through the
         # baseline phase first just to reach it.
-        phases = [saccade_phase, run_presaccade_phase] if TEST_MODE else [run_presaccade_phase, saccade_phase]
+        phases = [saccade_phase, presaccade_phase] if TEST_MODE else [presaccade_phase, saccade_phase]
 
         results_by_phase = {}
         for phase_fn in phases:
@@ -357,7 +386,7 @@ def main() -> None:
         if saccade_session.calibration_ratios is not None:
             logger.set_calibration(*saccade_session.calibration_ratios)
 
-        all_results = results_by_phase[run_presaccade_phase].results + saccade_session.results
+        all_results = results_by_phase[presaccade_phase].results + saccade_session.results
         show_results_graph(win, all_results)
     finally:
         logger.close()

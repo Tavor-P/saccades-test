@@ -1,4 +1,8 @@
-from include.experiment.constants import FOREPERIOD_MAX_MS, PRACTICE_CONTRAST, RESPONSE_WINDOW_MS
+import math
+
+import pytest
+
+from include.experiment.constants import FOREPERIOD_MAX_MS, PRACTICE_CONTRAST, RESPONSE_WINDOW_MS, ZEST_LOG_CONTRAST_MAX
 from include.experiment.types import FlashTrialSpec, Orientation
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.presaccade_session import PresaccadeSession
@@ -109,6 +113,18 @@ def test_practice_trial_is_not_logged_or_staircased(fake_time):
     assert session.results == []
     assert session._zest.threshold_estimate == initial_threshold
     assert session.render_state()["hud"]["phase"] == "COMPLETE"
+
+
+def test_contrast_floor_overrides_the_zest_staircase_minimum():
+    # A uniform prior's posterior mean log-contrast is the midpoint of the
+    # staircase's [min, max] grid, regardless of grid size (arithmetic-series
+    # symmetry) - so a custom floor should shift the very first proposed
+    # contrast to the midpoint of [floor, ZEST_LOG_CONTRAST_MAX] instead of
+    # the built-in default's.
+    floor = 0.2
+    session = PresaccadeSession(logger=_NullLogger(), clock=PausableClock(), contrast_floor=floor)
+    expected = 10 ** ((math.log10(floor) + ZEST_LOG_CONTRAST_MAX) / 2)
+    assert session._zest.next_contrast() == pytest.approx(expected)
 
 
 def test_response_key_before_flash_window_does_nothing(fake_time):

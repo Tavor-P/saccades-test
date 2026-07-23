@@ -31,10 +31,25 @@
   #filter-clear { background: #454654; }
   #filter-clear:hover { background: #565768; }
   tr.filtered-out { display: none; }
+  .settings-box { display: flex; flex-wrap: wrap; gap: 1.25rem; align-items: flex-end; margin-bottom: 1.25rem; padding: 1rem; background: #24252e; border-radius: 8px; }
+  .settings-box input[type="number"] { width: 8rem; }
+  .settings-box .hint { color: #8b8c99; font-size: 0.8rem; }
+  .status-message.error { color: #d9534f; }
+  .status-message.success { color: #4caf82; }
 </style>
 </head>
 <body>
   <h1>Saccade sessions</h1>
+
+  <div class="settings-box">
+    <div class="filter-field">
+      <label for="contrast-floor">Default contrast floor (%)</label>
+      <input type="number" id="contrast-floor" step="0.01" min="{{ contrast_floor_min }}" max="{{ contrast_floor_max }}" value="{{ '%.2f' % contrast_floor_percent }}">
+    </div>
+    <button type="button" id="save-contrast-floor" class="graph-toggle">Save default</button>
+    <span class="hint">Pre-fills the "Contrast floor" field in the experiment's startup dialog - editable per-run there too. Must stay between {{ '%.2f' % contrast_floor_min }}% (the lowest an 8-bit display can render) and {{ '%.0f' % contrast_floor_max }}%.</span>
+    <span id="contrast-floor-status" class="status-message"></span>
+  </div>
 
   {% if not sessions %}
     <p class="empty">No sessions logged yet in data/ - run the experiment first.</p>
@@ -101,6 +116,34 @@
   {% endif %}
 
 <script>
+const contrastFloorInput = document.getElementById("contrast-floor");
+const saveContrastFloorButton = document.getElementById("save-contrast-floor");
+const contrastFloorStatus = document.getElementById("contrast-floor-status");
+if (saveContrastFloorButton) {
+  saveContrastFloorButton.addEventListener("click", async () => {
+    contrastFloorStatus.textContent = "";
+    contrastFloorStatus.classList.remove("error", "success");
+    try {
+      const response = await fetch("/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contrast_floor_percent: contrastFloorInput.value }),
+      });
+      const body = await response.json();
+      if (response.ok) {
+        contrastFloorStatus.textContent = "Saved.";
+        contrastFloorStatus.classList.add("success");
+      } else {
+        contrastFloorStatus.textContent = body.error || "Couldn't save.";
+        contrastFloorStatus.classList.add("error");
+      }
+    } catch (err) {
+      contrastFloorStatus.textContent = "Couldn't save - see the server log for details.";
+      contrastFloorStatus.classList.add("error");
+    }
+  });
+}
+
 async function deleteSessionByTimestamp(timestamp) {
   const response = await fetch(`/sessions/${timestamp}`, { method: "DELETE" });
   return response.ok;

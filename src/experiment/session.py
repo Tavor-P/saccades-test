@@ -1,3 +1,4 @@
+import math
 import random
 from enum import Enum, auto
 
@@ -72,7 +73,13 @@ class ExperimentSession:
     with the presaccade phase so both land in one CSV file.
     """
 
-    def __init__(self, gaze_source: GazeSource, logger: ResultLogger, clock: PausableClock) -> None:
+    def __init__(
+        self,
+        gaze_source: GazeSource,
+        logger: ResultLogger,
+        clock: PausableClock,
+        contrast_floor: float | None = None,
+    ) -> None:
         self._gaze = gaze_source
         self._logger = logger
         self._clock = clock
@@ -86,7 +93,8 @@ class ExperimentSession:
         self._pending_center_ratio: float | None = None
         self._calibration_ratios: tuple[float, float, float] | None = None
         self._results: list[TrialResult] = []
-        self._zest = ZestStaircase()
+        zest_kwargs = {"log_contrast_min": math.log10(contrast_floor)} if contrast_floor is not None else {}
+        self._zest = ZestStaircase(**zest_kwargs)
         self._clear_trial_state()
 
     @property
@@ -364,7 +372,7 @@ class ExperimentSession:
         # is exactly the kind of onset we've been trying to avoid elsewhere.
         if self._phase in (Phase.FOREPERIOD, Phase.TRIAL_ACTIVE):
             prefix = "Practice (doesn't count) — " if self._current_trial().practice else ""
-            return f"{prefix}UP/DOWN if the grating is vertical, LEFT/RIGHT if horizontal"
+            return f"{prefix}UP/DOWN if the grating is vertical, LEFT/RIGHT if horizontal — not sure? Guess"
         return {
             Phase.WAITING_TO_START: "Press SPACE to begin calibration",
             Phase.CALIBRATE_LEFT: "Look at the dot, then press SPACE",

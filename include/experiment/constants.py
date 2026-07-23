@@ -87,8 +87,12 @@ PRACTICE_CONTRAST = 0.25
 # value at all - it's bit-identical to the background regardless of the
 # observer's actual threshold. Floor the staircase one step above that (not
 # exactly at it) so the lowest testable contrast is still guaranteed
-# renderable rather than sitting right on the rounding boundary.
-ZEST_LOG_CONTRAST_MIN = math.log10(2 / 255) + 0.05  # ~0.0088 (0.88%)
+# renderable rather than sitting right on the rounding boundary. Exposed as
+# its own constant (not just inlined below) so anything letting the floor be
+# configured - see src/experiment/settings.py - can still enforce this
+# physical lower bound no matter what's typed in.
+HARDWARE_CONTRAST_FLOOR = 2 / 255
+ZEST_LOG_CONTRAST_MIN = math.log10(HARDWARE_CONTRAST_FLOOR) + 0.05  # ~0.0088 (0.88%)
 ZEST_LOG_CONTRAST_MAX = math.log10(0.5)
 ZEST_GRID_SIZE = 120
 ZEST_BETA = 3.5
@@ -97,6 +101,16 @@ ZEST_BETA = 3.5
 # guess-rate floor. Using anything lower than 0.5 here would systematically
 # bias the fitted threshold, since the model would wrongly attribute
 # above-floor "guessing" accuracy to genuine detection.
+#
+# This 0.5 floor is only valid if participants actually guess when unsure
+# instead of withholding a response - logged sessions showed "incorrect"
+# (a confident wrong guess) is almost never chosen versus "miss" (no
+# response), which means real behavior was closer to a 0%, not 50%,
+# guess floor. That undershoot reads to ZEST as much stronger evidence of
+# "still can't see it" than a true coin-flip would, so it kept pushing
+# contrast up past the intended ~82%-correct criterion - hence sessions
+# converging to contrasts people then aced. The on-screen instructions now
+# explicitly tell participants to guess if unsure, to match this assumption.
 ZEST_GUESS_RATE = 0.5
 ZEST_LAPSE_RATE = 0.02
 

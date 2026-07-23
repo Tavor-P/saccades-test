@@ -31,27 +31,40 @@ That's it — a window opens and the experiment starts.
 
 ## What running it looks like
 
-A small dialog asks for a participant ID and which camera to use first
-(cancel it to quit before the window even opens) - it lists every camera
-index that actually opens, so if you've got more than one connected (e.g. a
-laptop's built-in webcam plus an external one) you pick per run, no code
-edit needed. Then the session runs two phases back to back, each starting
-with a few throwaway practice trials, then a results graph:
+A small dialog asks for a participant ID, which camera to use, and a
+contrast floor (cancel it to quit before the window even opens):
+
+- The **camera picker** lists every camera index that actually opens, so if
+  you've got more than one connected (e.g. a laptop's built-in webcam plus an
+  external one) you pick per run, no code edit needed.
+- The **contrast floor** field is pre-filled with the default set in the
+  dashboard's settings box (see "Browsing past sessions" below) - it's the
+  lowest contrast the adaptive staircase will ever test at, as a percent.
+  Override it here for a one-off run without touching the dashboard default.
+  Leaving it blank, non-numeric, or out of range falls back to that default
+  rather than failing the dialog.
+
+Then the session runs two phases back to back, each starting with a few
+throwaway practice trials, then a results graph:
 
 1. **Baseline phase** — fixate the center of the screen. A faint grating
    flashes briefly for a single frame, its contrast adjusted trial-by-trial
    by an adaptive staircase (sometimes it doesn't flash at all). Press
-   **Space** whenever you see it. The first couple of trials are marked
+   **UP/DOWN** if it looked vertical, **LEFT/RIGHT** if horizontal - guess if
+   you're not sure rather than not answering, since the staircase treats a
+   withheld response as much stronger evidence you couldn't see it at all
+   than an honest 50/50 guess would be. The first couple of trials are marked
    "Practice" on screen and don't count toward your results.
 2. **Saccade phase** — press Space to calibrate (look at each circle when
    asked), then saccade back and forth between two circles as they appear.
-   The same grating may flash around each saccade — press **Space** if you
-   see it. Again, a couple of practice trials run first. A small faint dot
-   snaps onto whichever of the two circles (or the midpoint) the tracker
-   currently thinks you're looking at, the whole phase through - it's the
-   exact same left/center/right classification the experiment itself uses,
-   so if the dot isn't landing where you're actually looking, that's real
-   evidence tracking has gone wrong, not just visual noise.
+   The same grating may flash around each saccade — report its orientation
+   the same way (UP/DOWN/LEFT/RIGHT), guessing if unsure. Again, a couple of
+   practice trials run first. A small faint dot snaps onto whichever of the
+   two circles (or the midpoint) the tracker currently thinks you're looking
+   at, the whole phase through - it's the exact same left/center/right
+   classification the experiment itself uses, so if the dot isn't landing
+   where you're actually looking, that's real evidence tracking has gone
+   wrong, not just visual noise.
 3. **Results** — a graph comparing the estimated contrast detection
    threshold for both phases (with a credible interval) plus the fitted
    psychometric curve each threshold came from, so you can see both the size
@@ -65,7 +78,9 @@ tests: 25 trials/phase and the saccade phase first, instead of the full
 
 | Key / action | Effect |
 |---|---|
-| **Space** | Start / calibrate / respond ("I saw it") |
+| **Space** | Start / calibrate / advance past the results screen |
+| **Up / Down** | Respond "vertical" to a flash |
+| **Left / Right** | Respond "horizontal" to a flash |
 | **Escape** | Quit immediately, at any point |
 | **Click anywhere** | Pause — rest your eyes, click again to resume |
 
@@ -78,9 +93,13 @@ Every trial from both phases is logged to one file:
 `data/results_<timestamp>.csv` (a `phase` column tells the two apart;
 practice trials aren't included). Alongside it,
 `data/results_<timestamp>_meta.json` records the participant ID, start time,
-`TEST_MODE` state, the viewing-distance/screen/grating assumptions used, and
-the webcam calibration ratios once calibration completes. The final
-comparison graph is saved to `data/accuracy_comparison.png`.
+`TEST_MODE` state, the viewing-distance/screen/grating assumptions used, the
+contrast floor the session actually ran with, and the webcam calibration
+ratios once calibration completes. The final comparison graph is saved to
+`data/accuracy_comparison.png`.
+
+The dashboard's own default contrast floor (see below) lives separately in
+`data/settings.json`, since it isn't tied to any one session.
 
 ## Running the tests
 
@@ -113,6 +132,15 @@ Then open [http://localhost:5000](http://localhost:5000). Edits to
 name/gender/age save automatically as you tab out of the field. This is a
 plain local Flask dev server (not meant to be exposed beyond your own
 machine).
+
+A settings box above the table sets the **default contrast floor (%)** -
+the lowest contrast the adaptive staircase will test at, pre-filled into the
+experiment's startup dialog on the next run (still overridable there
+per-session). It's clamped to between the lowest contrast an 8-bit display
+can actually render and ZEST's own contrast ceiling, since going below that
+floor would silently test invisible contrasts again - the exact bug
+`ZEST_LOG_CONTRAST_MIN` was introduced to fix. Click "Save default" to
+persist it to `data/settings.json`.
 
 The filter bar above the table searches by name (substring), gender
 (substring), and age range - live, no page reload. Check "Exclude matches
