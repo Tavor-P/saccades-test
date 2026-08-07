@@ -1,10 +1,19 @@
+from unittest.mock import MagicMock, patch
+
 from include.eye_tracking.constants import CAMERA_INDEX
 from src.experiment.run_experiment import (
     _camera_labels,
     _resolve_camera_choice,
     _resolve_contrast_floor_percent,
+    _second_monitor_screen_index,
     camera_preview_enabled,
 )
+
+
+def _patch_screens(count: int):
+    display = MagicMock()
+    display.get_screens.return_value = [MagicMock() for _ in range(count)]
+    return patch("src.experiment.run_experiment.pyglet.canvas.get_display", return_value=display)
 
 
 def test_camera_labels_marks_the_configured_default():
@@ -44,3 +53,13 @@ def test_camera_preview_enabled_only_on_trial_zero():
     assert camera_preview_enabled(0) is True
     assert camera_preview_enabled(1) is False
     assert camera_preview_enabled(24) is False
+
+
+def test_second_monitor_screen_index_picks_the_second_screen_when_present():
+    with _patch_screens(2):
+        assert _second_monitor_screen_index() == 1
+
+
+def test_second_monitor_screen_index_falls_back_to_the_primary_with_one_screen():
+    with _patch_screens(1):
+        assert _second_monitor_screen_index() == 0
