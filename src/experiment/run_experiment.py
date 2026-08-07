@@ -1,6 +1,7 @@
 from functools import partial
 
 import cv2
+import pyglet
 from PIL import Image as PILImage
 from psychopy import core, event, gui, sound, visual
 
@@ -101,8 +102,21 @@ def ratio_to_pos(x_ratio: float, y_ratio: float, aspect: float) -> tuple[float, 
     return x, y
 
 
+def _second_monitor_screen_index() -> int:
+    """PsychoPy's Window(screen=N) is 0-indexed into pyglet's screen list -
+    1 selects the second monitor if one is connected, falling back to the
+    primary (0) if there's only one."""
+    screens = pyglet.canvas.get_display().get_screens()
+    return 1 if len(screens) > 1 else 0
+
+
 def build_window(fullscreen: bool = True) -> visual.Window:
-    kwargs = {"color": luminance_to_color(BACKGROUND_LUMINANCE), "units": "height", "allowGUI": False}
+    kwargs = {
+        "color": luminance_to_color(BACKGROUND_LUMINANCE),
+        "units": "height",
+        "allowGUI": False,
+        "screen": _second_monitor_screen_index(),
+    }
     if fullscreen:
         kwargs["fullscr"] = True
     else:
