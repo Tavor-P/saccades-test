@@ -142,11 +142,19 @@ GAZE_LANDING_STABILITY_MS = 150  # gaze must hold in the target zone this long t
 # saccade onset (debounces classifier noise so the flash doesn't fire on a
 # single jittery frame). At the dot/cross separation this experiment uses
 # (~20 degrees), a real saccade's flight time is only ~65ms (main-sequence
-# estimate) - so the previous 60ms value ate almost the entire saccade before
-# the flash could even fire, meaning it landed after the eye had already
-# reached the target instead of during the movement. Halved so more of the
-# flight time is still ahead of the flash, at the cost of being a thinner
-# margin against classifier noise - reaction_latency_ms/onset_detection_lag_ms
+# estimate), so this value eats directly into how much of that flight time is
+# still ahead of the flash - the previous 60ms, then 30ms, both left the flash
+# firing well after the eye was already most of the way to the target.
+# Dropped further now that the tracker itself runs much faster (~115-145fps,
+# up from ~19fps - see the camera/gaze_tracker perf fix) and onset_detection_lag_ms
+# in real sessions clusters right at the debounce floor rather than scattering
+# across tens of ms, meaning the classifier has a fresh sample well within this
+# window rather than being the limiting factor. Still not 0: some minimum
+# guards against a single misclassified frame (blink, momentary tracking
+# glitch) firing the flash on pure noise. reaction_latency_ms/onset_detection_lag_ms
 # in the logged CSV (see TrialResult) let you check empirically whether this
-# is catching real saccade onsets or still firing late/early.
-SACCADE_ONSET_STABILITY_MS = 30
+# is catching real saccade onsets or still firing late/early - if it's still
+# too late, GAZE_DEAD_ZONE (in eye_tracking/constants.py) is the other lever:
+# it gates how far off-center gaze must drift before onset detection even
+# starts counting, which isn't visible in onset_detection_lag_ms at all.
+SACCADE_ONSET_STABILITY_MS = 10

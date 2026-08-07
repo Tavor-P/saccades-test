@@ -1,5 +1,7 @@
 from functools import partial
 
+import cv2
+from PIL import Image as PILImage
 from psychopy import core, event, gui, sound, visual
 
 from include.experiment.constants import (
@@ -12,7 +14,7 @@ from include.experiment.constants import (
     VERTICAL_RESPONSE_KEYS,
 )
 from include.experiment.types import Orientation
-from include.eye_tracking.constants import CAMERA_INDEX
+from include.eye_tracking.constants import CAMERA_INDEX, FRAME_HEIGHT, FRAME_WIDTH
 from src.eye_tracking.camera import list_available_cameras
 from src.eye_tracking.webcam_source import WebcamGazeSource
 from src.experiment.logger import ResultLogger
@@ -30,6 +32,20 @@ WARNING_TONE_DURATION_S = 0.5  # matches Diamond, Ross & Morrone (2000)'s 500ms 
 # text means shifting gaze off the fixation target and ruining the trial.
 START_FLASH_COLOR = [-1, 1, -1]  # pure green
 START_FLASH_DURATION_FRAMES = 8
+
+# Debug camera preview (top-left corner) showing the raw feed the tracker is
+# seeing, for calibration/testing - not shown to real participants mid-run.
+CAMERA_PREVIEW_HEIGHT = 0.22  # fraction of window height
+CAMERA_PREVIEW_MARGIN = 0.02
+CAMERA_PREVIEW_FRAME_ASPECT = FRAME_WIDTH / FRAME_HEIGHT
+
+
+def camera_preview_enabled(trial_index: int) -> bool:
+    """Single toggle point for the debug camera preview: on for trial 0 only
+    right now. Change this condition (e.g. `return True` for every trial) to
+    adjust when it's shown during future testing."""
+    return trial_index == 0
+
 
 # Orientation response keys, and the GratingStim `ori` degrees each orientation
 # renders as (0=vertical stripes, 90=horizontal stripes).
@@ -241,6 +257,16 @@ def run_saccade_phase(
     session = ExperimentSession(gaze, logger=logger, clock=clock, contrast_floor=contrast_floor)
     pause_toggle = ClickPauseToggle(win, clock)
 
+    aspect = stimuli["aspect"]
+    preview_width = CAMERA_PREVIEW_HEIGHT * CAMERA_PREVIEW_FRAME_ASPECT
+    preview_pos = (
+        -aspect / 2 + preview_width / 2 + CAMERA_PREVIEW_MARGIN,
+        0.5 - CAMERA_PREVIEW_HEIGHT / 2 - CAMERA_PREVIEW_MARGIN,
+    )
+    camera_preview = visual.ImageStim(
+        win, size=(preview_width, CAMERA_PREVIEW_HEIGHT), pos=preview_pos, units="height"
+    )
+
     fade_opacities = {"dot": 0.0, "cross": 0.0, "calibration_center": 0.0}
     warning_tone = sound.Sound(value=WARNING_TONE_HZ, secs=WARNING_TONE_DURATION_S)
     frame_clock = core.Clock()
@@ -287,6 +313,11 @@ def run_saccade_phase(
             flash_frames_remaining = max(0, flash_frames_remaining - 1)
 
             draw_all(stimuli)
+            if camera_preview_enabled(state["hud"]["trial_index"]):
+                frame = gaze.latest_frame()  # raw Mono8 (grayscale)
+                if frame is not None:
+                    camera_preview.image = PILImage.fromarray(cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB))
+                camera_preview.draw()
             win.flip()
     finally:
         gaze.stop()

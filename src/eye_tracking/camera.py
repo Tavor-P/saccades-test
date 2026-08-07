@@ -1,7 +1,6 @@
 import threading
 import time
 
-import cv2
 import PySpin
 
 from include.eye_tracking.constants import (
@@ -10,6 +9,8 @@ from include.eye_tracking.constants import (
     CAMERA_INDEX,
     CAMERA_PROBE_LIMIT,
     FRAME_HEIGHT,
+    FRAME_OFFSET_X,
+    FRAME_OFFSET_Y,
     FRAME_WIDTH,
 )
 
@@ -42,10 +43,22 @@ def _configure_camera(cam) -> None:
     cam.AcquisitionMode.SetValue(PySpin.AcquisitionMode_Continuous)
     cam.PixelFormat.SetValue(PySpin.PixelFormat_Mono8)
 
+    # Offsets must be zeroed before shrinking Width/Height - a nonzero offset
+    # left over from a previous run can otherwise make offset+size exceed the
+    # sensor bounds and reject the resize outright.
+    cam.OffsetX.SetValue(0)
+    cam.OffsetY.SetValue(0)
+
     width = min(FRAME_WIDTH, cam.WidthMax.GetValue())
     height = min(FRAME_HEIGHT, cam.HeightMax.GetValue())
     cam.Width.SetValue(width)
     cam.Height.SetValue(height)
+
+    # Max offset shrinks as size grows (offset + size can't exceed the sensor),
+    # so clamp against it now that Width/Height are set, same as width/height
+    # above are clamped against the sensor's own max.
+    cam.OffsetX.SetValue(min(FRAME_OFFSET_X, cam.OffsetX.GetMax()))
+    cam.OffsetY.SetValue(min(FRAME_OFFSET_Y, cam.OffsetY.GetMax()))
 
     cam.ExposureAuto.SetValue(PySpin.ExposureAuto_Off)
     cam.ExposureTime.SetValue(CAMERA_EXPOSURE_TIME_US)
@@ -103,7 +116,14 @@ class Camera:
                 try:
                     if image.IsIncomplete():
                         continue
-                    frame = cv2.cvtColor(image.GetNDArray(), cv2.COLOR_GRAY2BGR)
+                    # Raw Mono8 (grayscale), not converted to color here - this loop
+                    # runs at the camera's full acquisition rate (~200fps) but only
+                    # the single latest frame is ever consumed, so converting every
+                    # captured frame wasted most of that work on frames that get
+                    # overwritten before anyone reads them. .copy() is required:
+                    # GetNDArray() views PySpin's own buffer, which image.Release()
+                    # (below) returns to the SDK's pool.
+                    frame = image.GetNDArray().copy()
                     with self._lock:
                         self._latest_frame = frame
                 finally:

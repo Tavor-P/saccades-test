@@ -1,9 +1,21 @@
 CAMERA_INDEX = 0  # fallback used if camera probing at startup finds nothing
 CAMERA_PROBE_LIMIT = 5  # how many device indices to check when listing available cameras
-FRAME_WIDTH = 640
-FRAME_HEIGHT = 480
+# ROI (region of interest) found via SpinView to frame a face well on the
+# Blackfly S at typical desk distance - full sensor res isn't needed and just
+# wastes bandwidth/CPU on pixels outside the face.
+FRAME_WIDTH = 1196
+FRAME_HEIGHT = 874
+FRAME_OFFSET_X = 132
+FRAME_OFFSET_Y = 112
 CAMERA_EXPOSURE_TIME_US = 3000.0  # ExposureTime (microseconds), fixed (ExposureAuto = Off)
 CAMERA_FRAME_RATE = 200.0  # target AcquisitionFrameRate (fps); clamped to the camera's actual max
+# MediaPipe FaceLandmarker inference time scales with input pixel count, and
+# face/pupil detection doesn't need full sensor resolution - frames are
+# downscaled to this width (preserving aspect ratio) before tracking, so
+# inference can actually keep pace with the camera's frame rate instead of
+# being the pipeline's bottleneck. 640 matches the resolution this project
+# was originally tuned/validated at.
+TRACKING_FRAME_WIDTH = 640
 MODEL_PATH = "models/face_landmarker.task"
 MODEL_URL = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task"
 

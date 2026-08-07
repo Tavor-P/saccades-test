@@ -1,5 +1,10 @@
 from include.eye_tracking.constants import CAMERA_INDEX
-from src.experiment.run_experiment import _camera_labels, _resolve_camera_choice, _resolve_contrast_floor_percent
+from src.experiment.run_experiment import (
+    _camera_labels,
+    _resolve_camera_choice,
+    _resolve_contrast_floor_percent,
+    camera_preview_enabled,
+)
 
 
 def test_camera_labels_marks_the_configured_default():
@@ -33,3 +38,9 @@ def test_resolve_contrast_floor_percent_falls_back_on_blank_input():
 
 def test_resolve_contrast_floor_percent_falls_back_when_out_of_range():
     assert _resolve_contrast_floor_percent("500", default_percent=1.0) == 1.0
+
+
+def test_camera_preview_enabled_only_on_trial_zero():
+    assert camera_preview_enabled(0) is True
+    assert camera_preview_enabled(1) is False
+    assert camera_preview_enabled(24) is False

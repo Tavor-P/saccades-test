@@ -45,6 +45,11 @@ class WebcamGazeSource(GazeSource):
         with self._lock:
             return self._latest
 
+    def latest_frame(self):
+        """Most recent raw camera frame (BGR, as read from the camera), or
+        None if none has arrived yet - for debug/preview use, not tracking."""
+        return self._camera.read()
+
     def calibrate(self, left_ratio: float, center_ratio: float, right_ratio: float) -> None:
         self._tracker.calibrate(left_ratio, center_ratio, right_ratio)
 

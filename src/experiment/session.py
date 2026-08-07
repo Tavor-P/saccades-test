@@ -433,5 +433,6 @@ class ExperimentSession:
                 "face_found": sample.face_found,
                 "source_available": self._gaze.is_available,
                 "trial": self._trial_label() if trial is not None else "-",
+                "trial_index": self._trial_index,
             },
         }
