@@ -15,6 +15,7 @@ import time
 from pathlib import Path
 
 import cv2
+import psychopy  # noqa: F401  (importing this first wires PySpin onto sys.path, same as run_experiment.py)
 
 from src.eye_tracking.camera import Camera, list_available_cameras
 from src.eye_tracking.gaze_tracker import GazeTracker

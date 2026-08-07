@@ -2,37 +2,73 @@ import threading
 import time
 
 import cv2
+import PySpin
 
-from include.eye_tracking.constants import CAMERA_INDEX, CAMERA_PROBE_LIMIT, FRAME_HEIGHT, FRAME_WIDTH
+from include.eye_tracking.constants import (
+    CAMERA_EXPOSURE_TIME_US,
+    CAMERA_FRAME_RATE,
+    CAMERA_INDEX,
+    CAMERA_PROBE_LIMIT,
+    FRAME_HEIGHT,
+    FRAME_WIDTH,
+)
 
-
-def _open_capture(index: int) -> cv2.VideoCapture:
-    capture = cv2.VideoCapture(index, cv2.CAP_DSHOW)
-    if not capture.isOpened():
-        capture = cv2.VideoCapture(index)
-    return capture
+_GRAB_TIMEOUT_MS = 1000  # GetNextImage() wait before we give the read loop a chance to check _running again
 
 
 def list_available_cameras(max_index: int = CAMERA_PROBE_LIMIT) -> list[int]:
-    """Probes indices 0..max_index-1 and returns the ones that actually open
-    - used to offer a camera picker when more than one is connected (e.g. a
-    laptop's built-in webcam plus a newly added external one), rather than
-    requiring CAMERA_INDEX to be hand-edited to switch between them."""
-    available = []
-    for index in range(max_index):
-        capture = _open_capture(index)
-        if capture.isOpened():
-            available.append(index)
-        capture.release()
-    return available
+    """Returns positional indices (0..N-1) into the Spinnaker camera list for
+    every FLIR camera currently connected - used to offer a camera picker
+    when more than one is attached (e.g. a spare Blackfly S plugged in
+    alongside the main one), rather than requiring CAMERA_INDEX to be
+    hand-edited to switch between them."""
+    system = PySpin.System.GetInstance()
+    try:
+        cam_list = system.GetCameras()
+        try:
+            return list(range(min(cam_list.GetSize(), max_index)))
+        finally:
+            cam_list.Clear()
+    finally:
+        system.ReleaseInstance()
+
+
+def _configure_camera(cam) -> None:
+    """Initializes a Blackfly S for fixed-exposure, fixed-framerate Mono8
+    capture - no auto-exposure/auto-gain hunting mid-experiment, and a known
+    pixel format/frame rate the rest of the pipeline can rely on."""
+    cam.Init()
+
+    cam.AcquisitionMode.SetValue(PySpin.AcquisitionMode_Continuous)
+    cam.PixelFormat.SetValue(PySpin.PixelFormat_Mono8)
+
+    width = min(FRAME_WIDTH, cam.WidthMax.GetValue())
+    height = min(FRAME_HEIGHT, cam.HeightMax.GetValue())
+    cam.Width.SetValue(width)
+    cam.Height.SetValue(height)
+
+    cam.ExposureAuto.SetValue(PySpin.ExposureAuto_Off)
+    cam.ExposureTime.SetValue(CAMERA_EXPOSURE_TIME_US)
+
+    cam.AcquisitionFrameRateEnable.SetValue(True)
+    cam.AcquisitionFrameRate.SetValue(min(CAMERA_FRAME_RATE, cam.AcquisitionFrameRate.GetMax()))
+
+    # Always hand the read loop the newest frame rather than letting unread
+    # frames queue up and drag gaze samples behind real time.
+    stream_nodemap = cam.GetTLStreamNodeMap()
+    handling_mode = PySpin.CEnumerationPtr(stream_nodemap.GetNode("StreamBufferHandlingMode"))
+    handling_mode.SetIntValue(handling_mode.GetEntryByName("NewestOnly").GetValue())
 
 
 class Camera:
-    """Continuously reads frames from a webcam on a background thread."""
+    """Continuously reads frames from a Teledyne FLIR Blackfly S (PySpin/
+    Spinnaker SDK) on a background thread."""
 
     def __init__(self, index: int = CAMERA_INDEX) -> None:
         self._index = index
-        self._capture: cv2.VideoCapture | None = None
+        self._system = None
+        self._cam_list = None
+        self._cam = None
         self._latest_frame = None
         self._lock = threading.Lock()
         self._running = False
@@ -40,24 +76,39 @@ class Camera:
 
     @property
     def is_open(self) -> bool:
-        return self._capture is not None and self._capture.isOpened()
+        return self._cam is not None and self._cam.IsStreaming()
 
     def start(self) -> None:
-        capture = _open_capture(self._index)
-        capture.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
-        capture.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
-        self._capture = capture
+        self._system = PySpin.System.GetInstance()
+        self._cam_list = self._system.GetCameras()
+        try:
+            cam = self._cam_list.GetByIndex(self._index)
+            _configure_camera(cam)
+            cam.BeginAcquisition()
+        except Exception:
+            self._cam_list.Clear()
+            self._cam_list = None
+            self._system.ReleaseInstance()
+            self._system = None
+            raise
+        self._cam = cam
         self._running = True
         self._thread = threading.Thread(target=self._read_loop, daemon=True)
         self._thread.start()
 
     def _read_loop(self) -> None:
-        while self._running and self._capture is not None:
-            ok, frame = self._capture.read()
-            if ok:
-                with self._lock:
-                    self._latest_frame = frame
-            else:
+        while self._running and self._cam is not None:
+            try:
+                image = self._cam.GetNextImage(_GRAB_TIMEOUT_MS)
+                try:
+                    if image.IsIncomplete():
+                        continue
+                    frame = cv2.cvtColor(image.GetNDArray(), cv2.COLOR_GRAY2BGR)
+                    with self._lock:
+                        self._latest_frame = frame
+                finally:
+                    image.Release()
+            except PySpin.SpinnakerException:
                 time.sleep(0.01)
 
     def read(self):
@@ -67,7 +118,19 @@ class Camera:
     def stop(self) -> None:
         self._running = False
         if self._thread is not None:
-            self._thread.join(timeout=1)
-        if self._capture is not None:
-            self._capture.release()
-            self._capture = None
+            # Give the read loop headroom to finish an in-flight GetNextImage()
+            # call (up to _GRAB_TIMEOUT_MS) before we tear down the camera under it.
+            self._thread.join(timeout=_GRAB_TIMEOUT_MS / 1000 + 0.5)
+        if self._cam is not None:
+            cam = self._cam
+            self._cam = None
+            if cam.IsStreaming():
+                cam.EndAcquisition()
+            cam.DeInit()
+            del cam
+        if self._cam_list is not None:
+            self._cam_list.Clear()
+            self._cam_list = None
+        if self._system is not None:
+            self._system.ReleaseInstance()
+            self._system = None
