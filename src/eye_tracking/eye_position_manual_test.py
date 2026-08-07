@@ -114,7 +114,7 @@ def wait_for_first_frame(camera, max_attempts: int = 100):
 def update_camera_preview(preview: visual.ImageStim, frame) -> None:
     if frame is None:
         return
-    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    rgb = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
     preview.image = PILImage.fromarray(rgb)
 
 
@@ -171,7 +171,7 @@ def find_gaze_features(frame, landmarker, debug: bool = False) -> GazeFeatures |
     """Returns this frame's raw eye-ratio signal, or None if no face was
     found. This is the raw, uncalibrated signal - turning it into a screen
     position is calibration's job."""
-    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    rgb = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
     mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
     result = landmarker.detect(mp_image)
 

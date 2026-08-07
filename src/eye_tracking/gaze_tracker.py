@@ -18,6 +18,7 @@ from include.eye_tracking.constants import (
     MODEL_URL,
     RIGHT_EYE_CORNERS,
     RIGHT_IRIS_CENTER,
+    TRACKING_FRAME_WIDTH,
 )
 from include.eye_tracking.types import GazeSample, GazeZone
 
@@ -76,7 +77,15 @@ class GazeTracker:
         self._position_slope, self._position_intercept = _fit_position(0.4, 0.5, 0.6)
 
     def process(self, frame) -> GazeSample:
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        # frame is raw Mono8 (single-channel grayscale) from Camera.read().
+        # Downscaled before inference - MediaPipe's cost scales with pixel
+        # count, and face/pupil detection doesn't need full sensor resolution,
+        # so this keeps inference fast enough to track a high-fps camera
+        # instead of becoming the pipeline's bottleneck.
+        if frame.shape[1] > TRACKING_FRAME_WIDTH:
+            scale = TRACKING_FRAME_WIDTH / frame.shape[1]
+            frame = cv2.resize(frame, (TRACKING_FRAME_WIDTH, round(frame.shape[0] * scale)))
+        rgb = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
         result = self._landmarker.detect(mp_image)
         timestamp = time.monotonic()

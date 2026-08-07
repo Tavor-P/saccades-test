@@ -246,3 +246,17 @@ def test_source_symbol_hides_the_instant_the_target_appears(fake_gaze, fake_time
     assert state["dot"]["visible"] is False  # source already hidden, before any landing
 
 
+def test_render_state_reports_the_current_trial_index(fake_gaze):
+    session = _make_session(fake_gaze)
+    session._trials = [
+        TrialSpec(index=0, source=Target.DOT, target=Target.CROSS, grating_shown=False),
+        TrialSpec(index=1, source=Target.CROSS, target=Target.DOT, grating_shown=False),
+    ]
+    _complete_calibration_and_enter_foreperiod(session)
+    assert session.render_state()["hud"]["trial_index"] == 0
+
+    session._trial_index = 1
+    session._begin_foreperiod()
+    assert session.render_state()["hud"]["trial_index"] == 1
+
+

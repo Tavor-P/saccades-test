@@ -1,8 +1,10 @@
 from unittest.mock import Mock
 
+import cv2
+import numpy as np
 import pytest
 
-from include.eye_tracking.constants import CAMERA_INDEX
+from include.eye_tracking.constants import CAMERA_INDEX, TRACKING_FRAME_WIDTH
 from include.eye_tracking.types import GazeZone
 from src.eye_tracking.gaze_tracker import GazeTracker
 from src.eye_tracking.iohub_source import IOHubGazeSource
@@ -82,3 +84,37 @@ def test_webcam_source_defaults_to_the_configured_camera_index(monkeypatch):
     WebcamGazeSource()
 
     mock_camera_cls.assert_called_once_with(CAMERA_INDEX)
+
+
+def test_process_downscales_frames_wider_than_the_tracking_width(tracker, monkeypatch):
+    tracker.reset_ratio_history()
+    wide_frame = np.zeros((300, TRACKING_FRAME_WIDTH * 2), dtype=np.uint8)
+    resize_calls = []
+    real_resize = cv2.resize
+    monkeypatch.setattr(
+        "src.eye_tracking.gaze_tracker.cv2.resize",
+        lambda frame, size: resize_calls.append(size) or real_resize(frame, size),
+    )
+
+    tracker.process(wide_frame)
+
+    assert resize_calls == [(TRACKING_FRAME_WIDTH, 150)]
+
+
+def test_process_does_not_resize_frames_at_or_under_the_tracking_width(tracker, monkeypatch):
+    tracker.reset_ratio_history()
+    narrow_frame = np.zeros((240, TRACKING_FRAME_WIDTH), dtype=np.uint8)
+    monkeypatch.setattr(
+        "src.eye_tracking.gaze_tracker.cv2.resize", Mock(side_effect=AssertionError("should not resize"))
+    )
+
+    tracker.process(narrow_frame)  # would raise if resize were called
+
+
+def test_webcam_source_latest_frame_delegates_to_camera(monkeypatch):
+    monkeypatch.setattr(WebcamGazeSource, "__init__", lambda self: None)
+    source = WebcamGazeSource()
+    source._camera = Mock()
+    source._camera.read.return_value = "a-frame"
+
+    assert source.latest_frame() == "a-frame"
