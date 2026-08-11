@@ -111,6 +111,50 @@ def test_process_does_not_resize_frames_at_or_under_the_tracking_width(tracker, 
     tracker.process(narrow_frame)  # would raise if resize were called
 
 
+def _reset_smoothing(tracker: GazeTracker) -> None:
+    tracker._recent_positions.clear()
+    tracker._smoothed_position = None
+
+
+def test_smooth_first_reading_is_returned_immediately(tracker):
+    # No lag on the very first sample - nothing to smooth against yet.
+    _reset_smoothing(tracker)
+    assert tracker._smooth(0.7) == pytest.approx(0.7)
+
+
+def test_smooth_rejects_a_single_outlier_via_the_median(tracker):
+    _reset_smoothing(tracker)
+    for _ in range(tracker._recent_positions.maxlen):
+        tracker._smooth(0.5)  # steady fixation, buffer full of 0.5s
+
+    # One stray misdetection shouldn't move the smoothed value much at all -
+    # the median of mostly-0.5 readings plus one 0.9 is still 0.5.
+    result = tracker._smooth(0.9)
+    assert result == pytest.approx(0.5, abs=0.05)
+
+
+def test_smooth_ema_converges_toward_a_new_steady_value(tracker):
+    _reset_smoothing(tracker)
+    for _ in range(tracker._recent_positions.maxlen):
+        tracker._smooth(0.0)  # settle at 0.0 first
+
+    # Feed a real, sustained move to 1.0. The median window (maxlen 5) needs
+    # a majority of 1.0 readings before its own output even starts moving -
+    # so the first couple of calls stay at 0.0 (still-mostly-0.0 buffer),
+    # matching the intent of rejecting brief blips rather than real moves.
+    for _ in range(tracker._recent_positions.maxlen // 2):
+        tracker._smooth(1.0)
+
+    # Once the median itself has flipped to 1.0, the EMA should step toward
+    # it gradually, not jump there instantly (that's the point of smoothing).
+    first_moved_step = tracker._smooth(1.0)
+    assert 0.0 < first_moved_step < 1.0
+
+    for _ in range(50):  # enough further EMA steps to converge close to 1.0
+        result = tracker._smooth(1.0)
+    assert result == pytest.approx(1.0, abs=0.01)
+
+
 def test_webcam_source_latest_frame_delegates_to_camera(monkeypatch):
     monkeypatch.setattr(WebcamGazeSource, "__init__", lambda self: None)
     source = WebcamGazeSource()

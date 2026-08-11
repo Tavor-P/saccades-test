@@ -411,20 +411,20 @@ class ExperimentSession:
     def _gaze_indicator_state(self, sample) -> dict:
         """Live gaze cursor, opt-in via show_gaze_indicator: continuously
         tracks the participant's actual estimated gaze position rather than
-        snapping to one of three fixed zones, using GazeSample.position (see
-        include/eye_tracking/types.py) - the calibrated, continuous 0=left
-        target/1=right target value that field exists specifically for
-        ("smooth display purposes only"), computed every frame but never
-        wired to anything visual until now. Deliberately NOT what
-        onset/landing detection uses for scoring - that stays on the
-        debounced `zone` classification (see _tick_trial_active), so this
-        indicator can move as smoothly as the raw signal allows without
-        affecting trial timing at all."""
+        snapping to one of three fixed zones, using
+        GazeSample.smoothed_position (see include/eye_tracking/types.py) -
+        median-filtered + EMA-smoothed, since MediaPipe's raw per-frame
+        position is noisy enough frame-to-frame to look jittery even when
+        tracking is working correctly. Deliberately NOT what onset/landing
+        detection uses for scoring - that stays on the debounced `zone`
+        classification (see _tick_trial_active) and the raw, unsmoothed
+        `position`, so this indicator's smoothing can never affect trial
+        timing."""
         show = (
             self._show_gaze_indicator
             and self._phase in (Phase.FOREPERIOD, Phase.TRIAL_ACTIVE)
             and sample.face_found
-            and sample.position is not None
+            and sample.smoothed_position is not None
             and self._calibration_ratios is not None
         )
         if not show:
@@ -432,8 +432,8 @@ class ExperimentSession:
 
         # DOT_POSITION/CROSS_POSITION share the same y (this experiment only
         # tracks horizontal gaze) - interpolate x between them by the
-        # calibrated position (0=dot/left target, 1=cross/right target).
-        x = DOT_POSITION[0] + (CROSS_POSITION[0] - DOT_POSITION[0]) * sample.position
+        # smoothed position (0=dot/left target, 1=cross/right target).
+        x = DOT_POSITION[0] + (CROSS_POSITION[0] - DOT_POSITION[0]) * sample.smoothed_position
         return {"visible": True, "x": x, "y": DOT_POSITION[1]}
 
     def render_state(self) -> dict:
