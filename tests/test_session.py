@@ -8,6 +8,10 @@ from include.experiment.constants import (
     DOT_POSITION,
     FOREPERIOD_MAX_MS,
     GAZE_LANDING_STABILITY_MS,
+    NUM_PRACTICE_TRIALS_REAL,
+    NUM_PRACTICE_TRIALS_TEST,
+    NUM_TRIALS_PER_PHASE_REAL,
+    NUM_TRIALS_PER_PHASE_TEST,
     PRACTICE_CONTRAST,
     RESPONSE_WINDOW_MS,
     SACCADE_ONSET_STABILITY_MS,
@@ -390,5 +394,21 @@ def test_flash_during_saccade_is_none_for_catch_trials(fake_gaze, fake_time):
     session.tick()  # finalizes as correct_rejection
 
     assert session.results[0].flash_during_saccade is None
+
+
+def test_test_mode_false_uses_the_real_trial_counts_by_default(fake_gaze):
+    session = ExperimentSession(fake_gaze, logger=_NullLogger(), clock=PausableClock())
+    practice = [t for t in session._trials if t.practice]
+    real = [t for t in session._trials if not t.practice]
+    assert len(practice) == NUM_PRACTICE_TRIALS_REAL
+    assert len(real) == NUM_TRIALS_PER_PHASE_REAL
+
+
+def test_test_mode_true_uses_the_smaller_trial_counts(fake_gaze):
+    session = ExperimentSession(fake_gaze, logger=_NullLogger(), clock=PausableClock(), test_mode=True)
+    practice = [t for t in session._trials if t.practice]
+    real = [t for t in session._trials if not t.practice]
+    assert len(practice) == NUM_PRACTICE_TRIALS_TEST
+    assert len(real) == NUM_TRIALS_PER_PHASE_TEST
 
 

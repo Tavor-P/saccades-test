@@ -8,7 +8,6 @@ from include.experiment.constants import (
     GRATING_ENVELOPE_SIGMA_DEG,
     GRATING_SPATIAL_FREQUENCY_CPD,
     SCREEN_HEIGHT_CM,
-    TEST_MODE,
     VIEWING_DISTANCE_CM,
 )
 from include.experiment.types import TrialResult
@@ -51,6 +50,7 @@ class ResultLogger:
         participant_id: str,
         camera_label: str | None = None,
         contrast_floor_percent: float | None = None,
+        test_mode: bool | None = None,
     ) -> None:
         DATA_DIR.mkdir(exist_ok=True)
         timestamp = int(time.time())
@@ -64,7 +64,7 @@ class ResultLogger:
         self._metadata = {
             "participant_id": participant_id,
             "started_at": datetime.now().isoformat(timespec="seconds"),
-            "test_mode": TEST_MODE,
+            "test_mode": test_mode,
             "camera": camera_label,
             "viewing_distance_cm": VIEWING_DISTANCE_CM,
             "screen_height_cm": SCREEN_HEIGHT_CM,

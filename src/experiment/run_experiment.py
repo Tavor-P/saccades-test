@@ -13,7 +13,6 @@ from include.experiment.constants import (
     GRATING_SF_CYCLES_PER_HEIGHT_UNIT,
     GRATING_SIZE_HEIGHT_UNITS,
     HORIZONTAL_RESPONSE_KEYS,
-    TEST_MODE,
     VERTICAL_RESPONSE_KEYS,
 )
 from include.experiment.types import Orientation
@@ -245,11 +244,12 @@ def run_presaccade_phase(
     logger: ResultLogger,
     narrator: Narrator,
     contrast_floor: float | None = None,
+    test_mode: bool = False,
 ) -> PresaccadeSession | None:
     """Phase 1: fixate center, detect flashes, no eye tracking. Returns the
     completed session, or None if the participant quit early."""
     clock = PausableClock()
-    session = PresaccadeSession(logger=logger, clock=clock, contrast_floor=contrast_floor)
+    session = PresaccadeSession(logger=logger, clock=clock, contrast_floor=contrast_floor, test_mode=test_mode)
     pause_toggle = ClickPauseToggle(win, clock)
     fade_opacities = {"dot": 0.0, "cross": 0.0, "calibration_center": 0.0}
     frame_clock = core.Clock()
@@ -296,6 +296,7 @@ def run_saccade_phase(
     camera_index: int = CAMERA_INDEX,
     contrast_floor: float | None = None,
     show_gaze_indicator: bool = False,
+    test_mode: bool = False,
 ) -> ExperimentSession | None:
     """Phase 2: the gaze-contingent saccade test. Returns the completed
     session, or None if the participant quit early."""
@@ -303,7 +304,12 @@ def run_saccade_phase(
     gaze.start()
     clock = PausableClock()
     session = ExperimentSession(
-        gaze, logger=logger, clock=clock, contrast_floor=contrast_floor, show_gaze_indicator=show_gaze_indicator
+        gaze,
+        logger=logger,
+        clock=clock,
+        contrast_floor=contrast_floor,
+        show_gaze_indicator=show_gaze_indicator,
+        test_mode=test_mode,
     )
     pause_toggle = ClickPauseToggle(win, clock)
 
@@ -397,7 +403,14 @@ def _resolve_show_gaze_indicator(selected_label: str) -> bool:
     return selected_label == "Yes"
 
 
-def prompt_session_info() -> tuple[str, int, str, float, bool] | None:
+def _resolve_test_mode(raw_participant_id: str) -> bool:
+    """Leaving Participant ID blank means this is a quick test/smoke run
+    (fewer trials, saccade phase first so you reach the thing you're testing
+    faster); entering an actual ID means a real data-collection session."""
+    return not raw_participant_id.strip()
+
+
+def prompt_session_info() -> tuple[str, int, str, float, bool, bool] | None:
     """Standard PsychoPy participant-info dialog, shown before the window
     opens - also offers a camera picker (a dropdown of every camera index
     that actually opens) so switching between multiple connected cameras
@@ -407,7 +420,9 @@ def prompt_session_info() -> tuple[str, int, str, float, bool] | None:
     override it per-session without editing code. Also offers a "Show gaze
     indicator" toggle (default No) for the saccade phase's debug gaze dot -
     off by default since it's not something a real participant should see.
-    Returns None if the dialog was cancelled."""
+    Whether this is a test run (see _resolve_test_mode) is derived from the
+    Participant ID field itself, not a separate control. Returns None if the
+    dialog was cancelled."""
     camera_indices = list_available_cameras() or [CAMERA_INDEX]
     camera_labels = _camera_labels(camera_indices)
     default_contrast_floor_percent = load_contrast_floor_percent()
@@ -422,11 +437,13 @@ def prompt_session_info() -> tuple[str, int, str, float, bool] | None:
     if not dlg.OK:
         return None
 
-    participant_id = info["Participant ID"].strip() or "anonymous"
+    raw_participant_id = info["Participant ID"]
+    test_mode = _resolve_test_mode(raw_participant_id)
+    participant_id = raw_participant_id.strip() or "anonymous"
     camera_index, camera_label = _resolve_camera_choice(camera_indices, camera_labels, info["Camera"])
     contrast_floor_percent = _resolve_contrast_floor_percent(info["Contrast floor (%)"], default_contrast_floor_percent)
     show_gaze_indicator = _resolve_show_gaze_indicator(info["Show gaze indicator"])
-    return participant_id, camera_index, camera_label, contrast_floor_percent, show_gaze_indicator
+    return participant_id, camera_index, camera_label, contrast_floor_percent, show_gaze_indicator, test_mode
 
 
 def show_results_graph(win: visual.Window, results: list) -> None:
@@ -449,10 +466,12 @@ def main() -> None:
     session_info = prompt_session_info()
     if session_info is None:
         return  # cancelled the participant-info dialog
-    participant_id, camera_index, camera_label, contrast_floor_percent, show_gaze_indicator = session_info
+    participant_id, camera_index, camera_label, contrast_floor_percent, show_gaze_indicator, test_mode = session_info
     contrast_floor = contrast_floor_percent / 100
 
-    logger = ResultLogger(participant_id, camera_label=camera_label, contrast_floor_percent=contrast_floor_percent)
+    logger = ResultLogger(
+        participant_id, camera_label=camera_label, contrast_floor_percent=contrast_floor_percent, test_mode=test_mode
+    )
     win = build_window(fullscreen=True)
     stimuli = build_stimuli(win)
     narrator = Narrator()
@@ -462,14 +481,15 @@ def main() -> None:
         camera_index=camera_index,
         contrast_floor=contrast_floor,
         show_gaze_indicator=show_gaze_indicator,
+        test_mode=test_mode,
     )
-    presaccade_phase = partial(run_presaccade_phase, narrator=narrator, contrast_floor=contrast_floor)
+    presaccade_phase = partial(run_presaccade_phase, narrator=narrator, contrast_floor=contrast_floor, test_mode=test_mode)
 
     try:
-        # TEST_MODE runs the saccade phase first - that's the one under active
-        # development, so a smoke test shouldn't have to sit through the
-        # baseline phase first just to reach it.
-        phases = [saccade_phase, presaccade_phase] if TEST_MODE else [presaccade_phase, saccade_phase]
+        # A blank Participant ID (test_mode) runs the saccade phase first -
+        # that's the one under active development, so a smoke test shouldn't
+        # have to sit through the baseline phase first just to reach it.
+        phases = [saccade_phase, presaccade_phase] if test_mode else [presaccade_phase, saccade_phase]
 
         results_by_phase = {}
         for phase_fn in phases:

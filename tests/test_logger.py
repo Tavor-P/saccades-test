@@ -47,6 +47,23 @@ def test_metadata_camera_defaults_to_none(tmp_path, monkeypatch):
     assert meta["camera"] is None
 
 
+def test_metadata_records_test_mode(tmp_path, monkeypatch):
+    monkeypatch.setattr(logger_module, "DATA_DIR", tmp_path)
+    log = ResultLogger("p1", test_mode=True)
+    log.close()
+    meta_files = list(tmp_path.glob("results_*_meta.json"))
+    meta = json.loads(meta_files[0].read_text())
+    assert meta["test_mode"] is True
+
+
+def test_metadata_test_mode_defaults_to_none(tmp_path, monkeypatch):
+    log = _make_logger(tmp_path, monkeypatch)
+    log.close()
+    meta_files = list(tmp_path.glob("results_*_meta.json"))
+    meta = json.loads(meta_files[0].read_text())
+    assert meta["test_mode"] is None
+
+
 def test_set_calibration_updates_metadata(tmp_path, monkeypatch):
     log = _make_logger(tmp_path, monkeypatch)
     log.set_calibration(0.3, 0.5, 0.7)
