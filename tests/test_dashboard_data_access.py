@@ -61,6 +61,33 @@ def test_load_session_trials_round_trips_a_row(tmp_path, monkeypatch):
     assert trial.outcome == "hit"
 
 
+def test_load_session_trials_flash_during_saccade_missing_column_is_none(tmp_path, monkeypatch):
+    # _FIELDNAMES above deliberately omits flash_during_saccade (and other
+    # newer columns) to simulate a session logged before it existed.
+    monkeypatch.setattr(data_access, "DATA_DIR", tmp_path)
+    _write_session(tmp_path, "111", rows=[_row()])
+
+    trials = data_access.load_session_trials("111")
+
+    assert trials[0].flash_during_saccade is None
+
+
+def test_load_session_trials_round_trips_flash_during_saccade(tmp_path, monkeypatch):
+    monkeypatch.setattr(data_access, "DATA_DIR", tmp_path)
+    fieldnames = _FIELDNAMES + ["flash_during_saccade"]
+    csv_path = tmp_path / "results_222.csv"
+    with csv_path.open("w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerow(_row(**{"flash_during_saccade": "True"}))
+        writer.writerow(_row(**{"trial_index": "1", "flash_during_saccade": "False"}))
+        writer.writerow(_row(**{"trial_index": "2", "flash_during_saccade": ""}))
+
+    trials = data_access.load_session_trials("222")
+
+    assert [t.flash_during_saccade for t in trials] == [True, False, None]
+
+
 def test_load_metadata_defaults_when_no_meta_file(tmp_path, monkeypatch):
     monkeypatch.setattr(data_access, "DATA_DIR", tmp_path)
     _write_session(tmp_path, "222", rows=[])

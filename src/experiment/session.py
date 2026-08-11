@@ -115,6 +115,7 @@ class ExperimentSession:
         self._grating_visible = False
         self._grating_frames_remaining = 0
         self._grating_actually_shown = False
+        self._flash_during_saccade: bool | None = None
         self._trial_contrast: float | None = None  # contrast actually used for this trial's flash, if any
         self._reaction_latency_ms: float | None = None
         self._onset_detection_lag_ms: float | None = None
@@ -237,6 +238,14 @@ class ExperimentSession:
                         self._grating_frames_remaining = GRATING_DURATION_FRAMES
                         self._grating_actually_shown = True
                         self._trial_contrast = PRACTICE_CONTRAST if trial.practice else self._zest.next_contrast()
+                        # sample.zone is guaranteed not to be source_zone/UNKNOWN
+                        # here (that's the trigger condition above), so it's
+                        # either CENTER (still in transit - good) or already
+                        # target_zone (the classifier thinks the eye has
+                        # already arrived, meaning this flash is effectively
+                        # post-saccade, not during it, however it got flagged
+                        # as onset).
+                        self._flash_during_saccade = sample.zone is not target_zone
             else:
                 self._away_from_source_since = None
 
@@ -319,6 +328,7 @@ class ExperimentSession:
                 outcome=outcome,
                 reaction_latency_ms=self._reaction_latency_ms,
                 onset_detection_lag_ms=self._onset_detection_lag_ms,
+                flash_during_saccade=self._flash_during_saccade,
             )
             self._logger.log(result)
             self._results.append(result)

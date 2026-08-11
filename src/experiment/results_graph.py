@@ -33,6 +33,18 @@ FALSE_ALARM_COLOR = "black"
 _Replay = tuple[ZestStaircase, list[TrialResult]]
 
 
+def _exclude_flashes_not_during_saccade(results: list[TrialResult]) -> list[TrialResult]:
+    """Drops saccade-phase, flash-shown trials where flash_during_saccade is
+    explicitly False - the gaze classifier's own read at flash time said the
+    eye had already arrived at the target, so whatever got detected/reported
+    on that trial measures something closer to the presaccade condition, not
+    saccadic suppression. flash_during_saccade is None (not False) for
+    presaccade rows, catch trials, and sessions logged before this field
+    existed - those are left alone rather than silently emptying older
+    sessions' graphs."""
+    return [r for r in results if not (r.phase == "saccade" and r.grating_shown and r.flash_during_saccade is False)]
+
+
 def _replay_zest(results: list[TrialResult], phase: str) -> _Replay | None:
     """Replays this phase's grating-shown trials, in trial order, through a
     fresh ZEST staircase to recover the posterior it converged on - the same
@@ -253,6 +265,7 @@ def build_comparison_graph(results: list[TrialResult], output_path: Path = OUTPU
     by eye; a mirrored detection-rate-vs-contrast curve (horizontal vs.
     vertical orientation, combined across phases) meeting at chance level in
     the middle; and orientation accuracy broken out per phase."""
+    results = _exclude_flashes_not_during_saccade(results)
     replays = {}
     for phase in ("presaccade", "saccade"):
         replay = _replay_zest(results, phase)

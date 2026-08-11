@@ -327,3 +327,68 @@ def test_gaze_indicator_tracks_continuous_smoothed_position(fake_gaze):
     assert indicator["x"] == pytest.approx(DOT_POSITION[0] + (CROSS_POSITION[0] - DOT_POSITION[0]) * 0.25)
 
 
+def test_flash_during_saccade_true_when_still_in_transit_at_onset(fake_gaze, fake_time):
+    # Gaze reads CENTER (not yet the target zone) at the exact tick onset
+    # fires - genuinely still mid-flight per the classifier.
+    session = _make_session(fake_gaze)
+    session._trials = [
+        TrialSpec(index=0, source=Target.DOT, target=Target.CROSS, grating_shown=True, orientation=Orientation.VERTICAL)
+    ]
+    _complete_calibration_and_enter_foreperiod(session)
+    _enter_trial_active(session, fake_time)
+
+    fake_gaze.zone = GazeZone.CENTER
+    session.tick()
+    fake_time(SACCADE_ONSET_STABILITY_MS / 1000 + 0.01)
+    session.tick()
+
+    assert session._flash_during_saccade is True
+
+
+def test_flash_during_saccade_false_when_already_at_target_at_onset(fake_gaze, fake_time):
+    # Gaze jumps straight to the target zone (CROSS's zone is RIGHT) - by the
+    # time onset is confirmed, the classifier already thinks the eye has
+    # arrived, so this flash isn't really "during" the saccade.
+    session = _make_session(fake_gaze)
+    session._trials = [
+        TrialSpec(index=0, source=Target.DOT, target=Target.CROSS, grating_shown=True, orientation=Orientation.VERTICAL)
+    ]
+    _complete_calibration_and_enter_foreperiod(session)
+    _enter_trial_active(session, fake_time)
+
+    fake_gaze.zone = GazeZone.RIGHT
+    session.tick()
+    fake_time(SACCADE_ONSET_STABILITY_MS / 1000 + 0.01)
+    session.tick()
+
+    assert session._flash_during_saccade is False
+
+
+def test_flash_during_saccade_is_recorded_on_the_logged_result(fake_gaze, fake_time):
+    session = _make_session(fake_gaze)
+    session._trials = [
+        TrialSpec(index=0, source=Target.DOT, target=Target.CROSS, grating_shown=True, orientation=Orientation.VERTICAL)
+    ]
+    _complete_calibration_and_enter_foreperiod(session)
+    _enter_trial_active(session, fake_time)
+
+    _trigger_onset_and_landing(session, fake_gaze, fake_time, GazeZone.RIGHT)  # jumps straight to target -> False
+    session.on_response_key(Orientation.VERTICAL)
+    session.tick()  # finalizes
+
+    assert session.results[0].flash_during_saccade is False
+
+
+def test_flash_during_saccade_is_none_for_catch_trials(fake_gaze, fake_time):
+    session = _make_session(fake_gaze)
+    session._trials = [TrialSpec(index=0, source=Target.DOT, target=Target.CROSS, grating_shown=False)]
+    _complete_calibration_and_enter_foreperiod(session)
+    _enter_trial_active(session, fake_time)
+
+    _trigger_onset_and_landing(session, fake_gaze, fake_time, GazeZone.RIGHT)
+    fake_time(RESPONSE_WINDOW_MS / 1000 + 0.1)
+    session.tick()  # finalizes as correct_rejection
+
+    assert session.results[0].flash_during_saccade is None
+
+
