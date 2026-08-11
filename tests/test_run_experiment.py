@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 from include.eye_tracking.constants import CAMERA_INDEX
 from src.experiment.run_experiment import (
@@ -8,6 +8,7 @@ from src.experiment.run_experiment import (
     _resolve_show_gaze_indicator,
     _second_monitor_screen_index,
     camera_preview_enabled,
+    narrate_if_changed,
 )
 
 
@@ -69,3 +70,24 @@ def test_second_monitor_screen_index_falls_back_to_the_primary_with_one_screen()
 def test_resolve_show_gaze_indicator_only_true_for_yes():
     assert _resolve_show_gaze_indicator("Yes") is True
     assert _resolve_show_gaze_indicator("No") is False
+
+
+def test_narrate_if_changed_speaks_when_text_is_new():
+    narrator = Mock()
+    result = narrate_if_changed(narrator, "look at the dot", last_spoken=None)
+    narrator.speak.assert_called_once_with("look at the dot")
+    assert result == "look at the dot"
+
+
+def test_narrate_if_changed_stays_silent_when_text_is_unchanged():
+    narrator = Mock()
+    result = narrate_if_changed(narrator, "look at the dot", last_spoken="look at the dot")
+    narrator.speak.assert_not_called()
+    assert result == "look at the dot"
+
+
+def test_narrate_if_changed_speaks_again_when_text_changes():
+    narrator = Mock()
+    result = narrate_if_changed(narrator, "now look at the cross", last_spoken="look at the dot")
+    narrator.speak.assert_called_once_with("now look at the cross")
+    assert result == "now look at the cross"
