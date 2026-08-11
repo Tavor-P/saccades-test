@@ -3,7 +3,7 @@ from functools import partial
 import cv2
 import pyglet
 from PIL import Image as PILImage
-from psychopy import core, event, gui, sound, visual
+from psychopy import core, event, gui, visual
 
 from include.experiment.constants import (
     BACKGROUND_LUMINANCE,
@@ -29,8 +29,6 @@ from src.experiment.session import ExperimentSession
 from src.experiment.settings import load_contrast_floor_percent, validate_contrast_floor_percent
 
 FADE_DURATION_S = 0.4  # dot/cross opacity fade; softens onset so it doesn't trigger a reflexive saccade
-WARNING_TONE_HZ = 880
-WARNING_TONE_DURATION_S = 0.5  # matches Diamond, Ross & Morrone (2000)'s 500ms warning tone
 
 # Trial-start cue: a big peripheral green flash instead of text, since reading
 # text means shifting gaze off the fixation target and ruining the trial.
@@ -320,7 +318,6 @@ def run_saccade_phase(
     )
 
     fade_opacities = {"dot": 0.0, "cross": 0.0, "calibration_center": 0.0}
-    warning_tone = sound.Sound(value=WARNING_TONE_HZ, secs=WARNING_TONE_DURATION_S)
     frame_clock = core.Clock()
     last_phase = None
     last_spoken_instructions: str | None = None
@@ -354,8 +351,6 @@ def run_saccade_phase(
             if phase == "FOREPERIOD" and last_phase != "FOREPERIOD" and not start_flash_shown:
                 flash_frames_remaining = START_FLASH_DURATION_FRAMES
                 start_flash_shown = True
-            if phase == "TRIAL_ACTIVE" and last_phase != "TRIAL_ACTIVE":
-                warning_tone.play()  # fires exactly when the target dot appears - the "move your eyes now" cue
             last_phase = phase
 
             last_spoken_instructions = narrate_if_changed(narrator, state["instructions"], last_spoken_instructions)
