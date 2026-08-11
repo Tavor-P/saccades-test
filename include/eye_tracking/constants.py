@@ -31,3 +31,13 @@ LEFT_EYE_CORNERS = (362, 263)
 # This window is only used to average a steady fixation into a calibration baseline.
 CALIBRATION_SAMPLE_WINDOW = 30
 GAZE_DEAD_ZONE = 0.15  # +/- fraction around the calibrated midpoint treated as CENTER
+
+# Smoothing for GazeSample.smoothed_position (display only - the gaze
+# indicator - never used for onset/landing scoring, which stays on the raw,
+# unsmoothed position/zone so it isn't lagged behind real eye movement).
+# MediaPipe's per-frame iris landmark reading is noisy frame-to-frame even
+# with the eye still, so a faster camera alone doesn't fix a jittery-looking
+# indicator - it just samples that noise more often. Values match
+# eye_position_manual_test.py's already-validated live gaze-dot demo.
+POSITION_MEDIAN_WINDOW = 5  # median of this many recent raw readings rejects a single stray misdetection outright
+POSITION_SMOOTHING = 0.35  # EMA weight given to each new (post-median) reading; lower = smoother but laggier

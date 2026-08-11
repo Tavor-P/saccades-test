@@ -268,14 +268,14 @@ def test_gaze_indicator_hidden_by_default(fake_gaze, fake_time):
     # show_gaze_indicator defaults to False - a real participant shouldn't
     # see this even with valid tracking and completed calibration.
     session = _make_session(fake_gaze)
-    fake_gaze.position = 0.0
+    fake_gaze.smoothed_position = 0.0
     _complete_calibration_and_enter_foreperiod(session)
     assert session.render_state()["gaze_indicator"]["visible"] is False
 
 
 def test_gaze_indicator_hidden_before_calibration(fake_gaze):
     session = _make_session(fake_gaze, show_gaze_indicator=True)
-    fake_gaze.position = 0.0
+    fake_gaze.smoothed_position = 0.0
     assert session.render_state()["gaze_indicator"]["visible"] is False
 
 
@@ -293,36 +293,36 @@ def test_gaze_indicator_hidden_when_face_not_found(fake_gaze):
     assert session.render_state()["gaze_indicator"]["visible"] is False
 
 
-def test_gaze_indicator_hidden_when_position_is_none(fake_gaze):
+def test_gaze_indicator_hidden_when_smoothed_position_is_none(fake_gaze):
     session = _make_session(fake_gaze, show_gaze_indicator=True)
-    fake_gaze.position = None
+    fake_gaze.smoothed_position = None
     _complete_calibration_and_enter_foreperiod(session)
     assert session.render_state()["gaze_indicator"]["visible"] is False
 
 
-def test_gaze_indicator_tracks_continuous_position(fake_gaze):
-    # Uses GazeSample.position (0=left/dot target, 1=right/cross target)
-    # directly rather than snapping to one of three discrete zones - so
-    # values between the zone boundaries should land at the matching
+def test_gaze_indicator_tracks_continuous_smoothed_position(fake_gaze):
+    # Uses GazeSample.smoothed_position (0=left/dot target, 1=right/cross
+    # target) directly rather than snapping to one of three discrete zones -
+    # so values between the zone boundaries should land at the matching
     # interpolated point, not jump between fixed positions.
     session = _make_session(fake_gaze, show_gaze_indicator=True)
     _complete_calibration_and_enter_foreperiod(session)
 
-    fake_gaze.position = 0.0
+    fake_gaze.smoothed_position = 0.0
     indicator = session.render_state()["gaze_indicator"]
     assert indicator["visible"] is True
     assert indicator["x"] == pytest.approx(DOT_POSITION[0])
     assert indicator["y"] == pytest.approx(DOT_POSITION[1])
 
-    fake_gaze.position = 1.0
+    fake_gaze.smoothed_position = 1.0
     indicator = session.render_state()["gaze_indicator"]
     assert indicator["x"] == pytest.approx(CROSS_POSITION[0])
 
-    fake_gaze.position = 0.5
+    fake_gaze.smoothed_position = 0.5
     indicator = session.render_state()["gaze_indicator"]
     assert indicator["x"] == pytest.approx((DOT_POSITION[0] + CROSS_POSITION[0]) / 2)
 
-    fake_gaze.position = 0.25
+    fake_gaze.smoothed_position = 0.25
     indicator = session.render_state()["gaze_indicator"]
     assert indicator["x"] == pytest.approx(DOT_POSITION[0] + (CROSS_POSITION[0] - DOT_POSITION[0]) * 0.25)
 

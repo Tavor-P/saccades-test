@@ -16,6 +16,8 @@ from include.eye_tracking.constants import (
     LEFT_IRIS_CENTER,
     MODEL_PATH,
     MODEL_URL,
+    POSITION_MEDIAN_WINDOW,
+    POSITION_SMOOTHING,
     RIGHT_EYE_CORNERS,
     RIGHT_IRIS_CENTER,
     TRACKING_FRAME_WIDTH,
@@ -75,6 +77,11 @@ class GazeTracker:
         self._ratio_history: deque[float] = deque(maxlen=CALIBRATION_SAMPLE_WINDOW)
         # Reproduces the pre-calibration assumption of a symmetric 0.4-0.6 ratio span.
         self._position_slope, self._position_intercept = _fit_position(0.4, 0.5, 0.6)
+        # Display-only smoothing state for smoothed_position - see its
+        # docstring on GazeSample for why this is kept separate from the raw
+        # position used for scoring.
+        self._recent_positions: deque[float] = deque(maxlen=POSITION_MEDIAN_WINDOW)
+        self._smoothed_position: float | None = None
 
     def process(self, frame) -> GazeSample:
         # frame is raw Mono8 (single-channel grayscale) from Camera.read().
@@ -100,10 +107,28 @@ class GazeTracker:
         position = self._position_slope * ratio + self._position_intercept
 
         self._ratio_history.append(ratio)  # kept only for calibration averaging
+        smoothed_position = self._smooth(position)
 
         return GazeSample(
-            zone=self._classify(position), ratio=ratio, face_found=True, timestamp=timestamp, position=position
+            zone=self._classify(position),
+            ratio=ratio,
+            face_found=True,
+            timestamp=timestamp,
+            position=position,
+            smoothed_position=smoothed_position,
         )
+
+    def _smooth(self, position: float) -> float:
+        """Median-of-N (rejects a single stray misdetection outright) then an
+        EMA on top (irons out the rest) - see POSITION_MEDIAN_WINDOW/
+        POSITION_SMOOTHING. Display-only; scoring uses the raw position."""
+        self._recent_positions.append(position)
+        median = float(np.median(self._recent_positions))
+        if self._smoothed_position is None:
+            self._smoothed_position = median
+        else:
+            self._smoothed_position += (median - self._smoothed_position) * POSITION_SMOOTHING
+        return self._smoothed_position
 
     def calibrate(self, left_ratio: float, center_ratio: float, right_ratio: float) -> None:
         """`left_ratio`/`center_ratio`/`right_ratio`: mean smoothed ratio observed

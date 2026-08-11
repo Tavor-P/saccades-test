@@ -21,3 +21,10 @@ class GazeSample:
     # unsmoothed reading) instead, so it isn't lagged behind actual eye
     # movement. None whenever no face was found.
     position: float | None = None
+    # Median-filtered + EMA-smoothed version of `position` (see
+    # POSITION_MEDIAN_WINDOW/POSITION_SMOOTHING in eye_tracking/constants.py)
+    # - what the live gaze indicator actually displays, since the raw
+    # per-frame position is noisy enough to look jittery even when tracking
+    # is working correctly. Never used for scoring, same reasoning as
+    # `position` above. None whenever no face was found.
+    smoothed_position: float | None = None
