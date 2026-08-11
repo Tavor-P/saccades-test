@@ -61,3 +61,11 @@ class TrialResult:
     # measured latency instead of guesswork.
     reaction_latency_ms: float | None = None
     onset_detection_lag_ms: float | None = None
+    # Saccade phase, flash-shown trials only (None otherwise - presaccade
+    # rows, or catch trials where no flash ever fired): whether the gaze
+    # classifier still read CENTER (still in transit) at the exact instant
+    # the flash fired, vs. already reading the target zone (meaning, by the
+    # classifier's own account, the eye had effectively already arrived
+    # before the flash appeared - not really "during" the saccade at all).
+    # See ExperimentSession._tick_trial_active.
+    flash_during_saccade: bool | None = None

@@ -20,6 +20,10 @@ def _parse_bool(value: str) -> bool:
     return value == "True"
 
 
+def _parse_optional_bool(value: str) -> bool | None:
+    return None if not value else value == "True"
+
+
 def _parse_target(value: str) -> Target | None:
     return Target(value) if value else None
 
@@ -67,6 +71,10 @@ def load_session_trials(timestamp: str) -> list[TrialResult]:
                     # have no reaction_latency_ms/onset_detection_lag_ms columns at all.
                     reaction_latency_ms=_parse_optional_float(row.get("reaction_latency_ms", "")),
                     onset_detection_lag_ms=_parse_optional_float(row.get("onset_detection_lag_ms", "")),
+                    # .get(): sessions logged before this existed have no flash_during_saccade
+                    # column at all - treated the same as "unknown" (None), same as a fresh
+                    # row where no flash occurred.
+                    flash_during_saccade=_parse_optional_bool(row.get("flash_during_saccade", "")),
                 )
             )
     return trials

@@ -38,7 +38,17 @@ LEFT_EYE_CORNERS = (362, 263)
 # downstream by the onset/landing stability windows in the experiment session.
 # This window is only used to average a steady fixation into a calibration baseline.
 CALIBRATION_SAMPLE_WINDOW = 30
-GAZE_DEAD_ZONE = 0.15  # +/- fraction around the calibrated midpoint treated as CENTER
+# +/- fraction around the calibrated midpoint treated as CENTER. This gates
+# onset detection just as much as SACCADE_ONSET_STABILITY_MS does, but
+# earlier and invisibly - the eye has to travel out of this whole band before
+# _tick_trial_active even starts counting the onset-stability window, and
+# that travel time doesn't show up in onset_detection_lag_ms at all (it's
+# already elapsed by the time that timer starts). Narrowed from 0.15 so the
+# eye doesn't have to travel as far before onset detection starts noticing.
+# Trade-off: too narrow makes fixational jitter near center misfire as a
+# false onset - watch the false_alarm rate (correct_rejection vs false_alarm
+# in the CSV) after tightening this, and widen it back if that climbs.
+GAZE_DEAD_ZONE = 0.10
 
 # Smoothing for GazeSample.smoothed_position (display only - the gaze
 # indicator - never used for onset/landing scoring, which stays on the raw,
