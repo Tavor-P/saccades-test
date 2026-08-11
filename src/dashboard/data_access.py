@@ -21,7 +21,7 @@ def _parse_bool(value: str) -> bool:
 
 
 def _parse_optional_bool(value: str) -> bool | None:
-    return None if not value else value == "True"
+    return _parse_bool(value) if value else None
 
 
 def _parse_target(value: str) -> Target | None:
