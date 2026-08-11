@@ -15,6 +15,10 @@ from include.experiment.constants import (
     GRATING_DURATION_FRAMES,
     GRATING_POSITION,
     MIN_CATCH_TRIALS_FOR_RELIABILITY,
+    NUM_PRACTICE_TRIALS_REAL,
+    NUM_PRACTICE_TRIALS_TEST,
+    NUM_TRIALS_PER_PHASE_REAL,
+    NUM_TRIALS_PER_PHASE_TEST,
     PRACTICE_CONTRAST,
     RESPONSE_WINDOW_MS,
     SACCADE_ONSET_STABILITY_MS,
@@ -80,13 +84,16 @@ class ExperimentSession:
         clock: PausableClock,
         contrast_floor: float | None = None,
         show_gaze_indicator: bool = False,
+        test_mode: bool = False,
     ) -> None:
         self._gaze = gaze_source
         self._logger = logger
         self._clock = clock
         self._show_gaze_indicator = show_gaze_indicator
         self._phase = Phase.WAITING_TO_START
-        self._trials = build_saccade_sequence()
+        num_trials = NUM_TRIALS_PER_PHASE_TEST if test_mode else NUM_TRIALS_PER_PHASE_REAL
+        num_practice = NUM_PRACTICE_TRIALS_TEST if test_mode else NUM_PRACTICE_TRIALS_REAL
+        self._trials = build_saccade_sequence(num_trials=num_trials, num_practice=num_practice)
         self._num_practice = sum(1 for t in self._trials if t.practice)
         self._trial_index = 0
         self._dot_visible = False

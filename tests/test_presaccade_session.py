@@ -2,7 +2,16 @@ import math
 
 import pytest
 
-from include.experiment.constants import FOREPERIOD_MAX_MS, PRACTICE_CONTRAST, RESPONSE_WINDOW_MS, ZEST_LOG_CONTRAST_MAX
+from include.experiment.constants import (
+    FOREPERIOD_MAX_MS,
+    NUM_PRACTICE_TRIALS_REAL,
+    NUM_PRACTICE_TRIALS_TEST,
+    NUM_TRIALS_PER_PHASE_REAL,
+    NUM_TRIALS_PER_PHASE_TEST,
+    PRACTICE_CONTRAST,
+    RESPONSE_WINDOW_MS,
+    ZEST_LOG_CONTRAST_MAX,
+)
 from include.experiment.types import FlashTrialSpec, Orientation
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.presaccade_session import PresaccadeSession
@@ -134,3 +143,19 @@ def test_response_key_before_flash_window_does_nothing(fake_time):
     session._trials = [FlashTrialSpec(index=0, grating_shown=True, orientation=Orientation.VERTICAL)]
     session.on_response_key(Orientation.VERTICAL)  # still WAITING_TO_START
     assert session._responded is False
+
+
+def test_test_mode_false_uses_the_real_trial_counts_by_default():
+    session = PresaccadeSession(logger=_NullLogger(), clock=PausableClock())
+    practice = [t for t in session._trials if t.practice]
+    real = [t for t in session._trials if not t.practice]
+    assert len(practice) == NUM_PRACTICE_TRIALS_REAL
+    assert len(real) == NUM_TRIALS_PER_PHASE_REAL
+
+
+def test_test_mode_true_uses_the_smaller_trial_counts():
+    session = PresaccadeSession(logger=_NullLogger(), clock=PausableClock(), test_mode=True)
+    practice = [t for t in session._trials if t.practice]
+    real = [t for t in session._trials if not t.practice]
+    assert len(practice) == NUM_PRACTICE_TRIALS_TEST
+    assert len(real) == NUM_TRIALS_PER_PHASE_TEST

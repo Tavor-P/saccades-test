@@ -8,6 +8,10 @@ from include.experiment.constants import (
     FOREPERIOD_MIN_MS,
     GRATING_DURATION_FRAMES,
     GRATING_POSITION,
+    NUM_PRACTICE_TRIALS_REAL,
+    NUM_PRACTICE_TRIALS_TEST,
+    NUM_TRIALS_PER_PHASE_REAL,
+    NUM_TRIALS_PER_PHASE_TEST,
     PRACTICE_CONTRAST,
     RESPONSE_WINDOW_MS,
 )
@@ -42,10 +46,18 @@ class PresaccadeSession:
     dict the runner applies to its stimuli.
     """
 
-    def __init__(self, logger: ResultLogger, clock: PausableClock, contrast_floor: float | None = None) -> None:
+    def __init__(
+        self,
+        logger: ResultLogger,
+        clock: PausableClock,
+        contrast_floor: float | None = None,
+        test_mode: bool = False,
+    ) -> None:
         self._logger = logger
         self._clock = clock
-        self._trials = build_presaccade_sequence()
+        num_trials = NUM_TRIALS_PER_PHASE_TEST if test_mode else NUM_TRIALS_PER_PHASE_REAL
+        num_practice = NUM_PRACTICE_TRIALS_TEST if test_mode else NUM_PRACTICE_TRIALS_REAL
+        self._trials = build_presaccade_sequence(num_trials=num_trials, num_practice=num_practice)
         self._num_practice = sum(1 for t in self._trials if t.practice)
         self._trial_index = 0
         self._phase = Phase.WAITING_TO_START

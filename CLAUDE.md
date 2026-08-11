@@ -47,8 +47,12 @@ about PsychoPy — `run_experiment.py`'s frame loop calls `tick()` +
 to PsychoPy stimuli (`apply_render_state()`/`draw_all()`). Both phases share
 one `ResultLogger` (one CSV, distinguished by a `phase` column) but run
 independent `ZestStaircase` instances so each condition converges on its own
-threshold. `TEST_MODE` in `include/experiment/constants.py` shortens trial
-counts and runs the saccade phase first for smoke testing.
+threshold. Test mode (shortened trial counts, saccade phase first for smoke
+testing) is a runtime decision, not a constant: `run_experiment.py`'s
+`_resolve_test_mode()` treats a blank Participant ID in the startup dialog as
+a test run and any other value as a real data-collection session, then
+`ExperimentSession`/`PresaccadeSession` pick between the `_TEST`/`_REAL`
+trial-count constant pairs in `include/experiment/constants.py` accordingly.
 
 **Gaze tracking is behind an interface.** `include/eye_tracking/interfaces.py`
 defines `GazeSource`; `ExperimentSession` only ever talks to that interface.

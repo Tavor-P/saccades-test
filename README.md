@@ -28,9 +28,9 @@ can be compared to measure the suppression effect.
 A dialog asks for a participant ID, which camera to use, and a contrast
 floor (the faintest flash the test will ever try). Then two phases run back
 to back, each starting with a few practice trials, ending in a graph
-comparing the two phases' results. For a quick test run instead of the full
-~15-minute session, set `TEST_MODE = True` in
-`include/experiment/constants.py` (25 trials/phase instead of 100).
+comparing the two phases' results. **Leave Participant ID blank for a quick
+test run** (25 trials/phase instead of 100, saccade phase first) — entering
+an ID runs the full ~15-minute session.
 
 ## Controls
 

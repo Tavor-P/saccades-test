@@ -6,6 +6,7 @@ from src.experiment.run_experiment import (
     _resolve_camera_choice,
     _resolve_contrast_floor_percent,
     _resolve_show_gaze_indicator,
+    _resolve_test_mode,
     _second_monitor_screen_index,
     camera_preview_enabled,
     narrate_if_changed,
@@ -91,3 +92,14 @@ def test_narrate_if_changed_speaks_again_when_text_changes():
     result = narrate_if_changed(narrator, "now look at the cross", last_spoken="look at the dot")
     narrator.speak.assert_called_once_with("now look at the cross")
     assert result == "now look at the cross"
+
+
+def test_resolve_test_mode_true_when_participant_id_is_blank():
+    assert _resolve_test_mode("") is True
+    assert _resolve_test_mode("   ") is True  # whitespace-only counts as blank
+
+
+def test_resolve_test_mode_false_when_participant_id_is_given():
+    assert _resolve_test_mode("42") is False
+    assert _resolve_test_mode("alice") is False
+    assert _resolve_test_mode("  p001  ") is False

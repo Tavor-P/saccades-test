@@ -53,23 +53,26 @@ GRATING_ENVELOPE_SIGMA_HEIGHT_UNITS = GRATING_ENVELOPE_SIGMA_DEG / SCREEN_HEIGHT
 # deviation of size/6 - so size = 6 * sigma reproduces the paper's space constant.
 GRATING_SIZE_HEIGHT_UNITS = GRATING_ENVELOPE_SIGMA_HEIGHT_UNITS * 6
 
-# Flip on for a quick smoke test: fewer trials per phase, saccade phase first
-# (so you don't have to sit through the baseline to check the thing you're
-# actually changing). Flip back to False for a real data-collection run.
-TEST_MODE = True
-
+# Whether a session is a quick test/smoke run (fewer trials, saccade phase
+# first so you reach the thing you're testing faster) or a real
+# data-collection session is a runtime decision, not a constant to edit here
+# - see run_experiment.py's _resolve_test_mode(): leaving the startup
+# dialog's Participant ID blank means test, entering one means real. The two
+# trial-count pairs below are what that choice picks between.
+#
 # Fixed trial counts shared by both phases (presaccade baseline and saccade
 # test), so the two conditions can be directly compared afterward. Contrast
 # itself is no longer one of a fixed set of levels - see ZEST_* below.
-NUM_TRIALS_PER_PHASE = 25 if TEST_MODE else 100
-CATCH_TRIAL_FRACTION = 0.2
-CATCH_TRIAL_COUNT = round(NUM_TRIALS_PER_PHASE * CATCH_TRIAL_FRACTION)  # rest drive/query the adaptive staircase
+NUM_TRIALS_PER_PHASE_TEST = 25
+NUM_TRIALS_PER_PHASE_REAL = 100
+CATCH_TRIAL_FRACTION = 0.2  # rest drive/query the adaptive staircase, in either mode
 
 # A few throwaway trials before each phase's real block, so a participant
 # doesn't learn the response mapping on data that counts. Fixed at a high,
 # easily-visible contrast (not drawn from the staircase) and excluded from
 # both the ZEST update and the logged CSV/results.
-NUM_PRACTICE_TRIALS = 2 if TEST_MODE else 5
+NUM_PRACTICE_TRIALS_TEST = 2
+NUM_PRACTICE_TRIALS_REAL = 5
 PRACTICE_CONTRAST = 0.25
 
 # Live gaze cursor, opt-in via the startup dialog's "Show gaze indicator"
