@@ -79,10 +79,12 @@ class ExperimentSession:
         logger: ResultLogger,
         clock: PausableClock,
         contrast_floor: float | None = None,
+        show_gaze_indicator: bool = False,
     ) -> None:
         self._gaze = gaze_source
         self._logger = logger
         self._clock = clock
+        self._show_gaze_indicator = show_gaze_indicator
         self._phase = Phase.WAITING_TO_START
         self._trials = build_saccade_sequence()
         self._num_practice = sum(1 for t in self._trials if t.practice)
@@ -406,6 +408,34 @@ class ExperimentSession:
             return self._dot_visible, self._cross_visible, False
         return False, False, False
 
+    def _gaze_indicator_state(self, sample) -> dict:
+        """Live gaze cursor, opt-in via show_gaze_indicator: snaps directly to
+        whichever zone (left/center/right) the gaze classifier currently
+        reports - the exact same classification onset/landing detection
+        relies on - rather than interpolating a continuous position from the
+        raw ratio. The raw ratio is far noisier than the classifier's own
+        debounced zone decision; showing it directly made the indicator look
+        jittery and inaccurate even when the underlying classification was
+        fine. This way, if the indicator looks wrong, that's real evidence
+        the classification itself is wrong - not an artifact of extra
+        interpolation math on top of it."""
+        show = (
+            self._show_gaze_indicator
+            and self._phase in (Phase.FOREPERIOD, Phase.TRIAL_ACTIVE)
+            and sample.face_found
+            and sample.zone is not GazeZone.UNKNOWN
+            and self._calibration_ratios is not None
+        )
+        if not show:
+            return {"visible": False, "x": 0.0, "y": 0.0}
+
+        zone_position = {
+            GazeZone.LEFT: DOT_POSITION,
+            GazeZone.RIGHT: CROSS_POSITION,
+            GazeZone.CENTER: GRATING_POSITION,  # the midpoint between dot and cross
+        }[sample.zone]
+        return {"visible": True, "x": zone_position[0], "y": zone_position[1]}
+
     def render_state(self) -> dict:
         sample = self._gaze.latest_sample()
         dot_visible, cross_visible, calibration_center_visible = self._symbol_visibility()
@@ -427,6 +457,7 @@ class ExperimentSession:
                 "contrast": self._trial_contrast if self._grating_visible else 0,
                 "orientation": trial.orientation if trial is not None else None,
             },
+            "gaze_indicator": self._gaze_indicator_state(sample),
             "hud": {
                 "phase": self._phase.name,
                 "gaze_zone": sample.zone.value,

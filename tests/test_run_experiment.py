@@ -5,6 +5,7 @@ from src.experiment.run_experiment import (
     _camera_labels,
     _resolve_camera_choice,
     _resolve_contrast_floor_percent,
+    _resolve_show_gaze_indicator,
     _second_monitor_screen_index,
     camera_preview_enabled,
 )
@@ -63,3 +64,8 @@ def test_second_monitor_screen_index_picks_the_second_screen_when_present():
 def test_second_monitor_screen_index_falls_back_to_the_primary_with_one_screen():
     with _patch_screens(1):
         assert _second_monitor_screen_index() == 0
+
+
+def test_resolve_show_gaze_indicator_only_true_for_yes():
+    assert _resolve_show_gaze_indicator("Yes") is True
+    assert _resolve_show_gaze_indicator("No") is False

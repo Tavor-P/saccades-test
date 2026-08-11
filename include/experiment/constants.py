@@ -72,6 +72,14 @@ CATCH_TRIAL_COUNT = round(NUM_TRIALS_PER_PHASE * CATCH_TRIAL_FRACTION)  # rest d
 NUM_PRACTICE_TRIALS = 2 if TEST_MODE else 5
 PRACTICE_CONTRAST = 0.25
 
+# Live gaze cursor, opt-in via the startup dialog's "Show gaze indicator"
+# toggle (default off - not something a real participant should see) - a
+# small faint circle at the participant's current classified gaze zone, for
+# checking tracking quality at any point in the saccade phase. Smaller and
+# dimmer than the fixation symbols so it never reads as a third target.
+GAZE_INDICATOR_RADIUS_RATIO = CIRCLE_RADIUS_RATIO * 0.6
+GAZE_INDICATOR_OPACITY = 0.35
+
 # ZEST (Zippy Estimation by Sequential Testing, King-Smith et al. 1994)
 # adaptive contrast staircase - the paper's actual contrast-selection method:
 # "their contrast varying according to a ZEST procedure, which independently
