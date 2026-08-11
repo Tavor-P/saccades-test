@@ -6,6 +6,7 @@ import PySpin
 from include.eye_tracking.constants import (
     CAMERA_EXPOSURE_TIME_US,
     CAMERA_FRAME_RATE,
+    CAMERA_GAIN_DB,
     CAMERA_INDEX,
     CAMERA_PROBE_LIMIT,
     FRAME_HEIGHT,
@@ -35,9 +36,14 @@ def list_available_cameras(max_index: int = CAMERA_PROBE_LIMIT) -> list[int]:
 
 
 def _configure_camera(cam) -> None:
-    """Initializes a Blackfly S for fixed-exposure, fixed-framerate Mono8
-    capture - no auto-exposure/auto-gain hunting mid-experiment, and a known
-    pixel format/frame rate the rest of the pipeline can rely on."""
+    """Initializes a Blackfly S for fixed-exposure, fixed-gain, fixed-framerate
+    Mono8 capture under active IR illumination - no auto-exposure/auto-gain
+    hunting mid-experiment (brightness drifting as the participant moves would
+    corrupt both detection stability and psychometric contrast), and a known
+    pixel format/frame rate the rest of the pipeline can rely on. Gamma is
+    disabled so the sensor's response stays linear - the display-oriented
+    gamma curve cameras usually apply by default would otherwise distort what
+    MediaPipe actually sees, on top of the fixed exposure/gain."""
     cam.Init()
 
     cam.AcquisitionMode.SetValue(PySpin.AcquisitionMode_Continuous)
@@ -62,6 +68,11 @@ def _configure_camera(cam) -> None:
 
     cam.ExposureAuto.SetValue(PySpin.ExposureAuto_Off)
     cam.ExposureTime.SetValue(CAMERA_EXPOSURE_TIME_US)
+
+    cam.GainAuto.SetValue(PySpin.GainAuto_Off)
+    cam.Gain.SetValue(CAMERA_GAIN_DB)
+
+    cam.GammaEnable.SetValue(False)
 
     cam.AcquisitionFrameRateEnable.SetValue(True)
     cam.AcquisitionFrameRate.SetValue(min(CAMERA_FRAME_RATE, cam.AcquisitionFrameRate.GetMax()))

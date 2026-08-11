@@ -8,6 +8,14 @@ FRAME_HEIGHT = 874
 FRAME_OFFSET_X = 132
 FRAME_OFFSET_Y = 112
 CAMERA_EXPOSURE_TIME_US = 3000.0  # ExposureTime (microseconds), fixed (ExposureAuto = Off)
+# Fixed gain (dB), for the same reason exposure is fixed: no auto-gain hunting
+# mid-experiment (brightness shifting as the participant moves would corrupt
+# both detection stability and psychometric contrast). Set up for active IR
+# illumination rather than ambient room light - this starting value is a
+# conservative guess, not a validated one: tune it against your actual
+# illuminator via diagnose_camera.py (higher if frames look dim/underexposed,
+# lower if they look washed out/noisy) before relying on it.
+CAMERA_GAIN_DB = 6.0
 CAMERA_FRAME_RATE = 200.0  # target AcquisitionFrameRate (fps); clamped to the camera's actual max
 # MediaPipe FaceLandmarker inference time scales with input pixel count, and
 # face/pupil detection doesn't need full sensor resolution - frames are
