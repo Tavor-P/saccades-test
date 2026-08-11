@@ -4,8 +4,11 @@ import pytest
 
 from include.eye_tracking.types import GazeZone
 from include.experiment.constants import (
+    CROSS_POSITION,
+    DOT_POSITION,
     FOREPERIOD_MAX_MS,
     GAZE_LANDING_STABILITY_MS,
+    GRATING_POSITION,
     PRACTICE_CONTRAST,
     RESPONSE_WINDOW_MS,
     SACCADE_ONSET_STABILITY_MS,
@@ -25,8 +28,10 @@ class _NullLogger:
         pass
 
 
-def _make_session(fake_gaze) -> ExperimentSession:
-    return ExperimentSession(fake_gaze, logger=_NullLogger(), clock=PausableClock())
+def _make_session(fake_gaze, show_gaze_indicator: bool = False) -> ExperimentSession:
+    return ExperimentSession(
+        fake_gaze, logger=_NullLogger(), clock=PausableClock(), show_gaze_indicator=show_gaze_indicator
+    )
 
 
 def _complete_calibration_and_enter_foreperiod(session) -> None:
@@ -258,5 +263,64 @@ def test_render_state_reports_the_current_trial_index(fake_gaze):
     session._trial_index = 1
     session._begin_foreperiod()
     assert session.render_state()["hud"]["trial_index"] == 1
+
+
+def test_gaze_indicator_hidden_by_default(fake_gaze, fake_time):
+    # show_gaze_indicator defaults to False - a real participant shouldn't
+    # see this even with valid tracking and completed calibration.
+    session = _make_session(fake_gaze)
+    fake_gaze.zone = GazeZone.LEFT
+    _complete_calibration_and_enter_foreperiod(session)
+    assert session.render_state()["gaze_indicator"]["visible"] is False
+
+
+def test_gaze_indicator_hidden_before_calibration(fake_gaze):
+    session = _make_session(fake_gaze, show_gaze_indicator=True)
+    fake_gaze.zone = GazeZone.LEFT
+    assert session.render_state()["gaze_indicator"]["visible"] is False
+
+
+def test_gaze_indicator_visible_during_real_trials_when_enabled(fake_gaze):
+    session = _make_session(fake_gaze, show_gaze_indicator=True)
+    session._trials = [TrialSpec(index=0, source=Target.DOT, target=Target.CROSS, grating_shown=False)]
+    fake_gaze.zone = GazeZone.LEFT
+    _complete_calibration_and_enter_foreperiod(session)
+    assert session.render_state()["gaze_indicator"]["visible"] is True
+
+
+def test_gaze_indicator_hidden_when_face_not_found(fake_gaze):
+    session = _make_session(fake_gaze, show_gaze_indicator=True)
+    fake_gaze.face_found = False
+    _complete_calibration_and_enter_foreperiod(session)
+    assert session.render_state()["gaze_indicator"]["visible"] is False
+
+
+def test_gaze_indicator_hidden_when_zone_is_unknown(fake_gaze):
+    session = _make_session(fake_gaze, show_gaze_indicator=True)
+    fake_gaze.zone = GazeZone.UNKNOWN
+    _complete_calibration_and_enter_foreperiod(session)
+    assert session.render_state()["gaze_indicator"]["visible"] is False
+
+
+def test_gaze_indicator_snaps_to_the_classified_zone(fake_gaze):
+    # Directly mirrors the classification onset/landing detection relies on,
+    # rather than interpolating a continuous position from the noisier raw
+    # ratio - if this looks wrong, the classification itself is wrong.
+    session = _make_session(fake_gaze, show_gaze_indicator=True)
+    _complete_calibration_and_enter_foreperiod(session)
+
+    fake_gaze.zone = GazeZone.LEFT
+    indicator = session.render_state()["gaze_indicator"]
+    assert indicator["visible"] is True
+    assert indicator["x"] == pytest.approx(DOT_POSITION[0])
+    assert indicator["y"] == pytest.approx(DOT_POSITION[1])
+
+    fake_gaze.zone = GazeZone.RIGHT
+    indicator = session.render_state()["gaze_indicator"]
+    assert indicator["x"] == pytest.approx(CROSS_POSITION[0])
+
+    fake_gaze.zone = GazeZone.CENTER
+    indicator = session.render_state()["gaze_indicator"]
+    assert indicator["x"] == pytest.approx(GRATING_POSITION[0])
 
 

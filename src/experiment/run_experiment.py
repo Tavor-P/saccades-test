@@ -8,6 +8,8 @@ from psychopy import core, event, gui, sound, visual
 from include.experiment.constants import (
     BACKGROUND_LUMINANCE,
     CIRCLE_RADIUS_RATIO,
+    GAZE_INDICATOR_OPACITY,
+    GAZE_INDICATOR_RADIUS_RATIO,
     GRATING_SF_CYCLES_PER_HEIGHT_UNIT,
     GRATING_SIZE_HEIGHT_UNITS,
     HORIZONTAL_RESPONSE_KEYS,
@@ -137,6 +139,9 @@ def build_stimuli(win: visual.Window) -> dict:
         "calibration_center": visual.Circle(
             win, radius=CIRCLE_RADIUS_RATIO, fillColor="white", lineColor="white", opacity=0
         ),
+        "gaze_indicator": visual.Circle(
+            win, radius=GAZE_INDICATOR_RADIUS_RATIO, fillColor="white", lineColor=None, opacity=0
+        ),
         # Diamond, Ross & Morrone (2000)'s probe: a horizontal sinusoidal
         # luminance grating (bars parallel to the saccade direction) windowed
         # by a Gaussian envelope - not a flat square.
@@ -187,6 +192,17 @@ def apply_render_state(state: dict, stimuli: dict, fade_opacities: dict, dt: flo
         stim.opacity = fade_opacities[name]
         stim.pos = ratio_to_pos(symbol_state["x"], symbol_state["y"], aspect)
 
+    # Only the saccade phase's render_state() includes this - presaccade has
+    # no gaze tracking at all. Snaps straight to its target (no fade): it's a
+    # live cursor, so smoothing it would just make it lag behind real gaze.
+    gaze_indicator = stimuli["gaze_indicator"]
+    indicator_state = state.get("gaze_indicator")
+    if indicator_state and indicator_state["visible"]:
+        gaze_indicator.opacity = GAZE_INDICATOR_OPACITY
+        gaze_indicator.pos = ratio_to_pos(indicator_state["x"], indicator_state["y"], aspect)
+    else:
+        gaze_indicator.opacity = 0.0
+
     grating = stimuli["grating"]
     grating.opacity = 1.0 if state["grating"]["visible"] else 0.0
     if state["grating"]["visible"]:
@@ -210,7 +226,7 @@ def apply_render_state(state: dict, stimuli: dict, fade_opacities: dict, dt: flo
 def draw_all(stimuli: dict) -> None:
     # start_flash first so it sits behind the fixation stimuli, which stay
     # visible/fixatable on top of it during the flash.
-    for name in ("start_flash", "dot", "cross", "calibration_center", "grating", "instructions", "hud"):
+    for name in ("start_flash", "dot", "cross", "calibration_center", "gaze_indicator", "grating", "instructions", "hud"):
         stimuli[name].draw()
 
 
@@ -262,13 +278,16 @@ def run_saccade_phase(
     logger: ResultLogger,
     camera_index: int = CAMERA_INDEX,
     contrast_floor: float | None = None,
+    show_gaze_indicator: bool = False,
 ) -> ExperimentSession | None:
     """Phase 2: the gaze-contingent saccade test. Returns the completed
     session, or None if the participant quit early."""
     gaze = WebcamGazeSource(camera_index)
     gaze.start()
     clock = PausableClock()
-    session = ExperimentSession(gaze, logger=logger, clock=clock, contrast_floor=contrast_floor)
+    session = ExperimentSession(
+        gaze, logger=logger, clock=clock, contrast_floor=contrast_floor, show_gaze_indicator=show_gaze_indicator
+    )
     pause_toggle = ClickPauseToggle(win, clock)
 
     aspect = stimuli["aspect"]
@@ -357,15 +376,21 @@ def _resolve_contrast_floor_percent(raw: str, default_percent: float) -> float:
         return default_percent
 
 
-def prompt_session_info() -> tuple[str, int, str, float] | None:
+def _resolve_show_gaze_indicator(selected_label: str) -> bool:
+    return selected_label == "Yes"
+
+
+def prompt_session_info() -> tuple[str, int, str, float, bool] | None:
     """Standard PsychoPy participant-info dialog, shown before the window
     opens - also offers a camera picker (a dropdown of every camera index
     that actually opens) so switching between multiple connected cameras
     doesn't require hand-editing CAMERA_INDEX, and a contrast-floor field
     pre-filled with the dashboard-configured default (see
     src/experiment/settings.py and the dashboard's settings box) so a run can
-    override it per-session without editing code. Returns None if the dialog
-    was cancelled."""
+    override it per-session without editing code. Also offers a "Show gaze
+    indicator" toggle (default No) for the saccade phase's debug gaze dot -
+    off by default since it's not something a real participant should see.
+    Returns None if the dialog was cancelled."""
     camera_indices = list_available_cameras() or [CAMERA_INDEX]
     camera_labels = _camera_labels(camera_indices)
     default_contrast_floor_percent = load_contrast_floor_percent()
@@ -374,6 +399,7 @@ def prompt_session_info() -> tuple[str, int, str, float] | None:
         "Participant ID": "",
         "Camera": camera_labels,
         "Contrast floor (%)": f"{default_contrast_floor_percent:.2f}",
+        "Show gaze indicator": ["No", "Yes"],
     }
     dlg = gui.DlgFromDict(info, title="Saccade experiment")
     if not dlg.OK:
@@ -382,7 +408,8 @@ def prompt_session_info() -> tuple[str, int, str, float] | None:
     participant_id = info["Participant ID"].strip() or "anonymous"
     camera_index, camera_label = _resolve_camera_choice(camera_indices, camera_labels, info["Camera"])
     contrast_floor_percent = _resolve_contrast_floor_percent(info["Contrast floor (%)"], default_contrast_floor_percent)
-    return participant_id, camera_index, camera_label, contrast_floor_percent
+    show_gaze_indicator = _resolve_show_gaze_indicator(info["Show gaze indicator"])
+    return participant_id, camera_index, camera_label, contrast_floor_percent, show_gaze_indicator
 
 
 def show_results_graph(win: visual.Window, results: list) -> None:
@@ -405,13 +432,15 @@ def main() -> None:
     session_info = prompt_session_info()
     if session_info is None:
         return  # cancelled the participant-info dialog
-    participant_id, camera_index, camera_label, contrast_floor_percent = session_info
+    participant_id, camera_index, camera_label, contrast_floor_percent, show_gaze_indicator = session_info
     contrast_floor = contrast_floor_percent / 100
 
     logger = ResultLogger(participant_id, camera_label=camera_label, contrast_floor_percent=contrast_floor_percent)
     win = build_window(fullscreen=True)
     stimuli = build_stimuli(win)
-    saccade_phase = partial(run_saccade_phase, camera_index=camera_index, contrast_floor=contrast_floor)
+    saccade_phase = partial(
+        run_saccade_phase, camera_index=camera_index, contrast_floor=contrast_floor, show_gaze_indicator=show_gaze_indicator
+    )
     presaccade_phase = partial(run_presaccade_phase, contrast_floor=contrast_floor)
 
     try:
