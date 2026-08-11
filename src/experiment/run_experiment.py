@@ -21,6 +21,7 @@ from include.eye_tracking.constants import CAMERA_INDEX, FRAME_HEIGHT, FRAME_WID
 from src.eye_tracking.camera import list_available_cameras
 from src.eye_tracking.webcam_source import WebcamGazeSource
 from src.experiment.logger import ResultLogger
+from src.experiment.narrator import Narrator
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.presaccade_session import PresaccadeSession
 from src.experiment.results_graph import build_comparison_graph
@@ -64,6 +65,18 @@ def dispatch_response_keys(session, keys: list[str]) -> None:
         orientation = _RESPONSE_KEY_ORIENTATION.get(key)
         if orientation is not None:
             session.on_response_key(orientation)
+
+
+def narrate_if_changed(narrator: Narrator, text: str, last_spoken: str | None) -> str:
+    """Speaks `text` only if it differs from what was last spoken, returning
+    the new last-spoken value for the caller to hold onto. Instructions text
+    stays constant across many consecutive ticks/trials by design (see
+    Session._instructions()), so speaking unconditionally every frame would
+    queue the same phrase over and over - callers should call this once per
+    frame and let it decide whether anything actually needs saying."""
+    if text != last_spoken:
+        narrator.speak(text)
+    return text
 
 
 class ClickPauseToggle:
@@ -156,7 +169,6 @@ def build_stimuli(win: visual.Window) -> dict:
             contrast=0,
             opacity=0,
         ),
-        "instructions": visual.TextStim(win, text="", pos=(0, -0.4), color="white", height=0.035, wrapWidth=1.5),
         "pause_text": visual.TextStim(
             win, text="Paused — click anywhere to resume", pos=(0, 0), color="white", height=0.045
         ),
@@ -215,7 +227,6 @@ def apply_render_state(state: dict, stimuli: dict, fade_opacities: dict, dt: flo
         if orientation is not None:
             grating.ori = _ORIENTATION_DEGREES[orientation]
 
-    stimuli["instructions"].text = state["instructions"]
     hud = state["hud"]
     stimuli["hud"].text = (
         f"phase: {hud['phase']} | trial: {hud['trial']} | gaze: {hud['gaze_zone']} | "
@@ -226,12 +237,16 @@ def apply_render_state(state: dict, stimuli: dict, fade_opacities: dict, dt: flo
 def draw_all(stimuli: dict) -> None:
     # start_flash first so it sits behind the fixation stimuli, which stay
     # visible/fixatable on top of it during the flash.
-    for name in ("start_flash", "dot", "cross", "calibration_center", "gaze_indicator", "grating", "instructions", "hud"):
+    for name in ("start_flash", "dot", "cross", "calibration_center", "gaze_indicator", "grating", "hud"):
         stimuli[name].draw()
 
 
 def run_presaccade_phase(
-    win: visual.Window, stimuli: dict, logger: ResultLogger, contrast_floor: float | None = None
+    win: visual.Window,
+    stimuli: dict,
+    logger: ResultLogger,
+    narrator: Narrator,
+    contrast_floor: float | None = None,
 ) -> PresaccadeSession | None:
     """Phase 1: fixate center, detect flashes, no eye tracking. Returns the
     completed session, or None if the participant quit early."""
@@ -240,6 +255,7 @@ def run_presaccade_phase(
     pause_toggle = ClickPauseToggle(win, clock)
     fade_opacities = {"dot": 0.0, "cross": 0.0, "calibration_center": 0.0}
     frame_clock = core.Clock()
+    last_spoken_instructions: str | None = None
 
     while True:
         keys = event.getKeys(keyList=["space", "escape", *RESPONSE_KEYS])
@@ -263,6 +279,8 @@ def run_presaccade_phase(
         if state["hud"]["phase"] == "COMPLETE" and "space" in keys:
             return session  # a space press on the results screen moves on
 
+        last_spoken_instructions = narrate_if_changed(narrator, state["instructions"], last_spoken_instructions)
+
         dt = frame_clock.getTime()
         frame_clock.reset()
         apply_render_state(state, stimuli, fade_opacities, dt)
@@ -276,6 +294,7 @@ def run_saccade_phase(
     win: visual.Window,
     stimuli: dict,
     logger: ResultLogger,
+    narrator: Narrator,
     camera_index: int = CAMERA_INDEX,
     contrast_floor: float | None = None,
     show_gaze_indicator: bool = False,
@@ -304,6 +323,7 @@ def run_saccade_phase(
     warning_tone = sound.Sound(value=WARNING_TONE_HZ, secs=WARNING_TONE_DURATION_S)
     frame_clock = core.Clock()
     last_phase = None
+    last_spoken_instructions: str | None = None
     flash_frames_remaining = 0
     start_flash_shown = False
 
@@ -337,6 +357,8 @@ def run_saccade_phase(
             if phase == "TRIAL_ACTIVE" and last_phase != "TRIAL_ACTIVE":
                 warning_tone.play()  # fires exactly when the target dot appears - the "move your eyes now" cue
             last_phase = phase
+
+            last_spoken_instructions = narrate_if_changed(narrator, state["instructions"], last_spoken_instructions)
 
             dt = frame_clock.getTime()
             frame_clock.reset()
@@ -438,10 +460,15 @@ def main() -> None:
     logger = ResultLogger(participant_id, camera_label=camera_label, contrast_floor_percent=contrast_floor_percent)
     win = build_window(fullscreen=True)
     stimuli = build_stimuli(win)
+    narrator = Narrator()
     saccade_phase = partial(
-        run_saccade_phase, camera_index=camera_index, contrast_floor=contrast_floor, show_gaze_indicator=show_gaze_indicator
+        run_saccade_phase,
+        narrator=narrator,
+        camera_index=camera_index,
+        contrast_floor=contrast_floor,
+        show_gaze_indicator=show_gaze_indicator,
     )
-    presaccade_phase = partial(run_presaccade_phase, contrast_floor=contrast_floor)
+    presaccade_phase = partial(run_presaccade_phase, narrator=narrator, contrast_floor=contrast_floor)
 
     try:
         # TEST_MODE runs the saccade phase first - that's the one under active
@@ -463,6 +490,7 @@ def main() -> None:
         all_results = results_by_phase[presaccade_phase].results + saccade_session.results
         show_results_graph(win, all_results)
     finally:
+        narrator.stop()
         logger.close()
         win.close()
 
