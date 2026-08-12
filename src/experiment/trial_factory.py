@@ -1,11 +1,8 @@
 import random
 
 from include.experiment.constants import CATCH_TRIAL_FRACTION
-from include.experiment.types import FlashTrialSpec, Orientation, Target, TrialSpec
-
-
-def _random_orientation() -> Orientation:
-    return random.choice([Orientation.VERTICAL, Orientation.HORIZONTAL])
+from include.experiment.types import FlashTrialSpec, Target, TrialSpec
+from src.experiment.trial_mechanics import random_orientation as _random_orientation
 
 
 def _build_shown_schedule(num_trials: int) -> list[bool]:

@@ -5,6 +5,7 @@ from enum import Enum, auto
 from include.eye_tracking.interfaces import GazeSource
 from include.eye_tracking.types import GazeZone
 from include.experiment.constants import (
+    CALIBRATION_ROUNDS,
     CENTER_POSITION,
     CROSS_POSITION,
     DOT_POSITION,
@@ -25,10 +26,12 @@ from include.experiment.constants import (
     SACCADE_TIMEOUT_MS,
 )
 from include.experiment.types import Orientation, Target, TrialResult
+from src.experiment.calibration import average_calibration_rounds
 from src.experiment.logger import ResultLogger
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.scoring import score_outcome
 from src.experiment.trial_factory import build_saccade_sequence
+from src.experiment.trial_mechanics import zone_for
 from src.experiment.zest import ZestStaircase
 
 
@@ -40,10 +43,6 @@ class Phase(Enum):
     FOREPERIOD = auto()  # only the current fixation symbol shown; next target not revealed yet
     TRIAL_ACTIVE = auto()
     COMPLETE = auto()
-
-
-def _zone_for(target: Target) -> GazeZone:
-    return GazeZone.LEFT if target is Target.DOT else GazeZone.RIGHT
 
 
 class ExperimentSession:
@@ -85,6 +84,8 @@ class ExperimentSession:
         contrast_floor: float | None = None,
         show_gaze_indicator: bool = False,
         test_mode: bool = False,
+        precomputed_calibration_ratios: tuple[float, float, float] | None = None,
+        skip_practice_trials: bool = False,
     ) -> None:
         self._gaze = gaze_source
         self._logger = logger
@@ -92,7 +93,7 @@ class ExperimentSession:
         self._show_gaze_indicator = show_gaze_indicator
         self._phase = Phase.WAITING_TO_START
         num_trials = NUM_TRIALS_PER_PHASE_TEST if test_mode else NUM_TRIALS_PER_PHASE_REAL
-        num_practice = NUM_PRACTICE_TRIALS_TEST if test_mode else NUM_PRACTICE_TRIALS_REAL
+        num_practice = 0 if skip_practice_trials else (NUM_PRACTICE_TRIALS_TEST if test_mode else NUM_PRACTICE_TRIALS_REAL)
         self._trials = build_saccade_sequence(num_trials=num_trials, num_practice=num_practice)
         self._num_practice = sum(1 for t in self._trials if t.practice)
         self._trial_index = 0
@@ -100,11 +101,20 @@ class ExperimentSession:
         self._cross_visible = False
         self._pending_left_ratio: float | None = None
         self._pending_center_ratio: float | None = None
-        self._calibration_ratios: tuple[float, float, float] | None = None
+        self._calibration_round = 1
+        self._calibration_rounds_data: list[tuple[float, float, float]] = []
         self._results: list[TrialResult] = []
         zest_kwargs = {"log_contrast_min": math.log10(contrast_floor)} if contrast_floor is not None else {}
         self._zest = ZestStaircase(**zest_kwargs)
         self._clear_trial_state()
+
+        # A tutorial run before this session already did its own 3-round
+        # calibration - reuse that result instead of calibrating again.
+        self._precomputed_calibration = precomputed_calibration_ratios is not None
+        self._calibration_ratios: tuple[float, float, float] | None = None
+        if precomputed_calibration_ratios is not None:
+            self._gaze.calibrate(*precomputed_calibration_ratios)
+            self._calibration_ratios = precomputed_calibration_ratios
 
     @property
     def calibration_ratios(self) -> tuple[float, float, float] | None:
@@ -143,8 +153,14 @@ class ExperimentSession:
 
     def on_space(self) -> None:
         if self._phase is Phase.WAITING_TO_START:
-            self._gaze.begin_calibration_sample()  # fresh window before the dot appears
-            self._phase = Phase.CALIBRATE_LEFT
+            if self._precomputed_calibration:
+                # A tutorial already calibrated - skip straight to trial 0.
+                self._dot_visible = True  # trial 0's source
+                self._cross_visible = False
+                self._begin_foreperiod()
+            else:
+                self._gaze.begin_calibration_sample()  # fresh window before the dot appears
+                self._phase = Phase.CALIBRATE_LEFT
         elif self._phase is Phase.CALIBRATE_LEFT:
             ratio = self._gaze.average_recent_ratio()
             if ratio is not None:
@@ -160,11 +176,25 @@ class ExperimentSession:
         elif self._phase is Phase.CALIBRATE_RIGHT:
             ratio = self._gaze.average_recent_ratio()
             if ratio is not None and self._pending_left_ratio is not None and self._pending_center_ratio is not None:
-                self._gaze.calibrate(self._pending_left_ratio, self._pending_center_ratio, ratio)
-                self._calibration_ratios = (self._pending_left_ratio, self._pending_center_ratio, ratio)
-                self._dot_visible = True  # trial 0's source
-                self._cross_visible = False
-                self._begin_foreperiod()
+                self._calibration_rounds_data.append((self._pending_left_ratio, self._pending_center_ratio, ratio))
+                if self._calibration_round < CALIBRATION_ROUNDS:
+                    # First attempts tend to be the least reliable - run
+                    # another round rather than trusting this one alone.
+                    self._calibration_round += 1
+                    self._gaze.begin_calibration_sample()  # fresh window before the next round's dot
+                    self._phase = Phase.CALIBRATE_LEFT
+                else:
+                    # Round 1 is discarded; only the last two rounds feed the
+                    # average (indexed from the end, not unpacked as exactly
+                    # 3 elements, so this doesn't break if CALIBRATION_ROUNDS
+                    # is ever changed to something other than 3).
+                    round2, round3 = self._calibration_rounds_data[-2], self._calibration_rounds_data[-1]
+                    final_ratios = average_calibration_rounds(round2, round3)
+                    self._gaze.calibrate(*final_ratios)
+                    self._calibration_ratios = final_ratios
+                    self._dot_visible = True  # trial 0's source
+                    self._cross_visible = False
+                    self._begin_foreperiod()
         # TRIAL_ACTIVE: responses come from arrow keys (see on_response_key),
         # not SPACE. COMPLETE: space does nothing here - the runner decides
         # when to move on.
@@ -224,8 +254,8 @@ class ExperimentSession:
         trial = self._current_trial()
         sample = self._gaze.latest_sample()
         now = self._clock.now()
-        source_zone = _zone_for(trial.source)
-        target_zone = _zone_for(trial.target)
+        source_zone = zone_for(trial.source)
+        target_zone = zone_for(trial.target)
 
         onset_this_tick = False
         if not self._gaze_left_source:

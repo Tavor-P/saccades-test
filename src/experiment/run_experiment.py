@@ -8,6 +8,9 @@ from psychopy import core, event, gui, visual
 from include.experiment.constants import (
     BACKGROUND_LUMINANCE,
     CIRCLE_RADIUS_RATIO,
+    FEEDBACK_FLASH_DURATION_FRAMES,
+    FEEDBACK_FLASH_GREEN,
+    FEEDBACK_FLASH_RED,
     GAZE_INDICATOR_OPACITY,
     GAZE_INDICATOR_RADIUS_RATIO,
     GRATING_SF_CYCLES_PER_HEIGHT_UNIT,
@@ -26,6 +29,7 @@ from src.experiment.presaccade_session import PresaccadeSession
 from src.experiment.results_graph import build_comparison_graph
 from src.experiment.session import ExperimentSession
 from src.experiment.settings import load_contrast_floor_percent, validate_contrast_floor_percent
+from src.experiment.tutorial_session import TutorialSession
 
 FADE_DURATION_S = 0.4  # dot/cross opacity fade; softens onset so it doesn't trigger a reflexive saccade
 
@@ -144,6 +148,15 @@ def build_stimuli(win: visual.Window) -> dict:
         "start_flash": visual.Rect(
             win, width=aspect * 2 + 1, height=2, fillColor=START_FLASH_COLOR, lineColor=None, opacity=0
         ),
+        # Tutorial-only correctness feedback (quiz misses/pass, dress-rehearsal
+        # misses) - same full-screen-rect approach as start_flash, just with a
+        # color chosen per-frame instead of fixed at construction.
+        "feedback_flash": visual.Rect(win, width=aspect * 2 + 1, height=2, lineColor=None, opacity=0),
+        # Tutorial-only on-screen instruction text (see TutorialSession -
+        # every other session is speech-only by design, see narrator.py).
+        # `pos` is overwritten per-frame based on render_state()'s requested
+        # "center"/"bottom" position.
+        "tutorial_text": visual.TextStim(win, text="", pos=(0, -0.4), color="white", height=0.04, opacity=0),
         "dot": visual.Circle(win, radius=CIRCLE_RADIUS_RATIO, fillColor="white", lineColor="white", opacity=0),
         "cross": visual.Circle(win, radius=CIRCLE_RADIUS_RATIO, fillColor="white", lineColor="white", opacity=0),
         "calibration_center": visual.Circle(
@@ -230,11 +243,32 @@ def apply_render_state(state: dict, stimuli: dict, fade_opacities: dict, dt: flo
         f"face: {'yes' if hud['face_found'] else 'no'} | source: {'ok' if hud['source_available'] else 'unavailable'}"
     )
 
+    # Tutorial-only - absent from the other two sessions' render_state(), so
+    # this stays hidden for them.
+    tutorial_text = state.get("tutorial_text")
+    tutorial_text_stim = stimuli["tutorial_text"]
+    if tutorial_text and tutorial_text["visible"]:
+        tutorial_text_stim.text = tutorial_text["text"]
+        tutorial_text_stim.pos = (0, 0) if tutorial_text["position"] == "center" else (0, -0.4)
+        tutorial_text_stim.opacity = 1.0
+    else:
+        tutorial_text_stim.opacity = 0.0
+
 
 def draw_all(stimuli: dict) -> None:
-    # start_flash first so it sits behind the fixation stimuli, which stay
-    # visible/fixatable on top of it during the flash.
-    for name in ("start_flash", "dot", "cross", "calibration_center", "gaze_indicator", "grating", "hud"):
+    # start_flash/feedback_flash first so they sit behind the fixation
+    # stimuli, which stay visible/fixatable on top of them during a flash.
+    for name in (
+        "start_flash",
+        "feedback_flash",
+        "dot",
+        "cross",
+        "calibration_center",
+        "gaze_indicator",
+        "grating",
+        "hud",
+        "tutorial_text",
+    ):
         stimuli[name].draw()
 
 
@@ -297,9 +331,14 @@ def run_saccade_phase(
     contrast_floor: float | None = None,
     show_gaze_indicator: bool = False,
     test_mode: bool = False,
+    precomputed_calibration_ratios: tuple[float, float, float] | None = None,
+    skip_practice_trials: bool = False,
 ) -> ExperimentSession | None:
-    """Phase 2: the gaze-contingent saccade test. Returns the completed
-    session, or None if the participant quit early."""
+    """Phase 2: the gaze-contingent saccade test. `precomputed_calibration_ratios`/
+    `skip_practice_trials` come from a completed TutorialSession (see main())
+    - when set, this phase reuses that calibration and its dress-rehearsal
+    stage instead of repeating both. Returns the completed session, or None
+    if the participant quit early."""
     gaze = WebcamGazeSource(camera_index)
     gaze.start()
     clock = PausableClock()
@@ -310,6 +349,8 @@ def run_saccade_phase(
         contrast_floor=contrast_floor,
         show_gaze_indicator=show_gaze_indicator,
         test_mode=test_mode,
+        precomputed_calibration_ratios=precomputed_calibration_ratios,
+        skip_practice_trials=skip_practice_trials,
     )
     pause_toggle = ClickPauseToggle(win, clock)
 
@@ -379,6 +420,85 @@ def run_saccade_phase(
         gaze.stop()
 
 
+def run_tutorial_phase(
+    win: visual.Window,
+    stimuli: dict,
+    narrator: Narrator,
+    camera_index: int = CAMERA_INDEX,
+) -> TutorialSession | None:
+    """A one-time, narrated on-ramp for first-time participants, run before
+    both real phases (see main()). Unlike the other two phases, no key or
+    tick is forwarded to the session while narrator.is_speaking is true -
+    the tutorial holds on the current screen until narration finishes,
+    rather than letting a fast participant outrun instructions they haven't
+    heard yet. Returns the completed session (its calibration_ratios feeds
+    the real saccade phase, skipping its own calibration), or None if the
+    participant quit early."""
+    gaze = WebcamGazeSource(camera_index)
+    gaze.start()
+    clock = PausableClock()
+    session = TutorialSession(gaze, clock)
+
+    fade_opacities = {"dot": 0.0, "cross": 0.0, "calibration_center": 0.0}
+    frame_clock = core.Clock()
+    last_spoken_instructions: str | None = None
+    last_feedback_token = 0
+    feedback_frames_remaining = 0
+
+    try:
+        while True:
+            keys = event.getKeys(keyList=["space", "escape", *RESPONSE_KEYS])
+            if "escape" in keys:
+                return None
+
+            speaking = narrator.is_speaking
+            if not speaking:
+                for _ in range(keys.count("space")):
+                    session.on_space()
+                # At most one response key per frame - unlike the real
+                # trial phases (where a repeat is harmless: a response,
+                # once recorded, is ignored for the rest of that trial),
+                # the tutorial's demo/quiz stages advance immediately on
+                # any response key with no such guard, so an OS key-repeat
+                # event landing in the same frame as the original press
+                # could otherwise fire two stage transitions - or silently
+                # cost a quiz streak - off a single keypress.
+                for key in keys:
+                    orientation = _RESPONSE_KEY_ORIENTATION.get(key)
+                    if orientation is not None:
+                        session.on_response_key(orientation)
+                        break
+                session.tick()
+
+            state = session.render_state()
+            phase = state["hud"]["phase"]
+
+            if phase == "COMPLETE" and "space" in keys and not speaking:
+                return session
+
+            last_spoken_instructions = narrate_if_changed(narrator, state["instructions"], last_spoken_instructions)
+
+            feedback_token = state["feedback_flash"]["token"]
+            if feedback_token != last_feedback_token:
+                last_feedback_token = feedback_token
+                color = state["feedback_flash"]["color"]
+                stimuli["feedback_flash"].fillColor = FEEDBACK_FLASH_GREEN if color == "green" else FEEDBACK_FLASH_RED
+                feedback_frames_remaining = FEEDBACK_FLASH_DURATION_FRAMES
+
+            dt = frame_clock.getTime()
+            frame_clock.reset()
+            apply_render_state(state, stimuli, fade_opacities, dt)
+            stimuli["start_flash"].opacity = 0.0  # unused in this phase
+
+            stimuli["feedback_flash"].opacity = 1.0 if feedback_frames_remaining > 0 else 0.0
+            feedback_frames_remaining = max(0, feedback_frames_remaining - 1)
+
+            draw_all(stimuli)
+            win.flip()
+    finally:
+        gaze.stop()
+
+
 def _camera_labels(camera_indices: list[int]) -> list[str]:
     return [f"Camera {i}" + (" (default)" if i == CAMERA_INDEX else "") for i in camera_indices]
 
@@ -410,7 +530,11 @@ def _resolve_test_mode(raw_participant_id: str) -> bool:
     return not raw_participant_id.strip()
 
 
-def prompt_session_info() -> tuple[str, int, str, float, bool, bool] | None:
+def _resolve_run_tutorial(selected_label: str) -> bool:
+    return selected_label == "Yes"
+
+
+def prompt_session_info() -> tuple[str, int, str, float, bool, bool, bool] | None:
     """Standard PsychoPy participant-info dialog, shown before the window
     opens - also offers a camera picker (a dropdown of every camera index
     that actually opens) so switching between multiple connected cameras
@@ -419,10 +543,12 @@ def prompt_session_info() -> tuple[str, int, str, float, bool, bool] | None:
     src/experiment/settings.py and the dashboard's settings box) so a run can
     override it per-session without editing code. Also offers a "Show gaze
     indicator" toggle (default No) for the saccade phase's debug gaze dot -
-    off by default since it's not something a real participant should see.
-    Whether this is a test run (see _resolve_test_mode) is derived from the
-    Participant ID field itself, not a separate control. Returns None if the
-    dialog was cancelled."""
+    off by default since it's not something a real participant should see -
+    and a "Run tutorial" toggle (default No) for the first-timer on-ramp (see
+    TutorialSession), independent of test/real mode so it can be exercised
+    from either. Whether this is a test run (see _resolve_test_mode) is
+    derived from the Participant ID field itself, not a separate control.
+    Returns None if the dialog was cancelled."""
     camera_indices = list_available_cameras() or [CAMERA_INDEX]
     camera_labels = _camera_labels(camera_indices)
     default_contrast_floor_percent = load_contrast_floor_percent()
@@ -432,6 +558,7 @@ def prompt_session_info() -> tuple[str, int, str, float, bool, bool] | None:
         "Camera": camera_labels,
         "Contrast floor (%)": f"{default_contrast_floor_percent:.2f}",
         "Show gaze indicator": ["No", "Yes"],
+        "Run tutorial": ["No", "Yes"],
     }
     dlg = gui.DlgFromDict(info, title="Saccade experiment")
     if not dlg.OK:
@@ -443,7 +570,16 @@ def prompt_session_info() -> tuple[str, int, str, float, bool, bool] | None:
     camera_index, camera_label = _resolve_camera_choice(camera_indices, camera_labels, info["Camera"])
     contrast_floor_percent = _resolve_contrast_floor_percent(info["Contrast floor (%)"], default_contrast_floor_percent)
     show_gaze_indicator = _resolve_show_gaze_indicator(info["Show gaze indicator"])
-    return participant_id, camera_index, camera_label, contrast_floor_percent, show_gaze_indicator, test_mode
+    run_tutorial = _resolve_run_tutorial(info["Run tutorial"])
+    return (
+        participant_id,
+        camera_index,
+        camera_label,
+        contrast_floor_percent,
+        show_gaze_indicator,
+        run_tutorial,
+        test_mode,
+    )
 
 
 def show_results_graph(win: visual.Window, results: list) -> None:
@@ -466,7 +602,15 @@ def main() -> None:
     session_info = prompt_session_info()
     if session_info is None:
         return  # cancelled the participant-info dialog
-    participant_id, camera_index, camera_label, contrast_floor_percent, show_gaze_indicator, test_mode = session_info
+    (
+        participant_id,
+        camera_index,
+        camera_label,
+        contrast_floor_percent,
+        show_gaze_indicator,
+        run_tutorial,
+        test_mode,
+    ) = session_info
     contrast_floor = contrast_floor_percent / 100
 
     logger = ResultLogger(
@@ -475,17 +619,29 @@ def main() -> None:
     win = build_window(fullscreen=True)
     stimuli = build_stimuli(win)
     narrator = Narrator()
-    saccade_phase = partial(
-        run_saccade_phase,
-        narrator=narrator,
-        camera_index=camera_index,
-        contrast_floor=contrast_floor,
-        show_gaze_indicator=show_gaze_indicator,
-        test_mode=test_mode,
-    )
-    presaccade_phase = partial(run_presaccade_phase, narrator=narrator, contrast_floor=contrast_floor, test_mode=test_mode)
 
     try:
+        precomputed_calibration_ratios = None
+        if run_tutorial:
+            tutorial_session = run_tutorial_phase(win, stimuli, narrator, camera_index=camera_index)
+            if tutorial_session is None:
+                return  # quit early
+            precomputed_calibration_ratios = tutorial_session.calibration_ratios
+
+        saccade_phase = partial(
+            run_saccade_phase,
+            narrator=narrator,
+            camera_index=camera_index,
+            contrast_floor=contrast_floor,
+            show_gaze_indicator=show_gaze_indicator,
+            test_mode=test_mode,
+            precomputed_calibration_ratios=precomputed_calibration_ratios,
+            skip_practice_trials=run_tutorial,
+        )
+        presaccade_phase = partial(
+            run_presaccade_phase, narrator=narrator, contrast_floor=contrast_floor, test_mode=test_mode
+        )
+
         # A blank Participant ID (test_mode) runs the saccade phase first -
         # that's the one under active development, so a smoke test shouldn't
         # have to sit through the baseline phase first just to reach it.

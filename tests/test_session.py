@@ -4,6 +4,7 @@ import pytest
 
 from include.eye_tracking.types import GazeZone
 from include.experiment.constants import (
+    CALIBRATION_ROUNDS,
     CROSS_POSITION,
     DOT_POSITION,
     FOREPERIOD_MAX_MS,
@@ -38,10 +39,14 @@ def _make_session(fake_gaze, show_gaze_indicator: bool = False) -> ExperimentSes
 
 
 def _complete_calibration_and_enter_foreperiod(session) -> None:
-    session.on_space()  # WAITING_TO_START -> CALIBRATE_LEFT
-    session.on_space()  # CALIBRATE_LEFT -> CALIBRATE_CENTER
-    session.on_space()  # CALIBRATE_CENTER -> CALIBRATE_RIGHT
-    session.on_space()  # CALIBRATE_RIGHT -> FOREPERIOD (+ gaze.calibrate() call)
+    session.on_space()  # WAITING_TO_START -> CALIBRATE_LEFT (round 1)
+    for round_number in range(1, CALIBRATION_ROUNDS + 1):
+        session.on_space()  # CALIBRATE_LEFT -> CALIBRATE_CENTER
+        session.on_space()  # CALIBRATE_CENTER -> CALIBRATE_RIGHT
+        # On the last round this call finalizes (averages rounds 2-3,
+        # discards round 1, calls gaze.calibrate()) and enters FOREPERIOD;
+        # on earlier rounds it loops back to CALIBRATE_LEFT instead.
+        session.on_space()
 
 
 def _enter_trial_active(session, fake_time) -> None:
@@ -85,21 +90,74 @@ def test_calibration_starts_a_fresh_sample_window_for_each_target(fake_gaze):
     # window before each of the three calibration targets, the left/center/
     # right averages could be contaminated by stale samples from whatever the
     # participant was looking at previously, collapsing the calibration span
-    # toward zero.
+    # toward zero. Calibration runs CALIBRATION_ROUNDS times (discarding
+    # round 1, averaging the rest - see average_calibration_rounds), so a
+    # fresh window is started before every target in every round except the
+    # very last (which finalizes instead of moving to a new target).
     session = _make_session(fake_gaze)
     assert fake_gaze.calibration_samples_begun == 0
 
-    session.on_space()  # WAITING_TO_START -> CALIBRATE_LEFT
+    session.on_space()  # WAITING_TO_START -> CALIBRATE_LEFT (round 1)
     assert fake_gaze.calibration_samples_begun == 1  # fresh window before the dot
 
-    session.on_space()  # CALIBRATE_LEFT -> CALIBRATE_CENTER
-    assert fake_gaze.calibration_samples_begun == 2  # fresh window before the center target
+    expected = 1
+    for round_number in range(1, CALIBRATION_ROUNDS + 1):
+        session.on_space()  # CALIBRATE_LEFT -> CALIBRATE_CENTER
+        expected += 1
+        assert fake_gaze.calibration_samples_begun == expected  # fresh window before the center target
 
-    session.on_space()  # CALIBRATE_CENTER -> CALIBRATE_RIGHT
-    assert fake_gaze.calibration_samples_begun == 3  # fresh window before the cross
+        session.on_space()  # CALIBRATE_CENTER -> CALIBRATE_RIGHT
+        expected += 1
+        assert fake_gaze.calibration_samples_begun == expected  # fresh window before the cross
 
-    session.on_space()  # CALIBRATE_RIGHT -> FOREPERIOD
-    assert fake_gaze.calibration_samples_begun == 3  # no new target after this
+        session.on_space()  # CALIBRATE_RIGHT -> next round's CALIBRATE_LEFT, or FOREPERIOD on the last round
+        if round_number < CALIBRATION_ROUNDS:
+            expected += 1
+            assert fake_gaze.calibration_samples_begun == expected  # fresh window before the next round's dot
+        else:
+            assert fake_gaze.calibration_samples_begun == expected  # no new target after the final round
+            assert session.render_state()["hud"]["phase"] == "FOREPERIOD"
+
+
+def test_self_calibration_discards_round_one_and_averages_rounds_two_and_three(fake_gaze):
+    # Each round's (left, center, right) triple: round 1 should be fully
+    # discarded, only rounds 2-3 should influence the final result.
+    round_ratios = [
+        (0.1, 0.1, 0.1),  # round 1 - discarded
+        (0.2, 0.5, 0.8),  # round 2
+        (0.4, 0.5, 0.6),  # round 3
+    ]
+    calls = iter(ratio for triple in round_ratios for ratio in triple)
+    fake_gaze.average_recent_ratio = lambda: next(calls)
+
+    session = _make_session(fake_gaze)
+    _complete_calibration_and_enter_foreperiod(session)
+
+    expected = ((0.2 + 0.4) / 2, (0.5 + 0.5) / 2, (0.8 + 0.6) / 2)
+    assert session.calibration_ratios == pytest.approx(expected)
+    assert fake_gaze.calibrated == pytest.approx(expected)
+
+
+def test_precomputed_calibration_skips_calibration_phases(fake_gaze):
+    # A completed TutorialSession hands its calibration straight to
+    # ExperimentSession, so it shouldn't calibrate a second time.
+    ratios = (0.3, 0.5, 0.7)
+    session = ExperimentSession(
+        fake_gaze, logger=_NullLogger(), clock=PausableClock(), precomputed_calibration_ratios=ratios
+    )
+    assert fake_gaze.calibrated == ratios  # calibrated immediately, in __init__
+    assert session.calibration_ratios == ratios
+
+    session.on_space()  # WAITING_TO_START -> straight to FOREPERIOD, no CALIBRATE_* phases
+    assert session.render_state()["hud"]["phase"] == "FOREPERIOD"
+
+
+def test_skip_practice_trials_produces_no_practice_trials(fake_gaze):
+    # The tutorial's dress-rehearsal stage replaces this phase's normal
+    # practice trials, so a participant who took it shouldn't also get these.
+    session = ExperimentSession(fake_gaze, logger=_NullLogger(), clock=PausableClock(), skip_practice_trials=True)
+    assert all(not t.practice for t in session._trials)
+    assert len(session._trials) == NUM_TRIALS_PER_PHASE_REAL
 
 
 def test_correct_orientation_scores_and_updates_zest(fake_gaze, fake_time):
