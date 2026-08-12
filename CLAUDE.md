@@ -87,6 +87,18 @@ is an independent Flask app (`data_access.py` reads/writes the CSV,
 `_meta.json`, and `settings.json` files under `data/`) — no shared process
 or IPC with the experiment, just shared files on disk.
 
+**Shared logic lives in `trial_mechanics.py`/`scoring.py`, not copy-pasted.**
+`OnsetDetector` (`src/experiment/trial_mechanics.py`) is the one saccade-
+onset debounce implementation used everywhere it's needed — `ExperimentSession`'s
+RT-test and main trials, and `TutorialSession`'s scoped-down mirrors of
+both (four call sites total). `is_valid_for_saccadic_analysis()`
+(`src/experiment/scoring.py`) is the single `flash_during_saccade`
+validity gate both the live ZEST update and `results_graph.py` apply.
+`average_ms()` (`trial_mechanics.py`) is the shared "mean, or a fallback if
+empty" used by both classes' reaction-time averaging. If you're about to
+hand-roll any of these again in a new call site, use the existing one
+instead — that duplication is exactly what was cleaned up.
+
 **Test doubles.** `tests/conftest.py` provides `FakeGazeSource` (an in-memory
 `GazeSource` implementation tests set `.zone`/`.face_found`/`.position` on
 directly) and a `fake_time` fixture that monkeypatches `PausableClock`'s time
@@ -124,7 +136,7 @@ schedules each trial's flash at a fixed delay — `avg_reaction_time_ms +` one
 of `TIMING_OFFSETS_MS` — from target onset, entirely independent of the
 real-time gaze classifier (which keeps running, but now only to measure
 `reaction_latency_ms` and to compute `flash_during_saccade` after the fact:
-whether the scheduled flash time fell inside `[_away_from_source_since,
+whether the scheduled flash time fell inside `[_onset_detector.since,
 _target_landed_since]`). This trades real-time detection lag as a
 constraint on flash precision for a structurally common failure mode — the
 scheduled flash simply missing the actual saccade window — so
