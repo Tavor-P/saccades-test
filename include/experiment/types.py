@@ -80,3 +80,11 @@ class TrialResult:
     # TrialSpec.timing_offset_ms. None for rows that don't use open-loop
     # scheduling (presaccade, rt_test, or CSVs logged before this existed).
     timing_offset_ms: int | None = None
+    # Wall-clock (time.time(), milliseconds since the Unix epoch) timestamp
+    # of the moment the grating actually flashed - unlike every other timing
+    # field here, which is relative to PausableClock's monotonic clock and
+    # only meaningful within one trial/session. This is what lets the flash
+    # be located in absolute time against something recorded independently
+    # (e.g. a synced video/frame log). None for catch trials, presaccade
+    # rows, and rt_test rows, none of which ever flash.
+    grating_shown_at_unix_ms: float | None = None

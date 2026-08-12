@@ -60,11 +60,13 @@ GRATING_SIZE_HEIGHT_UNITS = GRATING_ENVELOPE_SIGMA_HEIGHT_UNITS * 6
 # dialog's Participant ID blank means test, entering one means real. The two
 # trial-count pairs below are what that choice picks between.
 #
-# Fixed trial counts shared by both phases (presaccade baseline and saccade
-# test), so the two conditions can be directly compared afterward. Contrast
-# itself is no longer one of a fixed set of levels - see ZEST_* below.
+# Fixed trial count for PresaccadeSession (baseline/fixation phase) only now
+# - ExperimentSession's real saccade block no longer uses this at all, since
+# its trial count is open-ended (see ZEST_MIN_VALID_TRIALS_*/MAX_SACCADE_TRIALS_*
+# below). 25 either way (not 100 for "real") - that's plenty of data for the
+# baseline condition and a shorter baseline keeps total session length down.
 NUM_TRIALS_PER_PHASE_TEST = 25
-NUM_TRIALS_PER_PHASE_REAL = 100
+NUM_TRIALS_PER_PHASE_REAL = 25
 CATCH_TRIAL_FRACTION = 0.2  # rest drive/query the adaptive staircase, in either mode
 
 # A few throwaway trials before each phase's real block, so a participant
@@ -150,25 +152,27 @@ MIN_CATCH_TRIALS_FOR_RELIABILITY = 8  # each phase has 20 catch trials, comforta
 SACCADE_TIMEOUT_MS = 15_000  # force-advance a trial if gaze never lands (broken tracking)
 GAZE_LANDING_STABILITY_MS = 150  # gaze must hold in the target zone this long to count as "landed"
 # Gaze must hold outside the source zone this long before it counts as a real
-# saccade onset (debounces classifier noise so the flash doesn't fire on a
-# single jittery frame). At the dot/cross separation this experiment uses
-# (~20 degrees), a real saccade's flight time is only ~65ms (main-sequence
-# estimate), so this value eats directly into how much of that flight time is
-# still ahead of the flash - the previous 60ms, then 30ms, both left the flash
-# firing well after the eye was already most of the way to the target.
-# Dropped further now that the tracker itself runs much faster (~115-145fps,
-# up from ~19fps - see the camera/gaze_tracker perf fix) and onset_detection_lag_ms
-# in real sessions clusters right at the debounce floor rather than scattering
-# across tens of ms, meaning the classifier has a fresh sample well within this
-# window rather than being the limiting factor. Still not 0: some minimum
-# guards against a single misclassified frame (blink, momentary tracking
-# glitch) firing the flash on pure noise. reaction_latency_ms/onset_detection_lag_ms
-# in the logged CSV (see TrialResult) let you check empirically whether this
-# is catching real saccade onsets or still firing late/early - if it's still
-# too late, GAZE_DEAD_ZONE (in eye_tracking/constants.py) is the other lever:
-# it gates how far off-center gaze must drift before onset detection even
-# starts counting, which isn't visible in onset_detection_lag_ms at all.
-SACCADE_ONSET_STABILITY_MS = 10
+# saccade onset (debounces classifier noise so a single jittery/misclassified
+# frame doesn't get read as onset). This used to be tuned down to 10ms because
+# onset detection also *triggered the flash* in the old gaze-contingent
+# design, and this value ate directly into how much of a real saccade's short
+# (~65ms main-sequence) flight time was still ahead of the flash. That
+# tradeoff is gone now that flash timing is open-loop (scheduled off
+# avg_reaction_time_ms, independent of real-time detection speed - see
+# ExperimentSession) - onset detection is now purely a *measurement*
+# (reaction_latency_ms, and via that the reaction-time test's average and the
+# in-session rolling average), so accuracy matters more than latency. 10ms
+# was too short for that: a brief misclassified-zone blip (lighting flicker,
+# tracking glitch) reads as a real saccade onset just as easily as an actual
+# one, which is why the reaction-time test could measure something like 40ms
+# average against clearly-real onsets over 90ms - not a participant being
+# fast, just noise dragging the average down. Raised well above a single
+# frame's worth of jitter at this tracker's ~115-145fps (~7-9ms/frame).
+# reaction_latency_ms/onset_detection_lag_ms in the logged CSV (see
+# TrialResult) let you check empirically whether this is still catching false
+# positives - if avg_reaction_time_ms in real sessions is still
+# implausibly fast (well under ~100ms), raise this further.
+SACCADE_ONSET_STABILITY_MS = 40
 
 # 3-point calibration is run this many times (round 1 discarded, rounds 2-3
 # averaged - see src/experiment/calibration.py) on the assumption that a
@@ -201,10 +205,11 @@ TIMING_OFFSETS_MS = (-40, -20, 0, 20, 40)
 # Upfront reaction-time test: repeated beep+target-appear -> saccade-onset
 # attempts (no grating, no response), averaged into the initial
 # avg_reaction_time_ms. Also re-run (this same attempt count) by "Return and
-# Recalibrate". 10 matches RT_AVERAGE_ROLLING_WINDOW below, on the theory
-# that if 10 samples is enough to trust for an in-session update, it's enough
-# for the initial estimate too.
-NUM_RT_TEST_TRIALS_TEST = 3
+# Recalibrate". Real saccadic reaction time is genuinely variable trial to
+# trial, so a handful of samples is not enough to average out that noise -
+# 3 (the old NUM_RT_TEST_TRIALS_TEST) produced unreliable averages in
+# practice; 6 is a better floor even for a quick test/smoke run.
+NUM_RT_TEST_TRIALS_TEST = 6
 NUM_RT_TEST_TRIALS_REAL = 10
 
 # Fallback average reaction time if every RT-test attempt times out (broken
@@ -222,9 +227,12 @@ DEFAULT_REACTION_TIME_MS = 225.0
 # only overwrites the average value itself - see resume_from_pause). Kept as
 # two separate names even though equal today, since "how many samples feed
 # the average" and "how often it's recomputed" are conceptually distinct
-# knobs a future tweak might decouple.
-RT_AVERAGE_ROLLING_WINDOW = 10
-RT_AVERAGE_RECOMPUTE_EVERY = 10
+# knobs a future tweak might decouple. Lowered from 10 to 5 - reaction time
+# can drift (fatigue, practice effects) meaningfully within 10 trials, so
+# updating twice as often keeps the schedule closer to the participant's
+# actual current reaction time.
+RT_AVERAGE_ROLLING_WINDOW = 5
+RT_AVERAGE_RECOMPUTE_EVERY = 5
 
 # Stopping criterion for the main saccade block, replacing a fixed trial
 # count now that contrast stays ZEST-adaptive rather than a discrete level

@@ -176,3 +176,16 @@ faster `RECALIBRATION_ROUNDS=2`, averaging both rounds instead of
 discarding one — reuses `average_calibration_rounds()` unchanged) and the
 reaction-time test, overwriting `avg_reaction_time_ms` but *not* resetting
 the rolling-average's every-`RT_AVERAGE_RECOMPUTE_EVERY`-trials counter.
+
+**`cv2.VideoWriter` fails silently, not loudly.** `VideoRecorder`
+(`src/eye_tracking/video_recorder.py`, opt-in via the startup dialog's
+"Record video" toggle, default Yes) doesn't raise if the codec/container
+can't be opened (e.g. `mp4v` unavailable on a given OpenCV build, an
+unwritable path) — `.write()` calls on a non-functional writer just silently
+do nothing, which would otherwise mean a whole session records zero video
+with no error anywhere. `start()` checks `writer.isOpened()` and prints a
+warning to stderr if it failed, but doesn't stop the session — video
+recording is a nice-to-have, not something a failure here should be able to
+crash real data collection over. If a session's video is unexpectedly empty,
+check the console output from that run before assuming the recorder itself
+is broken.

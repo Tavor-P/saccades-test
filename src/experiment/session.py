@@ -1,10 +1,10 @@
 import math
 import random
+import time
 from collections import deque
 from enum import Enum, auto
 
 from include.eye_tracking.interfaces import GazeSource
-from include.eye_tracking.types import GazeZone
 from include.experiment.constants import (
     CALIBRATION_ROUNDS,
     CENTER_POSITION,
@@ -29,7 +29,6 @@ from include.experiment.constants import (
     RESPONSE_WINDOW_MS,
     RT_AVERAGE_RECOMPUTE_EVERY,
     RT_AVERAGE_ROLLING_WINDOW,
-    SACCADE_ONSET_STABILITY_MS,
     SACCADE_TIMEOUT_MS,
     TIMING_OFFSETS_MS,
     ZEST_CREDIBLE_INTERVAL_MAX_LOG_WIDTH,
@@ -40,9 +39,9 @@ from include.experiment.types import Orientation, Target, TrialResult, TrialSpec
 from src.experiment.calibration import average_calibration_rounds
 from src.experiment.logger import ResultLogger
 from src.experiment.pausable_clock import PausableClock
-from src.experiment.scoring import score_outcome
+from src.experiment.scoring import is_valid_for_saccadic_analysis, score_outcome
 from src.experiment.trial_factory import build_saccade_sequence, generate_next_saccade_trial
-from src.experiment.trial_mechanics import ShuffledBag, zone_for
+from src.experiment.trial_mechanics import OnsetDetector, ShuffledBag, average_ms, zone_for
 from src.experiment.zest import ZestStaircase
 
 
@@ -108,7 +107,7 @@ class ExperimentSession:
 
         # -- practice (fixed list) then dynamically-generated real trials --
         num_practice = 0 if skip_practice_trials else (NUM_PRACTICE_TRIALS_TEST if test_mode else NUM_PRACTICE_TRIALS_REAL)
-        self._practice_trials = build_saccade_sequence(num_trials=0, num_practice=num_practice)
+        self._practice_trials = build_saccade_sequence(num_practice=num_practice)
         self._num_practice = len(self._practice_trials)
         self._practice_index = 0
         self._trial_source: Target = self._practice_trials[-1].target if self._practice_trials else Target.DOT
@@ -120,8 +119,7 @@ class ExperimentSession:
         self._rt_test_target_attempts = NUM_RT_TEST_TRIALS_TEST if test_mode else NUM_RT_TEST_TRIALS_REAL
         self._rt_test_attempt = 0
         self._rt_samples_ms: list[float] = []
-        self._rt_test_away_from_source_since: float | None = None
-        self._rt_test_gaze_left_source = False
+        self._rt_test_onset_detector: OnsetDetector = OnsetDetector(zone_for(Target.DOT))
         self._rt_test_start_time = 0.0
         self._avg_reaction_time_ms: float | None = None
         self._recent_rt_ms: deque[float] = deque(maxlen=RT_AVERAGE_ROLLING_WINDOW)
@@ -129,8 +127,6 @@ class ExperimentSession:
         # -- stopping criterion for the real block (see constants.py) --
         self._min_valid_trials = ZEST_MIN_VALID_TRIALS_TEST if test_mode else ZEST_MIN_VALID_TRIALS_REAL
         self._max_saccade_trials = MAX_SACCADE_TRIALS_TEST if test_mode else MAX_SACCADE_TRIALS_REAL
-        self._completed_main_trial_count = 0
-        self._valid_trial_count = 0
 
         self._dot_visible = False
         self._cross_visible = False
@@ -163,12 +159,15 @@ class ExperimentSession:
 
     def _clear_trial_state(self) -> None:
         self._trial_start_time = 0.0
-        self._gaze_left_source = False
-        self._away_from_source_since: float | None = None
+        # Constructed properly (with the right zone to avoid) in
+        # _reveal_target_and_start_trial, once the trial's source is known -
+        # this placeholder is never read before then.
+        self._onset_detector: OnsetDetector | None = None
         self._target_landed_since: float | None = None
         self._flash_scheduled_at = 0.0
         self._flash_decided = False
         self._grating_shown_at: float | None = None
+        self._grating_shown_at_unix_ms: float | None = None
         self._grating_visible = False
         self._grating_frames_remaining = 0
         self._grating_actually_shown = False
@@ -301,8 +300,7 @@ class ExperimentSession:
         self._phase = Phase.RT_TEST_FOREPERIOD
         self._foreperiod_start = self._clock.now()
         self._foreperiod_duration = random.uniform(FOREPERIOD_MIN_MS, FOREPERIOD_MAX_MS) / 1000
-        self._rt_test_away_from_source_since = None
-        self._rt_test_gaze_left_source = False
+        self._rt_test_onset_detector = OnsetDetector(zone_for(Target.DOT))
         self._dot_visible = True
         self._cross_visible = False
 
@@ -316,20 +314,10 @@ class ExperimentSession:
     def _tick_rt_test_active(self) -> None:
         now = self._clock.now()
         sample = self._gaze.latest_sample()
-        source_zone = zone_for(Target.DOT)
 
-        if not self._rt_test_gaze_left_source:
-            if sample.face_found and sample.zone not in (source_zone, GazeZone.UNKNOWN):
-                if self._rt_test_away_from_source_since is None:
-                    self._rt_test_away_from_source_since = now
-                elif now - self._rt_test_away_from_source_since >= SACCADE_ONSET_STABILITY_MS / 1000:
-                    self._rt_test_gaze_left_source = True
-                    self._finish_rt_test_attempt(
-                        (self._rt_test_away_from_source_since - self._rt_test_start_time) * 1000
-                    )
-                    return
-            else:
-                self._rt_test_away_from_source_since = None
+        if not self._rt_test_onset_detector.confirmed and self._rt_test_onset_detector.update(sample, now):
+            self._finish_rt_test_attempt((self._rt_test_onset_detector.since - self._rt_test_start_time) * 1000)
+            return
 
         if now - self._rt_test_start_time >= SACCADE_TIMEOUT_MS / 1000:
             self._finish_rt_test_attempt(None)
@@ -357,9 +345,7 @@ class ExperimentSession:
 
         self._rt_test_attempt += 1
         if self._rt_test_attempt >= self._rt_test_target_attempts:
-            self._avg_reaction_time_ms = (
-                sum(self._rt_samples_ms) / len(self._rt_samples_ms) if self._rt_samples_ms else DEFAULT_REACTION_TIME_MS
-            )
+            self._avg_reaction_time_ms = average_ms(self._rt_samples_ms, default=DEFAULT_REACTION_TIME_MS)
             self._begin_next_trial_or_complete()
         else:
             self._begin_rt_test_foreperiod()
@@ -387,6 +373,19 @@ class ExperimentSession:
         self._current_trial_spec = trial
         self._begin_foreperiod()
 
+    @property
+    def _completed_main_trial_count(self) -> int:
+        """Derived from self._results rather than hand-maintained - every
+        non-practice main-block trial that finishes gets exactly one
+        "saccade"-phase row appended there (see _finish_trial), so counting
+        those directly can't drift out of sync with what's actually been
+        logged."""
+        return sum(1 for r in self._results if r.phase == "saccade")
+
+    @property
+    def _valid_trial_count(self) -> int:
+        return sum(1 for r in self._results if r.phase == "saccade" and is_valid_for_saccadic_analysis(r.flash_during_saccade))
+
     def _should_stop_main_block(self) -> bool:
         """An efficient, well-estimated threshold rather than a fixed trial
         count: stop once ZEST's 68% credible interval is narrow enough (in
@@ -413,12 +412,12 @@ class ExperimentSession:
         # source, via _hide_source_symbol/_reveal_target_and_start_trial),
         # but isn't when the previous phase was RT-test or recalibration,
         # neither of which tracks a TrialSpec at all.
-        trial = self._current_trial()
+        trial = self._current_trial_spec
         self._dot_visible = trial.source is Target.DOT
         self._cross_visible = trial.source is Target.CROSS
 
     def _reveal_target_and_start_trial(self) -> None:
-        trial = self._current_trial()
+        trial = self._current_trial_spec
         if trial.target is Target.DOT:
             self._dot_visible = True
         else:
@@ -432,16 +431,18 @@ class ExperimentSession:
         self._hide_source_symbol()
         self._phase = Phase.TRIAL_ACTIVE
         self._trial_start_time = self._clock.now()
+        self._onset_detector = OnsetDetector(zone_for(trial.source))
         # Open-loop: the flash (or catch) fires at a fixed delay from this
         # instant - avg_reaction_time_ms + this trial's offset - rather than
         # whenever the real-time gaze classifier detects onset (see
         # _tick_trial_active). avg_reaction_time_ms is always set by this
         # point - the RT-test phase always runs before any FOREPERIOD.
-        offset_ms = trial.timing_offset_ms or 0
+        # Not `trial.timing_offset_ms or 0` - 0 is itself a valid member of
+        # TIMING_OFFSETS_MS, so that pattern would only coincidentally give
+        # the right answer today (both branches happen to be 0) and silently
+        # break if the fallback value or the offsets ever changed.
+        offset_ms = trial.timing_offset_ms if trial.timing_offset_ms is not None else 0
         self._flash_scheduled_at = self._trial_start_time + (self._avg_reaction_time_ms + offset_ms) / 1000
-
-    def _current_trial(self):
-        return self._current_trial_spec
 
     def tick(self) -> None:
         if self._phase is Phase.RT_TEST_FOREPERIOD:
@@ -458,10 +459,9 @@ class ExperimentSession:
             self._reveal_target_and_start_trial()
 
     def _tick_trial_active(self) -> None:
-        trial = self._current_trial()
+        trial = self._current_trial_spec
         sample = self._gaze.latest_sample()
         now = self._clock.now()
-        source_zone = zone_for(trial.source)
         target_zone = zone_for(trial.target)
 
         # Onset detection still runs every tick, purely as a measurement now
@@ -469,16 +469,9 @@ class ExperimentSession:
         # plus one bound of the flash_during_saccade window check in
         # _finish_trial) - it no longer triggers the flash. See the
         # scheduled-time block below for that.
-        if not self._gaze_left_source:
-            if sample.face_found and sample.zone not in (source_zone, GazeZone.UNKNOWN):
-                if self._away_from_source_since is None:
-                    self._away_from_source_since = now
-                elif now - self._away_from_source_since >= SACCADE_ONSET_STABILITY_MS / 1000:
-                    self._gaze_left_source = True
-                    self._reaction_latency_ms = (self._away_from_source_since - self._trial_start_time) * 1000
-                    self._onset_detection_lag_ms = (now - self._away_from_source_since) * 1000
-            else:
-                self._away_from_source_since = None
+        if not self._onset_detector.confirmed and self._onset_detector.update(sample, now):
+            self._reaction_latency_ms = (self._onset_detector.since - self._trial_start_time) * 1000
+            self._onset_detection_lag_ms = (now - self._onset_detector.since) * 1000
 
         # Open-loop: fires once, at its scheduled absolute time, independent
         # of the onset detection above. Catch trials still "decide" here (no
@@ -492,6 +485,7 @@ class ExperimentSession:
             self._response_deadline = now + RESPONSE_WINDOW_MS / 1000
             if trial.grating_shown:
                 self._grating_shown_at = now
+                self._grating_shown_at_unix_ms = time.time() * 1000
                 self._grating_visible = True
                 self._grating_frames_remaining = GRATING_DURATION_FRAMES
                 self._grating_actually_shown = True
@@ -535,7 +529,7 @@ class ExperimentSession:
             self._finish_trial(landed=True)
 
     def _hide_source_symbol(self) -> None:
-        trial = self._current_trial()
+        trial = self._current_trial_spec
         if trial.source is Target.DOT:
             self._dot_visible = False
         else:
@@ -544,34 +538,36 @@ class ExperimentSession:
     def _compute_flash_during_saccade(self) -> bool | None:
         """Whether this trial's scheduled flash time actually fell within
         [onset, landing] - the real-time-detected saccade window.
-        _away_from_source_since/_target_landed_since are both already
-        low-lag "first observed" timestamps (not the later
-        stability-confirmed ones), so no continuous gaze-trace logging is
-        needed to compute this, just a comparison against the already-known
-        schedule. Only meaningful for trials that actually flashed. False if
-        onset was never detected (no saccade evidence at flash time at all);
+        _onset_detector.since/_target_landed_since are both already low-lag
+        "first observed" timestamps (not the later stability-confirmed
+        ones), so no continuous gaze-trace logging is needed to compute
+        this, just a comparison against the already-known schedule. Only
+        meaningful for trials that actually flashed. False if onset was
+        never detected (no saccade evidence at flash time at all);
         None if landing was never confirmed before the trial ended -
         genuinely undeterminable, not merely invalid."""
         if not self._grating_actually_shown:
             return None
-        if self._away_from_source_since is None:
+        if self._onset_detector.since is None:
             return False
         if self._target_landed_since is None:
             return None
-        return self._away_from_source_since <= self._flash_scheduled_at <= self._target_landed_since
+        return self._onset_detector.since <= self._flash_scheduled_at <= self._target_landed_since
 
     def _update_rt_tracking(self) -> None:
         if self._reaction_latency_ms is not None:
             self._recent_rt_ms.append(self._reaction_latency_ms)
-        if self._completed_main_trial_count % RT_AVERAGE_RECOMPUTE_EVERY == 0 and self._recent_rt_ms:
-            self._avg_reaction_time_ms = sum(self._recent_rt_ms) / len(self._recent_rt_ms)
+        if self._completed_main_trial_count % RT_AVERAGE_RECOMPUTE_EVERY == 0:
+            # default=current average: a window that's entirely timeouts
+            # shouldn't zero it out, just leave it unchanged.
+            self._avg_reaction_time_ms = average_ms(self._recent_rt_ms, default=self._avg_reaction_time_ms)
 
     def _finish_trial(self, landed: bool) -> None:
-        trial = self._current_trial()
+        trial = self._current_trial_spec
         now = self._clock.now()
 
-        saccade_duration_ms = (now - self._trial_start_time) * 1000 if self._gaze_left_source else None
-        if not landed and not self._gaze_left_source:
+        saccade_duration_ms = (now - self._trial_start_time) * 1000 if self._onset_detector.confirmed else None
+        if not landed and not self._onset_detector.confirmed:
             outcome = "timeout"
         else:
             outcome = score_outcome(
@@ -594,7 +590,7 @@ class ExperimentSession:
             if (
                 self._grating_actually_shown
                 and outcome in ("correct", "incorrect", "miss")
-                and self._flash_during_saccade is True
+                and is_valid_for_saccadic_analysis(self._flash_during_saccade)
             ):
                 self._zest.update(self._trial_contrast, detected=outcome == "correct")
 
@@ -615,13 +611,10 @@ class ExperimentSession:
                 onset_detection_lag_ms=self._onset_detection_lag_ms,
                 flash_during_saccade=self._flash_during_saccade,
                 timing_offset_ms=trial.timing_offset_ms,
+                grating_shown_at_unix_ms=self._grating_shown_at_unix_ms,
             )
             self._logger.log(result)
             self._results.append(result)
-
-            self._completed_main_trial_count += 1
-            if self._flash_during_saccade is True:
-                self._valid_trial_count += 1
             self._update_rt_tracking()
 
         self._grating_visible = False
@@ -669,7 +662,7 @@ class ExperimentSession:
         # switching text every trial would flicker in peripheral vision, which
         # is exactly the kind of onset we've been trying to avoid elsewhere.
         if self._phase in (Phase.FOREPERIOD, Phase.TRIAL_ACTIVE):
-            prefix = "Practice (doesn't count) — " if self._current_trial().practice else ""
+            prefix = "Practice (doesn't count) — " if self._current_trial_spec.practice else ""
             return f"{prefix}UP/DOWN if the grating is vertical, LEFT/RIGHT if horizontal — not sure? Guess"
         if self._phase in (Phase.RT_TEST_FOREPERIOD, Phase.RT_TEST_ACTIVE):
             return "Measuring your reaction time — look at the dot, then look at the cross as soon as it appears"
@@ -690,7 +683,7 @@ class ExperimentSession:
     def _trial_label(self) -> str:
         if self._phase in (Phase.RT_TEST_FOREPERIOD, Phase.RT_TEST_ACTIVE):
             return f"RT test {self._rt_test_attempt + 1}/{self._rt_test_target_attempts}"
-        trial = self._current_trial()
+        trial = self._current_trial_spec
         if trial.practice:
             return f"practice {self._practice_index}/{self._num_practice}"
         # Open-ended now that contrast stays ZEST-adaptive rather than a
@@ -747,7 +740,7 @@ class ExperimentSession:
     def render_state(self) -> dict:
         sample = self._gaze.latest_sample()
         dot_visible, cross_visible, calibration_center_visible = self._symbol_visibility()
-        trial = self._current_trial() if self._phase in (Phase.FOREPERIOD, Phase.TRIAL_ACTIVE) else None
+        trial = self._current_trial_spec if self._phase in (Phase.FOREPERIOD, Phase.TRIAL_ACTIVE) else None
 
         return {
             "instructions": self._instructions(),

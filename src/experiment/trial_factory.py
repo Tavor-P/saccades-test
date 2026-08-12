@@ -57,22 +57,18 @@ def _build_saccade_trials(schedule: list[bool], practice: bool, start_source: Ta
     return trials, source
 
 
-def build_saccade_sequence(num_trials: int, num_practice: int) -> list[TrialSpec]:
-    """Phase 2 practice block only (see generate_next_saccade_trial for the
-    real block): same shown/catch schedule as the presaccade phase, but each
-    trial is also an alternating dot<->cross saccade. Practice trials come
-    first, continuing the same dot/cross alternation into the real block.
-
-    `num_trials` real trials are still generated here for callers that want
-    a complete fixed-length sequence (e.g. tests exercising the old
-    schedule), but ExperimentSession itself only consumes the practice
-    portion - its real block is open-ended (see generate_next_saccade_trial)
-    now that contrast stays ZEST-adaptive rather than a fixed trial count."""
-    practice_trials, source = _build_saccade_trials(
+def build_saccade_sequence(num_practice: int) -> list[TrialSpec]:
+    """Phase 2's practice block: alternating shown/catch (see
+    _build_practice_schedule), each trial also an alternating dot<->cross
+    saccade starting from Target.DOT. The real block is no longer built
+    ahead of time here - contrast stays ZEST-adaptive rather than a fixed
+    trial count, so ExperimentSession generates it one trial at a time
+    instead (see generate_next_saccade_trial), continuing the same
+    dot<->cross alternation from wherever this practice block leaves off."""
+    practice_trials, _ = _build_saccade_trials(
         _build_practice_schedule(num_practice), practice=True, start_source=Target.DOT
     )
-    real_trials, _ = _build_saccade_trials(_build_shown_schedule(num_trials), practice=False, start_source=source)
-    return practice_trials + real_trials
+    return practice_trials
 
 
 def generate_next_saccade_trial(

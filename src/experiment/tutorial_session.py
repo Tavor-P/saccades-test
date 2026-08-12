@@ -2,7 +2,6 @@ import random
 from enum import Enum, auto
 
 from include.eye_tracking.interfaces import GazeSource
-from include.eye_tracking.types import GazeZone
 from include.experiment.constants import (
     CALIBRATION_ROUNDS,
     CENTER_POSITION,
@@ -15,7 +14,6 @@ from include.experiment.constants import (
     GRATING_DURATION_FRAMES,
     GRATING_POSITION,
     RESPONSE_WINDOW_MS,
-    SACCADE_ONSET_STABILITY_MS,
     SACCADE_TIMEOUT_MS,
     TUTORIAL_DEMO_CONTRAST,
     TUTORIAL_DRESS_REHEARSAL_ATTEMPTS,
@@ -28,6 +26,7 @@ from include.experiment.types import Orientation, Target
 from src.experiment.calibration import average_calibration_rounds
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.scoring import score_outcome
+from src.experiment.trial_mechanics import OnsetDetector, average_ms
 from src.experiment.trial_mechanics import random_orientation as _random_orientation
 from src.experiment.trial_mechanics import zone_for as _zone_for
 from src.experiment.zest import ZestStaircase
@@ -135,8 +134,7 @@ class TutorialSession:
         # -- reaction-time test (see ExperimentSession for the full design) --
         self._rt_test_attempt = 0
         self._rt_samples_ms: list[float] = []
-        self._rt_test_away_from_source_since: float | None = None
-        self._rt_test_gaze_left_source = False
+        self._rt_test_onset_detector: OnsetDetector = OnsetDetector(_zone_for(Target.DOT))
         self._rt_test_start_time = 0.0
         self._avg_reaction_time_ms: float | None = None
 
@@ -147,8 +145,7 @@ class TutorialSession:
         self._dress_target = Target.CROSS
         self._dress_orientation: Orientation | None = None
         self._dress_contrast: float | None = None
-        self._gaze_left_source = False
-        self._away_from_source_since: float | None = None
+        self._onset_detector: OnsetDetector = OnsetDetector(_zone_for(self._dress_source))
         self._flash_scheduled_at = 0.0
         self._flash_decided = False
         self._grating_shown_at: float | None = None
@@ -303,8 +300,7 @@ class TutorialSession:
         self._phase = Phase.RT_TEST_FOREPERIOD
         self._foreperiod_start = self._clock.now()
         self._foreperiod_duration = random.uniform(FOREPERIOD_MIN_MS, FOREPERIOD_MAX_MS) / 1000
-        self._rt_test_away_from_source_since = None
-        self._rt_test_gaze_left_source = False
+        self._rt_test_onset_detector = OnsetDetector(_zone_for(Target.DOT))
         self._dot_visible = True
         self._cross_visible = False
 
@@ -318,20 +314,10 @@ class TutorialSession:
     def _tick_rt_test_active(self) -> None:
         now = self._clock.now()
         sample = self._gaze.latest_sample()
-        source_zone = _zone_for(Target.DOT)
 
-        if not self._rt_test_gaze_left_source:
-            if sample.face_found and sample.zone not in (source_zone, GazeZone.UNKNOWN):
-                if self._rt_test_away_from_source_since is None:
-                    self._rt_test_away_from_source_since = now
-                elif now - self._rt_test_away_from_source_since >= SACCADE_ONSET_STABILITY_MS / 1000:
-                    self._rt_test_gaze_left_source = True
-                    self._finish_rt_test_attempt(
-                        (self._rt_test_away_from_source_since - self._rt_test_start_time) * 1000
-                    )
-                    return
-            else:
-                self._rt_test_away_from_source_since = None
+        if not self._rt_test_onset_detector.confirmed and self._rt_test_onset_detector.update(sample, now):
+            self._finish_rt_test_attempt((self._rt_test_onset_detector.since - self._rt_test_start_time) * 1000)
+            return
 
         if now - self._rt_test_start_time >= SACCADE_TIMEOUT_MS / 1000:
             self._finish_rt_test_attempt(None)
@@ -341,9 +327,7 @@ class TutorialSession:
             self._rt_samples_ms.append(reaction_time_ms)
         self._rt_test_attempt += 1
         if self._rt_test_attempt >= TUTORIAL_RT_TEST_ATTEMPTS:
-            self._avg_reaction_time_ms = (
-                sum(self._rt_samples_ms) / len(self._rt_samples_ms) if self._rt_samples_ms else DEFAULT_REACTION_TIME_MS
-            )
+            self._avg_reaction_time_ms = average_ms(self._rt_samples_ms, default=DEFAULT_REACTION_TIME_MS)
             self._enter_dress_rehearsal()
         else:
             self._begin_rt_test_foreperiod()
@@ -364,8 +348,7 @@ class TutorialSession:
         self._foreperiod_duration = random.uniform(FOREPERIOD_MIN_MS, FOREPERIOD_MAX_MS) / 1000
         self._dress_target = Target.CROSS if self._dress_source is Target.DOT else Target.DOT
         self._dress_orientation = _random_orientation()
-        self._gaze_left_source = False
-        self._away_from_source_since = None
+        self._onset_detector = OnsetDetector(_zone_for(self._dress_source))
         self._target_landed_since = None
         self._flash_scheduled_at = 0.0
         self._flash_decided = False
@@ -398,17 +381,10 @@ class TutorialSession:
     def _tick_dress_active(self) -> None:
         now = self._clock.now()
         sample = self._gaze.latest_sample()
-        source_zone = _zone_for(self._dress_source)
         target_zone = _zone_for(self._dress_target)
 
-        if not self._gaze_left_source:
-            if sample.face_found and sample.zone not in (source_zone, GazeZone.UNKNOWN):
-                if self._away_from_source_since is None:
-                    self._away_from_source_since = now
-                elif now - self._away_from_source_since >= SACCADE_ONSET_STABILITY_MS / 1000:
-                    self._gaze_left_source = True
-            else:
-                self._away_from_source_since = None
+        if not self._onset_detector.confirmed:
+            self._onset_detector.update(sample, now)
 
         flash_fired_this_tick = False
         if not self._flash_decided and now >= self._flash_scheduled_at:
@@ -447,7 +423,7 @@ class TutorialSession:
             self._finish_dress_attempt(timed_out=False)
 
     def _finish_dress_attempt(self, timed_out: bool) -> None:
-        if timed_out and not self._gaze_left_source:
+        if timed_out and not self._onset_detector.confirmed:
             outcome = "timeout"
         else:
             outcome = score_outcome(
@@ -516,10 +492,12 @@ class TutorialSession:
         return "Tutorial complete! Press SPACE to begin the real session"
 
     def _tutorial_text(self) -> tuple[str | None, str]:
-        """(text, position) for the on-screen text stim - only shown for
-        stages that aren't gaze-contingent (see the module docstring and
-        narrator.py's own design note on why every other stage is
-        speech-only)."""
+        """(text, position) for the tutorial's larger, centered/bottom
+        instructional text stim - only shown for stages that aren't
+        gaze-contingent, so the gaze-tracking-sensitive stages aren't
+        drawing attention away from the target they're teaching. This is
+        separate from (and in addition to) the smaller generic caption
+        every phase now gets (see run_experiment.py's render_caption)."""
         if self._phase is Phase.WAITING_TO_START:
             return "Look at the dots, then press SPACE to begin calibration", "center"
         if self._phase is Phase.DEMO_VERTICAL:

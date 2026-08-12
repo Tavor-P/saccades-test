@@ -82,6 +82,9 @@ def load_session_trials(timestamp: str) -> list[TrialResult]:
                     # .get(): sessions logged before open-loop scheduling existed have no
                     # timing_offset_ms column at all.
                     timing_offset_ms=_parse_optional_int(row.get("timing_offset_ms", "")),
+                    # .get(): sessions logged before this existed have no
+                    # grating_shown_at_unix_ms column at all.
+                    grating_shown_at_unix_ms=_parse_optional_float(row.get("grating_shown_at_unix_ms", "")),
                 )
             )
     return trials
