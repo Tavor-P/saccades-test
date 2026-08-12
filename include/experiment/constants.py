@@ -169,3 +169,35 @@ GAZE_LANDING_STABILITY_MS = 150  # gaze must hold in the target zone this long t
 # it gates how far off-center gaze must drift before onset detection even
 # starts counting, which isn't visible in onset_detection_lag_ms at all.
 SACCADE_ONSET_STABILITY_MS = 10
+
+# 3-point calibration is run this many times (round 1 discarded, rounds 2-3
+# averaged - see src/experiment/calibration.py) on the assumption that a
+# participant's first attempt is their least reliable. Used both by
+# ExperimentSession's own self-calibration and by the tutorial's calibration
+# stage (see src/experiment/tutorial_session.py), so a session that skips the
+# tutorial still gets the same improved calibration.
+CALIBRATION_ROUNDS = 3
+
+# First-timer tutorial (see src/experiment/tutorial_session.py), offered as a
+# yes/no dialog toggle before a real saccade-phase session. Runs once, ahead
+# of both phases, and hands its calibration to the saccade phase so it isn't
+# repeated.
+
+# "Highest" contrast for the two single-orientation key-mapping demo screens
+# - these are teaching which key means which orientation, not measuring a
+# threshold, so there's no reason to make the grating hard to see.
+TUTORIAL_DEMO_CONTRAST = 1.0
+# Fixed (not staircased) contrast for the mixed-orientation quiz - comfortably
+# above threshold so a participant who understands the key mapping can
+# reliably clear the streak.
+TUTORIAL_QUIZ_CONTRAST = 0.5
+TUTORIAL_QUIZ_STREAK_TARGET = 5  # consecutive correct needed to pass the quiz; a miss resets the streak
+TUTORIAL_GAZE_PRACTICE_ATTEMPTS = 5  # fixed count, not gated by success - tracking accuracy is noisy this early
+TUTORIAL_DRESS_REHEARSAL_ATTEMPTS = 5  # fixed count; a miss resets contrast back to the top of the staircase's range
+
+# Correctness-feedback flash for the tutorial's quiz/dress-rehearsal stages -
+# same style as START_FLASH_COLOR above, just red/green instead of the
+# trial-start green.
+FEEDBACK_FLASH_RED = [1, -1, -1]
+FEEDBACK_FLASH_GREEN = [-1, 1, -1]
+FEEDBACK_FLASH_DURATION_FRAMES = 8

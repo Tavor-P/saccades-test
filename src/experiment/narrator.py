@@ -21,6 +21,8 @@ class Narrator:
     def __init__(self) -> None:
         self._queue: "queue.Queue[str | None]" = queue.Queue()
         self._thread = threading.Thread(target=self._run, daemon=True)
+        self._lock = threading.Lock()
+        self._pending = 0
         self._thread.start()
 
     def _run(self) -> None:
@@ -34,7 +36,11 @@ class Narrator:
                 text = self._queue.get()
                 if text is None:
                     return
-                voice.Speak(text)
+                try:
+                    voice.Speak(text)
+                finally:
+                    with self._lock:
+                        self._pending -= 1
         finally:
             pythoncom.CoUninitialize()
 
@@ -44,7 +50,18 @@ class Narrator:
         should only call this when the text actually changes (see
         run_experiment.py), not every frame, or utterances would pile up
         far behind what's currently true on screen."""
+        with self._lock:
+            self._pending += 1
         self._queue.put(text)
+
+    @property
+    def is_speaking(self) -> bool:
+        """True while any queued utterance is still playing or waiting to
+        play. The tutorial frame loop uses this to hold off on forwarding
+        input until narration finishes, instead of interrupting speech
+        mid-sentence."""
+        with self._lock:
+            return self._pending > 0
 
     def stop(self) -> None:
         """Signals the background thread to exit and waits (briefly) for it.
