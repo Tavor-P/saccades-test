@@ -97,3 +97,55 @@ def test_log_writes_a_row(tmp_path, monkeypatch):
     assert len(lines) == 2  # header + one row
     assert "correct" in lines[1]
     assert "vertical" in lines[1]
+
+
+def test_log_writes_timing_offset_ms(tmp_path, monkeypatch):
+    log = _make_logger(tmp_path, monkeypatch)
+    log.log(
+        TrialResult(
+            index=0,
+            phase="saccade",
+            source=None,
+            target=None,
+            saccade_duration_ms=None,
+            grating_shown=True,
+            contrast=0.05,
+            orientation=Orientation.VERTICAL,
+            responded=True,
+            response_orientation=Orientation.VERTICAL,
+            response_time_ms=250.0,
+            outcome="correct",
+            timing_offset_ms=-40,
+        )
+    )
+    log.close()
+    csv_files = list(tmp_path.glob("results_*.csv"))
+    header, row = csv_files[0].read_text().splitlines()
+    assert dict(zip(header.split(","), row.split(",")))["timing_offset_ms"] == "-40"
+
+
+def test_log_writes_rt_test_phase_rows(tmp_path, monkeypatch):
+    log = _make_logger(tmp_path, monkeypatch)
+    log.log(
+        TrialResult(
+            index=0,
+            phase="rt_test",
+            source=None,
+            target=None,
+            saccade_duration_ms=None,
+            grating_shown=False,
+            contrast=None,
+            orientation=None,
+            responded=False,
+            response_orientation=None,
+            response_time_ms=None,
+            outcome="detected",
+            reaction_latency_ms=210.5,
+        )
+    )
+    log.close()
+    csv_files = list(tmp_path.glob("results_*.csv"))
+    header, row = csv_files[0].read_text().splitlines()
+    fields = dict(zip(header.split(","), row.split(",")))
+    assert fields["phase"] == "rt_test"
+    assert fields["reaction_latency_ms"] == "210.5"

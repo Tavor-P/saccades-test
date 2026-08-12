@@ -2,6 +2,7 @@ import random
 
 from include.experiment.constants import CATCH_TRIAL_FRACTION
 from include.experiment.types import FlashTrialSpec, Target, TrialSpec
+from src.experiment.trial_mechanics import ShuffledBag
 from src.experiment.trial_mechanics import random_orientation as _random_orientation
 
 
@@ -57,11 +58,46 @@ def _build_saccade_trials(schedule: list[bool], practice: bool, start_source: Ta
 
 
 def build_saccade_sequence(num_trials: int, num_practice: int) -> list[TrialSpec]:
-    """Phase 2: same shown/catch schedule as the presaccade phase, but each
+    """Phase 2 practice block only (see generate_next_saccade_trial for the
+    real block): same shown/catch schedule as the presaccade phase, but each
     trial is also an alternating dot<->cross saccade. Practice trials come
-    first, continuing the same dot/cross alternation into the real block."""
+    first, continuing the same dot/cross alternation into the real block.
+
+    `num_trials` real trials are still generated here for callers that want
+    a complete fixed-length sequence (e.g. tests exercising the old
+    schedule), but ExperimentSession itself only consumes the practice
+    portion - its real block is open-ended (see generate_next_saccade_trial)
+    now that contrast stays ZEST-adaptive rather than a fixed trial count."""
     practice_trials, source = _build_saccade_trials(
         _build_practice_schedule(num_practice), practice=True, start_source=Target.DOT
     )
     real_trials, _ = _build_saccade_trials(_build_shown_schedule(num_trials), practice=False, start_source=source)
     return practice_trials + real_trials
+
+
+def generate_next_saccade_trial(
+    index: int, source: Target, offset_bag: ShuffledBag[int]
+) -> tuple[TrialSpec, Target]:
+    """One real-block trial at a time, for ExperimentSession's open-ended
+    main loop (see include.experiment.constants' stopping-criterion
+    constants) - total trial count isn't known upfront the way it is for
+    build_saccade_sequence's fixed-length schedule, so grating_shown is an
+    independent Bernoulli draw at CATCH_TRIAL_FRACTION each call rather than
+    an exact-ratio pre-shuffled schedule (converges to the same rate over
+    many trials, just without a guaranteed exact count). Source/target
+    dot<->cross alternation stays deterministic, same as
+    _build_saccade_trials. Returns (trial, next source) - the caller threads
+    `source` through consecutive calls the same way _build_saccade_trials
+    does internally."""
+    target = Target.CROSS if source is Target.DOT else Target.DOT
+    shown = random.random() >= CATCH_TRIAL_FRACTION
+    trial = TrialSpec(
+        index=index,
+        source=source,
+        target=target,
+        grating_shown=shown,
+        orientation=_random_orientation() if shown else None,
+        practice=False,
+        timing_offset_ms=offset_bag.draw(),
+    )
+    return trial, target

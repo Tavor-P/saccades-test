@@ -16,6 +16,10 @@ def _parse_optional_float(value: str) -> float | None:
     return float(value) if value else None
 
 
+def _parse_optional_int(value: str) -> int | None:
+    return int(value) if value else None
+
+
 def _parse_bool(value: str) -> bool:
     return value == "True"
 
@@ -75,6 +79,9 @@ def load_session_trials(timestamp: str) -> list[TrialResult]:
                     # column at all - treated the same as "unknown" (None), same as a fresh
                     # row where no flash occurred.
                     flash_during_saccade=_parse_optional_bool(row.get("flash_during_saccade", "")),
+                    # .get(): sessions logged before open-loop scheduling existed have no
+                    # timing_offset_ms column at all.
+                    timing_offset_ms=_parse_optional_int(row.get("timing_offset_ms", "")),
                 )
             )
     return trials

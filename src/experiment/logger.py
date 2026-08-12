@@ -30,6 +30,7 @@ FIELDNAMES = [
     "reaction_latency_ms",
     "onset_detection_lag_ms",
     "flash_during_saccade",
+    "timing_offset_ms",
 ]
 
 
@@ -104,6 +105,7 @@ class ResultLogger:
                 "reaction_latency_ms": result.reaction_latency_ms,
                 "onset_detection_lag_ms": result.onset_detection_lag_ms,
                 "flash_during_saccade": result.flash_during_saccade,
+                "timing_offset_ms": result.timing_offset_ms,
             }
         )
         self._file.flush()

@@ -50,9 +50,11 @@ independent `ZestStaircase` instances so each condition converges on its own
 threshold. Test mode (shortened trial counts, saccade phase first for smoke
 testing) is a runtime decision, not a constant: `run_experiment.py`'s
 `_resolve_test_mode()` treats a blank Participant ID in the startup dialog as
-a test run and any other value as a real data-collection session, then
-`ExperimentSession`/`PresaccadeSession` pick between the `_TEST`/`_REAL`
-trial-count constant pairs in `include/experiment/constants.py` accordingly.
+a test run and any other value as a real data-collection session.
+`PresaccadeSession` still picks between fixed `_TEST`/`_REAL` trial-count
+constant pairs in `include/experiment/constants.py`; `ExperimentSession`'s
+real block is open-ended instead (see the open-loop-timing gotcha below) and
+only its practice block and RT-test use `_TEST`/`_REAL`-paired counts.
 
 **Gaze tracking is behind an interface.** `include/eye_tracking/interfaces.py`
 defines `GazeSource`; `ExperimentSession` only ever talks to that interface.
@@ -90,3 +92,87 @@ or IPC with the experiment, just shared files on disk.
 directly) and a `fake_time` fixture that monkeypatches `PausableClock`'s time
 source so timing-dependent state-machine tests (foreperiods, response
 windows, debounce windows) run deterministically without real waits.
+
+## Gotchas that cost real debugging time
+
+**TTS narrator (`src/experiment/narrator.py`) is Windows-only SAPI via COM.**
+It rides on `pywin32` (already a PsychoPy dependency, not a new package).
+COM objects are apartment-threaded, so the `SAPI.SpVoice` object must be
+created *and* called from the same thread — `_run()` wraps its whole worker
+loop in `pythoncom.CoInitialize()`/`CoUninitialize()` for this reason.
+`Speak()` blocks synchronously for the real duration of the utterance, which
+is why narration lives on a dedicated background thread instead of the
+render loop. `speak()` does not interrupt in-flight/queued speech, so
+callers must gate on the text actually changing (`narrate_if_changed`) or
+utterances silently queue up and drift behind what's on screen.
+
+**The first-timer tutorial blocks input while narrating, unlike real
+phases.** `run_tutorial_phase` in `run_experiment.py` withholds all
+key/tick forwarding while `narrator.is_speaking` is true, so a fast
+participant cannot skip ahead mid-narration — real saccade/baseline trials
+don't have this restriction. If the tutorial ran, its
+`precomputed_calibration_ratios`/`skip_practice_trials` are threaded into
+`run_saccade_phase` so the saccade phase skips re-calibrating and skips the
+practice/dress-rehearsal stage — this coupling isn't visible from
+`session.py` alone.
+
+**Saccade-phase flash timing is open-loop, not gaze-contingent, and
+`flash_during_saccade` is a post-hoc window check.** `ExperimentSession`
+first runs a reaction-time test (`Phase.RT_TEST_FOREPERIOD`/`RT_TEST_ACTIVE`)
+to measure the participant's own beep-to-saccade-onset latency, then
+schedules each trial's flash at a fixed delay — `avg_reaction_time_ms +` one
+of `TIMING_OFFSETS_MS` — from target onset, entirely independent of the
+real-time gaze classifier (which keeps running, but now only to measure
+`reaction_latency_ms` and to compute `flash_during_saccade` after the fact:
+whether the scheduled flash time fell inside `[_away_from_source_since,
+_target_landed_since]`). This trades real-time detection lag as a
+constraint on flash precision for a structurally common failure mode — the
+scheduled flash simply missing the actual saccade window — so
+`flash_during_saccade` is `True`/`False`/`None` (`None` when landing was
+never confirmed, not merely invalid), and both `session.py`'s live
+`ZestStaircase` update *and* `results_graph.py`'s analysis now require it to
+be exactly `True` (not just "not `False`") — the two intentionally stay in
+lockstep here, unlike a lot of live-vs-analysis distinctions elsewhere in
+this codebase. Total saccade-phase trial count is no longer fixed either:
+`_should_stop_main_block()` runs until `ZestStaircase.credible_interval`
+narrows enough (with a minimum valid-trial floor and a max-trial safety
+cap), so `NUM_TRIALS_PER_PHASE_TEST`/`_REAL` only apply to
+`PresaccadeSession` now, not `ExperimentSession`'s real block.
+
+**`GAZE_DEAD_ZONE` (`include/eye_tracking/constants.py`) hides real latency.**
+Gaze must cross this band before saccade-onset detection starts counting
+`SACCADE_ONSET_STABILITY_MS`, so travel time through the dead zone is real
+latency that never shows up in the logged `onset_detection_lag_ms` metric.
+Narrowing it trades that hidden latency against a higher false-alarm rate —
+see the comment above `SACCADE_ONSET_STABILITY_MS` in
+`include/experiment/constants.py` before retuning either constant.
+
+**`CAMERA_GAIN_DB` is an unvalidated placeholder.** Fixed exposure/gain was
+long claimed in `_configure_camera`'s docstring before gain was actually
+wired up in `src/eye_tracking/camera.py` — `Gain`/`GainAuto` are now set,
+but the `6.0` dB value has not been retuned against the real IR illuminator.
+Validate with `diagnose_camera.py` before trusting it.
+
+**The 880Hz/0.5s tone (`WARNING_TONE_HZ`/`WARNING_TONE_DURATION_S`) has been
+repurposed, not just restored.** It originally matched Diamond, Ross &
+Morrone (2000)'s pre-target warning tone, was removed (commit `638138f`) as
+a methodology departure, and is now back with different semantics: a go-cue
+beep fired the instant the target/cross appears
+(`phase_just_became_active()` in `run_experiment.py`), timed to be the
+anchor for the reaction-time measurement itself — not a "get ready" warning
+before an already-visible target. Same constant values, different meaning;
+don't assume its presence means the original paper's warning-tone
+methodology is back.
+
+**Pausing mid-trial discards that trial's data outright, not just its
+timers.** `PausableClock` protects in-flight timers across a pause, but
+`ExperimentSession.resume_from_pause()` still throws away whatever
+trial/RT-test attempt was active — no CSV row, no ZEST feed, no RT-average
+feed — because gaze during a pause is aimed at the pause menu, not a
+spontaneous task response. The saccade phase's pause menu
+(`PauseMenu` in `run_experiment.py`) offers a second option beyond plain
+resume: "Return and Recalibrate" re-runs both eye-position calibration (a
+faster `RECALIBRATION_ROUNDS=2`, averaging both rounds instead of
+discarding one — reuses `average_calibration_rounds()` unchanged) and the
+reaction-time test, overwriting `avg_reaction_time_ms` but *not* resetting
+the rolling-average's every-`RT_AVERAGE_RECOMPUTE_EVERY`-trials counter.

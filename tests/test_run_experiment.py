@@ -10,6 +10,7 @@ from src.experiment.run_experiment import (
     _second_monitor_screen_index,
     camera_preview_enabled,
     narrate_if_changed,
+    phase_just_became_active,
 )
 
 
@@ -103,3 +104,24 @@ def test_resolve_test_mode_false_when_participant_id_is_given():
     assert _resolve_test_mode("42") is False
     assert _resolve_test_mode("alice") is False
     assert _resolve_test_mode("  p001  ") is False
+
+
+def test_phase_just_became_active_true_on_entry():
+    active = frozenset({"TRIAL_ACTIVE", "RT_TEST_ACTIVE"})
+    assert phase_just_became_active("TRIAL_ACTIVE", "FOREPERIOD", active) is True
+    assert phase_just_became_active("RT_TEST_ACTIVE", "RT_TEST_FOREPERIOD", active) is True
+
+
+def test_phase_just_became_active_false_when_already_active():
+    active = frozenset({"TRIAL_ACTIVE", "RT_TEST_ACTIVE"})
+    assert phase_just_became_active("TRIAL_ACTIVE", "TRIAL_ACTIVE", active) is False
+
+
+def test_phase_just_became_active_false_when_not_an_active_phase():
+    active = frozenset({"TRIAL_ACTIVE", "RT_TEST_ACTIVE"})
+    assert phase_just_became_active("FOREPERIOD", "WAITING_TO_START", active) is False
+
+
+def test_phase_just_became_active_true_on_the_very_first_frame():
+    active = frozenset({"TRIAL_ACTIVE", "RT_TEST_ACTIVE"})
+    assert phase_just_became_active("RT_TEST_ACTIVE", None, active) is True

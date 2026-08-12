@@ -39,16 +39,16 @@ def test_replay_zest_returns_none_when_no_matching_trials():
     assert _replay_zest([], "presaccade") is None
 
 
-def test_exclude_flashes_not_during_saccade_drops_only_explicit_false():
+def test_exclude_flashes_not_during_saccade_keeps_only_explicit_true():
     results = [
         _trial("saccade", 0, 0.1, True, flash_during_saccade=True),
         _trial("saccade", 1, 0.1, True, flash_during_saccade=False),  # flash landed after arrival - dropped
-        _trial("saccade", 2, 0.1, True, flash_during_saccade=None),  # unknown (legacy session) - kept
+        _trial("saccade", 2, 0.1, True, flash_during_saccade=None),  # landing never confirmed - dropped too now
         _trial("presaccade", 3, 0.05, True, flash_during_saccade=None),  # no saccade concept at all - kept
         _trial("saccade", 4, None, False, grating_shown=False),  # catch trial, no flash at all - kept
     ]
     kept = _exclude_flashes_not_during_saccade(results)
-    assert [r.index for r in kept] == [0, 2, 3, 4]
+    assert [r.index for r in kept] == [0, 3, 4]
 
 
 def test_replay_zest_via_build_comparison_graph_excludes_false_flash_during_saccade(tmp_path):

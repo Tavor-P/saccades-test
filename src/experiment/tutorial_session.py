@@ -7,6 +7,7 @@ from include.experiment.constants import (
     CALIBRATION_ROUNDS,
     CENTER_POSITION,
     CROSS_POSITION,
+    DEFAULT_REACTION_TIME_MS,
     DOT_POSITION,
     FOREPERIOD_MAX_MS,
     FOREPERIOD_MIN_MS,
@@ -21,6 +22,7 @@ from include.experiment.constants import (
     TUTORIAL_GAZE_PRACTICE_ATTEMPTS,
     TUTORIAL_QUIZ_CONTRAST,
     TUTORIAL_QUIZ_STREAK_TARGET,
+    TUTORIAL_RT_TEST_ATTEMPTS,
 )
 from include.experiment.types import Orientation, Target
 from src.experiment.calibration import average_calibration_rounds
@@ -41,6 +43,8 @@ class Phase(Enum):
     QUIZ = auto()
     GAZE_PRACTICE_FOREPERIOD = auto()
     GAZE_PRACTICE_ACTIVE = auto()
+    RT_TEST_FOREPERIOD = auto()
+    RT_TEST_ACTIVE = auto()
     DRESS_FOREPERIOD = auto()
     DRESS_ACTIVE = auto()
     COMPLETE = auto()
@@ -66,13 +70,23 @@ class TutorialSession:
        TUTORIAL_GAZE_PRACTICE_ATTEMPTS attempts regardless of outcome
        (early tracking is noisy - a streak gate here could trap a
        participant with imperfect-but-workable calibration).
-    5. DRESS_REHEARSAL - the real trial mechanics (dot/cross alternation +
+    5. RT_TEST - a scoped-down version of ExperimentSession's own
+       reaction-time test (see its module for the full design rationale):
+       TUTORIAL_RT_TEST_ATTEMPTS beep+target-appear -> saccade-onset
+       attempts, no grating, averaged into an avg_reaction_time_ms used only
+       by this tutorial's own dress rehearsal below - never handed off to
+       the real saccade phase, which always measures its own.
+    6. DRESS_REHEARSAL - the real trial mechanics (dot/cross alternation +
        grating + 2AFC scoring) against a throwaway ZEST staircase, fixed at
        TUTORIAL_DRESS_REHEARSAL_ATTEMPTS attempts; a miss resets the
        throwaway staircase (contrast back to the top of its range) so the
        lesson "you need to actually be careful" lands, without an
-       open-ended retry loop. Replaces the saccade phase's own built-in
-       practice trials (see ExperimentSession's skip_practice_trials).
+       open-ended retry loop. Like the real saccade phase, the grating fires
+       at a scheduled delay (avg_reaction_time_ms from this stage's own
+       RT_TEST, no timing offset - a demo doesn't need TIMING_OFFSETS_MS
+       coverage) rather than being triggered by detected saccade onset.
+       Replaces the saccade phase's own built-in practice trials (see
+       ExperimentSession's skip_practice_trials).
 
     Framework-agnostic like ExperimentSession/PresaccadeSession:
     `on_space()`/`on_response_key()`/`tick()` are called by the PsychoPy
@@ -118,6 +132,14 @@ class TutorialSession:
         self._gaze_practice_target = Target.CROSS
         self._practice_active_start: float | None = None
 
+        # -- reaction-time test (see ExperimentSession for the full design) --
+        self._rt_test_attempt = 0
+        self._rt_samples_ms: list[float] = []
+        self._rt_test_away_from_source_since: float | None = None
+        self._rt_test_gaze_left_source = False
+        self._rt_test_start_time = 0.0
+        self._avg_reaction_time_ms: float | None = None
+
         # -- dress rehearsal --
         self._dress_attempt = 0
         self._dress_zest = ZestStaircase()
@@ -127,6 +149,8 @@ class TutorialSession:
         self._dress_contrast: float | None = None
         self._gaze_left_source = False
         self._away_from_source_since: float | None = None
+        self._flash_scheduled_at = 0.0
+        self._flash_decided = False
         self._grating_shown_at: float | None = None
         self._grating_visible = False
         self._grating_frames_remaining = 0
@@ -264,9 +288,65 @@ class TutorialSession:
             self._gaze_practice_source = self._gaze_practice_target
             self._gaze_practice_attempt += 1
             if self._gaze_practice_attempt >= TUTORIAL_GAZE_PRACTICE_ATTEMPTS:
-                self._enter_dress_rehearsal()
+                self._enter_rt_test()
             else:
                 self._begin_gaze_practice_foreperiod()
+
+    # -- reaction-time test ---------------------------------------------------
+
+    def _enter_rt_test(self) -> None:
+        self._rt_test_attempt = 0
+        self._rt_samples_ms = []
+        self._begin_rt_test_foreperiod()
+
+    def _begin_rt_test_foreperiod(self) -> None:
+        self._phase = Phase.RT_TEST_FOREPERIOD
+        self._foreperiod_start = self._clock.now()
+        self._foreperiod_duration = random.uniform(FOREPERIOD_MIN_MS, FOREPERIOD_MAX_MS) / 1000
+        self._rt_test_away_from_source_since = None
+        self._rt_test_gaze_left_source = False
+        self._dot_visible = True
+        self._cross_visible = False
+
+    def _tick_rt_test_foreperiod(self) -> None:
+        if self._clock.now() - self._foreperiod_start >= self._foreperiod_duration:
+            self._dot_visible = False
+            self._cross_visible = True
+            self._phase = Phase.RT_TEST_ACTIVE
+            self._rt_test_start_time = self._clock.now()
+
+    def _tick_rt_test_active(self) -> None:
+        now = self._clock.now()
+        sample = self._gaze.latest_sample()
+        source_zone = _zone_for(Target.DOT)
+
+        if not self._rt_test_gaze_left_source:
+            if sample.face_found and sample.zone not in (source_zone, GazeZone.UNKNOWN):
+                if self._rt_test_away_from_source_since is None:
+                    self._rt_test_away_from_source_since = now
+                elif now - self._rt_test_away_from_source_since >= SACCADE_ONSET_STABILITY_MS / 1000:
+                    self._rt_test_gaze_left_source = True
+                    self._finish_rt_test_attempt(
+                        (self._rt_test_away_from_source_since - self._rt_test_start_time) * 1000
+                    )
+                    return
+            else:
+                self._rt_test_away_from_source_since = None
+
+        if now - self._rt_test_start_time >= SACCADE_TIMEOUT_MS / 1000:
+            self._finish_rt_test_attempt(None)
+
+    def _finish_rt_test_attempt(self, reaction_time_ms: float | None) -> None:
+        if reaction_time_ms is not None:
+            self._rt_samples_ms.append(reaction_time_ms)
+        self._rt_test_attempt += 1
+        if self._rt_test_attempt >= TUTORIAL_RT_TEST_ATTEMPTS:
+            self._avg_reaction_time_ms = (
+                sum(self._rt_samples_ms) / len(self._rt_samples_ms) if self._rt_samples_ms else DEFAULT_REACTION_TIME_MS
+            )
+            self._enter_dress_rehearsal()
+        else:
+            self._begin_rt_test_foreperiod()
 
     # -- dress rehearsal -------------------------------------------------------
 
@@ -287,6 +367,8 @@ class TutorialSession:
         self._gaze_left_source = False
         self._away_from_source_since = None
         self._target_landed_since = None
+        self._flash_scheduled_at = 0.0
+        self._flash_decided = False
         self._grating_shown_at = None
         self._grating_visible = False
         self._grating_frames_remaining = 0
@@ -308,6 +390,10 @@ class TutorialSession:
                 self._cross_visible = True
             self._phase = Phase.DRESS_ACTIVE
             self._dress_trial_start = self._clock.now()
+            # Open-loop, like the real saccade phase: scheduled off this
+            # tutorial's own RT_TEST average, no timing offset - a demo
+            # doesn't need TIMING_OFFSETS_MS coverage.
+            self._flash_scheduled_at = self._dress_trial_start + self._avg_reaction_time_ms / 1000
 
     def _tick_dress_active(self) -> None:
         now = self._clock.now()
@@ -315,25 +401,28 @@ class TutorialSession:
         source_zone = _zone_for(self._dress_source)
         target_zone = _zone_for(self._dress_target)
 
-        onset_this_tick = False
         if not self._gaze_left_source:
             if sample.face_found and sample.zone not in (source_zone, GazeZone.UNKNOWN):
                 if self._away_from_source_since is None:
                     self._away_from_source_since = now
                 elif now - self._away_from_source_since >= SACCADE_ONSET_STABILITY_MS / 1000:
                     self._gaze_left_source = True
-                    self._response_window_open = True
-                    self._response_deadline = now + RESPONSE_WINDOW_MS / 1000
-                    onset_this_tick = True
-                    self._grating_shown_at = now
-                    self._grating_visible = True
-                    self._grating_frames_remaining = GRATING_DURATION_FRAMES
-                    self._grating_actually_shown = True
-                    self._dress_contrast = self._dress_zest.next_contrast()
             else:
                 self._away_from_source_since = None
 
-        if self._grating_visible and not onset_this_tick:
+        flash_fired_this_tick = False
+        if not self._flash_decided and now >= self._flash_scheduled_at:
+            self._flash_decided = True
+            flash_fired_this_tick = True
+            self._response_window_open = True
+            self._response_deadline = now + RESPONSE_WINDOW_MS / 1000
+            self._grating_shown_at = now
+            self._grating_visible = True
+            self._grating_frames_remaining = GRATING_DURATION_FRAMES
+            self._grating_actually_shown = True
+            self._dress_contrast = self._dress_zest.next_contrast()
+
+        if self._grating_visible and not flash_fired_this_tick:
             self._grating_frames_remaining -= 1
             if self._grating_frames_remaining <= 0:
                 self._grating_visible = False
@@ -354,7 +443,7 @@ class TutorialSession:
                 self._finish_dress_attempt(timed_out=True)
                 return
 
-        if self._landed and (self._responded or not self._response_window_open):
+        if self._landed and self._flash_decided and (self._responded or not self._response_window_open):
             self._finish_dress_attempt(timed_out=False)
 
     def _finish_dress_attempt(self, timed_out: bool) -> None:
@@ -387,6 +476,10 @@ class TutorialSession:
             self._tick_gaze_practice_foreperiod()
         elif self._phase is Phase.GAZE_PRACTICE_ACTIVE:
             self._tick_gaze_practice_active()
+        elif self._phase is Phase.RT_TEST_FOREPERIOD:
+            self._tick_rt_test_foreperiod()
+        elif self._phase is Phase.RT_TEST_ACTIVE:
+            self._tick_rt_test_active()
         elif self._phase is Phase.DRESS_FOREPERIOD:
             self._tick_dress_foreperiod()
         elif self._phase is Phase.DRESS_ACTIVE:
@@ -398,6 +491,11 @@ class TutorialSession:
         if self._phase is Phase.WAITING_TO_START:
             return "Press SPACE to begin the tutorial"
         if self._phase in (Phase.CALIBRATE_LEFT, Phase.CALIBRATE_CENTER, Phase.CALIBRATE_RIGHT):
+            # Only narrate round 1 of CALIBRATION_ROUNDS - by round 2 the
+            # participant already knows the drill, so re-speaking it every
+            # round just slows calibration down for no benefit.
+            if self._calibration_round > 1:
+                return ""
             return {
                 Phase.CALIBRATE_LEFT: "Look at the dot, then press SPACE",
                 Phase.CALIBRATE_CENTER: "Now look at the center, then press SPACE",
@@ -411,6 +509,8 @@ class TutorialSession:
             return "UP/DOWN if the grating is vertical, LEFT/RIGHT if horizontal. Get 5 in a row to continue."
         if self._phase in (Phase.GAZE_PRACTICE_FOREPERIOD, Phase.GAZE_PRACTICE_ACTIVE):
             return "Follow the dots on the screen"
+        if self._phase in (Phase.RT_TEST_FOREPERIOD, Phase.RT_TEST_ACTIVE):
+            return "Measuring your reaction time — look at the dot, then look at the cross as soon as it appears"
         if self._phase in (Phase.DRESS_FOREPERIOD, Phase.DRESS_ACTIVE):
             return "Now just like the real thing - follow the dots and report the grating"
         return "Tutorial complete! Press SPACE to begin the real session"
@@ -438,6 +538,8 @@ class TutorialSession:
         if self._phase in (
             Phase.GAZE_PRACTICE_FOREPERIOD,
             Phase.GAZE_PRACTICE_ACTIVE,
+            Phase.RT_TEST_FOREPERIOD,
+            Phase.RT_TEST_ACTIVE,
             Phase.DRESS_FOREPERIOD,
             Phase.DRESS_ACTIVE,
         ):
@@ -484,6 +586,8 @@ class TutorialSession:
             return f"quiz streak {self._quiz_streak}/{TUTORIAL_QUIZ_STREAK_TARGET}"
         if self._phase in (Phase.GAZE_PRACTICE_FOREPERIOD, Phase.GAZE_PRACTICE_ACTIVE):
             return f"gaze practice {self._gaze_practice_attempt + 1}/{TUTORIAL_GAZE_PRACTICE_ATTEMPTS}"
+        if self._phase in (Phase.RT_TEST_FOREPERIOD, Phase.RT_TEST_ACTIVE):
+            return f"RT test {self._rt_test_attempt + 1}/{TUTORIAL_RT_TEST_ATTEMPTS}"
         if self._phase in (Phase.DRESS_FOREPERIOD, Phase.DRESS_ACTIVE):
             return f"dress rehearsal {self._dress_attempt + 1}/{TUTORIAL_DRESS_REHEARSAL_ATTEMPTS}"
         return "-"

@@ -178,6 +178,91 @@ SACCADE_ONSET_STABILITY_MS = 10
 # tutorial still gets the same improved calibration.
 CALIBRATION_ROUNDS = 3
 
+# Pause-menu "Return and Recalibrate" (see ExperimentSession.resume_from_pause)
+# runs a faster 2-round recalibration instead of the full CALIBRATION_ROUNDS.
+# Unlike the initial calibration, there's no "first attempt is least
+# reliable" concern mid-session - the participant is already warmed up - so
+# average_calibration_rounds() is called on both rounds (its [-2:] indexing
+# already handles any round count, not just 3), with none discarded.
+RECALIBRATION_ROUNDS = 2
+
+# Reaction-time-based, open-loop saccade timing (replaces gaze-contingent
+# flash triggering): each participant's own saccadic reaction time is
+# measured up front (see the RT_TEST_* constants below), then each trial's
+# flash is scheduled at a fixed delay from target/beep onset -
+# avg_reaction_time_ms + one of these offsets - instead of firing the moment
+# the real-time gaze classifier detects onset. This removes real-time
+# detection lag as a constraint on flash timing precision, at the cost of
+# some trials' flashes landing outside the actual saccade window entirely
+# (see flash_during_saccade in include/experiment/types.py) - expected and
+# handled by only feeding valid trials to ZEST (see ExperimentSession).
+TIMING_OFFSETS_MS = (-40, -20, 0, 20, 40)
+
+# Upfront reaction-time test: repeated beep+target-appear -> saccade-onset
+# attempts (no grating, no response), averaged into the initial
+# avg_reaction_time_ms. Also re-run (this same attempt count) by "Return and
+# Recalibrate". 10 matches RT_AVERAGE_ROLLING_WINDOW below, on the theory
+# that if 10 samples is enough to trust for an in-session update, it's enough
+# for the initial estimate too.
+NUM_RT_TEST_TRIALS_TEST = 3
+NUM_RT_TEST_TRIALS_REAL = 10
+
+# Fallback average reaction time if every RT-test attempt times out (broken
+# tracking, participant confusion) - a literature-typical simple saccadic
+# reaction time, just enough to let the session proceed rather than divide by
+# zero or hang. Should be rare in practice; if this constant is actually
+# getting used often, something upstream (tracking quality, calibration) is
+# broken and needs investigating, not this number tuned.
+DEFAULT_REACTION_TIME_MS = 225.0
+
+# The rolling average of avg_reaction_time_ms recomputes from the most recent
+# RT_AVERAGE_ROLLING_WINDOW completed trials' actual detected reaction times,
+# every RT_AVERAGE_RECOMPUTE_EVERY completed trials - a continuously running
+# counter, never reset (including across a mid-session recalibration, which
+# only overwrites the average value itself - see resume_from_pause). Kept as
+# two separate names even though equal today, since "how many samples feed
+# the average" and "how often it's recomputed" are conceptually distinct
+# knobs a future tweak might decouple.
+RT_AVERAGE_ROLLING_WINDOW = 10
+RT_AVERAGE_RECOMPUTE_EVERY = 10
+
+# Stopping criterion for the main saccade block, replacing a fixed trial
+# count now that contrast stays ZEST-adaptive rather than a discrete level
+# grid (an efficient, well-estimated threshold is the goal - not full-curve
+# coverage). Runs until ZestStaircase.credible_interval(0.68) is narrow
+# enough (in log-contrast space - credible_interval returns *linear*
+# bounds, so compare log10(hi) - log10(lo), not a raw linear difference) AND
+# at least this many valid (flash_during_saccade is True) trials have been
+# collected, so a narrow interval isn't trusted before enough data has
+# actually shaped it - OR the max-trial safety cap is hit regardless (open-
+# loop misses are structural now, not rare lag noise, so this needs real
+# headroom above the min-valid floor to guarantee termination without cutting
+# a normally-behaving session short).
+#
+# All three are first guesses, not validated against real session data yet -
+# tune once results from an actual run are in.
+ZEST_CREDIBLE_INTERVAL_MAX_LOG_WIDTH = 0.1  # ~26% linear ratio between the interval's bounds
+ZEST_MIN_VALID_TRIALS_TEST = 6
+ZEST_MIN_VALID_TRIALS_REAL = 25
+MAX_SACCADE_TRIALS_TEST = 30
+MAX_SACCADE_TRIALS_REAL = 200
+
+# Go-cue beep, played the instant the target appears (see run_experiment.py) -
+# same tone this project's trial-start warning tone once used (see the
+# now-reverted commit 638138f) before being removed as a departure from
+# Diamond, Ross & Morrone (2000)'s methodology. Repurposed here with new
+# semantics: not a "get ready" warning before an already-visible target, but
+# the actual go-cue that anchors the reaction-time measurement itself (the
+# target appears and the beep plays at the same instant - see
+# NUM_RT_TEST_TRIALS_REAL above).
+WARNING_TONE_HZ = 880
+WARNING_TONE_DURATION_S = 0.5
+
+# Tutorial's own scoped-down RT-test stage (see TutorialSession), before its
+# dress rehearsal. Fixed, not a _TEST/_REAL pair - the whole tutorial is
+# already a fixed-size demo regardless of test/real session mode.
+TUTORIAL_RT_TEST_ATTEMPTS = 3
+
 # First-timer tutorial (see src/experiment/tutorial_session.py), offered as a
 # yes/no dialog toggle before a real saccade-phase session. Runs once, ahead
 # of both phases, and hands its calibration to the saccade phase so it isn't

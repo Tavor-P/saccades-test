@@ -3,6 +3,7 @@ import pytest
 from include.eye_tracking.types import GazeZone
 from include.experiment.constants import (
     CALIBRATION_ROUNDS,
+    DEFAULT_REACTION_TIME_MS,
     FOREPERIOD_MAX_MS,
     GAZE_LANDING_STABILITY_MS,
     SACCADE_ONSET_STABILITY_MS,
@@ -10,6 +11,7 @@ from include.experiment.constants import (
     TUTORIAL_DRESS_REHEARSAL_ATTEMPTS,
     TUTORIAL_GAZE_PRACTICE_ATTEMPTS,
     TUTORIAL_QUIZ_STREAK_TARGET,
+    TUTORIAL_RT_TEST_ATTEMPTS,
 )
 from include.experiment.types import Orientation, Target
 from src.experiment.pausable_clock import PausableClock
@@ -52,11 +54,29 @@ def _run_gaze_practice_attempt(session, fake_gaze, fake_time, land: bool) -> Non
         session.tick()  # times out instead
 
 
+def _run_one_rt_test_attempt(session, fake_gaze, fake_time, reaction_time_s: float = 0.2) -> None:
+    fake_time(FOREPERIOD_MAX_MS / 1000 + 0.1)
+    session.tick()  # RT_TEST_FOREPERIOD -> RT_TEST_ACTIVE
+    fake_time(reaction_time_s)
+    fake_gaze.zone = GazeZone.RIGHT  # cross's zone - "left the source"
+    session.tick()  # starts the onset stability timer
+    fake_time(SACCADE_ONSET_STABILITY_MS / 1000 + 0.01)
+    session.tick()  # onset fires -> attempt finishes
+
+
+def _complete_rt_test(session, fake_gaze, fake_time, reaction_time_s: float = 0.2) -> None:
+    for _ in range(TUTORIAL_RT_TEST_ATTEMPTS):
+        _run_one_rt_test_attempt(session, fake_gaze, fake_time, reaction_time_s)
+    fake_gaze.zone = GazeZone.CENTER  # reset for whatever the test does next
+
+
 def _reach_dress_rehearsal(session, fake_gaze, fake_time) -> None:
     _complete_calibration(session)
     _complete_demos_and_win_quiz(session)
     for _ in range(TUTORIAL_GAZE_PRACTICE_ATTEMPTS):
         _run_gaze_practice_attempt(session, fake_gaze, fake_time, land=True)
+    assert session.render_state()["hud"]["phase"] == "RT_TEST_FOREPERIOD"
+    _complete_rt_test(session, fake_gaze, fake_time)
     assert session.render_state()["hud"]["phase"] == "DRESS_FOREPERIOD"
 
 
@@ -66,16 +86,25 @@ def _run_dress_attempt(session, fake_gaze, fake_time, respond_correctly: bool) -
     assert session.render_state()["hud"]["phase"] == "DRESS_ACTIVE"
 
     target = session._dress_target
+    fake_gaze.zone = GazeZone.CENTER  # left the source, still mid-flight
+    session.tick()  # starts the onset stability timer
+    fake_time(SACCADE_ONSET_STABILITY_MS / 1000 + 0.01)
+    session.tick()  # onset fires (reaction_latency, not the grating - see below)
+
+    delay = session._flash_scheduled_at - session._clock.now()
+    fake_time(max(delay, 0.0) + 0.001)
+    session.tick()  # scheduled flash fires (open-loop, like the real saccade phase)
+
     fake_gaze.zone = GazeZone.LEFT if target is Target.DOT else GazeZone.RIGHT
-    session.tick()  # starts both the onset and landing stability timers
-    fake_time(max(SACCADE_ONSET_STABILITY_MS, GAZE_LANDING_STABILITY_MS) / 1000 + 0.01)
-    session.tick()  # onset fires (grating shown) and landing fires
+    session.tick()  # starts the landing stability timer
+    fake_time(GAZE_LANDING_STABILITY_MS / 1000 + 0.01)
+    session.tick()  # landing fires
 
     orientation = session._dress_orientation
     if not respond_correctly:
         orientation = Orientation.HORIZONTAL if orientation is Orientation.VERTICAL else Orientation.VERTICAL
     session.on_response_key(orientation)
-    session.tick()  # now landed + responded -> finalizes
+    session.tick()  # now landed + flash_decided + responded -> finalizes
 
 
 def test_calibration_discards_round_one_and_averages_rounds_two_and_three(fake_gaze):
@@ -141,8 +170,49 @@ def test_gaze_practice_runs_fixed_attempts_regardless_of_outcome(fake_gaze, fake
         # Alternate landing successfully and timing out - the attempt count
         # should advance either way, since this stage isn't gated by success.
         _run_gaze_practice_attempt(session, fake_gaze, fake_time, land=(attempt % 2 == 0))
-        expected_phase = "DRESS_FOREPERIOD" if attempt == TUTORIAL_GAZE_PRACTICE_ATTEMPTS - 1 else "GAZE_PRACTICE_FOREPERIOD"
+        expected_phase = "RT_TEST_FOREPERIOD" if attempt == TUTORIAL_GAZE_PRACTICE_ATTEMPTS - 1 else "GAZE_PRACTICE_FOREPERIOD"
         assert session.render_state()["hud"]["phase"] == expected_phase
+
+
+def test_rt_test_runs_fixed_attempts_then_enters_dress_rehearsal(fake_gaze, fake_time):
+    session = _make_session(fake_gaze)
+    _complete_calibration(session)
+    _complete_demos_and_win_quiz(session)
+    for _ in range(TUTORIAL_GAZE_PRACTICE_ATTEMPTS):
+        _run_gaze_practice_attempt(session, fake_gaze, fake_time, land=True)
+    assert session.render_state()["hud"]["phase"] == "RT_TEST_FOREPERIOD"
+
+    for attempt in range(TUTORIAL_RT_TEST_ATTEMPTS - 1):
+        _run_one_rt_test_attempt(session, fake_gaze, fake_time)
+        assert session.render_state()["hud"]["phase"] == "RT_TEST_FOREPERIOD"
+
+    _run_one_rt_test_attempt(session, fake_gaze, fake_time)
+    assert session.render_state()["hud"]["phase"] == "DRESS_FOREPERIOD"
+
+
+def test_rt_test_average_reflects_measured_reaction_times(fake_gaze, fake_time):
+    session = _make_session(fake_gaze)
+    _complete_calibration(session)
+    _complete_demos_and_win_quiz(session)
+    for _ in range(TUTORIAL_GAZE_PRACTICE_ATTEMPTS):
+        _run_gaze_practice_attempt(session, fake_gaze, fake_time, land=True)
+    _complete_rt_test(session, fake_gaze, fake_time, reaction_time_s=0.18)
+    assert session._avg_reaction_time_ms == pytest.approx(180.0)
+
+
+def test_rt_test_falls_back_to_default_when_every_attempt_times_out(fake_gaze, fake_time):
+    session = _make_session(fake_gaze)
+    _complete_calibration(session)
+    _complete_demos_and_win_quiz(session)
+    for _ in range(TUTORIAL_GAZE_PRACTICE_ATTEMPTS):
+        _run_gaze_practice_attempt(session, fake_gaze, fake_time, land=True)
+    fake_gaze.zone = GazeZone.LEFT  # matches DOT's source zone - never leaves it
+    for _ in range(TUTORIAL_RT_TEST_ATTEMPTS):
+        fake_time(FOREPERIOD_MAX_MS / 1000 + 0.1)
+        session.tick()
+        fake_time(SACCADE_TIMEOUT_MS / 1000 + 0.1)
+        session.tick()
+    assert session._avg_reaction_time_ms == pytest.approx(DEFAULT_REACTION_TIME_MS)
 
 
 def test_dress_rehearsal_runs_fixed_attempts_and_resets_contrast_on_a_miss(fake_gaze, fake_time):

@@ -1,6 +1,12 @@
-from include.experiment.constants import CATCH_TRIAL_FRACTION, NUM_PRACTICE_TRIALS_TEST, NUM_TRIALS_PER_PHASE_TEST
+from include.experiment.constants import (
+    CATCH_TRIAL_FRACTION,
+    NUM_PRACTICE_TRIALS_TEST,
+    NUM_TRIALS_PER_PHASE_TEST,
+    TIMING_OFFSETS_MS,
+)
 from include.experiment.types import Target
-from src.experiment.trial_factory import build_presaccade_sequence, build_saccade_sequence
+from src.experiment.trial_factory import build_presaccade_sequence, build_saccade_sequence, generate_next_saccade_trial
+from src.experiment.trial_mechanics import ShuffledBag
 
 _CATCH_TRIAL_COUNT = round(NUM_TRIALS_PER_PHASE_TEST * CATCH_TRIAL_FRACTION)
 
@@ -90,3 +96,61 @@ def test_build_sequences_respect_the_given_trial_counts():
         real = [t for t in trials if not t.practice]
         assert len(practice) == 3
         assert len(real) == 10
+
+
+def test_build_saccade_sequence_with_zero_real_trials_produces_only_practice():
+    # ExperimentSession's real block is now dynamically generated (see
+    # generate_next_saccade_trial below), so it only consumes the practice
+    # portion of build_saccade_sequence, calling it with num_trials=0.
+    trials = build_saccade_sequence(num_trials=0, num_practice=4)
+    assert len(trials) == 4
+    assert all(t.practice for t in trials)
+
+
+def test_generate_next_saccade_trial_alternates_source_and_target():
+    trial, next_source = generate_next_saccade_trial(0, Target.DOT, ShuffledBag(TIMING_OFFSETS_MS))
+    assert trial.source is Target.DOT
+    assert trial.target is Target.CROSS
+    assert next_source is Target.CROSS
+    assert trial.practice is False
+    assert trial.index == 0
+
+    trial2, next_source2 = generate_next_saccade_trial(1, next_source, ShuffledBag(TIMING_OFFSETS_MS))
+    assert trial2.source is Target.CROSS
+    assert trial2.target is Target.DOT
+    assert next_source2 is Target.DOT
+
+
+def test_generate_next_saccade_trial_draws_a_timing_offset_from_the_bag():
+    bag = ShuffledBag(TIMING_OFFSETS_MS)
+    trial, _ = generate_next_saccade_trial(0, Target.DOT, bag)
+    assert trial.timing_offset_ms in TIMING_OFFSETS_MS
+
+
+def test_generate_next_saccade_trial_shown_rate_is_not_fixed_exact_ratio():
+    # Unlike build_saccade_sequence's pre-shuffled exact-ratio schedule, each
+    # call draws grating_shown independently - over enough draws that should
+    # produce both outcomes, not a suspiciously exact CATCH_TRIAL_FRACTION
+    # split every time.
+    bag = ShuffledBag(TIMING_OFFSETS_MS)
+    source = Target.DOT
+    shown_flags = []
+    for i in range(200):
+        trial, source = generate_next_saccade_trial(i, source, bag)
+        shown_flags.append(trial.grating_shown)
+    assert True in shown_flags and False in shown_flags
+
+
+def test_shuffled_bag_covers_every_item_before_any_repeat():
+    pool = [1, 2, 3, 4, 5]
+    bag = ShuffledBag(pool)
+    drawn = [bag.draw() for _ in range(len(pool))]
+    assert sorted(drawn) == pool
+
+
+def test_shuffled_bag_refills_after_exhaustion():
+    pool = ["a", "b", "c"]
+    bag = ShuffledBag(pool)
+    drawn = [bag.draw() for _ in range(len(pool) * 10)]
+    assert len(drawn) == 30
+    assert set(drawn) == set(pool)

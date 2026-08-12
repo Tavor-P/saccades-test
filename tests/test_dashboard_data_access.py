@@ -88,6 +88,42 @@ def test_load_session_trials_round_trips_flash_during_saccade(tmp_path, monkeypa
     assert [t.flash_during_saccade for t in trials] == [True, False, None]
 
 
+def test_load_session_trials_timing_offset_ms_missing_column_is_none(tmp_path, monkeypatch):
+    # _FIELDNAMES above deliberately omits timing_offset_ms to simulate a
+    # session logged before open-loop scheduling existed.
+    monkeypatch.setattr(data_access, "DATA_DIR", tmp_path)
+    _write_session(tmp_path, "111", rows=[_row()])
+
+    trials = data_access.load_session_trials("111")
+
+    assert trials[0].timing_offset_ms is None
+
+
+def test_load_session_trials_round_trips_timing_offset_ms(tmp_path, monkeypatch):
+    monkeypatch.setattr(data_access, "DATA_DIR", tmp_path)
+    fieldnames = _FIELDNAMES + ["timing_offset_ms"]
+    csv_path = tmp_path / "results_222.csv"
+    with csv_path.open("w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerow(_row(**{"timing_offset_ms": "-40"}))
+        writer.writerow(_row(**{"trial_index": "1", "timing_offset_ms": "40"}))
+        writer.writerow(_row(**{"trial_index": "2", "timing_offset_ms": ""}))
+
+    trials = data_access.load_session_trials("222")
+
+    assert [t.timing_offset_ms for t in trials] == [-40, 40, None]
+
+
+def test_discover_sessions_counts_rt_test_phase_rows(tmp_path, monkeypatch):
+    monkeypatch.setattr(data_access, "DATA_DIR", tmp_path)
+    _write_session(tmp_path, "100", rows=[_row("rt_test"), _row("rt_test"), _row("saccade")])
+
+    sessions = data_access.discover_sessions()
+
+    assert sessions[0].trial_counts == {"rt_test": 2, "saccade": 1}
+
+
 def test_load_metadata_defaults_when_no_meta_file(tmp_path, monkeypatch):
     monkeypatch.setattr(data_access, "DATA_DIR", tmp_path)
     _write_session(tmp_path, "222", rows=[])

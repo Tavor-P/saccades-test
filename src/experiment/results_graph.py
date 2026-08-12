@@ -34,15 +34,24 @@ _Replay = tuple[ZestStaircase, list[TrialResult]]
 
 
 def _exclude_flashes_not_during_saccade(results: list[TrialResult]) -> list[TrialResult]:
-    """Drops saccade-phase, flash-shown trials where flash_during_saccade is
-    explicitly False - the gaze classifier's own read at flash time said the
-    eye had already arrived at the target, so whatever got detected/reported
-    on that trial measures something closer to the presaccade condition, not
-    saccadic suppression. flash_during_saccade is None (not False) for
-    presaccade rows, catch trials, and sessions logged before this field
-    existed - those are left alone rather than silently emptying older
-    sessions' graphs."""
-    return [r for r in results if not (r.phase == "saccade" and r.grating_shown and r.flash_during_saccade is False)]
+    """Drops saccade-phase, flash-shown trials where flash_during_saccade
+    isn't explicitly True. Flash timing is open-loop now (scheduled off the
+    participant's own reaction-time average, not triggered by detected
+    onset - see ExperimentSession), so a flash landing outside the real
+    saccade window is a structurally common outcome, not rare classifier
+    lag - and unlike the old single-sample check, flash_during_saccade can
+    now be None for a saccade-phase, grating-shown trial too (landing was
+    never confirmed before the trial ended, so validity is genuinely
+    undeterminable - see TrialResult.flash_during_saccade), which is just as
+    unusable for analysis as an explicit False. This mirrors the live ZEST
+    gate in ExperimentSession._finish_trial, so the in-session estimate and
+    this end-of-run graph agree.
+
+    flash_during_saccade is left alone (not excluded) for presaccade rows,
+    catch trials, and rt_test rows - all of which are always None here since
+    nothing ever flashes on them - so this never touches those, only
+    saccade-phase rows where a grating was actually shown."""
+    return [r for r in results if not (r.phase == "saccade" and r.grating_shown and r.flash_during_saccade is not True)]
 
 
 def _replay_zest(results: list[TrialResult], phase: str) -> _Replay | None:

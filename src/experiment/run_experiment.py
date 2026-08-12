@@ -3,7 +3,7 @@ from functools import partial
 import cv2
 import pyglet
 from PIL import Image as PILImage
-from psychopy import core, event, gui, visual
+from psychopy import core, event, gui, sound, visual
 
 from include.experiment.constants import (
     BACKGROUND_LUMINANCE,
@@ -17,6 +17,8 @@ from include.experiment.constants import (
     GRATING_SIZE_HEIGHT_UNITS,
     HORIZONTAL_RESPONSE_KEYS,
     VERTICAL_RESPONSE_KEYS,
+    WARNING_TONE_DURATION_S,
+    WARNING_TONE_HZ,
 )
 from include.experiment.types import Orientation
 from include.eye_tracking.constants import CAMERA_INDEX, FRAME_HEIGHT, FRAME_WIDTH
@@ -60,6 +62,12 @@ _RESPONSE_KEY_ORIENTATION = {key: Orientation.VERTICAL for key in VERTICAL_RESPO
 _ORIENTATION_DEGREES = {Orientation.VERTICAL: 0, Orientation.HORIZONTAL: 90}
 RESPONSE_KEYS = list(_RESPONSE_KEY_ORIENTATION)
 
+# Phase names (ExperimentSession.Phase.name / TutorialSession.Phase.name)
+# whose entry is a target/cross appearing and should play the go-cue beep -
+# see phase_just_became_active/build_go_cue_tone.
+_GO_CUE_PHASES = frozenset({"TRIAL_ACTIVE", "RT_TEST_ACTIVE"})
+_TUTORIAL_GO_CUE_PHASES = frozenset({"DRESS_ACTIVE", "RT_TEST_ACTIVE"})
+
 
 def dispatch_response_keys(session, keys: list[str]) -> None:
     for key in keys:
@@ -101,6 +109,69 @@ class ClickPauseToggle:
             else:
                 self._clock.resume()
         self._was_pressed = pressed
+
+
+def build_go_cue_tone() -> sound.Sound:
+    """The go-cue beep, played the instant the target/cross appears (see
+    _phase_just_became_active below) - anchors the reaction-time measurement
+    itself, not a "get ready" warning before an already-visible target (see
+    WARNING_TONE_HZ's docstring in constants.py for why this reuses that old,
+    since-reverted tone with new semantics)."""
+    return sound.Sound(value=WARNING_TONE_HZ, secs=WARNING_TONE_DURATION_S)
+
+
+def phase_just_became_active(phase: str, last_phase: str | None, active_phases: frozenset[str]) -> bool:
+    """True on the exact frame `phase` transitions into one of `active_phases`
+    - the instant a target/cross appears, whether that's a real trial, a
+    practice trial, or a reaction-time-test attempt. Used both to fire the
+    go-cue beep and (in run_saccade_phase) the peripheral start flash."""
+    return phase in active_phases and last_phase not in active_phases
+
+
+class PauseMenu:
+    """Two-button pause menu for the saccade phase - unlike the presaccade
+    phase's anywhere-click ClickPauseToggle, this offers "Return" (resume as-
+    is) and "Return and Recalibrate" (re-run eye-position calibration and the
+    reaction-time test before resuming - see
+    ExperimentSession.resume_from_pause), since recalibration only makes
+    sense where there's gaze tracking to recalibrate. The first click (while
+    not yet paused) just opens the menu, same edge-detected toggle-on
+    behavior as ClickPauseToggle; once paused, only a click landing inside
+    one of the two button rects does anything."""
+
+    def __init__(
+        self, win: visual.Window, clock: PausableClock, return_rect: visual.Rect, recalibrate_rect: visual.Rect
+    ) -> None:
+        self._mouse = event.Mouse(win=win)
+        self._was_pressed = False
+        self._clock = clock
+        self._return_rect = return_rect
+        self._recalibrate_rect = recalibrate_rect
+        self.paused = False
+
+    def update(self) -> str | None:
+        """Call once per frame. Returns "return"/"recalibrate" on the frame
+        the matching button is clicked (already resumed the clock by then),
+        else None."""
+        pressed = self._mouse.getPressed()[0] == 1
+        clicked = pressed and not self._was_pressed
+        self._was_pressed = pressed
+        if not clicked:
+            return None
+        if not self.paused:
+            self.paused = True
+            self._clock.pause()
+            return None
+        pos = self._mouse.getPos()
+        if self._return_rect.contains(pos):
+            self.paused = False
+            self._clock.resume()
+            return "return"
+        if self._recalibrate_rect.contains(pos):
+            self.paused = False
+            self._clock.resume()
+            return "recalibrate"
+        return None
 
 
 def luminance_to_color(luminance: float) -> list[float]:
@@ -179,8 +250,22 @@ def build_stimuli(win: visual.Window) -> dict:
             contrast=0,
             opacity=0,
         ),
+        # Presaccade phase only - anywhere-click toggle, no recalibration
+        # (no gaze tracking there to recalibrate). See PauseMenu for the
+        # saccade phase's two-button version below.
         "pause_text": visual.TextStim(
             win, text="Paused — click anywhere to resume", pos=(0, 0), color="white", height=0.045
+        ),
+        "pause_menu_label": visual.TextStim(win, text="Paused", pos=(0, 0.14), color="white", height=0.045),
+        "pause_return_button": visual.Rect(
+            win, width=0.34, height=0.1, pos=(-0.19, 0), fillColor=(-0.2, -0.2, -0.2), lineColor="white"
+        ),
+        "pause_return_text": visual.TextStim(win, text="Return", pos=(-0.19, 0), color="white", height=0.032),
+        "pause_recalibrate_button": visual.Rect(
+            win, width=0.34, height=0.1, pos=(0.19, 0), fillColor=(-0.2, -0.2, -0.2), lineColor="white"
+        ),
+        "pause_recalibrate_text": visual.TextStim(
+            win, text="Return and\nRecalibrate", pos=(0.19, 0), color="white", height=0.026
         ),
         "hud": visual.TextStim(
             win,
@@ -352,7 +437,8 @@ def run_saccade_phase(
         precomputed_calibration_ratios=precomputed_calibration_ratios,
         skip_practice_trials=skip_practice_trials,
     )
-    pause_toggle = ClickPauseToggle(win, clock)
+    pause_menu = PauseMenu(win, clock, stimuli["pause_return_button"], stimuli["pause_recalibrate_button"])
+    go_cue_tone = build_go_cue_tone()
 
     aspect = stimuli["aspect"]
     preview_width = CAMERA_PREVIEW_HEIGHT * CAMERA_PREVIEW_FRAME_ASPECT
@@ -377,9 +463,17 @@ def run_saccade_phase(
             if "escape" in keys:
                 return None
 
-            pause_toggle.update()
-            if pause_toggle.paused:
-                stimuli["pause_text"].draw()
+            pause_action = pause_menu.update()
+            if pause_action == "return":
+                session.resume_from_pause(recalibrate=False)
+            elif pause_action == "recalibrate":
+                session.resume_from_pause(recalibrate=True)
+            if pause_menu.paused:
+                stimuli["pause_menu_label"].draw()
+                stimuli["pause_return_button"].draw()
+                stimuli["pause_return_text"].draw()
+                stimuli["pause_recalibrate_button"].draw()
+                stimuli["pause_recalibrate_text"].draw()
                 win.flip()
                 frame_clock.reset()
                 continue
@@ -398,6 +492,8 @@ def run_saccade_phase(
             if phase == "FOREPERIOD" and last_phase != "FOREPERIOD" and not start_flash_shown:
                 flash_frames_remaining = START_FLASH_DURATION_FRAMES
                 start_flash_shown = True
+            if phase_just_became_active(phase, last_phase, _GO_CUE_PHASES):
+                go_cue_tone.play()
             last_phase = phase
 
             last_spoken_instructions = narrate_if_changed(narrator, state["instructions"], last_spoken_instructions)
@@ -438,9 +534,11 @@ def run_tutorial_phase(
     gaze.start()
     clock = PausableClock()
     session = TutorialSession(gaze, clock)
+    go_cue_tone = build_go_cue_tone()
 
     fade_opacities = {"dot": 0.0, "cross": 0.0, "calibration_center": 0.0}
     frame_clock = core.Clock()
+    last_phase = None
     last_spoken_instructions: str | None = None
     last_feedback_token = 0
     feedback_frames_remaining = 0
@@ -475,6 +573,10 @@ def run_tutorial_phase(
 
             if phase == "COMPLETE" and "space" in keys and not speaking:
                 return session
+
+            if phase_just_became_active(phase, last_phase, _TUTORIAL_GO_CUE_PHASES):
+                go_cue_tone.play()
+            last_phase = phase
 
             last_spoken_instructions = narrate_if_changed(narrator, state["instructions"], last_spoken_instructions)
 
