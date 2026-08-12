@@ -5,12 +5,14 @@ from src.experiment.run_experiment import (
     _camera_labels,
     _resolve_camera_choice,
     _resolve_contrast_floor_percent,
+    _resolve_record_video,
     _resolve_show_gaze_indicator,
     _resolve_test_mode,
     _second_monitor_screen_index,
     camera_preview_enabled,
     narrate_if_changed,
     phase_just_became_active,
+    render_caption,
 )
 
 
@@ -125,3 +127,34 @@ def test_phase_just_became_active_false_when_not_an_active_phase():
 def test_phase_just_became_active_true_on_the_very_first_frame():
     active = frozenset({"TRIAL_ACTIVE", "RT_TEST_ACTIVE"})
     assert phase_just_became_active("RT_TEST_ACTIVE", None, active) is True
+
+
+def test_resolve_record_video_only_true_for_yes():
+    assert _resolve_record_video("Yes") is True
+    assert _resolve_record_video("No") is False
+
+
+def test_render_caption_shows_new_non_blank_text():
+    stim = Mock()
+    result = render_caption(stim, "look at the dot", last_caption="")
+    assert result == "look at the dot"
+    assert stim.text == "look at the dot"
+    assert stim.opacity == 1.0
+
+
+def test_render_caption_keeps_showing_the_last_caption_when_text_is_blank():
+    # "" from state["instructions"] means "don't re-announce this" (see
+    # narrate_if_changed's calling convention), not "nothing to show" -
+    # the caption should keep displaying whatever was last shown.
+    stim = Mock()
+    result = render_caption(stim, "", last_caption="look at the dot")
+    assert result == "look at the dot"
+    assert stim.text == "look at the dot"
+    assert stim.opacity == 1.0
+
+
+def test_render_caption_hidden_when_nothing_has_ever_been_shown():
+    stim = Mock()
+    result = render_caption(stim, "", last_caption="")
+    assert result == ""
+    assert stim.opacity == 0.0

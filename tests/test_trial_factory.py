@@ -15,8 +15,8 @@ def _presaccade_sequence():
     return build_presaccade_sequence(num_trials=NUM_TRIALS_PER_PHASE_TEST, num_practice=NUM_PRACTICE_TRIALS_TEST)
 
 
-def _saccade_sequence():
-    return build_saccade_sequence(num_trials=NUM_TRIALS_PER_PHASE_TEST, num_practice=NUM_PRACTICE_TRIALS_TEST)
+def _saccade_practice_sequence():
+    return build_saccade_sequence(num_practice=NUM_PRACTICE_TRIALS_TEST)
 
 
 def test_presaccade_sequence_counts():
@@ -42,33 +42,23 @@ def test_practice_schedule_alternates_shown_and_catch():
     assert practice_shown == [i % 2 == 0 for i in range(len(practice_shown))]
 
 
-def test_saccade_sequence_counts():
-    trials = _saccade_sequence()
-    practice = [t for t in trials if t.practice]
-    real = [t for t in trials if not t.practice]
-    assert len(practice) == NUM_PRACTICE_TRIALS_TEST
-    assert len(real) == NUM_TRIALS_PER_PHASE_TEST
-    assert sum(1 for t in real if not t.grating_shown) == _CATCH_TRIAL_COUNT
+def test_saccade_practice_sequence_counts_and_alternates_shown_and_catch():
+    trials = _saccade_practice_sequence()
+    assert len(trials) == NUM_PRACTICE_TRIALS_TEST
+    assert all(t.practice for t in trials)
+    assert [t.grating_shown for t in trials] == [i % 2 == 0 for i in range(len(trials))]
 
 
-def test_saccade_sequence_alternates_dot_and_cross_continuously():
-    trials = _saccade_sequence()
+def test_saccade_practice_sequence_alternates_dot_and_cross_continuously():
+    trials = _saccade_practice_sequence()
     assert trials[0].source is Target.DOT
     for current, following in zip(trials, trials[1:]):
         assert current.target == following.source
         assert current.source != current.target
 
 
-def test_saccade_schedule_is_shuffled_not_fixed():
-    # With NUM_TRIALS_PER_PHASE_TEST trials and _CATCH_TRIAL_COUNT catches, the
-    # number of distinct orderings is large enough that independent builds
-    # matching every time would indicate the shuffle isn't happening at all.
-    schedules = {tuple(t.grating_shown for t in _saccade_sequence() if not t.practice) for _ in range(20)}
-    assert len(schedules) > 1
-
-
 def test_orientation_is_set_only_when_grating_is_shown():
-    for trials in (_presaccade_sequence(), _saccade_sequence()):
+    for trials in (_presaccade_sequence(), _saccade_practice_sequence()):
         for trial in trials:
             if trial.grating_shown:
                 assert trial.orientation is not None
@@ -76,33 +66,34 @@ def test_orientation_is_set_only_when_grating_is_shown():
                 assert trial.orientation is None
 
 
-def test_orientation_is_randomized_not_fixed():
+def test_presaccade_orientation_is_randomized_not_fixed():
     # A single build has both a large trial count and a random per-trial
     # choice, so a run that comes back all-one-orientation would indicate the
-    # randomization isn't happening at all.
-    orientations = {t.orientation for t in _saccade_sequence() if t.grating_shown}
+    # randomization isn't happening at all. (The saccade phase's real block
+    # is generated dynamically now - see
+    # test_generate_next_saccade_trial_shown_rate_is_not_fixed_exact_ratio
+    # below for its equivalent coverage.)
+    orientations = {t.orientation for t in _presaccade_sequence() if t.grating_shown}
     assert len(orientations) > 1
 
 
-def test_build_sequences_respect_the_given_trial_counts():
-    # Regression test: num_trials/num_practice are now caller-supplied
+def test_build_presaccade_sequence_respects_the_given_trial_counts():
+    # Regression test: num_trials/num_practice are caller-supplied
     # (test_mode is resolved at runtime from the startup dialog, not a
     # hardcoded constant), so the factory must actually honor whatever it's
     # given rather than silently falling back to a fixed count.
-    presaccade = build_presaccade_sequence(num_trials=10, num_practice=3)
-    saccade = build_saccade_sequence(num_trials=10, num_practice=3)
-    for trials in (presaccade, saccade):
-        practice = [t for t in trials if t.practice]
-        real = [t for t in trials if not t.practice]
-        assert len(practice) == 3
-        assert len(real) == 10
+    trials = build_presaccade_sequence(num_trials=10, num_practice=3)
+    practice = [t for t in trials if t.practice]
+    real = [t for t in trials if not t.practice]
+    assert len(practice) == 3
+    assert len(real) == 10
 
 
-def test_build_saccade_sequence_with_zero_real_trials_produces_only_practice():
-    # ExperimentSession's real block is now dynamically generated (see
-    # generate_next_saccade_trial below), so it only consumes the practice
-    # portion of build_saccade_sequence, calling it with num_trials=0.
-    trials = build_saccade_sequence(num_trials=0, num_practice=4)
+def test_build_saccade_sequence_produces_only_practice_trials():
+    # ExperimentSession's real block is dynamically generated instead (see
+    # generate_next_saccade_trial below) - build_saccade_sequence only ever
+    # builds the fixed-size practice block now.
+    trials = build_saccade_sequence(num_practice=4)
     assert len(trials) == 4
     assert all(t.practice for t in trials)
 

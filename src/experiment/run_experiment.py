@@ -23,6 +23,7 @@ from include.experiment.constants import (
 from include.experiment.types import Orientation
 from include.eye_tracking.constants import CAMERA_INDEX, FRAME_HEIGHT, FRAME_WIDTH
 from src.eye_tracking.camera import list_available_cameras
+from src.eye_tracking.video_recorder import VideoRecorder
 from src.eye_tracking.webcam_source import WebcamGazeSource
 from src.experiment.logger import ResultLogger
 from src.experiment.narrator import Narrator
@@ -86,6 +87,22 @@ def narrate_if_changed(narrator: Narrator, text: str, last_spoken: str | None) -
     if text != last_spoken:
         narrator.speak(text)
     return text
+
+
+def render_caption(caption_stim, text: str, last_caption: str) -> str:
+    """Keeps the on-screen caption showing the last non-blank instructions
+    text, returning the new value for the caller to hold onto - mirrors
+    narrate_if_changed's calling convention, but for display instead of
+    speech. state["instructions"] returns "" specifically to tell
+    narrate_if_changed not to re-announce something unchanged (e.g. after
+    calibration round 1 - see Session._instructions()), not to signal
+    "nothing to show" - blanking the caption on that same signal would hide
+    still-relevant instructions the participant may not have finished
+    reading yet."""
+    caption = text if text else last_caption
+    caption_stim.text = caption
+    caption_stim.opacity = 1.0 if caption else 0.0
+    return caption
 
 
 class ClickPauseToggle:
@@ -228,6 +245,22 @@ def build_stimuli(win: visual.Window) -> dict:
         # `pos` is overwritten per-frame based on render_state()'s requested
         # "center"/"bottom" position.
         "tutorial_text": visual.TextStim(win, text="", pos=(0, -0.4), color="white", height=0.04, opacity=0),
+        # Same text the narrator speaks (state["instructions"]), shown on
+        # every phase now - not just the tutorial - so participants aren't
+        # relying on a single spoken pass to catch instructions (see
+        # render_caption: keeps showing the last non-blank instructions text
+        # rather than blanking out when narrate_if_changed's own "don't
+        # re-announce this" signal comes through as "").
+        # anchorVert="bottom": the longest instructions text (the COMPLETE
+        # phase's accuracy/false-alarm/threshold summary) wraps to multiple
+        # lines under wrapWidth - center-anchoring a multi-line block at a
+        # point this close to the bottom edge would push the lower lines
+        # past it and off-screen. Bottom-anchoring grows the block upward
+        # instead, so it can never go past its anchor point regardless of
+        # how many lines it wraps to.
+        "caption": visual.TextStim(
+            win, text="", pos=(0, -0.46), color="white", height=0.028, wrapWidth=1.6, opacity=0, anchorVert="bottom"
+        ),
         "dot": visual.Circle(win, radius=CIRCLE_RADIUS_RATIO, fillColor="white", lineColor="white", opacity=0),
         "cross": visual.Circle(win, radius=CIRCLE_RADIUS_RATIO, fillColor="white", lineColor="white", opacity=0),
         "calibration_center": visual.Circle(
@@ -353,6 +386,7 @@ def draw_all(stimuli: dict) -> None:
         "grating",
         "hud",
         "tutorial_text",
+        "caption",
     ):
         stimuli[name].draw()
 
@@ -373,6 +407,7 @@ def run_presaccade_phase(
     fade_opacities = {"dot": 0.0, "cross": 0.0, "calibration_center": 0.0}
     frame_clock = core.Clock()
     last_spoken_instructions: str | None = None
+    last_caption = ""
 
     while True:
         keys = event.getKeys(keyList=["space", "escape", *RESPONSE_KEYS])
@@ -397,6 +432,7 @@ def run_presaccade_phase(
             return session  # a space press on the results screen moves on
 
         last_spoken_instructions = narrate_if_changed(narrator, state["instructions"], last_spoken_instructions)
+        last_caption = render_caption(stimuli["caption"], state["instructions"], last_caption)
 
         dt = frame_clock.getTime()
         frame_clock.reset()
@@ -418,14 +454,21 @@ def run_saccade_phase(
     test_mode: bool = False,
     precomputed_calibration_ratios: tuple[float, float, float] | None = None,
     skip_practice_trials: bool = False,
+    record_video: bool = False,
 ) -> ExperimentSession | None:
     """Phase 2: the gaze-contingent saccade test. `precomputed_calibration_ratios`/
     `skip_practice_trials` come from a completed TutorialSession (see main())
     - when set, this phase reuses that calibration and its dress-rehearsal
-    stage instead of repeating both. Returns the completed session, or None
-    if the participant quit early."""
+    stage instead of repeating both. `record_video` writes logger.video_path
+    (+ a companion per-frame-timestamp CSV, see VideoRecorder) alongside the
+    results CSV - only this phase, since it's the only one with a running
+    camera and real (non-practice, non-tutorial) data to replay against.
+    Returns the completed session, or None if the participant quit early."""
     gaze = WebcamGazeSource(camera_index)
     gaze.start()
+    video_recorder = VideoRecorder(logger.video_path, logger.video_timestamps_path, gaze) if record_video else None
+    if video_recorder is not None:
+        video_recorder.start()
     clock = PausableClock()
     session = ExperimentSession(
         gaze,
@@ -454,6 +497,7 @@ def run_saccade_phase(
     frame_clock = core.Clock()
     last_phase = None
     last_spoken_instructions: str | None = None
+    last_caption = ""
     flash_frames_remaining = 0
     start_flash_shown = False
 
@@ -489,7 +533,7 @@ def run_saccade_phase(
             if phase == "COMPLETE" and "space" in keys:
                 return session  # a space press on the results screen moves on
 
-            if phase == "FOREPERIOD" and last_phase != "FOREPERIOD" and not start_flash_shown:
+            if phase_just_became_active(phase, last_phase, {"FOREPERIOD"}) and not start_flash_shown:
                 flash_frames_remaining = START_FLASH_DURATION_FRAMES
                 start_flash_shown = True
             if phase_just_became_active(phase, last_phase, _GO_CUE_PHASES):
@@ -497,6 +541,7 @@ def run_saccade_phase(
             last_phase = phase
 
             last_spoken_instructions = narrate_if_changed(narrator, state["instructions"], last_spoken_instructions)
+            last_caption = render_caption(stimuli["caption"], state["instructions"], last_caption)
 
             dt = frame_clock.getTime()
             frame_clock.reset()
@@ -513,6 +558,8 @@ def run_saccade_phase(
                 camera_preview.draw()
             win.flip()
     finally:
+        if video_recorder is not None:
+            video_recorder.stop()
         gaze.stop()
 
 
@@ -540,6 +587,7 @@ def run_tutorial_phase(
     frame_clock = core.Clock()
     last_phase = None
     last_spoken_instructions: str | None = None
+    last_caption = ""
     last_feedback_token = 0
     feedback_frames_remaining = 0
 
@@ -579,6 +627,7 @@ def run_tutorial_phase(
             last_phase = phase
 
             last_spoken_instructions = narrate_if_changed(narrator, state["instructions"], last_spoken_instructions)
+            last_caption = render_caption(stimuli["caption"], state["instructions"], last_caption)
 
             feedback_token = state["feedback_flash"]["token"]
             if feedback_token != last_feedback_token:
@@ -636,7 +685,11 @@ def _resolve_run_tutorial(selected_label: str) -> bool:
     return selected_label == "Yes"
 
 
-def prompt_session_info() -> tuple[str, int, str, float, bool, bool, bool] | None:
+def _resolve_record_video(selected_label: str) -> bool:
+    return selected_label == "Yes"
+
+
+def prompt_session_info() -> tuple[str, int, str, float, bool, bool, bool, bool] | None:
     """Standard PsychoPy participant-info dialog, shown before the window
     opens - also offers a camera picker (a dropdown of every camera index
     that actually opens) so switching between multiple connected cameras
@@ -646,11 +699,14 @@ def prompt_session_info() -> tuple[str, int, str, float, bool, bool, bool] | Non
     override it per-session without editing code. Also offers a "Show gaze
     indicator" toggle (default No) for the saccade phase's debug gaze dot -
     off by default since it's not something a real participant should see -
-    and a "Run tutorial" toggle (default No) for the first-timer on-ramp (see
+    a "Run tutorial" toggle (default No) for the first-timer on-ramp (see
     TutorialSession), independent of test/real mode so it can be exercised
-    from either. Whether this is a test run (see _resolve_test_mode) is
-    derived from the Participant ID field itself, not a separate control.
-    Returns None if the dialog was cancelled."""
+    from either, and a "Record video" toggle (default Yes, see VideoRecorder)
+    for a full session video + per-frame-timestamp CSV alongside the results
+    CSV, so a session can be replayed later by default - opt out per session
+    (e.g. low disk space) rather than opting in. Whether this is a test run
+    (see _resolve_test_mode) is derived from the Participant ID field itself,
+    not a separate control. Returns None if the dialog was cancelled."""
     camera_indices = list_available_cameras() or [CAMERA_INDEX]
     camera_labels = _camera_labels(camera_indices)
     default_contrast_floor_percent = load_contrast_floor_percent()
@@ -661,6 +717,7 @@ def prompt_session_info() -> tuple[str, int, str, float, bool, bool, bool] | Non
         "Contrast floor (%)": f"{default_contrast_floor_percent:.2f}",
         "Show gaze indicator": ["No", "Yes"],
         "Run tutorial": ["No", "Yes"],
+        "Record video": ["Yes", "No"],
     }
     dlg = gui.DlgFromDict(info, title="Saccade experiment")
     if not dlg.OK:
@@ -673,6 +730,7 @@ def prompt_session_info() -> tuple[str, int, str, float, bool, bool, bool] | Non
     contrast_floor_percent = _resolve_contrast_floor_percent(info["Contrast floor (%)"], default_contrast_floor_percent)
     show_gaze_indicator = _resolve_show_gaze_indicator(info["Show gaze indicator"])
     run_tutorial = _resolve_run_tutorial(info["Run tutorial"])
+    record_video = _resolve_record_video(info["Record video"])
     return (
         participant_id,
         camera_index,
@@ -680,6 +738,7 @@ def prompt_session_info() -> tuple[str, int, str, float, bool, bool, bool] | Non
         contrast_floor_percent,
         show_gaze_indicator,
         run_tutorial,
+        record_video,
         test_mode,
     )
 
@@ -711,6 +770,7 @@ def main() -> None:
         contrast_floor_percent,
         show_gaze_indicator,
         run_tutorial,
+        record_video,
         test_mode,
     ) = session_info
     contrast_floor = contrast_floor_percent / 100
@@ -739,6 +799,7 @@ def main() -> None:
             test_mode=test_mode,
             precomputed_calibration_ratios=precomputed_calibration_ratios,
             skip_practice_trials=run_tutorial,
+            record_video=record_video,
         )
         presaccade_phase = partial(
             run_presaccade_phase, narrator=narrator, contrast_floor=contrast_floor, test_mode=test_mode

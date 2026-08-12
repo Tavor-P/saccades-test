@@ -6,10 +6,12 @@ class Narrator:
     """Speaks instruction text aloud on a background thread, using Windows'
     built-in SAPI text-to-speech (via pywin32, already a PsychoPy dependency -
     no new package needed). Participants have to hold fixation on specific
-    on-screen targets throughout calibration and every trial; text at the
-    bottom of the screen would mean looking away from those targets just to
-    read it, which defeats the point of a saccade/fixation experiment. Speech
-    replaces that text entirely instead of supplementing it.
+    on-screen targets throughout calibration and every trial, so instructions
+    are spoken rather than relying on requiring a glance away to read them.
+    A small caption at the bottom of the screen (see run_experiment.py's
+    render_caption) shows the same text at the same time, for anyone who
+    needs to double-check what was said without waiting to hear it repeated -
+    it's peripheral/supplementary, not the primary channel.
 
     Runs on its own thread because SAPI's Speak() call blocks for as long as
     the speech takes (real seconds) - calling it directly from the PsychoPy

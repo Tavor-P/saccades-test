@@ -31,6 +31,7 @@ FIELDNAMES = [
     "onset_detection_lag_ms",
     "flash_during_saccade",
     "timing_offset_ms",
+    "grating_shown_at_unix_ms",
 ]
 
 
@@ -54,9 +55,9 @@ class ResultLogger:
         test_mode: bool | None = None,
     ) -> None:
         DATA_DIR.mkdir(exist_ok=True)
-        timestamp = int(time.time())
-        csv_path = DATA_DIR / f"results_{timestamp}.csv"
-        self._meta_path = DATA_DIR / f"results_{timestamp}_meta.json"
+        self._timestamp = int(time.time())
+        csv_path = DATA_DIR / f"results_{self._timestamp}.csv"
+        self._meta_path = DATA_DIR / f"results_{self._timestamp}_meta.json"
 
         self._file = csv_path.open("w", newline="")
         self._writer = csv.DictWriter(self._file, fieldnames=FIELDNAMES)
@@ -75,6 +76,17 @@ class ResultLogger:
             "calibration": None,
         }
         self._write_metadata()
+
+    @property
+    def video_path(self) -> Path:
+        """Where an optional session video recording (see
+        src/eye_tracking/video_recorder.py) belongs, named to match this
+        session's own results_<timestamp>.csv/_meta.json pair."""
+        return DATA_DIR / f"results_{self._timestamp}_video.mp4"
+
+    @property
+    def video_timestamps_path(self) -> Path:
+        return DATA_DIR / f"results_{self._timestamp}_video_timestamps.csv"
 
     def _write_metadata(self) -> None:
         self._meta_path.write_text(json.dumps(self._metadata, indent=2))
@@ -106,6 +118,7 @@ class ResultLogger:
                 "onset_detection_lag_ms": result.onset_detection_lag_ms,
                 "flash_during_saccade": result.flash_during_saccade,
                 "timing_offset_ms": result.timing_offset_ms,
+                "grating_shown_at_unix_ms": result.grating_shown_at_unix_ms,
             }
         )
         self._file.flush()

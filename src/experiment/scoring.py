@@ -18,3 +18,16 @@ def score_outcome(
     if not responded:
         return "miss"
     return "correct" if response_orientation == actual_orientation else "incorrect"
+
+
+def is_valid_for_saccadic_analysis(flash_during_saccade: bool | None) -> bool:
+    """The single validity gate for a saccade-phase, grating-shown trial's
+    flash_during_saccade - shared by both the live in-session ZEST update
+    (ExperimentSession._finish_trial) and the end-of-run analysis
+    (results_graph._exclude_flashes_not_during_saccade), so the two can't
+    silently diverge if this rule ever changes. Only True counts - False
+    (the flash landed outside the real-time-detected saccade window) and
+    None (landing was never confirmed, so validity is genuinely
+    undeterminable, not merely invalid) are equally unusable for either
+    purpose."""
+    return flash_during_saccade is True

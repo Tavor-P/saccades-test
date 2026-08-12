@@ -17,6 +17,15 @@ CAMERA_EXPOSURE_TIME_US = 3000.0  # ExposureTime (microseconds), fixed (Exposure
 # lower if they look washed out/noisy) before relying on it.
 CAMERA_GAIN_DB = 6.0
 CAMERA_FRAME_RATE = 200.0  # target AcquisitionFrameRate (fps); clamped to the camera's actual max
+# Optional session video recording (see src/eye_tracking/video_recorder.py) -
+# deliberately much lower than CAMERA_FRAME_RATE: a video doesn't need every
+# frame the tracker sees to be watchable, and polling at the full acquisition
+# rate would mean encoding/writing ~200 frames/sec for no real benefit. Each
+# written frame gets its own wall-clock (time.time()) timestamp in a
+# companion CSV, so playback can be aligned exactly against the results
+# CSV's grating_shown_at_unix_ms - no dead-reckoning from a nominal frame
+# rate needed, which is what would actually drift over a long recording.
+VIDEO_RECORDING_FPS = 30.0
 # MediaPipe FaceLandmarker inference time scales with input pixel count, and
 # face/pupil detection doesn't need full sensor resolution - frames are
 # downscaled to this width (preserving aspect ratio) before tracking, so

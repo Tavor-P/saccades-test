@@ -26,7 +26,7 @@ from include.experiment.constants import (
     ZEST_MIN_VALID_TRIALS_REAL,
     ZEST_MIN_VALID_TRIALS_TEST,
 )
-from include.experiment.types import Orientation, Target, TrialSpec
+from include.experiment.types import Orientation, Target, TrialResult, TrialSpec
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.session import ExperimentSession
 
@@ -317,7 +317,7 @@ def test_response_window_opens_at_the_scheduled_flash_time_not_at_onset(fake_gaz
     session.tick()
     fake_time(SACCADE_ONSET_STABILITY_MS / 1000 + 0.01)
     session.tick()
-    assert session._gaze_left_source is True
+    assert session._onset_detector.confirmed is True
     assert session._response_window_open is False
 
     fake_time(0.2)
@@ -628,10 +628,34 @@ def test_main_block_stops_once_the_max_trial_cap_is_hit_even_with_a_wide_interva
     assert session.render_state()["hud"]["phase"] == "COMPLETE"
 
 
+def _fake_valid_saccade_results(count: int) -> list[TrialResult]:
+    """_completed_main_trial_count/_valid_trial_count are derived from
+    session._results (see session.py) rather than hand-maintained counters -
+    populate that list directly instead of assigning to what are now
+    read-only properties."""
+    return [
+        TrialResult(
+            index=i,
+            phase="saccade",
+            source=Target.DOT,
+            target=Target.CROSS,
+            saccade_duration_ms=200.0,
+            grating_shown=True,
+            contrast=0.1,
+            orientation=Orientation.VERTICAL,
+            responded=True,
+            response_orientation=Orientation.VERTICAL,
+            response_time_ms=250.0,
+            outcome="correct",
+            flash_during_saccade=True,
+        )
+        for i in range(count)
+    ]
+
+
 def test_should_stop_main_block_true_once_credible_interval_is_narrow_enough(fake_gaze):
     session = _make_session(fake_gaze, test_mode=True)
-    session._valid_trial_count = session._min_valid_trials
-    session._completed_main_trial_count = session._min_valid_trials
+    session._results = _fake_valid_saccade_results(session._min_valid_trials)
 
     class _NarrowZest:
         def credible_interval(self, mass):
@@ -643,8 +667,7 @@ def test_should_stop_main_block_true_once_credible_interval_is_narrow_enough(fak
 
 def test_should_stop_main_block_false_when_credible_interval_is_wide(fake_gaze):
     session = _make_session(fake_gaze, test_mode=True)
-    session._valid_trial_count = session._min_valid_trials
-    session._completed_main_trial_count = session._min_valid_trials
+    session._results = _fake_valid_saccade_results(session._min_valid_trials)
 
     class _WideZest:
         def credible_interval(self, mass):
