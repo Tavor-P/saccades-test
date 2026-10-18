@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from src.eye_tracking.latency_test import NeonVideoRecorder
+from src.eye_tracking.neon_video_recorder import NeonVideoRecorder
 
 
 def test_neon_video_recorder_writes_video_and_per_frame_metadata(tmp_path):
