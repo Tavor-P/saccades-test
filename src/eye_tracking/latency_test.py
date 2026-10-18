@@ -29,8 +29,33 @@ from psychopy import core, event, visual
 
 from include.eye_tracking.constants import NEON_DEVICE_ADDRESS, NEON_DEVICE_PORT, NEON_DISCOVERY_TIMEOUT_S
 
+SCENE_VIDEO_SCALE = 0.5  # the 1600x1200 scene video is encoded at half size - full size is too slow to keep up
 JUMP_INTERVAL_S = (1.2, 2.0)
 DOT_X = 0.35  # fraction of window width from center
+
+
+def _retime_video(path: Path, n_frames: int, duration_s: float) -> None:
+    """Rewrites an mp4 at its true average frame rate (frames / real seconds).
+    The cameras deliver frames at whatever rate they manage, not the nominal
+    rate the file was opened with, so without this the video plays back too
+    fast or slow and ends 'too early'. Frames stay 1:1 with the CSV rows."""
+    if n_frames < 2 or duration_s <= 0 or not path.exists():
+        return
+    source = cv2.VideoCapture(str(path))
+    temp = path.with_suffix(".retimed.mp4")
+    writer = None
+    while True:
+        ok, frame = source.read()
+        if not ok:
+            break
+        if writer is None:
+            height, width = frame.shape[:2]
+            writer = cv2.VideoWriter(str(temp), cv2.VideoWriter_fourcc(*"mp4v"), n_frames / duration_s, (width, height))
+        writer.write(frame)
+    source.release()
+    if writer is not None:
+        writer.release()
+        temp.replace(path)
 
 
 def overlay_lines(neon: "NeonRecorder", unix_time: float) -> list[str]:
@@ -108,7 +133,9 @@ class NeonVideoRecorder:
     the clock offset estimated at startup). The mp4's own frame rate is only
     nominal - the per-frame timestamps are the real timing."""
 
-    def __init__(self, device, kind: str, video_path: Path, csv_path: Path, offset_ms, nominal_fps: float) -> None:
+    def __init__(self, device, kind: str, video_path: Path, csv_path: Path, offset_ms, nominal_fps: float, scale: float = 1.0) -> None:
+        self._scale = scale
+        self._first_pc = self._last_pc = None
         self._receive = device.receive_scene_video_frame if kind == "scene" else device.receive_eyes_video_frame
         self._video_path = video_path
         self._offset_ms = offset_ms  # callable -> current clock offset estimate in ms (PC = device + offset)
@@ -148,6 +175,8 @@ class NeonVideoRecorder:
             if frame is None:
                 continue
             image = frame.bgr_pixels
+            if self._scale != 1.0:
+                image = cv2.resize(image, None, fx=self._scale, fy=self._scale, interpolation=cv2.INTER_AREA)
             height, width = image.shape[:2]
             if self._writer is None:
                 self._writer = cv2.VideoWriter(
@@ -159,6 +188,9 @@ class NeonVideoRecorder:
                 [self.frames, f"{device_s:.6f}", f"{arrival:.6f}", f"{device_s + self._offset_ms() / 1000:.6f}", width, height]
             )
             self.frames += 1
+            pc_s = device_s + self._offset_ms() / 1000
+            self._first_pc = pc_s if self._first_pc is None else self._first_pc
+            self._last_pc = pc_s
 
     def stop(self) -> None:
         self._running = False
@@ -166,6 +198,8 @@ class NeonVideoRecorder:
         if self._writer is not None:
             self._writer.release()
         self._file.close()
+        if self._first_pc is not None:
+            _retime_video(self._video_path, self.frames, self._last_pc - self._first_pc)
 
 
 class WebcamRecorder:
@@ -192,6 +226,8 @@ class WebcamRecorder:
         self._csv = csv.writer(self._file)
         self._csv.writerow(["frame_index", "unix_s", "neon_x", "neon_y", "neon_worn", "neon_sample_age_ms"])
         self._index = 0
+        self._video_path = video_path
+        self._first_t = self._last_t = None
         self._running = True
         self._thread = threading.Thread(target=self._loop, daemon=True)
 
@@ -213,6 +249,8 @@ class WebcamRecorder:
             )
             self._csv.writerow([self._index, f"{now:.6f}", *neon_cols])
             self._index += 1
+            self._first_t = now if self._first_t is None else self._first_t
+            self._last_t = now
 
     def stop(self) -> None:
         self._running = False
@@ -220,6 +258,8 @@ class WebcamRecorder:
         self._writer.release()
         self._capture.release()
         self._file.close()
+        if self._first_t is not None:
+            _retime_video(self._video_path, self._index, self._last_t - self._first_t)
 
 
 def run(camera_index: int, num_jumps: int) -> Path:
@@ -231,7 +271,7 @@ def run(camera_index: int, num_jumps: int) -> Path:
         camera_index, folder / "webcam.mp4", folder / "webcam.csv", overlay=lambda t: overlay_lines(neon, t), neon=neon
     )
     offset_ms = lambda: neon.clock_offsets_ms[0]  # noqa: E731
-    neon_scene = NeonVideoRecorder(neon.device, "scene", folder / "neon_scene.mp4", folder / "neon_scene.csv", offset_ms, 30.0)
+    neon_scene = NeonVideoRecorder(neon.device, "scene", folder / "neon_scene.mp4", folder / "neon_scene.csv", offset_ms, 30.0, scale=SCENE_VIDEO_SCALE)
     neon_eyes = NeonVideoRecorder(neon.device, "eyes", folder / "neon_eyes.mp4", folder / "neon_eyes.csv", offset_ms, 200.0)
     win = visual.Window(fullscr=True, units="height", color=[-0.2] * 3, allowGUI=False)
     aspect = win.size[0] / win.size[1]
