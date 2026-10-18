@@ -42,6 +42,9 @@ class NeonRecorder:
         if self._device is None:
             raise RuntimeError("No Neon found")
         self.clock_offsets_ms: list[float] = [self._estimate_offset_ms()]
+        # The gaze stream only connects on the first receive call, which can take
+        # several seconds - do it now so the first jumps aren't missing Neon data.
+        self._device.receive_gaze_datum(timeout_seconds=10)
         self._file = path.open("w", newline="")
         self._writer = csv.writer(self._file)
         self._writer.writerow(["arrival_unix_s", "device_unix_s", "x", "y", "worn"])
