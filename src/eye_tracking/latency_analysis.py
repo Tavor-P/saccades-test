@@ -73,7 +73,13 @@ def measure_latencies(jump_times, neon_t, neon_x, cam_t, cam_x) -> list[dict]:
 def _read_csv(path: Path) -> dict[str, np.ndarray]:
     with path.open() as f:
         rows = list(csv.DictReader(f))
-    return {k: np.array([float(r[k]) if r[k] not in ("", "nan") else np.nan for r in rows]) for k in rows[0]}
+    def to_float(value: str) -> float:
+        try:
+            return float(value)
+        except ValueError:  # non-numeric columns (e.g. stimulus "side") aren't used in the analysis
+            return np.nan
+
+    return {k: np.array([to_float(r[k]) for r in rows]) for k in rows[0]}
 
 
 def _webcam_iris_ratios(video_path: Path) -> np.ndarray:

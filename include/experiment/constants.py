@@ -172,7 +172,7 @@ GAZE_LANDING_STABILITY_MS = 150  # gaze must hold in the target zone this long t
 # TrialResult) let you check empirically whether this is still catching false
 # positives - if avg_reaction_time_ms in real sessions is still
 # implausibly fast (well under ~100ms), raise this further.
-SACCADE_ONSET_STABILITY_MS = 40
+SACCADE_ONSET_STABILITY_MS = 10  # lowered from 40 for Neon (~16 ms latency, 200 Hz); verify with neon_fixation_test
 
 # 3-point calibration is run this many times (round 1 discarded, rounds 2-3
 # averaged - see src/experiment/calibration.py) on the assumption that a
