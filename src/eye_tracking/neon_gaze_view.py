@@ -21,9 +21,9 @@ from pupil_labs.realtime_api.simple import Device, discover_one_device
 
 from include.eye_tracking.constants import NEON_DEVICE_ADDRESS, NEON_DEVICE_PORT, NEON_DISCOVERY_TIMEOUT_S
 
-MARKER_PX = 160  # black-bordered AprilTag square, in screen pixels
-MARGIN_PX = 40  # white quiet zone around each marker (needed for detection)
-STALE_AFTER_S = 0.3  # hide the dot if no mapped gaze arrived this recently
+MARKER_PX = 240  # black-bordered AprilTag square, in screen pixels
+MARGIN_PX = 50  # white quiet zone around each marker (needed for detection)
+STALE_AFTER_S = 0.5  # hide the dot if no mapped gaze arrived this recently
 
 
 def _marker_image(marker_id: int) -> np.ndarray:
@@ -69,21 +69,24 @@ def main() -> None:
     dot = visual.Circle(win, radius=18, fillColor=None, lineColor="red", lineWidth=4)
     hud = visual.TextStim(win, text="", height=22, color="white", pos=(0, -height / 2 + 40))
 
-    latest: dict = {"x": None, "y": None, "t": 0.0}
+    latest: dict = {"x": None, "y": None, "t": 0.0, "markers": 0, "error": ""}
     running = True
 
     def reader() -> None:
         while running:
             try:
                 frame, gaze = device.receive_matched_scene_video_frame_and_gaze(timeout_seconds=1)
-            except Exception:
+            except Exception as exc:  # surface it on screen instead of silently looking like 'not detected'
+                latest["error"] = repr(exc)
                 continue
             if frame is None:
                 continue
             result = gaze_mapper.process_frame(frame, gaze)
-            mapped = result.mapped_gaze.get(surface.uid, [])
+            latest["markers"] = len(result.markers) if result else 0
+            mapped = result.mapped_gaze.get(surface.uid, []) if result else []
             if mapped:
-                latest.update(x=mapped[0].x, y=mapped[0].y, t=time.monotonic())
+                # The mapper returns 0-1 screen coordinates with y measured UP from the bottom edge.
+                latest.update(x=mapped[0].x * width, y=(1 - mapped[0].y) * height, t=time.monotonic())
 
     thread = threading.Thread(target=reader, daemon=True)
     thread.start()
@@ -95,9 +98,9 @@ def main() -> None:
                 gx, gy = latest["x"], latest["y"]  # screen px, top-left origin
                 dot.pos = (gx - width / 2, height / 2 - gy)
                 dot.draw()
-                hud.text = f"gaze x={gx:.0f}  y={gy:.0f} px  (screen {width}x{height})"
+                hud.text = f"gaze x={gx:.0f}  y={gy:.0f} px  (screen {width}x{height}, markers {latest['markers']}/4)"
             else:
-                hud.text = "No screen detected - make sure all four corner markers are visible to the glasses"
+                hud.text = f"No screen located - markers seen: {latest['markers']}/4 (need at least 3 clearly visible)  {latest['error']}"
             hud.draw()
             win.flip()
     finally:
