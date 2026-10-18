@@ -32,6 +32,7 @@ FIELDNAMES = [
     "flash_during_saccade",
     "timing_offset_ms",
     "grating_shown_at_unix_ms",
+    "tracking_ok",
 ]
 
 
@@ -85,6 +86,11 @@ class ResultLogger:
         return DATA_DIR / f"results_{self._timestamp}_video.mp4"
 
     @property
+    def gaze_trace_path(self) -> Path:
+        """Raw gaze recording for this session (see src/eye_tracking/gaze_trace.py)."""
+        return DATA_DIR / f"results_{self._timestamp}_gaze_trace.csv"
+
+    @property
     def video_timestamps_path(self) -> Path:
         return DATA_DIR / f"results_{self._timestamp}_video_timestamps.csv"
 
@@ -126,6 +132,7 @@ class ResultLogger:
                 "flash_during_saccade": result.flash_during_saccade,
                 "timing_offset_ms": result.timing_offset_ms,
                 "grating_shown_at_unix_ms": result.grating_shown_at_unix_ms,
+                "tracking_ok": result.tracking_ok,
             }
         )
         self._file.flush()

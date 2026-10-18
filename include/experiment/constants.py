@@ -150,6 +150,12 @@ FALSE_ALARM_RATE_THRESHOLD = 1 / 200
 MIN_CATCH_TRIALS_FOR_RELIABILITY = 8  # each phase has 20 catch trials, comfortably above this floor
 
 SACCADE_TIMEOUT_MS = 15_000  # force-advance a trial if gaze never lands (broken tracking)
+# A flash-shown trial is flagged tracking_ok=False (and excluded from ZEST and
+# the analysis graph, exactly like flash_during_saccade != True) if the gaze
+# source reported "no face"/lost track at any tick within this window either
+# side of the scheduled flash time - onset/landing timestamps (and so the
+# flash_during_saccade check itself) can't be trusted across a tracking dropout.
+TRACKING_LOSS_WINDOW_MS = 150
 GAZE_LANDING_STABILITY_MS = 150  # gaze must hold in the target zone this long to count as "landed"
 # Gaze must hold outside the source zone this long before it counts as a real
 # saccade onset (debounces classifier noise so a single jittery/misclassified

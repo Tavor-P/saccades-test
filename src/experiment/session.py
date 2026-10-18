@@ -31,6 +31,7 @@ from include.experiment.constants import (
     RT_AVERAGE_ROLLING_WINDOW,
     SACCADE_TIMEOUT_MS,
     TIMING_OFFSETS_MS,
+    TRACKING_LOSS_WINDOW_MS,
     ZEST_CREDIBLE_INTERVAL_MAX_LOG_WIDTH,
     ZEST_MIN_VALID_TRIALS_REAL,
     ZEST_MIN_VALID_TRIALS_TEST,
@@ -172,6 +173,7 @@ class ExperimentSession:
         self._grating_frames_remaining = 0
         self._grating_actually_shown = False
         self._flash_during_saccade: bool | None = None
+        self._tracking_lost_near_flash = False
         self._trial_contrast: float | None = None  # contrast actually used for this trial's flash, if any
         self._reaction_latency_ms: float | None = None
         self._onset_detection_lag_ms: float | None = None
@@ -384,7 +386,7 @@ class ExperimentSession:
 
     @property
     def _valid_trial_count(self) -> int:
-        return sum(1 for r in self._results if r.phase == "saccade" and is_valid_for_saccadic_analysis(r.flash_during_saccade))
+        return sum(1 for r in self._results if r.phase == "saccade" and is_valid_for_saccadic_analysis(r.flash_during_saccade, r.tracking_ok))
 
     def _should_stop_main_block(self) -> bool:
         """An efficient, well-estimated threshold rather than a fixed trial
@@ -503,6 +505,9 @@ class ExperimentSession:
         if self._response_window_open and now > self._response_deadline:
             self._response_window_open = False
 
+        if not sample.face_found and abs(now - self._flash_scheduled_at) <= TRACKING_LOSS_WINDOW_MS / 1000:
+            self._tracking_lost_near_flash = True
+
         if not self._landed:
             if sample.face_found and sample.zone is target_zone:
                 if self._target_landed_since is None:
@@ -574,6 +579,7 @@ class ExperimentSession:
                 self._grating_actually_shown, self._responded, self._response_orientation, trial.orientation
             )
         self._flash_during_saccade = self._compute_flash_during_saccade()
+        tracking_ok = (not self._tracking_lost_near_flash) if self._grating_actually_shown else None
 
         if not trial.practice:
             # "miss" (no response within the window) counts as a non-detection
@@ -590,7 +596,7 @@ class ExperimentSession:
             if (
                 self._grating_actually_shown
                 and outcome in ("correct", "incorrect", "miss")
-                and is_valid_for_saccadic_analysis(self._flash_during_saccade)
+                and is_valid_for_saccadic_analysis(self._flash_during_saccade, tracking_ok)
             ):
                 self._zest.update(self._trial_contrast, detected=outcome == "correct")
 
@@ -612,6 +618,7 @@ class ExperimentSession:
                 flash_during_saccade=self._flash_during_saccade,
                 timing_offset_ms=trial.timing_offset_ms,
                 grating_shown_at_unix_ms=self._grating_shown_at_unix_ms,
+                tracking_ok=tracking_ok,
             )
             self._logger.log(result)
             self._results.append(result)

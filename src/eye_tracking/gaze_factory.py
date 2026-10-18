@@ -5,7 +5,7 @@ BACKEND_WEBCAM = "Blackfly S + MediaPipe"
 BACKENDS = [BACKEND_NEON, BACKEND_WEBCAM]
 
 
-def build_gaze_source(backend: str, camera_index: int = 0) -> GazeSource:
+def build_gaze_source(backend: str, camera_index: int = 0, trace_path=None) -> GazeSource:
     """Backend modules are imported lazily: the webcam path needs PySpin/
     MediaPipe, the Neon path needs pupil-labs-realtime-api, and a machine
     using one shouldn't need the other installed."""
@@ -15,7 +15,7 @@ def build_gaze_source(backend: str, camera_index: int = 0) -> GazeSource:
         return WebcamGazeSource(camera_index)
     from src.eye_tracking.neon_source import NeonGazeSource
 
-    return NeonGazeSource()
+    return NeonGazeSource(trace_path=trace_path)
 
 
 def list_cameras() -> list[int]:

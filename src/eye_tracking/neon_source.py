@@ -14,7 +14,10 @@ from include.eye_tracking.constants import (
 )
 from include.eye_tracking.interfaces import GazeSource
 from include.eye_tracking.types import GazeSample, GazeZone
+from pathlib import Path
+
 from src.eye_tracking.gaze_mapping import GazeMapper
+from src.eye_tracking.gaze_trace import GazeTraceWriter
 
 _MAX_LATENCY_SAMPLES = 100_000  # ~8 min at 200 Hz; older samples drop off, bounding memory
 
@@ -40,8 +43,10 @@ class NeonGazeSource(GazeSource):
     `device` is injectable for tests; otherwise the Neon is auto-discovered
     (or reached at NEON_DEVICE_ADDRESS) in start()."""
 
-    def __init__(self, device=None) -> None:
+    def __init__(self, device=None, trace_path: Path | None = None) -> None:
         self._device = device
+        # Optional raw-gaze recording (see gaze_trace.py) for later replay.
+        self._trace = GazeTraceWriter(trace_path) if trace_path is not None else None
         self._mapper = GazeMapper()
         self._latest = GazeSample(zone=GazeZone.UNKNOWN, ratio=None, face_found=False, timestamp=time.monotonic())
         self._lock = threading.Lock()
@@ -118,6 +123,8 @@ class NeonGazeSource(GazeSource):
         with self._lock:
             self._latest = sample
             self._record_quality(now, sample.face_found, device_timestamp_s)
+            if self._trace is not None:
+                self._trace.write(now, device_timestamp_s, x, bool(worn))
 
     def _record_quality(self, now: float, valid: bool, device_timestamp_s: float | None) -> None:
         # Caller holds self._lock.
@@ -186,6 +193,10 @@ class NeonGazeSource(GazeSource):
         self._running = False
         if self._thread is not None:
             self._thread.join(timeout=1)
+        if self._trace is not None:
+            with self._lock:
+                self._trace.close()
+                self._trace = None
         if self._device is not None:
             try:
                 self._device.close()

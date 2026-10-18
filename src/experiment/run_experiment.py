@@ -464,7 +464,8 @@ def run_saccade_phase(
     results CSV - only this phase, since it's the only one with a running
     camera and real (non-practice, non-tutorial) data to replay against.
     Returns the completed session, or None if the participant quit early."""
-    gaze = build_gaze_source(gaze_backend, camera_index)
+    # Raw gaze is recorded alongside the results CSV (Neon only) so the session can be replayed offline.
+    gaze = build_gaze_source(gaze_backend, camera_index, trace_path=logger.gaze_trace_path)
     gaze.start()
     # Neon has no latest_frame() (gaze only, no Mono8 camera feed), so video + preview are webcam-only.
     has_frames = hasattr(gaze, "latest_frame")

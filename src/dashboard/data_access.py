@@ -85,6 +85,8 @@ def load_session_trials(timestamp: str) -> list[TrialResult]:
                     # .get(): sessions logged before this existed have no
                     # grating_shown_at_unix_ms column at all.
                     grating_shown_at_unix_ms=_parse_optional_float(row.get("grating_shown_at_unix_ms", "")),
+                    # .get(): sessions logged before tracking-quality gating have no tracking_ok column.
+                    tracking_ok=_parse_optional_bool(row.get("tracking_ok", "")),
                 )
             )
     return trials

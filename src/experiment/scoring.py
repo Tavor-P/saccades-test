@@ -20,7 +20,7 @@ def score_outcome(
     return "correct" if response_orientation == actual_orientation else "incorrect"
 
 
-def is_valid_for_saccadic_analysis(flash_during_saccade: bool | None) -> bool:
+def is_valid_for_saccadic_analysis(flash_during_saccade: bool | None, tracking_ok: bool | None = None) -> bool:
     """The single validity gate for a saccade-phase, grating-shown trial's
     flash_during_saccade - shared by both the live in-session ZEST update
     (ExperimentSession._finish_trial) and the end-of-run analysis
@@ -29,5 +29,12 @@ def is_valid_for_saccadic_analysis(flash_during_saccade: bool | None) -> bool:
     (the flash landed outside the real-time-detected saccade window) and
     None (landing was never confirmed, so validity is genuinely
     undeterminable, not merely invalid) are equally unusable for either
-    purpose."""
-    return flash_during_saccade is True
+    purpose.
+
+    `tracking_ok` is the second gate: an explicit False (gaze tracking
+    dropped out around the flash) invalidates the trial even if the
+    reconstructed timing says the flash landed in the saccade, since a
+    dropout corrupts the onset/landing timestamps that check relies on. None
+    (unknown - older CSVs, or a row that never had the check) doesn't
+    invalidate anything, so existing data keeps its previous validity."""
+    return flash_during_saccade is True and tracking_ok is not False

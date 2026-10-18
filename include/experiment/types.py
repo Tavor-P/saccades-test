@@ -88,3 +88,8 @@ class TrialResult:
     # (e.g. a synced video/frame log). None for catch trials, presaccade
     # rows, and rt_test rows, none of which ever flash.
     grating_shown_at_unix_ms: float | None = None
+    # Saccade phase, flash-shown trials only (None otherwise, and for CSVs
+    # logged before this existed): False if the gaze source lost tracking
+    # within TRACKING_LOSS_WINDOW_MS of the scheduled flash. See
+    # scoring.is_valid_for_saccadic_analysis.
+    tracking_ok: bool | None = None
