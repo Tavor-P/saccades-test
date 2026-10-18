@@ -73,7 +73,7 @@ POSITION_SMOOTHING = 0.35  # EMA weight given to each new (post-median) reading;
 # Neon streams gaze over the local network via the Pupil Labs Real-Time API
 # (companion phone + PC must share a network/hotspot). None = auto-discover
 # the first Neon on the network; set to e.g. "192.168.1.50" to skip discovery.
-NEON_DEVICE_ADDRESS: str | None = None
+NEON_DEVICE_ADDRESS: str | None = "192.168.0.60"
 NEON_DEVICE_PORT = 8080
 NEON_DISCOVERY_TIMEOUT_S = 10.0
 # Scene camera resolution - gaze x is divided by this to give a 0-1 "ratio"
