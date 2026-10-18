@@ -13,44 +13,125 @@ picked in the startup dialog, a FLIR Blackfly S camera (Spinnaker SDK /
 `PySpin`) + MediaPipe iris landmarks. See [README.md](README.md) for the full participant-facing
 walkthrough (controls, output files, troubleshooting).
 
+## Start here (read this first)
+
+- **Run everything through the wrapper**: `.\scripts\py.ps1 <python args>` (PowerShell) or
+  `scripts/py.sh <python args>` (Git Bash). It finds PsychoPy's bundled Python and runs from the
+  project root. Plain `python` will not work (missing deps, `src`/`include` not importable).
+- **Never launch the experiment or dashboard yourself** (`run_experiment` opens a fullscreen
+  PsychoPy window on the user's screen). To exercise experiment logic use the **headless simulator**
+  (below) or the tests. Real-glasses runs are for the human.
+- **Branch `feature/neon-glasses`** is the Windows + Pupil Labs Neon port. Don't merge, push or
+  switch branches unless asked.
+- **Other AI sessions may be editing this same folder at the same time.** See "Working rules".
+- Before changing anything, find the file in the **Repo map**, and skim the **Gotchas** at the end.
+
 ## Commands
 
-All commands must be run from this project folder (the one containing this
-file) using PsychoPy's own bundled Python (on this machine
-`%LOCALAPPDATA%\Programs\PsychoPy\python.exe`; older notes say
-`C:\Program Files\PsychoPy`), not a system Python — `-m` needs
-the cwd here for `src`/`include` to resolve as top-level packages, and only
-PsychoPy's Python has the right dependency set installed:
+All via the wrapper (PowerShell shown; from Git Bash use `scripts/py.sh` with the same arguments):
 
 ```
-"C:\Program Files\PsychoPy\python.exe" -m pip install -r requirements.txt   # install deps
-"C:\Program Files\PsychoPy\python.exe" -m src.experiment.run_experiment     # run the experiment
-"C:\Program Files\PsychoPy\python.exe" -m src.dashboard.app                 # session dashboard at localhost:5000
-"C:\Program Files\PsychoPy\python.exe" -m pytest                            # full test suite
-"C:\Program Files\PsychoPy\python.exe" -m pytest tests/test_session.py      # one test file
-"C:\Program Files\PsychoPy\python.exe" -m pytest tests/test_session.py::test_name -v  # one test
-"C:\Program Files\PsychoPy\python.exe" -m src.eye_tracking.neon_fixation_test [seconds]  # Neon jitter check (glasses on): sizes SACCADE_ONSET_STABILITY_MS
-"C:\Program Files\PsychoPy\python.exe" -m src.eye_tracking.neon_gaze_view  # live calibration-free screen-gaze dot (AprilTags)
-"C:\Program Files\PsychoPy\python.exe" -m src.eye_tracking.latency_test    # Neon vs webcam latency recording (analyze with latency_analysis)
+.\scripts\py.ps1 -m pip install -r requirements.txt            # install deps (into PsychoPy's Python)
+.\scripts\py.ps1 -m pytest -q                                   # full test suite (~40 s, no camera/window needed)
+.\scripts\py.ps1 -m pytest tests/ai-tests/test_session.py::test_name -v  # one test
+.\scripts\py.ps1 -m src.experiment.simulation                   # HEADLESS simulated trial, event timeline (safe for AI)
+.\scripts\py.ps1 tests/ai-tests/run_sim.py --help               # headless simulation runner (scenarios, sweeps, JSON)
+.\scripts\py.ps1 -m src.experiment.run_experiment               # REAL experiment (opens a window - human only)
+.\scripts\py.ps1 -m src.dashboard.app                           # session dashboard at localhost:5000
+.\scripts\py.ps1 -m src.eye_tracking.neon_fixation_test [secs]  # Neon jitter check (glasses on; human)
+.\scripts\py.ps1 -m src.eye_tracking.neon_gaze_view             # live screen-gaze dot via AprilTags (human)
+.\scripts\py.ps1 -m src.eye_tracking.latency_test               # Neon vs webcam latency recording (human)
+.\scripts\py.ps1 -m src.eye_tracking.record_gaze_trace out.csv 10   # record raw Neon gaze for replay (glasses on)
 ```
 
-Without the Spinnaker SDK (`PySpin`) or `mediapipe`, `tests/.../test_camera.py`
-and `test_gaze_tracking.py` skip themselves (`pytest.importorskip`) rather
-than fail.
+The old absolute path in some notes (`C:\Program Files\PsychoPy`) is wrong on this machine; the real
+one is `%LOCALAPPDATA%\Programs\PsychoPy\python.exe` (the wrapper also honours `$env:PSYCHOPY_PYTHON`).
+Without the Spinnaker SDK (`PySpin`) or `mediapipe`, `tests/ai-tests/test_camera.py` and
+`test_gaze_tracking.py` skip themselves (`pytest.importorskip`) instead of failing. The Neon is at
+`NEON_DEVICE_ADDRESS` (`include/eye_tracking/constants.py`; currently `192.168.0.60:8080`) and is
+sometimes reachable from here for read-only checks - ask the human before relying on it.
 
-Headless simulation (no window, no camera, no files; see "Headless simulator"
-below) - run these to try the experiment logic without the glasses:
+## Repo map
 
-```
-"C:\Program Files\PsychoPy\python.exe" tests/ai-tests/run_sim.py                  # 30-trial simulated session summary
-"C:\Program Files\PsychoPy\python.exe" tests/ai-tests/run_sim.py --timeline       # one trial, event by event
-"C:\Program Files\PsychoPy\python.exe" tests/ai-tests/run_sim.py --set SACCADE_ONSET_STABILITY_MS=10 --json
-"C:\Program Files\PsychoPy\python.exe" tests/ai-tests/run_sim.py --sweep SACCADE_ONSET_STABILITY_MS=10,20,40 --seeds 5
-"C:\Program Files\PsychoPy\python.exe" -m src.experiment.simulation                # same one-trial timeline, no flags
-```
+Paths in this section are checked by `tests/test_docs.py` - keep them real.
 
-The test suite needs no camera or PsychoPy window (fake gaze/clock doubles,
-Flask's test client) and runs in seconds.
+| Path | What it is |
+|---|---|
+| `include/experiment/constants.py` | every tunable experiment constant (timing, stimulus, ZEST, trial counts) |
+| `include/experiment/types.py` | `TrialResult` (one CSV row), `TrialSpec`, `Target`, `Orientation` |
+| `include/eye_tracking/constants.py` | gaze constants incl. `GAZE_DEAD_ZONE`, all `NEON_*` settings |
+| `include/eye_tracking/interfaces.py` | the `GazeSource` interface the experiment talks to |
+| `include/eye_tracking/types.py` | `GazeZone`, `GazeSample` |
+| `src/experiment/session.py` | `ExperimentSession`: the saccade phase state machine (the core logic) |
+| `src/experiment/presaccade_session.py` | `PresaccadeSession`: baseline (fixation) phase |
+| `src/experiment/tutorial_session.py` | `TutorialSession`: narrated first-timer on-ramp |
+| `src/experiment/run_experiment.py` | entry point + PsychoPy rendering; the only PsychoPy-dependent module |
+| `src/experiment/scoring.py` | `score_outcome`, `is_valid_for_saccadic_analysis` (the validity gate) |
+| `src/experiment/trial_mechanics.py` | `OnsetDetector`, `ShuffledBag`, `zone_for`, `average_ms` (shared helpers) |
+| `src/experiment/trial_factory.py` | builds trial sequences |
+| `src/experiment/zest.py` | adaptive contrast staircase |
+| `src/experiment/logger.py` | `ResultLogger`: CSV + `_meta.json` + side-file paths |
+| `src/experiment/results_graph.py` | end-of-run comparison figure |
+| `src/experiment/simulation.py` | headless simulator (simulated participant, clock, gaze) |
+| `src/eye_tracking/neon_source.py` | `NeonGazeSource` (default backend): Real-Time API stream + quality stats |
+| `src/eye_tracking/neon_screen_source.py` | Neon + screen-marker backend (head-compensated gaze) |
+| `src/eye_tracking/gaze_mapping.py` | `GazeMapper`: ratio -> calibrated position / zone / smoothing |
+| `src/eye_tracking/gaze_factory.py` | `build_gaze_source()` backend picker (lazy imports) |
+| `src/eye_tracking/gaze_trace.py` | raw gaze recording + `ReplayGazeSource` |
+| `src/eye_tracking/webcam_source.py` | Blackfly S + MediaPipe backend (alternative) |
+| `src/dashboard/app.py` | Flask dashboard (separate process, reads `data/`) |
+| `tests/conftest.py` | `FakeGazeSource`, `fake_time` fixture |
+| `tests/ai-tests/README.md` | headless-simulation guide for AI agents |
+| `tests/ai-tests/run_sim.py` | simulation CLI (`--set`, `--sweep`, `--timeline`, `--json`) |
+| `tests/fixtures/neon_trace_sample.csv` | a real recorded Neon gaze trace |
+| `scripts/py.ps1` | interpreter wrapper (see Start here) |
+
+`data/` (results, traces, graphs) is git-ignored runtime output: never commit it, and don't write to
+it from tests or simulations (the simulator uses an in-memory logger).
+
+## How to verify a change (cheapest check first)
+
+1. **Logic in a session/scoring/ZEST/logger** - add or update a test (use `FakeGazeSource` + `fake_time`
+   from `tests/conftest.py`, or drive it with the simulator) and run `pytest`. Old tests that now fail
+   mean you changed behaviour - decide if that is intended before editing the test.
+2. **Whole-session behaviour or a timing/threshold constant** - `tests/ai-tests/run_sim.py`:
+   `--set NAME=VALUE`, `--sweep NAME=a,b,c --seeds 5`, `--timeline`. Compare *relative* numbers; the
+   simulated participant is a simple model (see `tests/ai-tests/README.md`).
+3. **Gaze-source behaviour** - `tests/test_neon_source.py` / `tests/test_gaze_trace.py` patterns (a fake
+   device, or replay `tests/fixtures/neon_trace_sample.csv` through `ReplayGazeSource`).
+4. **Anything needing real eyes/glasses/screen** (latency, jitter, calibration quality) - write the
+   measurement script and ask the human to run it; don't guess numbers.
+
+Report test results truthfully (what ran, what was skipped). The suite passes at the time of writing
+(~240 tests, 2 skipped when PySpin/mediapipe are absent).
+
+## Recipes
+
+- **Add a column to the results CSV / a field to `TrialResult`**: field in `include/experiment/types.py`
+  (default `None`) -> `FIELDNAMES` + `ResultLogger.log` in `src/experiment/logger.py` -> parse with
+  `row.get(...)` in `src/dashboard/data_access.py` (old CSVs must still load) -> set it where the
+  `TrialResult` is built in `session.py` -> test (see `tests/test_tracking_quality.py`).
+- **Change a tuning constant**: edit it in `include/**/constants.py` (read its comment first - several
+  encode hard-won trade-offs), then run a `--sweep` in the simulator and `pytest`.
+- **Add a gaze backend**: implement `GazeSource` (`include/eye_tracking/interfaces.py`), register it in
+  `src/eye_tracking/gaze_factory.py` (lazy import!) and the startup dialog in `run_experiment.py`; reuse
+  `GazeMapper` rather than re-implementing calibration/zones.
+- **Reproduce a bug without hardware**: record gaze with `record_gaze_trace` (or use the fixture) and
+  replay it; or reproduce it in the simulator with a `ParticipantProfile`.
+
+## Working rules (several AI sessions share this folder)
+
+- Run `git status` / `git log -5` first: another session may have committed or have uncommitted edits.
+  **Never revert or "clean up" changes you didn't make.** A file that changed on disk under you is
+  someone else's deliberate edit - build on it.
+- **Stage and commit only your own files by name** (`git add path1 path2`). Do **not** use `git add -A`
+  or `git commit -a`: they sweep up other sessions' work into your commit.
+- Keep commits focused, message says what and why; end with the co-author line the harness gives you.
+- Don't change things outside your task (e.g. another session's files in `src/eye_tracking/neon_*`) -
+  mention it to the user instead.
+- Windows/PowerShell environment: `&&` is unavailable in PowerShell 5.1; the Bash tool is Git Bash.
+  Files are LF in the working tree (git may warn about CRLF); keep line endings as they are.
+- `.gitignore` contains `data/`, which also matches a `data` folder anywhere (e.g. under tests) - put test fixtures in `tests/fixtures/`.
 
 ## Architecture
 
@@ -104,7 +185,7 @@ before touching this code:
   of `import psychopy`. Any module that imports `camera.py` must import
   `psychopy` first or `PySpin` fails with `ModuleNotFoundError` (this is why
   `tests/conftest.py` imports `psychopy` before anything else, and why
-  standalone scripts like `diagnose_camera.py` do too).
+  standalone camera scripts do too).
 - `PySpin` is built against numpy 1.x's C API; numpy 2.x breaks its import
   with `_ARRAY_API not found`. `requirements.txt` pins `numpy<2` plus
   matching opencv versions for this reason — don't casually bump either.
@@ -247,7 +328,7 @@ see the comment above `SACCADE_ONSET_STABILITY_MS` in
 long claimed in `_configure_camera`'s docstring before gain was actually
 wired up in `src/eye_tracking/camera.py` — `Gain`/`GainAuto` are now set,
 but the `6.0` dB value has not been retuned against the real IR illuminator.
-Validate with `diagnose_camera.py` before trusting it.
+Validate it by capturing and inspecting a real frame before trusting it (the old diagnose_camera.py helper was removed in commit 0989ed1; recover it with `git show 0989ed1^:src/eye_tracking/diagnose_camera.py`).
 
 **The 880Hz/0.5s tone (`WARNING_TONE_HZ`/`WARNING_TONE_DURATION_S`) has been
 repurposed, not just restored.** It originally matched Diamond, Ross &

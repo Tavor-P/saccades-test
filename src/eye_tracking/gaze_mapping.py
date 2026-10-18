@@ -1,3 +1,6 @@
+"""GazeMapper: raw horizontal gaze ratio -> calibrated position, left/centre/right zone (dead zone) and display smoothing. Thread-safe; no MediaPipe
+dependency, shared by NeonGazeSource, ReplayGazeSource and the simulator."""
+
 import threading
 from collections import deque
 

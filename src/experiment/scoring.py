@@ -1,3 +1,6 @@
+"""score_outcome (correct/incorrect/miss/false_alarm/correct_rejection) and is_valid_for_saccadic_analysis - the single validity gate for saccade-phase
+flashes (flash_during_saccade AND tracking_ok), shared by live ZEST updates and the end-of-run graph."""
+
 from include.experiment.types import Orientation
 
 

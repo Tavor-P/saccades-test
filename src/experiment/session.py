@@ -1,3 +1,7 @@
+"""ExperimentSession: the saccade phase as a PsychoPy-free state machine (calibration -> reaction-time test -> practice -> open-ended real block).
+Drive it with on_space/on_response_key/tick/render_state. Flash timing is open-loop (scheduled off the measured reaction time); see CLAUDE.md. Headless
+runs of this class: src/experiment/simulation.py."""
+
 import math
 import random
 import time

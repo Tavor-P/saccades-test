@@ -1,3 +1,5 @@
+"""Small shared building blocks for session logic: zone_for, OnsetDetector (THE saccade-onset debounce - reuse it, don't hand-roll), ShuffledBag, average_ms."""
+
 import random
 from collections import deque
 from typing import Generic, Sequence, TypeVar

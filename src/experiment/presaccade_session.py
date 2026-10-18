@@ -1,3 +1,5 @@
+"""PresaccadeSession: the baseline phase (fixate centre, flashes, no saccade). A PsychoPy-free state machine: on_space/on_response_key/tick/render_state."""
+
 import math
 import random
 from enum import Enum, auto

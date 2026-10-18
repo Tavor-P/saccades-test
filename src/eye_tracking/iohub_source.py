@@ -1,3 +1,5 @@
+"""IOHubGazeSource: UNTESTED placeholder for hardware eye trackers (Tobii/EyeLink) via PsychoPy ioHub; never run against real hardware."""
+
 import time
 
 from include.eye_tracking.interfaces import GazeSource

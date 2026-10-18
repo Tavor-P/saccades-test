@@ -1,3 +1,5 @@
+"""VideoRecorder: optional session video (webcam backend only) with a per-frame wall-clock timestamp CSV. cv2.VideoWriter fails silently - see CLAUDE.md."""
+
 import csv
 import sys
 import threading

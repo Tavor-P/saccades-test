@@ -1,3 +1,5 @@
+"""Windows-only text-to-speech (SAPI via COM) on a background thread, used by the tutorial. See CLAUDE.md for the COM threading gotchas."""
+
 import queue
 import threading
 

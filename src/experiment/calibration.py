@@ -1,3 +1,5 @@
+"""Averaging of the 3-point gaze-calibration rounds (round 1 is discarded as the least reliable)."""
+
 def average_calibration_rounds(
     round2: tuple[float, float, float], round3: tuple[float, float, float]
 ) -> tuple[float, float, float]:

@@ -1,3 +1,6 @@
+"""PausableClock: a monotonic clock that freezes while paused. All session timers read it instead of time.monotonic(). Tests/simulation substitute a
+controlled clock (tests' fake_time fixture, simulation.SimulatedClock)."""
+
 import time
 
 

@@ -1,3 +1,6 @@
+"""Constants for gaze tracking: Blackfly camera settings, MediaPipe, calibration/zone tuning (GAZE_DEAD_ZONE), and the Pupil Labs Neon
+settings (device address, scene size, stale/gap thresholds). Pure data - no logic."""
+
 CAMERA_INDEX = 0  # fallback used if camera probing at startup finds nothing
 CAMERA_PROBE_LIMIT = 5  # how many device indices to check when listing available cameras
 # ROI (region of interest) found via SpinView to frame a face well on the

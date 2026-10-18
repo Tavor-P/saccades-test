@@ -1,3 +1,6 @@
+"""Spinnaker/PySpin wrapper for the FLIR Blackfly S (webcam backend only): keeps only the latest Mono8 frame on a background thread.
+PySpin exists only after `import psychopy` (see CLAUDE.md); importing this module without PySpin raises ImportError."""
+
 import threading
 import time
 

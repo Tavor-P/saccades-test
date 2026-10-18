@@ -1,3 +1,6 @@
+"""Reads/writes the experiment's files under data/ (results CSV, _meta.json sidecar, settings.json) for the dashboard. Parsers use row.get(...) so
+CSVs written before a column existed still load (missing column -> None)."""
+
 import csv
 import json
 import re

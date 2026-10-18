@@ -1,3 +1,5 @@
+"""WebcamGazeSource: Blackfly S Camera + MediaPipe GazeTracker on a background thread, exposed as a GazeSource."""
+
 import threading
 import time
 

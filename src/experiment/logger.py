@@ -1,3 +1,6 @@
+"""ResultLogger: appends one CSV row per trial to data/results_<ts>.csv plus a _meta.json sidecar (participant, calibration, gaze_quality) and
+provides the paths for the optional video and raw gaze-trace files of the same session."""
+
 import csv
 import json
 import time

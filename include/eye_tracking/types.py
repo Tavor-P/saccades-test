@@ -1,3 +1,5 @@
+"""GazeZone (left/right/center/unknown) and GazeSample (one classified gaze reading) - the data every GazeSource produces."""
+
 from dataclasses import dataclass
 from enum import Enum
 

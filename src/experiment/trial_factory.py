@@ -1,3 +1,5 @@
+"""Builds trial sequences/specs: shuffled shown/catch schedules, alternating dot/cross sources, practice blocks, and the next dynamically generated trial."""
+
 import random
 
 from include.experiment.constants import CATCH_TRIAL_FRACTION

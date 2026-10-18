@@ -1,3 +1,6 @@
+"""build_gaze_source(backend, ...): picks the GazeSource for the startup dialog's choice, importing the backend lazily so a machine without PySpin/
+mediapipe (or without pupil-labs-realtime-api) can still run the other backends."""
+
 from include.eye_tracking.interfaces import GazeSource
 
 BACKEND_NEON_SCREEN = "Pupil Labs Neon + screen markers"

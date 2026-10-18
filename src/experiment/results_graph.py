@@ -1,3 +1,6 @@
+"""End-of-run comparison figure (thresholds, psychometric curves, orientation accuracy) built from TrialResults; applies the same validity gate as the
+live ZEST update (scoring.is_valid_for_saccadic_analysis). Matplotlib 'Agg' backend, renders to a PNG."""
+
 from pathlib import Path
 
 import matplotlib

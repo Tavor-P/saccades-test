@@ -1,3 +1,5 @@
+"""ZestStaircase: Bayesian adaptive contrast staircase (ZEST) - picks the next contrast and updates a posterior over the detection threshold."""
+
 import math
 
 from include.experiment.constants import (

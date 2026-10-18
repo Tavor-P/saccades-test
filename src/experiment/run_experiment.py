@@ -1,3 +1,6 @@
+"""Entry point (`-m src.experiment.run_experiment`): startup dialog, PsychoPy window/stimuli, and the per-phase frame loops that call each session's
+tick() + render_state() and draw the result. All experiment logic lives in the session classes, not here - this is the only module that needs PsychoPy."""
+
 import time
 from functools import partial
 

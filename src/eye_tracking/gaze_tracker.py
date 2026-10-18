@@ -1,3 +1,5 @@
+"""GazeTracker (webcam backend): MediaPipe FaceLandmarker iris ratio -> GazeSample. Heavy imports (mediapipe/cv2) - not needed for the Neon backend."""
+
 import time
 import urllib.request
 from collections import deque

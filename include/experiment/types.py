@@ -1,3 +1,6 @@
+"""Dataclasses/enums for experiment data: Target, Orientation, trial specs, and TrialResult (one logged CSV row per trial).
+Adding a TrialResult field means touching: this file, logger.FIELDNAMES + ResultLogger.log, dashboard data_access parsing, and tests."""
+
 from dataclasses import dataclass
 from enum import Enum
 

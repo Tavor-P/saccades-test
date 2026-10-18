@@ -1,3 +1,7 @@
+"""Tunable constants for the experiment: stimulus geometry, trial timing, staircase (ZEST) settings, trial counts. Pure data - no logic. Every constant is
+commented with why it has its value; read the comment before retuning one. Constants are copied by name into importing modules
+(`from ... import X`), so to change one temporarily in a test/simulation use tests/ai-tests/sim_tools.override_constants()."""
+
 import math
 
 DOT_POSITION = (0.3, 0.5)  # (xRatio, yRatio), 0-1 fraction of screen, framework-agnostic
