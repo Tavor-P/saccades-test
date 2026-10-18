@@ -28,3 +28,11 @@ class GazeSample:
     # is working correctly. Never used for scoring, same reasoning as
     # `position` above. None whenever no face was found.
     smoothed_position: float | None = None
+    # Optional extras, set by sources that have them (NeonScreenGazeSource):
+    # vertical gaze as a 0-1 fraction of screen height (top=0), head rotation
+    # speed from the glasses' IMU (peak gyro magnitude over the last ~100 ms,
+    # deg/s) and the age of the screen-marker location this sample was mapped
+    # with. Never used for scoring - only logged/flagged.
+    ratio_y: float | None = None
+    head_speed_dps: float | None = None
+    mapping_age_ms: float | None = None

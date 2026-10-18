@@ -89,3 +89,22 @@ NEON_GAP_THRESHOLD_MS = 30.0
 # latest_sample() reports "no face" instead of repeating the last reading
 # forever (which would look like a perfectly still eye).
 NEON_STALE_TIMEOUT_S = 0.5
+
+# --- Neon screen-marker mapping (src/eye_tracking/screen_markers.py, neon_screen_gaze.py) ---
+# Small AprilTags in the four screen corners let the scene camera locate the
+# screen every frame, so gaze is reported in screen coordinates that don't
+# change when the head moves. Kept small/dim so they disturb the task as
+# little as possible - if detection gets unreliable, raise MARKER_PX first.
+SCREEN_MARKER_PX = 100  # black-bordered tag square, screen pixels
+SCREEN_MARKER_MARGIN_PX = 22  # quiet zone around each tag (needed for detection)
+SCREEN_MARKER_PAD_LEVEL = 200  # 0-255; light grey instead of full white (less glare, still high contrast)
+# Detector downscale (1.0 = full resolution). The library default of 2.0 is
+# fast but misses small tags; we use small tags, so full resolution.
+NEON_TAG_QUAD_DECIMATE = 1.0
+# How long the last good screen location keeps being used after the markers
+# are lost (a missed detection frame or two) before gaze is reported as lost.
+NEON_MARKER_HOLD_S = 0.2
+# Head rotation faster than this (gyro magnitude, deg/s) counts as "head
+# moving" in the session quality summary / GazeSample.head_speed_dps.
+NEON_HEAD_SPEED_LIMIT_DPS = 30.0
+NEON_HEAD_SPEED_WINDOW_S = 0.1  # reported head speed = peak over this window

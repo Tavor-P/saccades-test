@@ -1,3 +1,4 @@
+import time
 from functools import partial
 
 import cv2
@@ -22,7 +23,14 @@ from include.experiment.constants import (
 )
 from include.experiment.types import Orientation
 from include.eye_tracking.constants import CAMERA_INDEX, FRAME_HEIGHT, FRAME_WIDTH
-from src.eye_tracking.gaze_factory import BACKEND_NEON, BACKENDS, build_gaze_source, list_cameras
+from src.eye_tracking.gaze_factory import (
+    BACKEND_NEON_SCREEN,
+    BACKENDS,
+    NEON_BACKENDS,
+    build_gaze_source,
+    list_cameras,
+)
+from src.eye_tracking.screen_markers import build_marker_stims
 from src.eye_tracking.video_recorder import VideoRecorder
 from src.experiment.logger import ResultLogger
 from src.experiment.narrator import Narrator
@@ -372,7 +380,39 @@ def apply_render_state(state: dict, stimuli: dict, fade_opacities: dict, dt: flo
         tutorial_text_stim.opacity = 0.0
 
 
+def wait_for_screen_markers(win: visual.Window, stimuli: dict, gaze) -> bool:
+    """Pre-flight for the screen-marker Neon backend: holds on a screen until
+    the glasses have continuously located the screen for a moment (all four
+    corner markers in view), so calibration doesn't start with no mapping.
+    No-op for other backends. Returns False if the participant pressed ESCAPE."""
+    if not hasattr(gaze, "screen_located"):
+        return True
+    text = visual.TextStim(win, text="", pos=(0, 0), color="white", height=0.04, wrapWidth=1.2)
+    located_since: float | None = None
+    while True:
+        if "escape" in event.getKeys(keyList=["escape"]):
+            return False
+        if gaze.screen_located and gaze.markers_detected >= 4:
+            located_since = located_since if located_since is not None else time.monotonic()
+            if time.monotonic() - located_since >= 1.0:
+                return True
+        else:
+            located_since = None
+        text.text = (
+            "Look at the screen so the glasses can see all four corner markers.\n\n"
+            f"Markers seen: {gaze.markers_detected} of 4"
+        )
+        for marker in stimuli.get("screen_markers", ()):
+            marker.draw()
+        text.draw()
+        win.flip()
+
+
 def draw_all(stimuli: dict) -> None:
+    # Screen-marker backend only: corner tags the glasses use to locate the
+    # screen. Drawn first so everything else sits on top of them.
+    for marker in stimuli.get("screen_markers", ()):
+        marker.draw()
     # start_flash/feedback_flash first so they sit behind the fixation
     # stimuli, which stay visible/fixatable on top of them during a flash.
     for name in (
@@ -448,7 +488,7 @@ def run_saccade_phase(
     logger: ResultLogger,
     narrator: Narrator,
     camera_index: int = CAMERA_INDEX,
-    gaze_backend: str = BACKEND_NEON,
+    gaze_backend: str = BACKEND_NEON_SCREEN,
     contrast_floor: float | None = None,
     show_gaze_indicator: bool = False,
     test_mode: bool = False,
@@ -465,7 +505,7 @@ def run_saccade_phase(
     camera and real (non-practice, non-tutorial) data to replay against.
     Returns the completed session, or None if the participant quit early."""
     # Raw gaze is recorded alongside the results CSV (Neon only) so the session can be replayed offline.
-    gaze = build_gaze_source(gaze_backend, camera_index, trace_path=logger.gaze_trace_path)
+    gaze = build_gaze_source(gaze_backend, camera_index, trace_path=logger.gaze_trace_path, screen_size=tuple(win.size))
     gaze.start()
     # Neon has no latest_frame() (gaze only, no Mono8 camera feed), so video + preview are webcam-only.
     has_frames = hasattr(gaze, "latest_frame")
@@ -507,6 +547,8 @@ def run_saccade_phase(
     start_flash_shown = False
 
     try:
+        if not wait_for_screen_markers(win, stimuli, gaze):
+            return None
         while True:
             keys = event.getKeys(keyList=["space", "escape", *RESPONSE_KEYS])
             if "escape" in keys:
@@ -575,7 +617,7 @@ def run_tutorial_phase(
     stimuli: dict,
     narrator: Narrator,
     camera_index: int = CAMERA_INDEX,
-    gaze_backend: str = BACKEND_NEON,
+    gaze_backend: str = BACKEND_NEON_SCREEN,
 ) -> TutorialSession | None:
     """A one-time, narrated on-ramp for first-time participants, run before
     both real phases (see main()). Unlike the other two phases, no key or
@@ -585,7 +627,7 @@ def run_tutorial_phase(
     heard yet. Returns the completed session (its calibration_ratios feeds
     the real saccade phase, skipping its own calibration), or None if the
     participant quit early."""
-    gaze = build_gaze_source(gaze_backend, camera_index)
+    gaze = build_gaze_source(gaze_backend, camera_index, screen_size=tuple(win.size))
     gaze.start()
     clock = PausableClock()
     session = TutorialSession(gaze, clock)
@@ -600,6 +642,8 @@ def run_tutorial_phase(
     feedback_frames_remaining = 0
 
     try:
+        if not wait_for_screen_markers(win, stimuli, gaze):
+            return None
         while True:
             keys = event.getKeys(keyList=["space", "escape", *RESPONSE_KEYS])
             if "escape" in keys:
@@ -740,8 +784,8 @@ def prompt_session_info() -> tuple[str, str, int, str, float, bool, bool, bool, 
     participant_id = raw_participant_id.strip() or "anonymous"
     camera_index, camera_label = _resolve_camera_choice(camera_indices, camera_labels, info["Camera (webcam source only)"])
     gaze_backend = info["Gaze source"]
-    if gaze_backend == BACKEND_NEON:
-        camera_index, camera_label = CAMERA_INDEX, BACKEND_NEON
+    if gaze_backend in NEON_BACKENDS:
+        camera_index, camera_label = CAMERA_INDEX, gaze_backend
     contrast_floor_percent = _resolve_contrast_floor_percent(info["Contrast floor (%)"], default_contrast_floor_percent)
     show_gaze_indicator = _resolve_show_gaze_indicator(info["Show gaze indicator"])
     run_tutorial = _resolve_run_tutorial(info["Run tutorial"])
@@ -797,6 +841,8 @@ def main() -> None:
     )
     win = build_window(fullscreen=True)
     stimuli = build_stimuli(win)
+    if gaze_backend == BACKEND_NEON_SCREEN:
+        stimuli["screen_markers"] = build_marker_stims(win)
     narrator = Narrator()
 
     try:

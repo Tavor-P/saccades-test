@@ -1,11 +1,15 @@
 from include.eye_tracking.interfaces import GazeSource
 
-BACKEND_NEON = "Pupil Labs Neon"
+BACKEND_NEON_SCREEN = "Pupil Labs Neon + screen markers"
+BACKEND_NEON = "Pupil Labs Neon (no head compensation)"
 BACKEND_WEBCAM = "Blackfly S + MediaPipe"
-BACKENDS = [BACKEND_NEON, BACKEND_WEBCAM]
+BACKENDS = [BACKEND_NEON_SCREEN, BACKEND_NEON, BACKEND_WEBCAM]
+NEON_BACKENDS = (BACKEND_NEON_SCREEN, BACKEND_NEON)
 
 
-def build_gaze_source(backend: str, camera_index: int = 0, trace_path=None) -> GazeSource:
+def build_gaze_source(
+    backend: str, camera_index: int = 0, trace_path=None, screen_size: tuple[int, int] | None = None
+) -> GazeSource:
     """Backend modules are imported lazily: the webcam path needs PySpin/
     MediaPipe, the Neon path needs pupil-labs-realtime-api, and a machine
     using one shouldn't need the other installed."""
@@ -13,6 +17,12 @@ def build_gaze_source(backend: str, camera_index: int = 0, trace_path=None) -> G
         from src.eye_tracking.webcam_source import WebcamGazeSource
 
         return WebcamGazeSource(camera_index)
+    if backend == BACKEND_NEON_SCREEN:
+        from src.eye_tracking.neon_screen_source import NeonScreenGazeSource
+
+        if screen_size is None:
+            raise ValueError("the screen-marker Neon backend needs the window size in pixels")
+        return NeonScreenGazeSource(screen_size)
     from src.eye_tracking.neon_source import NeonGazeSource
 
     return NeonGazeSource(trace_path=trace_path)

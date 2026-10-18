@@ -14,17 +14,19 @@ import psychopy  # noqa: F401
 import threading
 import time
 
-import cv2
 import numpy as np
 from psychopy import event, visual
-from pupil_labs.real_time_screen_gaze import marker_generator
-from pupil_labs.real_time_screen_gaze.gaze_mapper import GazeMapper
 from pupil_labs.realtime_api.simple import Device, discover_one_device
 
-from include.eye_tracking.constants import NEON_DEVICE_ADDRESS, NEON_DEVICE_PORT, NEON_DISCOVERY_TIMEOUT_S
+from include.eye_tracking.constants import (
+    NEON_DEVICE_ADDRESS,
+    NEON_DEVICE_PORT,
+    NEON_DISCOVERY_TIMEOUT_S,
+    NEON_HEAD_SPEED_LIMIT_DPS,
+)
+from src.eye_tracking.screen_gaze_mapper import ScreenGazeMapper
+from src.eye_tracking.screen_markers import build_marker_stims
 
-MARKER_PX = 240  # black-bordered AprilTag square, in screen pixels
-MARGIN_PX = 50  # white quiet zone around each marker (needed for detection)
 STALE_AFTER_S = 0.5  # hide the dot if no mapped gaze arrived this recently
 SMOOTHING = 0.35  # EMA weight of each new mapped reading; lower = steadier but laggier
 
@@ -34,19 +36,6 @@ CAL_Y_FRACTIONS = (0.25, 0.5, 0.75)
 CAL_SETTLE_S = 0.8  # time for the eyes to land before samples count
 CAL_SAMPLE_S = 0.8  # then collect this long
 CAL_MIN_SAMPLES = 8  # fewer mapped readings than this -> show the target again
-
-
-def _marker_image(marker_id: int) -> np.ndarray:
-    """White-padded marker as a PsychoPy image array (-1..1, row 0 = bottom)."""
-    tag = cv2.resize(marker_generator.generate_marker(marker_id), (MARKER_PX, MARKER_PX), interpolation=cv2.INTER_NEAREST)
-    padded = cv2.copyMakeBorder(tag, MARGIN_PX, MARGIN_PX, MARGIN_PX, MARGIN_PX, cv2.BORDER_CONSTANT, value=255)
-    return np.flipud(padded.astype(np.float32) / 127.5 - 1.0)
-
-
-def _marker_corners(origin_x: float, origin_y: float) -> list[tuple[float, float]]:
-    """Marker corners (top-left, clockwise) in screen px, top-left origin, for a pad whose corner is (origin_x, origin_y)."""
-    x0, y0 = origin_x + MARGIN_PX, origin_y + MARGIN_PX
-    return [(x0, y0), (x0 + MARKER_PX, y0), (x0 + MARKER_PX, y0 + MARKER_PX), (x0, y0 + MARKER_PX)]
 
 
 def fit_affine(raw_points, target_points) -> np.ndarray:
@@ -74,33 +63,13 @@ def main() -> None:
 
     win = visual.Window(fullscr=True, units="pix", color=[-0.3] * 3, allowGUI=False)
     width, height = win.size
-    pad = MARKER_PX + 2 * MARGIN_PX
-
-    # (id, pad top-left corner in screen px, top-left origin)
-    placements = {
-        0: (0, 0),
-        1: (width - pad, 0),
-        2: (width - pad, height - pad),
-        3: (0, height - pad),
-    }
-    gaze_mapper = GazeMapper(device.get_calibration())
-    surface = gaze_mapper.add_surface({i: _marker_corners(*p) for i, p in placements.items()}, (width, height))
-
-    stims = [
-        visual.ImageStim(
-            win,
-            image=_marker_image(i),
-            size=(pad, pad),
-            pos=(px + pad / 2 - width / 2, height / 2 - py - pad / 2),
-            interpolate=False,
-        )
-        for i, (px, py) in placements.items()
-    ]
+    mapper = ScreenGazeMapper(device.get_calibration(), (width, height))
+    stims = build_marker_stims(win)
     dot = visual.Circle(win, radius=18, fillColor=None, lineColor="red", lineWidth=4)
     target = visual.Circle(win, radius=14, fillColor="yellow", lineColor="black", lineWidth=2)
     hud = visual.TextStim(win, text="", height=22, color="white", pos=(0, -height / 2 + 40))
 
-    latest: dict = {"x": None, "y": None, "t": 0.0, "markers": 0, "error": ""}
+    latest: dict = {"x": None, "y": None, "t": 0.0, "markers": 0, "error": "", "head": None}
     running = True
 
     def reader() -> None:
@@ -112,15 +81,26 @@ def main() -> None:
                 continue
             if frame is None:
                 continue
-            result = gaze_mapper.process_frame(frame, gaze)
-            latest["markers"] = len(result.markers) if result else 0
-            mapped = result.mapped_gaze.get(surface.uid, []) if result else []
-            if mapped:
-                # The mapper returns 0-1 screen coordinates with y measured UP from the bottom edge.
-                latest.update(x=mapped[0].x * width, y=(1 - mapped[0].y) * height, t=time.monotonic())
+            mapper.process_scene(frame)
+            latest["markers"] = mapper.markers_detected
+            mapped = mapper.map_gaze(gaze)
+            if mapped is not None:
+                latest.update(x=mapped.x, y=mapped.y, t=time.monotonic())
+
+    def imu_reader() -> None:
+        while running:
+            try:
+                imu = device.receive_imu_datum(timeout_seconds=1)
+            except Exception:
+                continue
+            if imu is not None:
+                g = imu.gyro_data
+                latest["head"] = float(np.sqrt(g.x**2 + g.y**2 + g.z**2))
 
     thread = threading.Thread(target=reader, daemon=True)
     thread.start()
+    imu_thread = threading.Thread(target=imu_reader, daemon=True)
+    imu_thread.start()
 
     def fresh() -> bool:
         return latest["x"] is not None and time.monotonic() - latest["t"] < STALE_AFTER_S
@@ -212,7 +192,7 @@ def main() -> None:
                     prev_t = time.monotonic()
                 dot.pos = (smoothed[0] - width / 2, height / 2 - smoothed[1])
                 dot.draw()
-                hud.text = f"gaze x={smoothed[0]:.0f}  y={smoothed[1]:.0f} px  (screen {width}x{height}, markers {latest['markers']}/4)   R = recalibrate"
+                hud.text = f"gaze x={smoothed[0]:.0f}  y={smoothed[1]:.0f} px  (markers {latest['markers']}/4, head {latest['head'] or 0:.0f} deg/s{' - HEAD MOVING' if (latest['head'] or 0) > NEON_HEAD_SPEED_LIMIT_DPS else ''})   R = recalibrate"
             else:
                 hud.text = f"No screen located - markers seen: {latest['markers']}/4  {latest['error']}"
             hud.draw()
@@ -220,6 +200,7 @@ def main() -> None:
     finally:
         running = False
         thread.join(timeout=2)
+        imu_thread.join(timeout=2)
         win.close()
         device.close()
 
