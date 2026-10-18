@@ -18,3 +18,5 @@ opencv-python==4.8.1.78
 
 # Pupil Labs Neon glasses gaze source (src/eye_tracking/neon_source.py).
 pupil-labs-realtime-api
+
+real-time-screen-gaze

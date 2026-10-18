@@ -25,8 +25,6 @@ PsychoPy's Python has the right dependency set installed:
 "C:\Program Files\PsychoPy\python.exe" -m pytest                            # full test suite
 "C:\Program Files\PsychoPy\python.exe" -m pytest tests/test_session.py      # one test file
 "C:\Program Files\PsychoPy\python.exe" -m pytest tests/test_session.py::test_name -v  # one test
-"C:\Program Files\PsychoPy\python.exe" -m src.eye_tracking.diagnose_camera  # capture+inspect one camera frame, no PsychoPy window
-"C:\Program Files\PsychoPy\python.exe" -m src.eye_tracking.eye_position_manual_test [camera_index]  # live gaze-dot visual check
 ```
 
 The test suite needs no camera or PsychoPy window (fake gaze/clock doubles,
