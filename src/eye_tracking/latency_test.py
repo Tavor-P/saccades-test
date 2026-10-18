@@ -28,6 +28,26 @@ JUMP_INTERVAL_S = (1.2, 2.0)
 DOT_X = 0.35  # fraction of window width from center
 
 
+def overlay_lines(neon: "NeonRecorder", unix_time: float) -> list[str]:
+    """Wall-clock time plus the Neon's newest gaze estimate (scene-camera pixels) - shown on screen and burned into the video."""
+    lines = [datetime.fromtimestamp(unix_time).strftime("%H:%M:%S.%f")[:-3]]
+    latest = neon.latest
+    if latest is None or not latest[2] or math.isnan(latest[0]):
+        lines.append("Neon gaze: none")
+    else:
+        lines.append(f"Neon gaze: x={latest[0]:.0f} y={latest[1]:.0f}  ({(unix_time - latest[3]) * 1000:.0f} ms old)")
+    return lines
+
+
+def _burn_in(frame, lines: list[str]) -> None:
+    """Draws text lines into the bottom-left of a BGR frame, in place (outlined so it reads on any background)."""
+    height = frame.shape[0]
+    for i, line in enumerate(lines):
+        position = (8, height - 10 - 24 * (len(lines) - 1 - i))
+        cv2.putText(frame, line, position, cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 3, cv2.LINE_AA)
+        cv2.putText(frame, line, position, cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1, cv2.LINE_AA)
+
+
 class NeonRecorder:
     """Logs every Neon gaze sample: PC arrival time, Neon device timestamp, x/y, worn."""
 
@@ -48,6 +68,7 @@ class NeonRecorder:
         self._file = path.open("w", newline="")
         self._writer = csv.writer(self._file)
         self._writer.writerow(["arrival_unix_s", "device_unix_s", "x", "y", "worn"])
+        self.latest: tuple[float, float, bool, float] | None = None  # (x, y, worn, PC arrival time) of the newest sample
         self._running = True
         self._thread = threading.Thread(target=self._loop, daemon=True)
 
@@ -64,6 +85,7 @@ class NeonRecorder:
             if datum is None:
                 continue
             self._writer.writerow([f"{arrival:.6f}", f"{datum.timestamp_unix_seconds:.6f}", datum.x, datum.y, int(datum.worn)])
+            self.latest = (datum.x, datum.y, bool(datum.worn), arrival)
 
     def stop(self) -> None:
         self._running = False
@@ -78,7 +100,8 @@ class WebcamRecorder:
     as read() returns, so it includes the driver's own buffering delay -
     unavoidable with a plain webcam) to a CSV, one row per video frame."""
 
-    def __init__(self, camera_index: int, video_path: Path, csv_path: Path) -> None:
+    def __init__(self, camera_index: int, video_path: Path, csv_path: Path, overlay=None) -> None:
+        self._overlay = overlay  # optional fn(unix_time) -> list of text lines burned into each saved frame
         self._capture = cv2.VideoCapture(camera_index, cv2.CAP_DSHOW)
         if not self._capture.isOpened():
             raise RuntimeError(f"Could not open camera {camera_index}")
@@ -107,6 +130,8 @@ class WebcamRecorder:
             now = time.time()
             if not ok:
                 continue
+            if self._overlay is not None:
+                _burn_in(frame, self._overlay(now))
             self._writer.write(frame)
             self._csv.writerow([self._index, f"{now:.6f}"])
             self._index += 1
@@ -124,11 +149,15 @@ def run(camera_index: int, num_jumps: int) -> Path:
     folder.mkdir(parents=True)
 
     neon = NeonRecorder(folder / "neon.csv")
-    webcam = WebcamRecorder(camera_index, folder / "webcam.mp4", folder / "webcam.csv")
+    webcam = WebcamRecorder(
+        camera_index, folder / "webcam.mp4", folder / "webcam.csv", overlay=lambda t: overlay_lines(neon, t)
+    )
     win = visual.Window(fullscr=True, units="height", color=[-0.2] * 3, allowGUI=False)
     aspect = win.size[0] / win.size[1]
     dot = visual.Circle(win, radius=0.025, fillColor="white", lineColor="white")
     text = visual.TextStim(win, text="Look at the dot and follow it as it jumps.\nPress SPACE to start (ESC to quit).", height=0.04)
+
+    clock_text = visual.TextStim(win, text="", height=0.035, color="white", pos=(0, 0.45), alignText="center")
 
     stimulus_file = (folder / "stimulus.csv").open("w", newline="")
     stimulus_csv = csv.writer(stimulus_file)
@@ -154,6 +183,8 @@ def run(camera_index: int, num_jumps: int) -> Path:
             while core.getTime() < wait_until:
                 if event.getKeys(keyList=["escape"]):
                     return folder
+                clock_text.text = "\n".join(overlay_lines(neon, time.time()))
+                clock_text.draw()
                 dot.draw()
                 win.flip()
         core.wait(0.5)
