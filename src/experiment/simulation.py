@@ -145,6 +145,10 @@ class SimulatedParticipant:
         self._pending_response: tuple[float, Orientation] | None = None
         self._flash_seen = False
         self._dropout_until = -1.0
+        # Ground truth for the flash currently in flight (None if none): True if
+        # it really fell inside the participant's saccade. Collected by the
+        # simulator and attached to the trial's logged row.
+        self.pending_flash_truth: bool | None = None
 
     # -- eye ------------------------------------------------------------------
 
@@ -205,6 +209,7 @@ class SimulatedParticipant:
         self._flash_seen = False
         self._pending_response = None
         self.saccade_onset = None
+        self.pending_flash_truth = None
         x = self._visible_x(state)
         if phase in ("WAITING_TO_START", "CALIBRATE_LEFT", "CALIBRATE_CENTER", "CALIBRATE_RIGHT"):
             if x is not None:
@@ -233,6 +238,7 @@ class SimulatedParticipant:
         orientation = state["grating"]["orientation"]
         onset = self.saccade_onset
         suppressed = onset is not None and onset <= t <= onset + self._move_dur
+        self.pending_flash_truth = suppressed
         threshold = self._p.suppressed_threshold_contrast if suppressed else self._p.threshold_contrast
         p_seen = 1 / (1 + math.exp(-self._p.slope * (math.log10(max(contrast, 1e-6)) - math.log10(threshold))))
         seen = self._rng.random() < p_seen
@@ -253,6 +259,10 @@ class SimulationResult:
     session: ExperimentSession
     results: list[TrialResult]  # every logged row (rt_test + saccade)
     events: list[tuple[float, str]] = field(default_factory=list)  # (sim time s, description), chronological
+    # position in `results` -> whether that trial's flash REALLY fell inside the
+    # simulated saccade (ground truth the real experiment can't know). Only for
+    # logged flash trials.
+    flash_truth: dict[int, bool] = field(default_factory=dict)
     duration_s: float = 0.0
 
     @property
@@ -288,6 +298,7 @@ def simulate_session(
         step = 0
         last_zone = None
         logged = 0
+        flash_truth: dict[int, bool] = {}
         while True:
             clock.advance(1 / GAZE_HZ)
             t = clock.now()
@@ -304,18 +315,25 @@ def simulate_session(
             if zone != last_zone:
                 events.append((t, f"classifier zone -> {zone}"))
                 last_zone = zone
-            participant.observe(state, t)
+            # Rows are consumed before the participant reacts to the new phase, so a
+            # trial's ground truth attaches to its own row (practice trials log no
+            # row, and their pending truth is cleared on the next phase entry).
             while logged < len(logger.rows):
                 row = logger.rows[logged]
+                if row.phase == "saccade" and row.grating_shown and participant.pending_flash_truth is not None:
+                    flash_truth[logged] = participant.pending_flash_truth
                 logged += 1
                 events.append((t, f"trial logged: {row.phase} #{row.index} outcome={row.outcome}"))
+            participant.observe(state, t)
 
             if state["hud"]["phase"] == "COMPLETE":
                 break
             if sum(1 for r in logger.rows if r.phase == "saccade") >= max_trials:
                 break
         events.sort(key=lambda e: e[0])
-        return SimulationResult(session=session, results=logger.rows, events=events, duration_s=clock.now())
+        return SimulationResult(
+            session=session, results=logger.rows, events=events, duration_s=clock.now(), flash_truth=flash_truth
+        )
     finally:
         random.setstate(saved_state)
 
