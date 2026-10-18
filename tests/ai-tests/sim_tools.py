@@ -11,7 +11,7 @@ import statistics
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # project root, so `src`/`include` import
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # project root, so `src`/`include` import
 
 from src.experiment.scoring import is_valid_for_saccadic_analysis  # noqa: E402
 from src.experiment.simulation import ParticipantProfile, SimulationResult, simulate_session  # noqa: E402

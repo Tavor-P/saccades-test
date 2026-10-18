@@ -10,11 +10,11 @@ All commands run from the project root with PsychoPy's Python:
 
 ```powershell
 $py = "$env:LOCALAPPDATA\Programs\PsychoPy\python.exe"
-& $py ai-tests/run_sim.py                      # 30-trial session summary
-& $py ai-tests/run_sim.py --timeline           # one trial, event by event (ms from go-cue)
-& $py ai-tests/run_sim.py --json               # machine-readable summary
-& $py ai-tests/run_sim.py --list               # scenarios + participant fields
-& $py -m pytest ai-tests -q                    # self-tests of these tools
+& $py tests/ai-tests/run_sim.py                      # 30-trial session summary
+& $py tests/ai-tests/run_sim.py --timeline           # one trial, event by event (ms from go-cue)
+& $py tests/ai-tests/run_sim.py --json               # machine-readable summary
+& $py tests/ai-tests/run_sim.py --list               # scenarios + participant fields
+& $py -m pytest tests/ai-tests -q                    # self-tests of these tools
 ```
 
 ## Recipes
@@ -28,7 +28,7 @@ $py = "$env:LOCALAPPDATA\Programs\PsychoPy\python.exe"
 | Compare values of a participant field | `--sweep-profile tracker_latency_ms=0,16,50 --seeds 5` |
 | Reproduce a run | same `--seed` (runs are deterministic) |
 
-From Python: `from sim_tools import run, sweep` (add `ai-tests/` to `sys.path`), or
+From Python: `from sim_tools import run, sweep` (add `tests/ai-tests/` to `sys.path`), or
 `from src.experiment.simulation import simulate_trial, simulate_session` directly.
 Constants are overridden temporarily (restored afterwards).
 
@@ -60,5 +60,5 @@ recorded gaze).
 ## Files
 
 - `run_sim.py` - the CLI. `sim_tools.py` - scenarios, constant overrides, `summarize`, `sweep`.
-- `test_ai_tools.py` - pytest self-tests (`pytest ai-tests`).
+- `test_ai_tools.py` - pytest self-tests (`pytest tests/ai-tests`).
 - The simulator itself lives in `src/experiment/simulation.py` (tests: `tests/test_simulation.py`).

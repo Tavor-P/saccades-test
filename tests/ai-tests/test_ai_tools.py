@@ -57,7 +57,7 @@ def test_sweep_returns_a_row_per_value():
 
 
 def test_cli_json_and_list_work_from_the_project_root():
-    root = HERE.parent
+    root = HERE.parents[1]
     out = subprocess.run(
         [sys.executable, str(HERE / "run_sim.py"), "--trials", "5", "--json"], cwd=root, capture_output=True, text=True, check=True
     )

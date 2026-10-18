@@ -1,11 +1,11 @@
 """One-command headless simulation runner. See README.md in this folder.
 
-    python ai-tests/run_sim.py                                  # 30-trial session, default scenario
-    python ai-tests/run_sim.py --timeline                       # one trial, event-by-event
-    python ai-tests/run_sim.py --scenario dropouts --json
-    python ai-tests/run_sim.py --set SACCADE_ONSET_STABILITY_MS=10
-    python ai-tests/run_sim.py --sweep SACCADE_ONSET_STABILITY_MS=10,20,40 --seeds 5
-    python ai-tests/run_sim.py --list
+    python tests/ai-tests/run_sim.py                                  # 30-trial session, default scenario
+    python tests/ai-tests/run_sim.py --timeline                       # one trial, event-by-event
+    python tests/ai-tests/run_sim.py --scenario dropouts --json
+    python tests/ai-tests/run_sim.py --set SACCADE_ONSET_STABILITY_MS=10
+    python tests/ai-tests/run_sim.py --sweep SACCADE_ONSET_STABILITY_MS=10,20,40 --seeds 5
+    python tests/ai-tests/run_sim.py --list
 """
 
 import argparse

@@ -34,9 +34,20 @@ PsychoPy's Python has the right dependency set installed:
 "C:\Program Files\PsychoPy\python.exe" -m src.eye_tracking.latency_test    # Neon vs webcam latency recording (analyze with latency_analysis)
 ```
 
-Without the Spinnaker SDK, `tests/test_camera.py` and
-`tests/test_gaze_tracking.py` fail at import (`PySpin`) - add
-`--ignore=tests/test_camera.py --ignore=tests/test_gaze_tracking.py`.
+Without the Spinnaker SDK (`PySpin`) or `mediapipe`, `tests/.../test_camera.py`
+and `test_gaze_tracking.py` skip themselves (`pytest.importorskip`) rather
+than fail.
+
+Headless simulation (no window, no camera, no files; see "Headless simulator"
+below) - run these to try the experiment logic without the glasses:
+
+```
+"C:\Program Files\PsychoPy\python.exe" tests/ai-tests/run_sim.py                  # 30-trial simulated session summary
+"C:\Program Files\PsychoPy\python.exe" tests/ai-tests/run_sim.py --timeline       # one trial, event by event
+"C:\Program Files\PsychoPy\python.exe" tests/ai-tests/run_sim.py --set SACCADE_ONSET_STABILITY_MS=10 --json
+"C:\Program Files\PsychoPy\python.exe" tests/ai-tests/run_sim.py --sweep SACCADE_ONSET_STABILITY_MS=10,20,40 --seeds 5
+"C:\Program Files\PsychoPy\python.exe" -m src.experiment.simulation                # same one-trial timeline, no flags
+```
 
 The test suite needs no camera or PsychoPy window (fake gaze/clock doubles,
 Flask's test client) and runs in seconds.
@@ -120,6 +131,44 @@ instead — that duplication is exactly what was cleaned up.
 directly) and a `fake_time` fixture that monkeypatches `PausableClock`'s time
 source so timing-dependent state-machine tests (foreperiods, response
 windows, debounce windows) run deterministically without real waits.
+
+**Headless simulator and `tests/ai-tests/`.** `src/experiment/simulation.py`
+runs the *real* `ExperimentSession` (calibration, RT test, saccade trials)
+against a `SimulatedParticipant` that only reads `render_state()`, on a
+`SimulatedClock` (never real time) and a `SimulatedGazeSource` (real
+`GazeMapper`, so calibration/zones match the Neon path) - no PsychoPy import,
+no files (`MemoryLogger`), deterministic per `seed`, a full session in
+seconds. `simulate_trial()` / `simulate_session(max_trials, profile, seed)`
+return a `SimulationResult` incl. `flash_truth` - ground truth for whether each
+flash really fell inside the simulated saccade, which the real experiment
+can't know. `ParticipantProfile` is the knob set (reaction time, psychometric
+thresholds incl. suppression, tracker noise/latency, dropouts). The model is
+intentionally simple: trust relative comparisons (setting A vs B) for
+plumbing/timing logic, not absolute numbers, and confirm anything important on
+real glasses. `tests/ai-tests/` is the AI-agent entry point: `README.md`
+(recipes + how to read the summary), `run_sim.py` (CLI: `--scenario`, `--set
+CONSTANT=VALUE` temporary constant override incl. modules that copied it by
+name, `--profile`, `--sweep`, `--timeline`, `--json`), `sim_tools.py`
+(`run`/`sweep`/`summarize`/`override_constants`), plus `test_ai_tools.py`
+self-tests. That folder also holds the older per-module test files. Tests for
+the simulator itself: `tests/test_simulation.py`. Real recorded gaze can be
+replayed instead via `src/eye_tracking/gaze_trace.py` (`ReplayGazeSource`,
+fixture `tests/fixtures/neon_trace_sample.csv`).
+
+**Tracking-quality gate.** A flash trial is also flagged `tracking_ok=False`
+(and excluded from ZEST/analysis, same as `flash_during_saccade != True`) if
+gaze tracking dropped out within `TRACKING_LOSS_WINDOW_MS` of the flash - see
+`scoring.is_valid_for_saccadic_analysis(flash, tracking_ok)`. A saccade-phase
+session also writes `gaze_quality` (rate, gaps, latency, clock offset) into
+`_meta.json` and a raw `results_<ts>_gaze_trace.csv`.
+
+**Known simulator finding (unresolved).** In simulation the
+`flash_during_saccade` window is built from classifier observation times, which
+trail the real eye by the tracker latency (~16 ms on Neon); with 16 ms latency
+only ~3% of flashes the check keeps really hit the saccade (100% at 0 ms).
+`run_sim.py --sweep-profile tracker_latency_ms=0,16,50` reproduces it. Not yet
+fixed in the experiment code; verify with real traces before trusting
+`flash_during_saccade` precision.
 
 ## Gotchas that cost real debugging time
 
