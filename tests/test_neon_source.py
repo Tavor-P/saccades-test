@@ -126,3 +126,39 @@ def test_offset_estimate_failure_is_tolerated():
     source._estimate_clock_offset()
     source._ingest(_x(0.5), True, device_timestamp_s=1.0)
     assert source.quality_summary()["latency_ms_median"] is None
+
+
+def test_dead_stream_reports_no_gaze_instead_of_repeating_last_sample(monkeypatch):
+    from src.eye_tracking import neon_source as module
+
+    source = NeonGazeSource(device=object())
+    source._ingest(_x(0.8))
+    assert source.latest_sample().face_found and source.is_available
+    real = module.time.monotonic
+    monkeypatch.setattr(module.time, "monotonic", lambda: real() + 5.0)  # 5 s with no samples
+    assert not source.latest_sample().face_found
+    assert source.latest_sample().zone is GazeZone.UNKNOWN
+    assert not source.is_available
+
+
+def test_mapper_is_safe_to_read_while_another_thread_appends():
+    import threading
+
+    from src.eye_tracking.gaze_mapping import GazeMapper
+
+    mapper = GazeMapper()
+    stop = threading.Event()
+
+    def writer():
+        while not stop.is_set():
+            mapper.map(0.5, 0.0)
+
+    t = threading.Thread(target=writer)
+    t.start()
+    try:
+        for _ in range(3000):
+            mapper.average_recent_ratio()
+            mapper.reset_ratio_history()
+    finally:
+        stop.set()
+        t.join()

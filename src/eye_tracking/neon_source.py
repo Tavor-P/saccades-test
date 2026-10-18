@@ -8,6 +8,7 @@ from include.eye_tracking.constants import (
     NEON_DEVICE_ADDRESS,
     NEON_DEVICE_PORT,
     NEON_GAP_THRESHOLD_MS,
+    NEON_STALE_TIMEOUT_S,
     NEON_DISCOVERY_TIMEOUT_S,
     NEON_SCENE_WIDTH,
 )
@@ -60,7 +61,13 @@ class NeonGazeSource(GazeSource):
 
     @property
     def is_available(self) -> bool:
-        return self._device is not None
+        return self._device is not None and not self._stream_stalled()
+
+    def _stream_stalled(self) -> bool:
+        """True once samples have been flowing but have now stopped for
+        NEON_STALE_TIMEOUT_S (phone asleep, Wi-Fi dropped, glasses unplugged)."""
+        with self._lock:
+            return self._last_arrival is not None and time.monotonic() - self._last_arrival > NEON_STALE_TIMEOUT_S
 
     def start(self) -> None:
         if self._device is None:
@@ -162,6 +169,8 @@ class NeonGazeSource(GazeSource):
 
     def latest_sample(self) -> GazeSample:
         with self._lock:
+            if self._last_arrival is not None and time.monotonic() - self._last_arrival > NEON_STALE_TIMEOUT_S:
+                return GazeSample(zone=GazeZone.UNKNOWN, ratio=None, face_found=False, timestamp=time.monotonic())
             return self._latest
 
     def calibrate(self, left_ratio: float, center_ratio: float, right_ratio: float) -> None:

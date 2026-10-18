@@ -1,3 +1,4 @@
+import threading
 from collections import deque
 
 import numpy as np
@@ -25,6 +26,10 @@ class GazeMapper:
         self._slope, self._intercept = self._fit(*default_span)
         self._recent_positions: deque[float] = deque(maxlen=POSITION_MEDIAN_WINDOW)
         self._smoothed: float | None = None
+        # map() runs on the tracker's background thread while calibrate()/
+        # average_recent_ratio()/reset_ratio_history() run on the main thread -
+        # iterating the deque mid-append would raise RuntimeError.
+        self._lock = threading.Lock()
 
     @staticmethod
     def _fit(left: float, center: float, right: float) -> tuple[float, float]:
@@ -32,9 +37,15 @@ class GazeMapper:
         return float(slope), float(intercept)
 
     def calibrate(self, left_ratio: float, center_ratio: float, right_ratio: float) -> None:
-        self._slope, self._intercept = self._fit(left_ratio, center_ratio, right_ratio)
+        slope, intercept = self._fit(left_ratio, center_ratio, right_ratio)
+        with self._lock:
+            self._slope, self._intercept = slope, intercept
 
     def map(self, ratio: float, timestamp: float) -> GazeSample:
+        with self._lock:
+            return self._map_locked(ratio, timestamp)
+
+    def _map_locked(self, ratio: float, timestamp: float) -> GazeSample:
         position = self._slope * ratio + self._intercept
         self._ratio_history.append(ratio)
         self._recent_positions.append(position)
@@ -60,9 +71,11 @@ class GazeMapper:
 
     def average_recent_ratio(self) -> float | None:
         # Full window required, same as GazeTracker - see its comment.
-        if len(self._ratio_history) < self._ratio_history.maxlen:
-            return None
-        return sum(self._ratio_history) / len(self._ratio_history)
+        with self._lock:
+            if len(self._ratio_history) < self._ratio_history.maxlen:
+                return None
+            return sum(self._ratio_history) / len(self._ratio_history)
 
     def reset_ratio_history(self) -> None:
-        self._ratio_history.clear()
+        with self._lock:
+            self._ratio_history.clear()

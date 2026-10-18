@@ -85,3 +85,7 @@ NEON_SCENE_HEIGHT = 1200
 # session quality summary (Neon streams ~200 Hz, i.e. 5 ms apart, so this is
 # roughly 6 missed samples - enough to matter for onset detection).
 NEON_GAP_THRESHOLD_MS = 30.0
+# If no gaze sample has arrived for this long, the stream is treated as dead:
+# latest_sample() reports "no face" instead of repeating the last reading
+# forever (which would look like a perfectly still eye).
+NEON_STALE_TIMEOUT_S = 0.5
