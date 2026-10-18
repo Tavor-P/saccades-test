@@ -192,7 +192,10 @@ class SimulatedParticipant:
             self._phase = phase
 
         if self._pending_space_at is not None and t >= self._pending_space_at:
-            self._pending_space_at = None
+            # A real participant presses SPACE again if nothing happened (calibration
+            # ignores it until the gaze window has filled), so keep retrying until the
+            # phase changes - which resets this in _on_phase_entry.
+            self._pending_space_at = t + 0.7
             self._session.on_space()
 
         if phase == "TRIAL_ACTIVE" and state["grating"]["visible"] and not self._flash_seen:
@@ -210,6 +213,7 @@ class SimulatedParticipant:
         self._pending_response = None
         self.saccade_onset = None
         self.pending_flash_truth = None
+        self._pending_space_at = None  # re-armed below for the phases where SPACE is used
         x = self._visible_x(state)
         if phase in ("WAITING_TO_START", "CALIBRATE_LEFT", "CALIBRATE_CENTER", "CALIBRATE_RIGHT"):
             if x is not None:

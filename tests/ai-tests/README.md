@@ -61,4 +61,6 @@ recorded gaze).
 
 - `run_sim.py` - the CLI. `sim_tools.py` - scenarios, constant overrides, `summarize`, `sweep`.
 - `test_ai_tools.py` - pytest self-tests (`pytest tests/ai-tests`).
+- `find_bugs.py` + `invariants.py` - randomized bug hunt (`find_bugs.py --sessions 300 --seed 7`, `--extreme`); each finding prints a `run_sim.py` repro command. Exit status 1 if anything is found.
+- `test_invariants.py`, `test_bug_injection.py`, `test_schema_sync.py`, `test_constants_sanity.py`, `test_validity_lockstep.py`, `test_architecture_rules.py` - the bug-finding tests (see CLAUDE.md)
 - The simulator itself lives in `src/experiment/simulation.py` (tests: `tests/test_simulation.py`).

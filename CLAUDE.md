@@ -83,6 +83,8 @@ Paths in this section are checked by `tests/test_docs.py` - keep them real.
 | `tests/conftest.py` | `FakeGazeSource`, `fake_time` fixture |
 | `tests/ai-tests/README.md` | headless-simulation guide for AI agents |
 | `tests/ai-tests/run_sim.py` | simulation CLI (`--set`, `--sweep`, `--timeline`, `--json`) |
+| `tests/ai-tests/find_bugs.py` | randomized bug-hunting campaign over the simulator; prints a repro command per finding |
+| `tests/ai-tests/invariants.py` | `check_session()`: contract checks every simulated session must satisfy |
 | `tests/fixtures/neon_trace_sample.csv` | a real recorded Neon gaze trace |
 | `scripts/py.ps1` | interpreter wrapper (see Start here) |
 
@@ -103,7 +105,16 @@ it from tests or simulations (the simulator uses an in-memory logger).
    measurement script and ask the human to run it; don't guess numbers.
 
 Report test results truthfully (what ran, what was skipped). The suite passes at the time of writing
-(~240 tests, 2 skipped when PySpin/mediapipe are absent).
+(~325 tests, ~100 s, 2 skipped when PySpin/mediapipe are absent).
+
+**Bug-hunting tests** (`tests/ai-tests/`): `find_bugs.py` fuzzes the real session with random/hostile
+participants and checks `invariants.py` (run `find_bugs.py --sessions 300` after changing session,
+scoring or ZEST logic; a finding prints a `run_sim.py` repro line). `test_bug_injection.py` re-injects
+known bugs to prove the checks and regression tests still catch them. Also enforced by tests:
+TrialResult/CSV/dashboard schema sync (`test_schema_sync.py`), constant relations
+(`test_constants_sanity.py`), live-vs-graph validity lockstep (`test_validity_lockstep.py`) and the
+architecture rules in this file (`test_architecture_rules.py`: no PsychoPy in session logic, no direct
+`time.monotonic()`, lazy backend imports, no logic in `include/`).
 
 ## Recipes
 
