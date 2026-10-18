@@ -5,7 +5,12 @@ webcam sees of the actual eye movement (see latency_analysis.py).
 
 Usage: python -m src.eye_tracking.latency_test [camera_index] [num_jumps]
 
-Output: data/latency/<timestamp>/{neon.csv, webcam.csv, webcam.mp4, stimulus.csv, meta.json}
+Output: data/latency/<timestamp>/
+  webcam.mp4 + webcam.csv         computer camera video + one metadata row per frame
+  neon_scene.mp4 + neon_scene.csv Neon scene camera video + per-frame metadata
+  neon_eyes.mp4 + neon_eyes.csv   Neon eye camera video + per-frame metadata
+  neon.csv                        every Neon gaze sample (the per-sample metadata)
+  stimulus.csv, meta.json
 """
 import psychopy  # noqa: F401  (must precede other imports that rely on PsychoPy's user-packages path)
 
@@ -68,6 +73,7 @@ class NeonRecorder:
         self._file = path.open("w", newline="")
         self._writer = csv.writer(self._file)
         self._writer.writerow(["arrival_unix_s", "device_unix_s", "x", "y", "worn"])
+        self.device = self._device  # shared with NeonVideoRecorder
         self.latest: tuple[float, float, bool, float] | None = None  # (x, y, worn, PC arrival time) of the newest sample
         self._running = True
         self._thread = threading.Thread(target=self._loop, daemon=True)
@@ -95,12 +101,80 @@ class NeonRecorder:
         self._device.close()
 
 
+class NeonVideoRecorder:
+    """Saves one Neon camera stream ("scene" ~30 fps or "eyes" ~200 fps) to an
+    .mp4 plus a CSV with one row per frame: the phone's capture timestamp, the
+    PC arrival time, and the capture time converted to PC time (device clock +
+    the clock offset estimated at startup). The mp4's own frame rate is only
+    nominal - the per-frame timestamps are the real timing."""
+
+    def __init__(self, device, kind: str, video_path: Path, csv_path: Path, offset_ms, nominal_fps: float) -> None:
+        self._receive = device.receive_scene_video_frame if kind == "scene" else device.receive_eyes_video_frame
+        self._video_path = video_path
+        self._offset_ms = offset_ms  # callable -> current clock offset estimate in ms (PC = device + offset)
+        self._nominal_fps = nominal_fps
+        self._writer = None
+        self._file = csv_path.open("w", newline="")
+        self._csv = csv.writer(self._file)
+        self._csv.writerow(["frame_index", "device_unix_s", "arrival_unix_s", "pc_unix_s", "width", "height"])
+        self.frames = 0
+        self.error: str | None = None
+        # A Neon stream only connects on its first receive call, which takes ~5 s -
+        # do that now (before the dot starts) and keep the frame it returns.
+        self._pending = None
+        try:
+            self._pending = self._receive(timeout_seconds=15)
+        except Exception as exc:
+            self.error = repr(exc)
+        self._pending_arrival = time.time()
+        self._running = True
+        self._thread = threading.Thread(target=self._loop, daemon=True)
+
+    def start(self) -> None:
+        self._thread.start()
+
+    def _loop(self) -> None:
+        while self._running:
+            if self._pending is not None:
+                frame, arrival, self._pending = self._pending, self._pending_arrival, None
+            else:
+                try:
+                    frame = self._receive(timeout_seconds=0.5)
+                except Exception as exc:  # e.g. this stream isn't enabled on the phone
+                    self.error = repr(exc)
+                    time.sleep(0.2)
+                    continue
+                arrival = time.time()
+            if frame is None:
+                continue
+            image = frame.bgr_pixels
+            height, width = image.shape[:2]
+            if self._writer is None:
+                self._writer = cv2.VideoWriter(
+                    str(self._video_path), cv2.VideoWriter_fourcc(*"mp4v"), self._nominal_fps, (width, height)
+                )
+            self._writer.write(image)
+            device_s = frame.timestamp_unix_seconds
+            self._csv.writerow(
+                [self.frames, f"{device_s:.6f}", f"{arrival:.6f}", f"{device_s + self._offset_ms() / 1000:.6f}", width, height]
+            )
+            self.frames += 1
+
+    def stop(self) -> None:
+        self._running = False
+        self._thread.join(timeout=2)
+        if self._writer is not None:
+            self._writer.release()
+        self._file.close()
+
+
 class WebcamRecorder:
     """Saves every webcam frame to an .mp4 and its PC timestamp (taken as soon
     as read() returns, so it includes the driver's own buffering delay -
     unavoidable with a plain webcam) to a CSV, one row per video frame."""
 
-    def __init__(self, camera_index: int, video_path: Path, csv_path: Path, overlay=None) -> None:
+    def __init__(self, camera_index: int, video_path: Path, csv_path: Path, overlay=None, neon=None) -> None:
+        self._neon = neon  # optional NeonRecorder: its newest gaze sample is logged on every frame row
         self._overlay = overlay  # optional fn(unix_time) -> list of text lines burned into each saved frame
         self._capture = cv2.VideoCapture(camera_index, cv2.CAP_DSHOW)
         if not self._capture.isOpened():
@@ -116,7 +190,7 @@ class WebcamRecorder:
             raise RuntimeError(f"Could not open video writer for {video_path}")
         self._file = csv_path.open("w", newline="")
         self._csv = csv.writer(self._file)
-        self._csv.writerow(["frame_index", "unix_s"])
+        self._csv.writerow(["frame_index", "unix_s", "neon_x", "neon_y", "neon_worn", "neon_sample_age_ms"])
         self._index = 0
         self._running = True
         self._thread = threading.Thread(target=self._loop, daemon=True)
@@ -133,7 +207,11 @@ class WebcamRecorder:
             if self._overlay is not None:
                 _burn_in(frame, self._overlay(now))
             self._writer.write(frame)
-            self._csv.writerow([self._index, f"{now:.6f}"])
+            latest = self._neon.latest if self._neon is not None else None
+            neon_cols = (
+                [latest[0], latest[1], int(latest[2]), f"{(now - latest[3]) * 1000:.1f}"] if latest else ["", "", "", ""]
+            )
+            self._csv.writerow([self._index, f"{now:.6f}", *neon_cols])
             self._index += 1
 
     def stop(self) -> None:
@@ -150,8 +228,11 @@ def run(camera_index: int, num_jumps: int) -> Path:
 
     neon = NeonRecorder(folder / "neon.csv")
     webcam = WebcamRecorder(
-        camera_index, folder / "webcam.mp4", folder / "webcam.csv", overlay=lambda t: overlay_lines(neon, t)
+        camera_index, folder / "webcam.mp4", folder / "webcam.csv", overlay=lambda t: overlay_lines(neon, t), neon=neon
     )
+    offset_ms = lambda: neon.clock_offsets_ms[0]  # noqa: E731
+    neon_scene = NeonVideoRecorder(neon.device, "scene", folder / "neon_scene.mp4", folder / "neon_scene.csv", offset_ms, 30.0)
+    neon_eyes = NeonVideoRecorder(neon.device, "eyes", folder / "neon_eyes.mp4", folder / "neon_eyes.csv", offset_ms, 200.0)
     win = visual.Window(fullscr=True, units="height", color=[-0.2] * 3, allowGUI=False)
     aspect = win.size[0] / win.size[1]
     dot = visual.Circle(win, radius=0.025, fillColor="white", lineColor="white")
@@ -169,6 +250,8 @@ def run(camera_index: int, num_jumps: int) -> Path:
         if "escape" in event.waitKeys(keyList=["space", "escape"]):
             return folder
         neon.start()
+        neon_scene.start()
+        neon_eyes.start()
         webcam.start()
         core.wait(1.0)  # let both streams settle
 
@@ -191,6 +274,8 @@ def run(camera_index: int, num_jumps: int) -> Path:
     finally:
         win.close()
         webcam.stop()
+        neon_scene.stop()
+        neon_eyes.stop()
         neon.stop()
         stimulus_file.close()
         (folder / "meta.json").write_text(
@@ -200,6 +285,8 @@ def run(camera_index: int, num_jumps: int) -> Path:
                     "webcam_requested_fps": webcam.requested_fps,
                     "camera_index": camera_index,
                     "num_jumps": num_jumps,
+                    "frames": {"webcam": webcam._index, "neon_scene": neon_scene.frames, "neon_eyes": neon_eyes.frames},
+                    "stream_errors": {"neon_scene": neon_scene.error, "neon_eyes": neon_eyes.error},
                     "refresh_note": "stimulus timestamp is taken right after win.flip() returns",
                 },
                 indent=2,
