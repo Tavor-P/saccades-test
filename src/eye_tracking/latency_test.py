@@ -305,3 +305,9 @@ if __name__ == "__main__":
     num_jumps = int(args[1]) if len(args) > 1 else 40
     out = run(camera_index, num_jumps, stream_scene="--no-scene-stream" not in sys.argv)
     print(f"Saved to {out}\nAnalyse with: python -m src.eye_tracking.latency_analysis {out}")
+    recording_id = json.loads((out / "meta.json").read_text()).get("neon_phone_recording_id")
+    if recording_id:
+        print(
+            f"Neon eye video (and full-rate scene/gaze/IMU) is in the phone recording {recording_id} - export it with the "
+            "Companion app (USB) or Pupil Cloud; the jump events are in its timeline."
+        )
