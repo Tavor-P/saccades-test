@@ -143,6 +143,12 @@ architecture rules in this file (`test_architecture_rules.py`: no PsychoPy in se
 - Windows/PowerShell environment: `&&` is unavailable in PowerShell 5.1; the Bash tool is Git Bash.
   Files are LF in the working tree (git may warn about CRLF); keep line endings as they are.
 - `.gitignore` contains `data/`, which also matches a `data` folder anywhere (e.g. under tests) - put test fixtures in `tests/fixtures/`.
+- **Whenever the user asks you to push and/or merge, update CLAUDE.md first** (the user's standing
+  instruction). Review what the branch changed since CLAUDE.md was last touched (`git log` / `git diff`)
+  and bring it up to date *before* the push/merge: Repo map rows for added/removed/renamed files, Commands,
+  Recipes, Gotchas, and any statements that are no longer true (test counts, backend behaviour, known issues).
+  Run `tests/test_docs.py` to confirm every path it mentions still exists, commit the CLAUDE.md update
+  (by name) together with or just before the push/merge, and say in your reply what you changed in it.
 
 ## Architecture
 
