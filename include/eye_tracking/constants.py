@@ -68,3 +68,16 @@ GAZE_DEAD_ZONE = 0.10
 # eye_position_manual_test.py's already-validated live gaze-dot demo.
 POSITION_MEDIAN_WINDOW = 5  # median of this many recent raw readings rejects a single stray misdetection outright
 POSITION_SMOOTHING = 0.35  # EMA weight given to each new (post-median) reading; lower = smoother but laggier
+
+# --- Pupil Labs Neon glasses (src/eye_tracking/neon_source.py) ---
+# Neon streams gaze over the local network via the Pupil Labs Real-Time API
+# (companion phone + PC must share a network/hotspot). None = auto-discover
+# the first Neon on the network; set to e.g. "192.168.1.50" to skip discovery.
+NEON_DEVICE_ADDRESS: str | None = None
+NEON_DEVICE_PORT = 8080
+NEON_DISCOVERY_TIMEOUT_S = 10.0
+# Scene camera resolution - gaze x is divided by this to give a 0-1 "ratio"
+# comparable to the webcam's iris ratio (calibration then fits ratio->position
+# exactly as for the webcam). Only horizontal gaze is used by the experiment.
+NEON_SCENE_WIDTH = 1600
+NEON_SCENE_HEIGHT = 1200

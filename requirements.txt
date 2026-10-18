@@ -15,3 +15,6 @@ flask
 numpy<2
 opencv-contrib-python==4.8.1.78
 opencv-python==4.8.1.78
+
+# Pupil Labs Neon glasses gaze source (src/eye_tracking/neon_source.py).
+pupil-labs-realtime-api

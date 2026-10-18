@@ -22,9 +22,8 @@ from include.experiment.constants import (
 )
 from include.experiment.types import Orientation
 from include.eye_tracking.constants import CAMERA_INDEX, FRAME_HEIGHT, FRAME_WIDTH
-from src.eye_tracking.camera import list_available_cameras
+from src.eye_tracking.gaze_factory import BACKEND_NEON, BACKENDS, build_gaze_source, list_cameras
 from src.eye_tracking.video_recorder import VideoRecorder
-from src.eye_tracking.webcam_source import WebcamGazeSource
 from src.experiment.logger import ResultLogger
 from src.experiment.narrator import Narrator
 from src.experiment.pausable_clock import PausableClock
@@ -449,6 +448,7 @@ def run_saccade_phase(
     logger: ResultLogger,
     narrator: Narrator,
     camera_index: int = CAMERA_INDEX,
+    gaze_backend: str = BACKEND_NEON,
     contrast_floor: float | None = None,
     show_gaze_indicator: bool = False,
     test_mode: bool = False,
@@ -464,9 +464,13 @@ def run_saccade_phase(
     results CSV - only this phase, since it's the only one with a running
     camera and real (non-practice, non-tutorial) data to replay against.
     Returns the completed session, or None if the participant quit early."""
-    gaze = WebcamGazeSource(camera_index)
+    gaze = build_gaze_source(gaze_backend, camera_index)
     gaze.start()
-    video_recorder = VideoRecorder(logger.video_path, logger.video_timestamps_path, gaze) if record_video else None
+    # Neon has no latest_frame() (gaze only, no Mono8 camera feed), so video + preview are webcam-only.
+    has_frames = hasattr(gaze, "latest_frame")
+    video_recorder = (
+        VideoRecorder(logger.video_path, logger.video_timestamps_path, gaze) if record_video and has_frames else None
+    )
     if video_recorder is not None:
         video_recorder.start()
     clock = PausableClock()
@@ -551,7 +555,7 @@ def run_saccade_phase(
             flash_frames_remaining = max(0, flash_frames_remaining - 1)
 
             draw_all(stimuli)
-            if camera_preview_enabled(state["hud"]["trial_index"]):
+            if has_frames and camera_preview_enabled(state["hud"]["trial_index"]):
                 frame = gaze.latest_frame()  # raw Mono8 (grayscale)
                 if frame is not None:
                     camera_preview.image = PILImage.fromarray(cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB))
@@ -568,6 +572,7 @@ def run_tutorial_phase(
     stimuli: dict,
     narrator: Narrator,
     camera_index: int = CAMERA_INDEX,
+    gaze_backend: str = BACKEND_NEON,
 ) -> TutorialSession | None:
     """A one-time, narrated on-ramp for first-time participants, run before
     both real phases (see main()). Unlike the other two phases, no key or
@@ -577,7 +582,7 @@ def run_tutorial_phase(
     heard yet. Returns the completed session (its calibration_ratios feeds
     the real saccade phase, skipping its own calibration), or None if the
     participant quit early."""
-    gaze = WebcamGazeSource(camera_index)
+    gaze = build_gaze_source(gaze_backend, camera_index)
     gaze.start()
     clock = PausableClock()
     session = TutorialSession(gaze, clock)
@@ -689,7 +694,7 @@ def _resolve_record_video(selected_label: str) -> bool:
     return selected_label == "Yes"
 
 
-def prompt_session_info() -> tuple[str, int, str, float, bool, bool, bool, bool] | None:
+def prompt_session_info() -> tuple[str, str, int, str, float, bool, bool, bool, bool] | None:
     """Standard PsychoPy participant-info dialog, shown before the window
     opens - also offers a camera picker (a dropdown of every camera index
     that actually opens) so switching between multiple connected cameras
@@ -707,13 +712,17 @@ def prompt_session_info() -> tuple[str, int, str, float, bool, bool, bool, bool]
     (e.g. low disk space) rather than opting in. Whether this is a test run
     (see _resolve_test_mode) is derived from the Participant ID field itself,
     not a separate control. Returns None if the dialog was cancelled."""
-    camera_indices = list_available_cameras() or [CAMERA_INDEX]
+    try:
+        camera_indices = list_cameras() or [CAMERA_INDEX]
+    except ImportError:  # PySpin not installed (Neon-only machine)
+        camera_indices = [CAMERA_INDEX]
     camera_labels = _camera_labels(camera_indices)
     default_contrast_floor_percent = load_contrast_floor_percent()
 
     info = {
         "Participant ID": "",
-        "Camera": camera_labels,
+        "Gaze source": BACKENDS,
+        "Camera (webcam source only)": camera_labels,
         "Contrast floor (%)": f"{default_contrast_floor_percent:.2f}",
         "Show gaze indicator": ["No", "Yes"],
         "Run tutorial": ["No", "Yes"],
@@ -726,13 +735,17 @@ def prompt_session_info() -> tuple[str, int, str, float, bool, bool, bool, bool]
     raw_participant_id = info["Participant ID"]
     test_mode = _resolve_test_mode(raw_participant_id)
     participant_id = raw_participant_id.strip() or "anonymous"
-    camera_index, camera_label = _resolve_camera_choice(camera_indices, camera_labels, info["Camera"])
+    camera_index, camera_label = _resolve_camera_choice(camera_indices, camera_labels, info["Camera (webcam source only)"])
+    gaze_backend = info["Gaze source"]
+    if gaze_backend == BACKEND_NEON:
+        camera_index, camera_label = CAMERA_INDEX, BACKEND_NEON
     contrast_floor_percent = _resolve_contrast_floor_percent(info["Contrast floor (%)"], default_contrast_floor_percent)
     show_gaze_indicator = _resolve_show_gaze_indicator(info["Show gaze indicator"])
     run_tutorial = _resolve_run_tutorial(info["Run tutorial"])
     record_video = _resolve_record_video(info["Record video"])
     return (
         participant_id,
+        gaze_backend,
         camera_index,
         camera_label,
         contrast_floor_percent,
@@ -765,6 +778,7 @@ def main() -> None:
         return  # cancelled the participant-info dialog
     (
         participant_id,
+        gaze_backend,
         camera_index,
         camera_label,
         contrast_floor_percent,
@@ -785,7 +799,9 @@ def main() -> None:
     try:
         precomputed_calibration_ratios = None
         if run_tutorial:
-            tutorial_session = run_tutorial_phase(win, stimuli, narrator, camera_index=camera_index)
+            tutorial_session = run_tutorial_phase(
+                win, stimuli, narrator, camera_index=camera_index, gaze_backend=gaze_backend
+            )
             if tutorial_session is None:
                 return  # quit early
             precomputed_calibration_ratios = tutorial_session.calibration_ratios
@@ -794,6 +810,7 @@ def main() -> None:
             run_saccade_phase,
             narrator=narrator,
             camera_index=camera_index,
+            gaze_backend=gaze_backend,
             contrast_floor=contrast_floor,
             show_gaze_indicator=show_gaze_indicator,
             test_mode=test_mode,

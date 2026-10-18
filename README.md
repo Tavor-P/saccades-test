@@ -130,3 +130,13 @@ tests/             pytest suite (doesn't need a camera or PsychoPy window)
 
 `src/eye_tracking/iohub_source.py` is an untested placeholder for switching
 to dedicated eye-tracking hardware (Tobii/EyeLink) later.
+
+## Pupil Labs Neon glasses (branch `feature/neon-glasses`)
+
+The startup dialog's **Gaze source** dropdown selects `Pupil Labs Neon` (default on this branch) or the original Blackfly S + MediaPipe webcam.
+
+- `"C:\Users\<you>\AppData\Local\Programs\PsychoPy\python.exe" -m pip install pupil-labs-realtime-api`
+- Connect the Neon companion phone and this PC to the same Wi-Fi/hotspot, start the companion app, then launch the experiment. The Neon is auto-discovered; set `NEON_DEVICE_ADDRESS` in `include/eye_tracking/constants.py` to skip discovery.
+- Gaze x in the scene camera is used as the horizontal "ratio", so the 3-point calibration works unchanged. Keep the head still after calibrating (chin rest) - the scene camera moves with the head.
+- Neon has no Mono8 camera feed, so the debug camera preview and session video recording are skipped with this source.
+- `NeonGazeSource` has only been tested against a fake device, not real hardware.
