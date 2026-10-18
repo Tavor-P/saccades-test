@@ -61,9 +61,3 @@ def test_tracking_dropouts_get_flagged_as_not_ok():
     assert any(r.tracking_ok is False for r in sim.saccade_results)
     clean = simulate_session(max_trials=25, seed=3)
     assert all(r.tracking_ok is not False for r in clean.saccade_results)
-
-
-def test_a_full_session_terminates_on_its_own():
-    sim = simulate_session(max_trials=10_000, seed=4)
-    assert sim.session.render_state()["hud"]["phase"] == "COMPLETE"
-    assert 0 < len(sim.saccade_results) < 10_000

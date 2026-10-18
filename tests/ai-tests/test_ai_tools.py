@@ -5,12 +5,11 @@ from pathlib import Path
 
 import pytest
 
-HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE))
+import sim_tools
 
-import sim_tools  # noqa: E402
-from include.experiment import constants as exp_constants  # noqa: E402
-from src.experiment import session as session_module  # noqa: E402
+from include.experiment import constants as exp_constants
+
+HERE = Path(__file__).resolve().parent
 
 
 def test_override_constants_patches_every_importer_and_restores():

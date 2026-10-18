@@ -17,9 +17,9 @@ from include.experiment.constants import (
     TIMING_OFFSETS_MS,
     ZEST_LOG_CONTRAST_MAX,
 )
-from src.experiment.simulation import SimulationResult
+from src.experiment.simulation import FRAME_HZ, SimulationResult
 
-FRAME_MS = 1000 / 60
+FRAME_MS = 1000 / FRAME_HZ
 SACCADE_OUTCOMES = {"correct", "incorrect", "miss", "false_alarm", "correct_rejection", "timeout"}
 RT_OUTCOMES = {"detected", "timeout"}
 

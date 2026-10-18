@@ -18,13 +18,14 @@ suppression.
 import argparse
 import math
 import random
+import statistics
 from dataclasses import dataclass, field
 
-from include.eye_tracking.constants import NEON_SCENE_WIDTH
 from include.eye_tracking.interfaces import GazeSource
 from include.eye_tracking.types import GazeSample, GazeZone
 from include.experiment.types import Orientation, TrialResult
 from src.experiment.pausable_clock import PausableClock
+from src.experiment.scoring import is_valid_for_saccadic_analysis
 from src.experiment.session import ExperimentSession
 from src.eye_tracking.gaze_mapping import GazeMapper
 
@@ -140,14 +141,18 @@ class SimulatedParticipant:
         self._eye_from = self._eye_to = 0.5  # screen x (0-1)
         self._move_start = 0.0
         self._move_dur = 0.05
+        self._dropout_until = -1.0
+        self._reset_phase_state()
+
+    def _reset_phase_state(self) -> None:
+        """State that belongs to one screen phase - cleared whenever a new phase starts."""
         self.saccade_onset: float | None = None
-        self._pending_space_at: float | None = None
+        self._pending_space_at: float | None = None  # re-armed for the phases where SPACE is used
         self._pending_response: tuple[float, Orientation] | None = None
         self._flash_seen = False
-        self._dropout_until = -1.0
-        # Ground truth for the flash currently in flight (None if none): True if
-        # it really fell inside the participant's saccade. Collected by the
-        # simulator and attached to the trial's logged row.
+        # Ground truth for the flash currently in flight (None if none): True if it
+        # really fell inside the participant's saccade. Collected by the simulator
+        # and attached to the trial's logged row.
         self.pending_flash_truth: bool | None = None
 
     # -- eye ------------------------------------------------------------------
@@ -209,11 +214,7 @@ class SimulatedParticipant:
 
     def _on_phase_entry(self, phase: str, state: dict, t: float) -> None:
         self._log(t, f"phase -> {phase}")
-        self._flash_seen = False
-        self._pending_response = None
-        self.saccade_onset = None
-        self.pending_flash_truth = None
-        self._pending_space_at = None  # re-armed below for the phases where SPACE is used
+        self._reset_phase_state()
         x = self._visible_x(state)
         if phase in ("WAITING_TO_START", "CALIBRATE_LEFT", "CALIBRATE_CENTER", "CALIBRATE_RIGHT"):
             if x is not None:
@@ -263,10 +264,10 @@ class SimulationResult:
     session: ExperimentSession
     results: list[TrialResult]  # every logged row (rt_test + saccade)
     events: list[tuple[float, str]] = field(default_factory=list)  # (sim time s, description), chronological
-    # position in `results` -> whether that trial's flash REALLY fell inside the
+    # (phase, trial index) -> whether that trial's flash REALLY fell inside the
     # simulated saccade (ground truth the real experiment can't know). Only for
     # logged flash trials.
-    flash_truth: dict[int, bool] = field(default_factory=dict)
+    flash_truth: dict[tuple[str, int], bool] = field(default_factory=dict)
     duration_s: float = 0.0
 
     @property
@@ -302,7 +303,8 @@ def simulate_session(
         step = 0
         last_zone = None
         logged = 0
-        flash_truth: dict[int, bool] = {}
+        saccade_rows_logged = 0
+        flash_truth: dict[tuple[str, int], bool] = {}
         while True:
             clock.advance(1 / GAZE_HZ)
             t = clock.now()
@@ -324,15 +326,17 @@ def simulate_session(
             # row, and their pending truth is cleared on the next phase entry).
             while logged < len(logger.rows):
                 row = logger.rows[logged]
-                if row.phase == "saccade" and row.grating_shown and participant.pending_flash_truth is not None:
-                    flash_truth[logged] = participant.pending_flash_truth
+                if row.phase == "saccade":
+                    saccade_rows_logged += 1
+                    if row.grating_shown and participant.pending_flash_truth is not None:
+                        flash_truth[(row.phase, row.index)] = participant.pending_flash_truth
                 logged += 1
                 events.append((t, f"trial logged: {row.phase} #{row.index} outcome={row.outcome}"))
             participant.observe(state, t)
 
             if state["hud"]["phase"] == "COMPLETE":
                 break
-            if sum(1 for r in logger.rows if r.phase == "saccade") >= max_trials:
+            if saccade_rows_logged >= max_trials:
                 break
         events.sort(key=lambda e: e[0])
         return SimulationResult(
@@ -347,7 +351,7 @@ def simulate_trial(profile: ParticipantProfile | None = None, seed: int = 0) -> 
     return simulate_session(max_trials=1, profile=profile, seed=seed)
 
 
-def _print_trial_timeline(sim: SimulationResult) -> None:
+def print_trial_timeline(sim: SimulationResult) -> None:
     result = sim.saccade_results[0]
     go = next(t for t, text in reversed(sim.events) if text == "go-cue: target appeared")
     print("Event timeline of the trial (ms relative to the go-cue):")
@@ -370,15 +374,16 @@ def main() -> None:
     args = parser.parse_args()
     sim = simulate_session(max_trials=args.trials, seed=args.seed)
     if args.trials == 1:
-        _print_trial_timeline(sim)
+        print_trial_timeline(sim)
         return
     rows = sim.saccade_results
     print(f"{len(rows)} saccade trials, {sim.duration_s:.0f} s simulated")
     print("  outcome counts:", {o: sum(r.outcome == o for r in rows) for o in sorted({r.outcome for r in rows})})
     flashed = [r for r in rows if r.grating_shown]
-    valid = [r for r in flashed if r.flash_during_saccade is True and r.tracking_ok is not False]
+    valid = [r for r in flashed if is_valid_for_saccadic_analysis(r.flash_during_saccade, r.tracking_ok)]
     print(f"  flashes: {len(flashed)}, flash during saccade & tracking ok: {len(valid)}")
-    print(f"  mean reaction latency: {sum(r.reaction_latency_ms for r in rows if r.reaction_latency_ms) / max(1, sum(1 for r in rows if r.reaction_latency_ms)):.0f} ms")
+    latencies = [r.reaction_latency_ms for r in rows if r.reaction_latency_ms]
+    print(f"  mean reaction latency: {statistics.fmean(latencies) if latencies else 0:.0f} ms")
 
 
 if __name__ == "__main__":

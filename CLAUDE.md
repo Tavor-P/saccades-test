@@ -121,7 +121,7 @@ architecture rules in this file (`test_architecture_rules.py`: no PsychoPy in se
 - **Add a column to the results CSV / a field to `TrialResult`**: field in `include/experiment/types.py`
   (default `None`) -> `FIELDNAMES` + `ResultLogger.log` in `src/experiment/logger.py` -> parse with
   `row.get(...)` in `src/dashboard/data_access.py` (old CSVs must still load) -> set it where the
-  `TrialResult` is built in `session.py` -> test (see `tests/test_tracking_quality.py`).
+  `TrialResult` is built in `session.py` -> test (see `tests/ai-tests/test_tracking_quality.py`).
 - **Change a tuning constant**: edit it in `include/**/constants.py` (read its comment first - several
   encode hard-won trade-offs), then run a `--sweep` in the simulator and `pytest`.
 - **Add a gaze backend**: implement `GazeSource` (`include/eye_tracking/interfaces.py`), register it in
@@ -252,7 +252,8 @@ fixture `tests/fixtures/neon_trace_sample.csv`).
 gaze tracking dropped out within `TRACKING_LOSS_WINDOW_MS` of the flash - see
 `scoring.is_valid_for_saccadic_analysis(flash, tracking_ok)`. A saccade-phase
 session also writes `gaze_quality` (rate, gaps, latency, clock offset) into
-`_meta.json` and a raw `results_<ts>_gaze_trace.csv`.
+`_meta.json`, and (plain `Pupil Labs Neon` backend only - `build_gaze_source` does not pass `trace_path` to the
+default screen-marker backend, so it is NOT recorded there yet) a raw `results_<ts>_gaze_trace.csv`.
 
 **Known simulator finding (unresolved).** In simulation the
 `flash_during_saccade` window is built from classifier observation times, which

@@ -4,7 +4,7 @@ import pytest
 
 from include.eye_tracking.constants import NEON_SCENE_WIDTH
 from include.eye_tracking.types import GazeZone
-from src.eye_tracking.gaze_factory import BACKEND_NEON, BACKEND_WEBCAM, build_gaze_source
+from src.eye_tracking.gaze_factory import BACKEND_NEON, build_gaze_source
 from src.eye_tracking.neon_source import NeonGazeSource
 
 
@@ -69,9 +69,8 @@ def test_loop_reads_from_device_and_stop_closes_it():
     assert closed
 
 
-def test_factory_builds_neon_by_default():
+def test_factory_builds_the_plain_neon_source_for_the_neon_backend():
     assert isinstance(build_gaze_source(BACKEND_NEON), NeonGazeSource)
-    assert BACKEND_WEBCAM != BACKEND_NEON
 
 
 def _fake_offset(mean_ms=200.0):

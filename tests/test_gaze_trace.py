@@ -65,7 +65,7 @@ def test_polling_rate_does_not_change_what_the_mapper_sees():
             clock.t += step
             sample = source.latest_sample()
         results.append((sample.position, sample.smoothed_position))
-    assert results[0][0] == pytest.approx(results[1][0], abs=1e-6)
+    assert results[0] == pytest.approx(results[1], abs=1e-6)  # position and smoothed_position
 
 
 def test_onset_detector_fires_on_replayed_saccade_after_the_debounce():

@@ -3,47 +3,29 @@ tracking_ok=False and excluded from ZEST and analysis (scoring.py)."""
 
 from unittest.mock import Mock
 
+from test_session import (  # the session-driving helpers live with the session tests
+    _complete_calibration_and_rt_test,
+    _enter_trial_active,
+    _make_session,
+    _set_single_trial,
+    _trigger_onset_and_landing,
+)
+
 from include.eye_tracking.types import GazeZone
 from include.experiment.constants import (
-    CALIBRATION_ROUNDS,
-    FOREPERIOD_MAX_MS,
     GAZE_LANDING_STABILITY_MS,
     SACCADE_ONSET_STABILITY_MS,
     TRACKING_LOSS_WINDOW_MS,
 )
-from include.experiment.types import Orientation, Target, TrialResult, TrialSpec
-from src.experiment.pausable_clock import PausableClock
+from include.experiment.types import Orientation, Target, TrialResult
 from src.experiment.scoring import is_valid_for_saccadic_analysis
-from src.experiment.session import ExperimentSession
 
 
-class _NullLogger:
-    def log(self, result) -> None:
-        pass
-
-
-def _session_in_first_trial(fake_gaze, fake_time) -> ExperimentSession:
-    session = ExperimentSession(fake_gaze, logger=_NullLogger(), clock=PausableClock(), skip_practice_trials=True)
-    session.on_space()
-    for _ in range(CALIBRATION_ROUNDS):
-        session.on_space()
-        session.on_space()
-        session.on_space()
-    for _ in range(session._rt_test_target_attempts):
-        fake_time(FOREPERIOD_MAX_MS / 1000 + 0.1)
-        session.tick()
-        fake_time(0.2)
-        fake_gaze.zone = GazeZone.RIGHT
-        session.tick()
-        fake_time(SACCADE_ONSET_STABILITY_MS / 1000 + 0.01)
-        session.tick()
-    fake_gaze.zone = GazeZone.CENTER
-    session._current_trial_spec = TrialSpec(
-        index=0, source=Target.DOT, target=Target.CROSS, grating_shown=True, orientation=Orientation.VERTICAL
-    )
-    session._begin_foreperiod()
-    fake_time(FOREPERIOD_MAX_MS / 1000 + 0.1)
-    session.tick()
+def _session_in_first_trial(fake_gaze, fake_time, **trial_spec):
+    session = _make_session(fake_gaze)
+    _complete_calibration_and_rt_test(session, fake_gaze, fake_time)
+    _set_single_trial(session, **trial_spec)
+    _enter_trial_active(session, fake_time)
     return session
 
 
@@ -94,24 +76,9 @@ def test_tracking_loss_far_from_the_flash_is_ignored(fake_gaze, fake_time):
 
 
 def test_catch_trial_has_no_tracking_flag(fake_gaze, fake_time):
-    session = _session_in_first_trial(fake_gaze, fake_time)
-    session._current_trial_spec = TrialSpec(
-        index=0, source=Target.DOT, target=Target.CROSS, grating_shown=False, orientation=None
-    )
-    session._begin_foreperiod()
-    fake_time(FOREPERIOD_MAX_MS / 1000 + 0.1)
-    session.tick()
-    fake_gaze.zone = GazeZone.CENTER
-    session.tick()
-    fake_time(SACCADE_ONSET_STABILITY_MS / 1000 + 0.01)
-    session.tick()
-    fake_time(max(session._flash_scheduled_at - session._clock.now(), 0.0) + 0.001)
-    session.tick()
-    fake_gaze.zone = GazeZone.RIGHT
-    session.tick()
-    fake_time(GAZE_LANDING_STABILITY_MS / 1000 + 0.01)
-    session.tick()
-    fake_time(2.0)
+    session = _session_in_first_trial(fake_gaze, fake_time, grating_shown=False, orientation=None)
+    _trigger_onset_and_landing(session, fake_gaze, fake_time, GazeZone.RIGHT)
+    fake_time(2.0)  # response window closes
     session.tick()
     result = [r for r in session.results if r.phase == "saccade"][0]
     assert result.tracking_ok is None

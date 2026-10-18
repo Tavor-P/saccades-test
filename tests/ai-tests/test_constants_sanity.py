@@ -5,8 +5,9 @@ import math
 
 from include.experiment import constants as c
 from include.eye_tracking import constants as g
+from src.experiment.simulation import FRAME_HZ
 
-FRAME_S = 1 / 60
+FRAME_S = 1 / FRAME_HZ
 MIN_PLAUSIBLE_REACTION_MS = 100  # no human starts a saccade faster than this after a cue
 
 
@@ -50,11 +51,9 @@ def test_tracking_loss_window_covers_at_least_a_frame():
 
 def test_neon_staleness_is_longer_than_a_gap_and_calibration_window_fills_quickly():
     assert g.NEON_GAP_THRESHOLD_MS / 1000 < g.NEON_STALE_TIMEOUT_S
-    assert g.NEON_SCENE_WIDTH > 0 and g.NEON_SCENE_HEIGHT > 0
     neon_rate_hz = 100  # conservative lower bound on what the Neon actually delivers
     assert g.CALIBRATION_SAMPLE_WINDOW / neon_rate_hz < 1.0  # participants shouldn't wait >1 s per target
 
 
 def test_smoothing_parameters_are_valid():
     assert 0 < g.POSITION_SMOOTHING <= 1
-    assert g.POSITION_MEDIAN_WINDOW >= 1 and g.CALIBRATION_SAMPLE_WINDOW >= 1

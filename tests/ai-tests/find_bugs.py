@@ -5,29 +5,20 @@
     python tests/ai-tests/find_bugs.py --extreme          # only hostile participants/trackers
 
 Each session draws a random ParticipantProfile (reaction time, noise, latency,
-dropouts, response behaviour ...) and, optionally, random experiment-constant
-overrides, runs the REAL ExperimentSession, then checks invariants.py and watches
+dropouts, response behaviour ...), runs the REAL ExperimentSession, then checks invariants.py and watches
 for exceptions and hangs. Every finding prints a one-line command that reproduces
 it, so a failure can be handed straight to `run_sim.py --timeline`.
 Exit status is 1 if anything was found.
 """
 
 import argparse
-import dataclasses
 import json
 import random
-import sys
 import time
 import traceback
-from pathlib import Path
 
-HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE))
-sys.path.insert(0, str(HERE.parents[1]))  # project root
-
-from invariants import check_session  # noqa: E402
-from sim_tools import override_constants  # noqa: E402
-from src.experiment.simulation import ParticipantProfile, simulate_session  # noqa: E402
+from sim_tools import simulate  # first: also puts the project root on sys.path
+from invariants import check_session
 
 # (low, high) ranges for random profiles - wide on purpose, bugs hide at the edges.
 PROFILE_RANGES = {
@@ -66,21 +57,18 @@ def random_profile(rng: random.Random) -> dict:
     return {k: round(rng.uniform(lo, hi), 4) for k, (lo, hi) in PROFILE_RANGES.items() if rng.random() < 0.5}
 
 
-def run_one(profile: dict, seed: int, trials: int, constants: dict | None = None) -> tuple[list[str], float]:
+def run_one(profile: dict, seed: int, trials: int) -> tuple[list[str], float]:
     """-> (findings, seconds). Findings include crashes and hangs as strings."""
     t0 = time.time()
     try:
-        with override_constants(constants or {}):
-            sim = simulate_session(max_trials=trials, profile=ParticipantProfile(**profile), seed=seed)
-            return check_session(sim), time.time() - t0
+        return check_session(simulate(trials=trials, seed=seed, profile=profile)), time.time() - t0
     except Exception:  # noqa: BLE001 - the whole point is to catch anything
         return [f"EXCEPTION: {traceback.format_exc(limit=3).strip().splitlines()[-1]}"], time.time() - t0
 
 
-def repro_command(profile: dict, seed: int, trials: int, constants: dict | None = None) -> str:
+def repro_command(profile: dict, seed: int, trials: int) -> str:
     parts = [f"python tests/ai-tests/run_sim.py --seed {seed} --trials {trials}"]
     parts += [f"--profile {k}={v}" for k, v in profile.items()]
-    parts += [f"--set {k}={v}" for k, v in (constants or {}).items()]
     return " ".join(parts)
 
 
@@ -94,7 +82,7 @@ def main() -> int:
     a = p.parse_args()
 
     rng = random.Random(a.seed)
-    cases = [(name, prof) for name, prof in EXTREME_PROFILES.items()]
+    cases = list(EXTREME_PROFILES.items())
     if not a.extreme:
         cases += [(f"random_{i}", random_profile(rng)) for i in range(a.sessions)]
 

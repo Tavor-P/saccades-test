@@ -9,13 +9,11 @@
 """
 
 import argparse
-import json
-import sys
-
 import dataclasses
+import json
 
-from sim_tools import SCENARIOS, coerce, parse_assignments, run, sweep  # also puts the project root on sys.path
-from src.experiment.simulation import ParticipantProfile
+from sim_tools import SCENARIOS, parse_assignments, parse_sweep, run, sweep  # also puts the project root on sys.path
+from src.experiment.simulation import ParticipantProfile, print_trial_timeline
 
 
 def _print_table(rows: list[dict]) -> None:
@@ -50,8 +48,7 @@ def main() -> None:
 
     if a.sweep or a.sweep_profile:
         spec, target = (a.sweep, "constant") if a.sweep else (a.sweep_profile, "profile")
-        name, _, values = spec.partition("=")
-        parsed = [coerce(v) for v in values.split(",")]
+        name, parsed = parse_sweep(spec)
         rows = sweep(name, parsed, a.scenario, a.trials, a.seeds, profile, constants, target)
         if a.json:
             print(json.dumps(rows, indent=1))
@@ -62,9 +59,7 @@ def main() -> None:
     trials = 1 if a.timeline else a.trials
     sim, summary = run(a.scenario, trials, a.seed, profile, constants)
     if a.timeline:
-        from src.experiment.simulation import _print_trial_timeline
-
-        _print_trial_timeline(sim)
+        print_trial_timeline(sim)
         return
     if a.json:
         print(json.dumps(summary, indent=1))

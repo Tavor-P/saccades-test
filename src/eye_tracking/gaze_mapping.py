@@ -1,6 +1,7 @@
 """GazeMapper: raw horizontal gaze ratio -> calibrated position, left/centre/right zone (dead zone) and display smoothing. Thread-safe; no MediaPipe
 dependency, shared by NeonGazeSource, ReplayGazeSource and the simulator."""
 
+import statistics
 import threading
 from collections import deque
 
@@ -52,7 +53,7 @@ class GazeMapper:
         position = self._slope * ratio + self._intercept
         self._ratio_history.append(ratio)
         self._recent_positions.append(position)
-        median = float(np.median(self._recent_positions))
+        median = statistics.median(self._recent_positions)
         if self._smoothed is None:
             self._smoothed = median
         else:

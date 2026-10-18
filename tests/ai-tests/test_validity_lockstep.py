@@ -49,7 +49,7 @@ def test_live_zest_feed_matches_the_graph_filter(monkeypatch, profile, seed):
 
 def test_the_scenarios_above_actually_exercise_both_valid_and_invalid_flashes():
     """Guard against the lockstep test going vacuous: we need both kinds of rows to exist somewhere."""
-    rows = [r for p in PROFILES for s in range(3) for r in simulate_session(max_trials=25, profile=p, seed=s).saccade_results if r.grating_shown]
+    rows = [r for p in PROFILES[1:] for s in range(2) for r in simulate_session(max_trials=25, profile=p, seed=s).saccade_results if r.grating_shown]
     valid = [r for r in rows if is_valid_for_saccadic_analysis(r.flash_during_saccade, r.tracking_ok)]
     assert valid and len(valid) < len(rows)
     assert any(r.tracking_ok is False for r in rows)

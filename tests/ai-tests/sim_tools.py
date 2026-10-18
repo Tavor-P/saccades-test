@@ -56,11 +56,19 @@ def coerce(text: str):
 def parse_assignments(items: list[str] | None) -> dict:
     out = {}
     for item in items or []:
-        name, _, value = item.partition("=")
-        if not _:
+        name, sep, value = item.partition("=")
+        if not sep:
             raise ValueError(f"expected NAME=VALUE, got {item!r}")
         out[name.strip()] = coerce(value)
     return out
+
+
+def parse_sweep(spec: str) -> tuple[str, list]:
+    """'NAME=a,b,c' -> ('NAME', [a, b, c]) with each value coerced like --set values."""
+    name, sep, values = spec.partition("=")
+    if not sep or not name.strip():
+        raise ValueError(f"expected NAME=V1,V2,..., got {spec!r}")
+    return name.strip(), [coerce(v) for v in values.split(",")]
 
 
 @contextlib.contextmanager
@@ -91,9 +99,10 @@ def override_constants(values: dict):
             setattr(module, name, old)
 
 
-def _mean(xs):
+def _mean(xs, ndigits: int = 1):
+    """Mean of the non-None values, rounded; None if there are none."""
     xs = [x for x in xs if x is not None]
-    return round(statistics.fmean(xs), 1) if xs else None
+    return round(statistics.fmean(xs), ndigits) if xs else None
 
 
 def summarize(sim: SimulationResult) -> dict:
@@ -102,10 +111,10 @@ def summarize(sim: SimulationResult) -> dict:
     flashes = [r for r in rows if r.grating_shown]
     catches = [r for r in rows if not r.grating_shown]
     valid = [r for r in flashes if is_valid_for_saccadic_analysis(r.flash_during_saccade, r.tracking_ok)]
-    positions = {id(r): i for i, r in enumerate(sim.results)}
-    truth = {id(r): sim.flash_truth.get(positions[id(r)]) for r in flashes}
-    truly_in = [r for r in flashes if truth[id(r)] is True]
-    summary = {
+    valid_indices = {r.index for r in valid}
+    truly_in = [r for r in flashes if sim.flash_truth.get((r.phase, r.index)) is True]
+    truly_in_indices = {r.index for r in truly_in}
+    return {
         "trials": len(rows),
         "session_completed": sim.session.render_state()["hud"]["phase"] == "COMPLETE",
         "simulated_seconds": round(sim.duration_s, 1),
@@ -127,18 +136,28 @@ def summarize(sim: SimulationResult) -> dict:
         # Ground truth (only the simulator knows): of the flashes the experiment
         # calls valid, how many REALLY hit the simulated saccade (precision), and
         # of the flashes that really hit it, how many the experiment kept (recall).
-        "valid_precision": round(sum(truth[id(r)] is True for r in valid) / len(valid), 3) if valid else None,
-        "valid_recall": round(sum(r in valid for r in truly_in) / len(truly_in), 3) if truly_in else None,
+        "valid_precision": round(sum(r.index in truly_in_indices for r in valid) / len(valid), 3) if valid else None,
+        "valid_recall": round(sum(r.index in valid_indices for r in truly_in) / len(truly_in), 3) if truly_in else None,
         "flashes_truly_in_saccade": len(truly_in),
     }
-    return summary
+
+
+def simulate(scenario: str = "default", trials: int = 30, seed: int = 0, profile: dict | None = None, constants: dict | None = None) -> SimulationResult:
+    """Run one simulated session (no summary) with an optional temporary constant override."""
+    with override_constants(constants or {}):
+        return simulate_session(max_trials=trials, profile=make_profile(scenario, **(profile or {})), seed=seed)
 
 
 def run(scenario: str = "default", trials: int = 30, seed: int = 0, profile: dict | None = None, constants: dict | None = None):
     """Run one simulated session -> (SimulationResult, summary dict)."""
-    with override_constants(constants or {}):
-        sim = simulate_session(max_trials=trials, profile=make_profile(scenario, **(profile or {})), seed=seed)
-        return sim, summarize(sim)
+    sim = simulate(scenario, trials, seed, profile, constants)
+    return sim, summarize(sim)
+
+
+SWEEP_METRICS = (
+    "valid_flash_rate", "valid_precision", "valid_recall", "mean_reaction_latency_ms",
+    "mean_onset_detection_lag_ms", "false_alarm_rate", "zest_threshold_estimate", "tracking_not_ok", "timeouts",
+)
 
 
 def sweep(name: str, values: list, scenario: str = "default", trials: int = 30, seeds: int = 5, profile: dict | None = None, constants: dict | None = None, target: str = "constant") -> list[dict]:
@@ -151,9 +170,5 @@ def sweep(name: str, values: list, scenario: str = "default", trials: int = 30, 
             c, p = dict(constants or {}), dict(profile or {})
             (c if target == "constant" else p)[name] = value
             per_seed.append(run(scenario, trials, seed, p, c)[1])
-        row = {name: value, "seeds": seeds}
-        for key in ("valid_flash_rate", "valid_precision", "valid_recall", "mean_reaction_latency_ms", "mean_onset_detection_lag_ms", "false_alarm_rate", "zest_threshold_estimate", "tracking_not_ok", "timeouts"):
-            vals = [s[key] for s in per_seed if s[key] is not None]
-            row[key] = round(statistics.fmean(vals), 3) if vals else None
-        rows.append(row)
+        rows.append({name: value, "seeds": seeds, **{k: _mean([s[k] for s in per_seed], 3) for k in SWEEP_METRICS}})
     return rows

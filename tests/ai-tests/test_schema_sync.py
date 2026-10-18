@@ -54,9 +54,10 @@ def test_full_result_round_trips_through_csv_and_dashboard_loader(tmp_path, monk
     timestamp = next(tmp_path.glob("results_*.csv")).stem.removeprefix("results_")
     (loaded,) = data_access.load_session_trials(timestamp)
     for f in dataclasses.fields(TrialResult):
-        assert getattr(loaded, f.name) == pytest.approx(getattr(original, f.name)) if isinstance(
-            getattr(original, f.name), float
-        ) else getattr(loaded, f.name) == getattr(original, f.name), f"field {f.name!r} lost in the CSV round trip"
+        want = getattr(original, f.name)
+        if isinstance(want, float):
+            want = pytest.approx(want)
+        assert getattr(loaded, f.name) == want, f"field {f.name!r} lost in the CSV round trip"
 
 
 @pytest.mark.parametrize("column", [f.name for f in dataclasses.fields(TrialResult) if f.default is None])

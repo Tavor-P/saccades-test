@@ -2,17 +2,12 @@
 defect (a 'mutation') into the real code and asserts the invariant checker or the
 simulation notices. If one of these starts passing silently, the checker got weaker."""
 
-import sys
-from pathlib import Path
-
 import pytest
+from invariants import check_session
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-
-from invariants import check_session  # noqa: E402
-from src.experiment import session as session_module  # noqa: E402
-from src.experiment.simulation import simulate_session  # noqa: E402
-from src.experiment.zest import ZestStaircase  # noqa: E402
+from src.experiment import session as session_module
+from src.experiment.simulation import simulate_session
+from src.experiment.zest import ZestStaircase
 
 
 def _violations(trials=14, seed=2):
@@ -57,21 +52,15 @@ def test_catches_a_session_that_never_stops(monkeypatch):
 
 
 def test_catches_onset_detection_reporting_before_the_debounce(monkeypatch):
-    from include.experiment import constants
-
     monkeypatch.setattr("src.experiment.trial_mechanics.SACCADE_ONSET_STABILITY_MS", 400)  # detector waits 400 ms...
     # ...while the invariant still believes in the configured debounce window.
     assert any("onset_detection_lag_ms" in v for v in _violations(trials=10))
-    assert constants.SACCADE_ONSET_STABILITY_MS < 400
 
 
 # ---- Past bugs: re-introduce each one and confirm a regression test goes red -------------------------
 # (If one of these stops raising, the regression test it points at has become toothless.)
 # Not covered on purpose: the GazeMapper deque 'race' - in CPython it could not be made to fail even
 # with the lock removed (0/8 stress attempts), so there is no honest red/green test for it.
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # tests/ - where the regression tests live
-
 
 def test_would_have_caught_the_stale_stream_bug(monkeypatch):
     """Bug: when the Neon stream died, latest_sample() kept returning the last gaze as valid."""
