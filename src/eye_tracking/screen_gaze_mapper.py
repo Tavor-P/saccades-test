@@ -30,6 +30,12 @@ class ScreenGazeMapper:
         self._surface = self._gm.add_surface(marker_verts(self._width, self._height), screen_size)
         self._hold_s = hold_s
         self._lock = threading.Lock()
+        # The library's GazeMapper isn't thread-safe: the scene thread (process_scene
+        # + the hold-restore below) and the gaze thread (process_gaze) share its
+        # _surface_locations, and without this the gaze thread can catch the window
+        # where a lost location was cleared but not yet restored, dropping a sample
+        # the hold was meant to keep.
+        self._gm_lock = threading.Lock()
         self._good_locations = None
         self._good_at = 0.0
         self._markers_detected = 0
@@ -50,17 +56,18 @@ class ScreenGazeMapper:
 
     def process_scene(self, frame) -> None:
         """Locate the screen in one scene frame (call from the scene thread)."""
-        self._gm.process_scene(frame)
-        locations = getattr(self._gm, "_surface_locations", {})
         now = time.monotonic()
-        with self._lock:
-            self._markers_detected = len(getattr(self._gm, "_detected_markers", []))
-            if locations.get(self._surface.uid) is not None:
-                self._good_locations, self._good_at = dict(locations), now
-            elif self._good_locations is not None and now - self._good_at <= self._hold_s:
-                self._gm._surface_locations = self._good_locations  # briefly keep using the last good location
-            else:
-                self._good_locations = None
+        with self._gm_lock:
+            self._gm.process_scene(frame)
+            locations = getattr(self._gm, "_surface_locations", {})
+            with self._lock:
+                self._markers_detected = len(getattr(self._gm, "_detected_markers", []))
+                if locations.get(self._surface.uid) is not None:
+                    self._good_locations, self._good_at = dict(locations), now
+                elif self._good_locations is not None and now - self._good_at <= self._hold_s:
+                    self._gm._surface_locations = self._good_locations  # briefly keep using the last good location
+                else:
+                    self._good_locations = None
 
     def map_gaze(self, gaze) -> ScreenGaze | None:
         """Gaze (a Real-Time API GazeData) -> screen px, or None if the screen isn't currently located."""
@@ -68,7 +75,8 @@ class ScreenGazeMapper:
             good_at = self._good_at if self._good_locations is not None else None
         if good_at is None:
             return None
-        result = self._gm.process_gaze(gaze)
+        with self._gm_lock:
+            result = self._gm.process_gaze(gaze)
         mapped = result.mapped_gaze.get(self._surface.uid) if result else None
         if not mapped:
             return None

@@ -123,8 +123,11 @@ class NeonGazeSource(GazeSource):
         with self._lock:
             self._latest = sample
             self._record_quality(now, sample.face_found, device_timestamp_s)
-            if self._trace is not None:
-                self._trace.write(now, device_timestamp_s, x, bool(worn))
+        # Outside the lock: latest_sample() takes it every rendered frame, and a
+        # disk write (the buffer fills ~every 0.5 s) must never stall that. Safe
+        # because only this receive thread writes and stop() joins it before close().
+        if self._trace is not None:
+            self._trace.write(now, device_timestamp_s, x, bool(worn))
 
     def _record_quality(self, now: float, valid: bool, device_timestamp_s: float | None) -> None:
         # Caller holds self._lock.
