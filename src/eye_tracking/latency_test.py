@@ -3,10 +3,18 @@ sample stamped with this PC's wall clock, while a dot jumps left/right on a
 PsychoPy window - so the Neon's gaze estimate can be compared against what the
 webcam sees of the actual eye movement (see latency_analysis.py).
 
-Usage: python -m src.eye_tracking.latency_test [camera_index] [num_jumps]
+Usage: python -m src.eye_tracking.latency_test [camera_index] [num_jumps] [--stream-videos]
+
+The Neon's scene/eye videos are recorded ON THE PHONE (full rate, exact
+per-frame timestamps; export them with Neon Player / Pupil Cloud afterwards),
+and every dot jump is sent to the phone as a named event on the same
+timeline. Streaming those videos to this PC instead (--stream-videos) works
+but is NOT recommended for a latency test: decoding them starves the gaze
+stream, whose delay then grows throughout the run (seen: 3 s -> 13 s).
 
 Output: data/latency/<timestamp>/
   webcam.mp4 + webcam.csv         computer camera video + one metadata row per frame
+  (with --stream-videos only:)
   neon_scene.mp4 + neon_scene.csv Neon scene camera video + per-frame metadata
   neon_eyes.mp4 + neon_eyes.csv   Neon eye camera video + per-frame metadata
   neon.csv                        every Neon gaze sample (the per-sample metadata)
@@ -43,19 +51,30 @@ def _retime_video(path: Path, n_frames: int, duration_s: float) -> None:
         return
     source = cv2.VideoCapture(str(path))
     temp = path.with_suffix(".retimed.mp4")
+    ok, frame = source.read()
+    if not ok:
+        source.release()
+        return
+    height, width = frame.shape[:2]
+    exact = n_frames / duration_s
     writer = None
-    while True:
-        ok, frame = source.read()
-        if not ok:
+    # MPEG-4 can't encode some exact rates (timebase denominator limit), so fall back to coarser ones.
+    for fps in (exact, round(exact, 1), float(max(1, round(exact)))):
+        writer = cv2.VideoWriter(str(temp), cv2.VideoWriter_fourcc(*"mp4v"), fps, (width, height))
+        if writer.isOpened():
             break
-        if writer is None:
-            height, width = frame.shape[:2]
-            writer = cv2.VideoWriter(str(temp), cv2.VideoWriter_fourcc(*"mp4v"), n_frames / duration_s, (width, height))
-        writer.write(frame)
-    source.release()
-    if writer is not None:
         writer.release()
-        temp.replace(path)
+        writer = None
+    if writer is None:  # couldn't re-encode: leave the original file untouched
+        source.release()
+        temp.unlink(missing_ok=True)
+        return
+    while ok:
+        writer.write(frame)
+        ok, frame = source.read()
+    source.release()
+    writer.release()
+    temp.replace(path)
 
 
 def overlay_lines(neon: "NeonRecorder", unix_time: float) -> list[str]:
@@ -99,9 +118,34 @@ class NeonRecorder:
         self._writer = csv.writer(self._file)
         self._writer.writerow(["arrival_unix_s", "device_unix_s", "x", "y", "worn"])
         self.device = self._device  # shared with NeonVideoRecorder
+        self.recording_id: str | None = None
         self.latest: tuple[float, float, bool, float] | None = None  # (x, y, worn, PC arrival time) of the newest sample
         self._running = True
         self._thread = threading.Thread(target=self._loop, daemon=True)
+
+    def start_phone_recording(self) -> str | None:
+        """Starts a recording on the phone (scene + eye video, gaze, IMU at full rate). None if it couldn't start."""
+        try:
+            self.recording_id = self._device.recording_start()
+        except Exception as exc:
+            print(f"WARNING: could not start the Neon phone recording: {exc!r}", file=sys.stderr)
+            self.recording_id = None
+        return self.recording_id
+
+    def send_event(self, name: str, pc_unix_s: float) -> None:
+        """Marks `name` on the phone's recording timeline at PC time `pc_unix_s` (converted to the phone's clock).
+        Sent from a helper thread so the network round trip can't delay the stimulus loop."""
+        if self.recording_id is None:
+            return
+        device_ns = int((pc_unix_s - self.clock_offsets_ms[0] / 1000) * 1e9)
+
+        def send() -> None:
+            try:
+                self._device.send_event(name, device_ns)
+            except Exception as exc:
+                print(f"WARNING: could not send event {name}: {exc!r}", file=sys.stderr)
+
+        threading.Thread(target=send, daemon=True).start()
 
     def _estimate_offset_ms(self) -> float:
         return self._device.estimate_time_offset().time_offset_ms.mean
@@ -123,6 +167,11 @@ class NeonRecorder:
         self._thread.join(timeout=2)
         self.clock_offsets_ms.append(self._estimate_offset_ms())  # second estimate, to expose drift
         self._file.close()
+        if self.recording_id is not None:
+            try:
+                self._device.recording_stop_and_save()
+            except Exception as exc:
+                print(f"WARNING: could not stop/save the Neon phone recording: {exc!r}", file=sys.stderr)
         self._device.close()
 
 
@@ -262,7 +311,7 @@ class WebcamRecorder:
             _retime_video(self._video_path, self._index, self._last_t - self._first_t)
 
 
-def run(camera_index: int, num_jumps: int) -> Path:
+def run(camera_index: int, num_jumps: int, stream_videos: bool = False) -> Path:
     folder = Path("data") / "latency" / datetime.now().strftime("%Y%m%d_%H%M%S")
     folder.mkdir(parents=True)
 
@@ -270,9 +319,17 @@ def run(camera_index: int, num_jumps: int) -> Path:
     webcam = WebcamRecorder(
         camera_index, folder / "webcam.mp4", folder / "webcam.csv", overlay=lambda t: overlay_lines(neon, t), neon=neon
     )
-    offset_ms = lambda: neon.clock_offsets_ms[0]  # noqa: E731
-    neon_scene = NeonVideoRecorder(neon.device, "scene", folder / "neon_scene.mp4", folder / "neon_scene.csv", offset_ms, 30.0, scale=SCENE_VIDEO_SCALE)
-    neon_eyes = NeonVideoRecorder(neon.device, "eyes", folder / "neon_eyes.mp4", folder / "neon_eyes.csv", offset_ms, 200.0)
+    stream_recorders: dict[str, NeonVideoRecorder] = {}
+    if stream_videos:
+        offset_ms = lambda: neon.clock_offsets_ms[0]  # noqa: E731
+        stream_recorders = {
+            "neon_scene": NeonVideoRecorder(
+                neon.device, "scene", folder / "neon_scene.mp4", folder / "neon_scene.csv", offset_ms, 30.0, scale=SCENE_VIDEO_SCALE
+            ),
+            "neon_eyes": NeonVideoRecorder(
+                neon.device, "eyes", folder / "neon_eyes.mp4", folder / "neon_eyes.csv", offset_ms, 200.0
+            ),
+        }
     win = visual.Window(fullscr=True, units="height", color=[-0.2] * 3, allowGUI=False)
     aspect = win.size[0] / win.size[1]
     dot = visual.Circle(win, radius=0.025, fillColor="white", lineColor="white")
@@ -284,14 +341,16 @@ def run(camera_index: int, num_jumps: int) -> Path:
     stimulus_csv = csv.writer(stimulus_file)
     stimulus_csv.writerow(["jump_index", "unix_s", "side"])
 
+    jumps_shown = 0
     try:
         text.draw()
         win.flip()
         if "escape" in event.waitKeys(keyList=["space", "escape"]):
             return folder
         neon.start()
-        neon_scene.start()
-        neon_eyes.start()
+        neon.start_phone_recording()
+        for recorder in stream_recorders.values():
+            recorder.start()
         webcam.start()
         core.wait(1.0)  # let both streams settle
 
@@ -300,7 +359,10 @@ def run(camera_index: int, num_jumps: int) -> Path:
             dot.pos = (side * DOT_X * aspect, 0)
             dot.draw()
             win.flip()
-            stimulus_csv.writerow([i, f"{time.time():.6f}", "right" if side > 0 else "left"])
+            shown_at = time.time()
+            stimulus_csv.writerow([i, f"{shown_at:.6f}", "right" if side > 0 else "left"])
+            neon.send_event(f"jump_{i}_{'right' if side > 0 else 'left'}", shown_at)
+            jumps_shown = i + 1
             side = -side
             wait_until = core.getTime() + random.uniform(*JUMP_INTERVAL_S)
             while core.getTime() < wait_until:
@@ -314,19 +376,21 @@ def run(camera_index: int, num_jumps: int) -> Path:
     finally:
         win.close()
         webcam.stop()
-        neon_scene.stop()
-        neon_eyes.stop()
+        for recorder in stream_recorders.values():
+            recorder.stop()
         neon.stop()
         stimulus_file.close()
         (folder / "meta.json").write_text(
             json.dumps(
                 {
                     "neon_clock_offset_ms": neon.clock_offsets_ms,
+                    "neon_phone_recording_id": neon.recording_id,
                     "webcam_requested_fps": webcam.requested_fps,
                     "camera_index": camera_index,
-                    "num_jumps": num_jumps,
-                    "frames": {"webcam": webcam._index, "neon_scene": neon_scene.frames, "neon_eyes": neon_eyes.frames},
-                    "stream_errors": {"neon_scene": neon_scene.error, "neon_eyes": neon_eyes.error},
+                    "num_jumps_requested": num_jumps,
+                    "jumps_shown": jumps_shown,
+                    "frames": {"webcam": webcam._index, **{k: r.frames for k, r in stream_recorders.items()}},
+                    "stream_errors": {k: r.error for k, r in stream_recorders.items()},
                     "refresh_note": "stimulus timestamp is taken right after win.flip() returns",
                 },
                 indent=2,
@@ -336,7 +400,8 @@ def run(camera_index: int, num_jumps: int) -> Path:
 
 
 if __name__ == "__main__":
-    camera_index = int(sys.argv[1]) if len(sys.argv) > 1 else 0
-    num_jumps = int(sys.argv[2]) if len(sys.argv) > 2 else 40
-    out = run(camera_index, num_jumps)
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    camera_index = int(args[0]) if len(args) > 0 else 0
+    num_jumps = int(args[1]) if len(args) > 1 else 40
+    out = run(camera_index, num_jumps, stream_videos="--stream-videos" in sys.argv)
     print(f"Saved to {out}\nAnalyse with: python -m src.eye_tracking.latency_analysis {out}")
