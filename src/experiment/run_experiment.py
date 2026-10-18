@@ -562,6 +562,8 @@ def run_saccade_phase(
                 camera_preview.draw()
             win.flip()
     finally:
+        if hasattr(gaze, "quality_summary"):
+            logger.set_gaze_quality(gaze.quality_summary())
         if video_recorder is not None:
             video_recorder.stop()
         gaze.stop()

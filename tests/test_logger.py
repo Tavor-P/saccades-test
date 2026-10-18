@@ -149,3 +149,11 @@ def test_log_writes_rt_test_phase_rows(tmp_path, monkeypatch):
     fields = dict(zip(header.split(","), row.split(",")))
     assert fields["phase"] == "rt_test"
     assert fields["reaction_latency_ms"] == "210.5"
+
+
+def test_metadata_records_gaze_quality(tmp_path, monkeypatch):
+    log = _make_logger(tmp_path, monkeypatch)
+    log.set_gaze_quality({"samples": 10, "latency_ms_median": 16.0})
+    log.close()
+    meta = json.loads(next(tmp_path.glob("results_*_meta.json")).read_text())
+    assert meta["gaze_quality"] == {"samples": 10, "latency_ms_median": 16.0}

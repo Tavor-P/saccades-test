@@ -4,6 +4,10 @@ import cv2
 import numpy as np
 import pytest
 
+# Webcam path only: needs the Spinnaker SDK's PySpin and mediapipe - skip, don't error, where missing.
+pytest.importorskip("PySpin")
+pytest.importorskip("mediapipe")
+
 from include.eye_tracking.constants import CAMERA_INDEX, TRACKING_FRAME_WIDTH
 from include.eye_tracking.types import GazeZone
 from src.eye_tracking.gaze_tracker import GazeTracker

@@ -81,3 +81,7 @@ NEON_DISCOVERY_TIMEOUT_S = 10.0
 # exactly as for the webcam). Only horizontal gaze is used by the experiment.
 NEON_SCENE_WIDTH = 1600
 NEON_SCENE_HEIGHT = 1200
+# Gaze samples arriving further apart than this count as a "gap" in the
+# session quality summary (Neon streams ~200 Hz, i.e. 5 ms apart, so this is
+# roughly 6 missed samples - enough to matter for onset detection).
+NEON_GAP_THRESHOLD_MS = 30.0
