@@ -7,14 +7,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 A PsychoPy gaze-contingent saccade experiment (Diamond, Ross & Morrone 2000):
 detect a briefly-flashed grating's orientation, once during a saccade and
 once during fixation (baseline), to measure saccadic suppression. Gaze is
-tracked via a FLIR Blackfly S camera (Spinnaker SDK / `PySpin`) + MediaPipe
-iris landmarks. See [README.md](README.md) for the full participant-facing
+tracked via Pupil Labs Neon glasses (default on branch
+`feature/neon-glasses`, via the Real-Time API) or, as an alternative backend
+picked in the startup dialog, a FLIR Blackfly S camera (Spinnaker SDK /
+`PySpin`) + MediaPipe iris landmarks. See [README.md](README.md) for the full participant-facing
 walkthrough (controls, output files, troubleshooting).
 
 ## Commands
 
 All commands must be run from this project folder (the one containing this
-file) using PsychoPy's own bundled Python, not a system Python — `-m` needs
+file) using PsychoPy's own bundled Python (on this machine
+`%LOCALAPPDATA%\Programs\PsychoPy\python.exe`; older notes say
+`C:\Program Files\PsychoPy`), not a system Python — `-m` needs
 the cwd here for `src`/`include` to resolve as top-level packages, and only
 PsychoPy's Python has the right dependency set installed:
 
@@ -25,7 +29,14 @@ PsychoPy's Python has the right dependency set installed:
 "C:\Program Files\PsychoPy\python.exe" -m pytest                            # full test suite
 "C:\Program Files\PsychoPy\python.exe" -m pytest tests/test_session.py      # one test file
 "C:\Program Files\PsychoPy\python.exe" -m pytest tests/test_session.py::test_name -v  # one test
+"C:\Program Files\PsychoPy\python.exe" -m src.eye_tracking.neon_fixation_test [seconds]  # Neon jitter check (glasses on): sizes SACCADE_ONSET_STABILITY_MS
+"C:\Program Files\PsychoPy\python.exe" -m src.eye_tracking.neon_gaze_view  # live calibration-free screen-gaze dot (AprilTags)
+"C:\Program Files\PsychoPy\python.exe" -m src.eye_tracking.latency_test    # Neon vs webcam latency recording (analyze with latency_analysis)
 ```
+
+Without the Spinnaker SDK, `tests/test_camera.py` and
+`tests/test_gaze_tracking.py` fail at import (`PySpin`) - add
+`--ignore=tests/test_camera.py --ignore=tests/test_gaze_tracking.py`.
 
 The test suite needs no camera or PsychoPy window (fake gaze/clock doubles,
 Flask's test client) and runs in seconds.
@@ -56,13 +67,20 @@ only its practice block and RT-test use `_TEST`/`_REAL`-paired counts.
 
 **Gaze tracking is behind an interface.** `include/eye_tracking/interfaces.py`
 defines `GazeSource`; `ExperimentSession` only ever talks to that interface.
-`WebcamGazeSource` (the only implementation actually in use) owns a `Camera`
-+ `GazeTracker` pair on a background thread. `IOHubGazeSource` is an
+`NeonGazeSource` (`neon_source.py`) polls `receive_gaze_datum()` on a
+background thread and turns scene-camera gaze x / `NEON_SCENE_WIDTH` into the
+same 0-1 "ratio" the webcam produces; `GazeMapper` (`gaze_mapping.py`, no
+MediaPipe dependency) applies the shared 3-point calibration fit, dead-zone
+classification and display smoothing. `build_gaze_source()`
+(`gaze_factory.py`) picks the backend from the startup dialog's "Gaze source"
+dropdown and imports lazily, so a machine without `PySpin`/`mediapipe` (or
+without `pupil-labs-realtime-api`) still runs the other backend.
+`WebcamGazeSource` owns a `Camera` + `GazeTracker` pair on a background thread. `IOHubGazeSource` is an
 untested placeholder for real eye-tracking hardware (Tobii/EyeLink) via
 PsychoPy's ioHub, written against the documented API but never run against
 real hardware.
 
-**Camera → tracker pipeline** (`src/eye_tracking/`):
+**Camera → tracker pipeline** (webcam backend only) (`src/eye_tracking/`):
 `Camera` wraps the Spinnaker SDK for a FLIR Blackfly S and runs its own
 background thread that keeps only the single *latest* raw Mono8 frame (not a
 queue) — intentional, since only the newest frame is ever consumed.
@@ -104,6 +122,25 @@ source so timing-dependent state-machine tests (foreperiods, response
 windows, debounce windows) run deterministically without real waits.
 
 ## Gotchas that cost real debugging time
+
+**Neon timing and geometry (measured Oct 2026).** Gaze reaches the PC ~16 ms
+after the event (p95 ~21 ms, max ~35 ms), ~140-180 Hz effective with gaps up
+to ~47 ms. Latency is only right if you convert with
+`local = device_ts + offset` from `estimate_time_offset()` (the sign is easy
+to get backwards: it gave a bogus 414 ms once). `NeonGazeSource` stamps
+samples with arrival `time.monotonic()`, not Neon timestamps. The scene
+camera is head-mounted, so head movement shifts gaze x with no eye movement -
+calibration assumes a still head (chin rest); `neon_gaze_view.py` uses
+AprilTag screen mapping instead and needs no calibration. The Neon source has
+no `latest_frame()`, so the debug camera preview and video recording are
+skipped for it (`has_frames = hasattr(gaze, "latest_frame")` in
+`run_saccade_phase`). `NEON_DEVICE_ADDRESS` in
+`include/eye_tracking/constants.py` is pinned to the phone's IP (set to `None`
+to auto-discover). `SACCADE_ONSET_STABILITY_MS` was lowered 40 -> 10 for Neon
+on the strength of latency alone; confirm with `neon_fixation_test` (the
+"drift-free jitter" section, with the head still) and watch the
+false-alarm rate. `NeonGazeSource` has only been tested against fake devices
+plus these hand-run scripts, not in a full session.
 
 **TTS narrator (`src/experiment/narrator.py`) is Windows-only SAPI via COM.**
 It rides on `pywin32` (already a PsychoPy dependency, not a new package).
