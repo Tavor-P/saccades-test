@@ -3,10 +3,12 @@ import threading
 import time
 from collections import deque
 from dataclasses import replace
+from pathlib import Path
 
 from include.eye_tracking.constants import (
     NEON_HEAD_SPEED_LIMIT_DPS,
     NEON_HEAD_SPEED_WINDOW_S,
+    NEON_SCENE_WIDTH,
     SCREEN_MARKER_PX,
 )
 from include.eye_tracking.types import GazeSample, GazeZone
@@ -34,10 +36,18 @@ class NeonScreenGazeSource(NeonGazeSource):
 
     `ratio` is screen x as a 0-1 fraction of the width, so the experiment's
     existing 3-point calibration works unchanged; `ratio_y` is the vertical
-    fraction. `device`/`screen_mapper` are injectable for tests."""
+    fraction. `device`/`screen_mapper` are injectable for tests.
 
-    def __init__(self, screen_size: tuple[int, int], device=None, screen_mapper=None) -> None:
-        super().__init__(device=device)
+    `trace_path` records the gaze for replay (see gaze_trace.py). What is saved
+    is the screen-mapped ratio x NEON_SCENE_WIDTH in the trace's `x_px` column
+    (not the raw scene-camera pixel): replay divides by the scene width again, so
+    it reproduces exactly the ratios - and so zones and calibration - this
+    source produced, with head movement already compensated."""
+
+    def __init__(
+        self, screen_size: tuple[int, int], device=None, screen_mapper=None, trace_path: Path | None = None
+    ) -> None:
+        super().__init__(device=device, trace_path=trace_path)
         self._screen_size = screen_size
         self._screen_mapper = screen_mapper
         self._extra_threads: list[threading.Thread] = []
@@ -153,6 +163,10 @@ class NeonScreenGazeSource(NeonGazeSource):
                 self._head_speeds_dps.append(head_speed)
                 if head_speed > NEON_HEAD_SPEED_LIMIT_DPS:
                     self._head_moving_samples += 1
+        # Outside the lock, like NeonGazeSource._ingest: a disk write must never stall latest_sample().
+        if self._trace is not None:
+            x_px = sample.ratio * NEON_SCENE_WIDTH if sample.ratio is not None else None
+            self._trace.write(now, getattr(datum, "timestamp_unix_seconds", None), x_px, sample.face_found)
 
     # -- status for the experiment's pre-flight gate and logs ---------------
 

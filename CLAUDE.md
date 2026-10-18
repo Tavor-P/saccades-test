@@ -252,8 +252,8 @@ fixture `tests/fixtures/neon_trace_sample.csv`).
 gaze tracking dropped out within `TRACKING_LOSS_WINDOW_MS` of the flash - see
 `scoring.is_valid_for_saccadic_analysis(flash, tracking_ok)`. A saccade-phase
 session also writes `gaze_quality` (rate, gaps, latency, clock offset) into
-`_meta.json`, and (plain `Pupil Labs Neon` backend only - `build_gaze_source` does not pass `trace_path` to the
-default screen-marker backend, so it is NOT recorded there yet) a raw `results_<ts>_gaze_trace.csv`.
+`_meta.json` and a raw `results_<ts>_gaze_trace.csv` (both Neon backends; for the screen-marker backend the
+trace's `x_px` column holds screen-ratio x `NEON_SCENE_WIDTH`, so replay reproduces its head-compensated zones).
 
 **Known simulator finding (unresolved).** In simulation the
 `flash_during_saccade` window is built from classifier observation times, which

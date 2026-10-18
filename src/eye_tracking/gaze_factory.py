@@ -25,7 +25,7 @@ def build_gaze_source(
 
         if screen_size is None:
             raise ValueError("the screen-marker Neon backend needs the window size in pixels")
-        return NeonScreenGazeSource(screen_size)
+        return NeonScreenGazeSource(screen_size, trace_path=trace_path)
     from src.eye_tracking.neon_source import NeonGazeSource
 
     return NeonGazeSource(trace_path=trace_path)
