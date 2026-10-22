@@ -8,7 +8,9 @@ BACKEND_NEON_OUTLINE = "Pupil Labs Neon + screen outline (no tags)"
 BACKEND_NEON_HYBRID = "Pupil Labs Neon + screen markers and outline"
 BACKEND_NEON = "Pupil Labs Neon (no head compensation)"
 BACKEND_WEBCAM = "Blackfly S + MediaPipe"
-BACKENDS = [BACKEND_NEON_SCREEN, BACKEND_NEON_OUTLINE, BACKEND_NEON_HYBRID, BACKEND_NEON, BACKEND_WEBCAM]
+# The startup dialog offers only these (first = default). The tags-only and outline-only backends are still
+# buildable by name for scripts/tests, but the hybrid covers both, so they are not separate dialog choices.
+BACKENDS = [BACKEND_NEON_HYBRID, BACKEND_NEON, BACKEND_WEBCAM]
 NEON_BACKENDS = (BACKEND_NEON_SCREEN, BACKEND_NEON_OUTLINE, BACKEND_NEON_HYBRID, BACKEND_NEON)
 
 

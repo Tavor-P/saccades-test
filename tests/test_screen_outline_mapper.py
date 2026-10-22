@@ -192,7 +192,7 @@ def test_source_runs_with_the_outline_mapper_end_to_end():
 def test_factory_builds_the_outline_backend():
     from src.eye_tracking.gaze_factory import BACKEND_NEON_OUTLINE, BACKENDS, NEON_BACKENDS, build_gaze_source
 
-    assert BACKEND_NEON_OUTLINE in BACKENDS and BACKEND_NEON_OUTLINE in NEON_BACKENDS
+    assert BACKEND_NEON_OUTLINE in NEON_BACKENDS
     assert isinstance(build_gaze_source(BACKEND_NEON_OUTLINE, screen_size=SCREEN), NeonOutlineGazeSource)
     with pytest.raises(ValueError):
         build_gaze_source(BACKEND_NEON_OUTLINE)

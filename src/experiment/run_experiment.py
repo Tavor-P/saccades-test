@@ -492,7 +492,7 @@ def run_saccade_phase(
     logger: ResultLogger,
     narrator: Narrator,
     camera_index: int = CAMERA_INDEX,
-    gaze_backend: str = BACKEND_NEON_SCREEN,
+    gaze_backend: str = BACKEND_NEON_HYBRID,
     contrast_floor: float | None = None,
     show_gaze_indicator: bool = False,
     test_mode: bool = False,
@@ -621,7 +621,7 @@ def run_tutorial_phase(
     stimuli: dict,
     narrator: Narrator,
     camera_index: int = CAMERA_INDEX,
-    gaze_backend: str = BACKEND_NEON_SCREEN,
+    gaze_backend: str = BACKEND_NEON_HYBRID,
 ) -> TutorialSession | None:
     """A one-time, narrated on-ramp for first-time participants, run before
     both real phases (see main()). Unlike the other two phases, no key or

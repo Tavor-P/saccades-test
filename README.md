@@ -133,7 +133,7 @@ to dedicated eye-tracking hardware (Tobii/EyeLink) later.
 
 ## Pupil Labs Neon glasses (branch `feature/neon-glasses`)
 
-The startup dialog's **Gaze source** dropdown selects `Pupil Labs Neon` (default on this branch) or the original Blackfly S + MediaPipe webcam.
+The startup dialog's **Gaze source** dropdown selects `Pupil Labs Neon + screen markers and outline` (default; corner tags with a screen-outline fallback), plain `Pupil Labs Neon` (no head compensation), or the original Blackfly S + MediaPipe webcam.
 
 - `"C:\Users\<you>\AppData\Local\Programs\PsychoPy\python.exe" -m pip install pupil-labs-realtime-api`
 - Connect the Neon companion phone and this PC to the same Wi-Fi/hotspot, start the companion app, then launch the experiment. The Neon is auto-discovered; set `NEON_DEVICE_ADDRESS` in `include/eye_tracking/constants.py` to skip discovery.
@@ -141,7 +141,7 @@ The startup dialog's **Gaze source** dropdown selects `Pupil Labs Neon` (default
 - Neon has no Mono8 camera feed, so the debug camera preview and session video recording are skipped with this source.
 - `NeonGazeSource` has only been tested against a fake device, not real hardware.
 
-### Head-compensated Neon gaze ("Pupil Labs Neon + screen markers", the default)
+### Head-compensated Neon gaze ("Pupil Labs Neon + screen markers and outline", the default)
 
 Four small AprilTag markers are drawn in the screen corners (all phases, so baseline and saccade conditions match). The glasses' scene camera finds them every frame, so gaze is reported in screen coordinates that don't change when the head moves. Before calibration starts, the experiment waits until all four markers are in view.
 

@@ -63,3 +63,9 @@ def test_quality_summary_reports_which_locator_mapped_samples():
     summary = source.quality_summary()
     assert summary["source"] == "pupil_labs_neon_screen_hybrid"
     assert summary["samples_mapped_by_tags"] == 1 and summary["samples_mapped_by_outline"] == 0
+
+
+def test_dialog_offers_hybrid_first_and_only_three_choices():
+    from src.eye_tracking.gaze_factory import BACKEND_NEON, BACKEND_WEBCAM, BACKEND_NEON_HYBRID, BACKENDS
+
+    assert BACKENDS == [BACKEND_NEON_HYBRID, BACKEND_NEON, BACKEND_WEBCAM]
