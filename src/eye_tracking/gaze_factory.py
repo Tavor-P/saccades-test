@@ -4,10 +4,11 @@ mediapipe (or without pupil-labs-realtime-api) can still run the other backends.
 from include.eye_tracking.interfaces import GazeSource
 
 BACKEND_NEON_SCREEN = "Pupil Labs Neon + screen markers"
+BACKEND_NEON_OUTLINE = "Pupil Labs Neon + screen outline (no tags)"
 BACKEND_NEON = "Pupil Labs Neon (no head compensation)"
 BACKEND_WEBCAM = "Blackfly S + MediaPipe"
-BACKENDS = [BACKEND_NEON_SCREEN, BACKEND_NEON, BACKEND_WEBCAM]
-NEON_BACKENDS = (BACKEND_NEON_SCREEN, BACKEND_NEON)
+BACKENDS = [BACKEND_NEON_SCREEN, BACKEND_NEON_OUTLINE, BACKEND_NEON, BACKEND_WEBCAM]
+NEON_BACKENDS = (BACKEND_NEON_SCREEN, BACKEND_NEON_OUTLINE, BACKEND_NEON)
 
 
 def build_gaze_source(
@@ -26,6 +27,12 @@ def build_gaze_source(
         if screen_size is None:
             raise ValueError("the screen-marker Neon backend needs the window size in pixels")
         return NeonScreenGazeSource(screen_size, trace_path=trace_path)
+    if backend == BACKEND_NEON_OUTLINE:
+        from src.eye_tracking.neon_outline_source import NeonOutlineGazeSource
+
+        if screen_size is None:
+            raise ValueError("the screen-outline Neon backend needs the window size in pixels")
+        return NeonOutlineGazeSource(screen_size, trace_path=trace_path)
     from src.eye_tracking.neon_source import NeonGazeSource
 
     return NeonGazeSource(trace_path=trace_path)
