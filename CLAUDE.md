@@ -75,6 +75,7 @@ Paths in this section are checked by `tests/test_docs.py` - keep them real.
 | `src/experiment/simulation.py` | headless simulator (simulated participant, clock, gaze) |
 | `src/eye_tracking/neon_source.py` | `NeonGazeSource` (default backend): Real-Time API stream + quality stats |
 | `src/eye_tracking/neon_screen_source.py` | Neon + screen-marker backend (head-compensated gaze) |
+| `src/eye_tracking/screen_markers.py` | corner AprilTag layout/rendering: physical size (`SCREEN_MARKER_WIDTH_CM`), mean-matched dim levels; `marker_verts` order is what the screen-gaze library expects (BR,BL,TL,TR), not TL-clockwise |
 | `src/eye_tracking/screen_outline_mapper.py` | tag-free screen locator (`ScreenOutlineMapper`, same interface as `ScreenGazeMapper`); backend "screen outline (no tags)" via `neon_outline_source.py` |
 | `src/eye_tracking/screen_detect_compare.py` | offline detector report on a scene video/frames (jitter, optional AprilTag comparison) |
 | `src/eye_tracking/gaze_mapping.py` | `GazeMapper`: ratio -> calibrated position / zone / smoothing |
@@ -107,7 +108,7 @@ it from tests or simulations (the simulator uses an in-memory logger).
    measurement script and ask the human to run it; don't guess numbers.
 
 Report test results truthfully (what ran, what was skipped). The suite passes at the time of writing
-(~325 tests, ~100 s, 2 skipped when PySpin/mediapipe are absent).
+(~355 tests, ~30 s, 2 skipped when PySpin/mediapipe are absent).
 
 **Bug-hunting tests** (`tests/ai-tests/`): `find_bugs.py` fuzzes the real session with random/hostile
 participants and checks `invariants.py` (run `find_bugs.py --sessions 300` after changing session,
