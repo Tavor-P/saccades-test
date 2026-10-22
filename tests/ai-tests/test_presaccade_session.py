@@ -159,3 +159,83 @@ def test_test_mode_true_uses_the_smaller_trial_counts():
     real = [t for t in session._trials if not t.practice]
     assert len(practice) == NUM_PRACTICE_TRIALS_TEST
     assert len(real) == NUM_TRIALS_PER_PHASE_TEST
+
+
+# -- fixation gating and early stop ---------------------------------------------------------
+
+
+def _gated_session(fake_gaze):
+    return PresaccadeSession(logger=_NullLogger(), clock=PausableClock(), gaze=fake_gaze)
+
+
+def _to_due_flash(session, fake_time):
+    session.on_space()
+    fake_time(FOREPERIOD_MAX_MS / 1000 + 0.1)
+    session.tick()
+
+
+def test_flash_is_held_while_gaze_is_off_center_then_fires_once_stable(fake_time, fake_gaze):
+    from include.eye_tracking.types import GazeZone
+    from src.experiment.presaccade_session import FIXATION_GATE_STABLE_S
+
+    session = _gated_session(fake_gaze)
+    fake_gaze.zone = GazeZone.LEFT
+    _to_due_flash(session, fake_time)
+    assert session.render_state()["hud"]["phase"] == "FOREPERIOD"
+    fake_gaze.zone = GazeZone.CENTER
+    session.tick()  # starts the stable-center timer
+    assert session.render_state()["hud"]["phase"] == "FOREPERIOD"
+    fake_time(FIXATION_GATE_STABLE_S + 0.01)
+    session.tick()
+    assert session.render_state()["hud"]["phase"] == "FLASH_WINDOW"
+    assert session.gated_trials == 1 and session.gate_timeouts == 0
+
+
+def test_gate_fails_open_after_the_timeout(fake_time, fake_gaze):
+    from include.eye_tracking.types import GazeZone
+    from src.experiment.presaccade_session import FIXATION_GATE_TIMEOUT_S
+
+    session = _gated_session(fake_gaze)
+    fake_gaze.zone = GazeZone.UNKNOWN
+    _to_due_flash(session, fake_time)
+    fake_time(FIXATION_GATE_TIMEOUT_S + 0.01)
+    session.tick()
+    assert session.render_state()["hud"]["phase"] == "FLASH_WINDOW"
+    assert session.gate_timeouts == 1
+
+
+def test_gate_fails_open_immediately_when_the_source_is_unavailable(fake_time, fake_gaze):
+    fake_gaze._available = False
+    session = _gated_session(fake_gaze)
+    _to_due_flash(session, fake_time)
+    assert session.render_state()["hud"]["phase"] == "FLASH_WINDOW"
+
+
+def test_ungated_session_ignores_gaze(fake_time):
+    session = _make_session()
+    _to_due_flash(session, fake_time)
+    assert session.render_state()["hud"]["phase"] == "FLASH_WINDOW"
+
+
+def test_request_stop_before_the_flash_completes_without_logging(fake_time):
+    session = _make_session()
+    session.on_space()
+    session.request_stop()
+    session.tick()
+    assert session.render_state()["hud"]["phase"] == "COMPLETE"
+    assert session.stopped_early and session.results == []
+
+
+def test_request_stop_during_a_flash_window_lets_that_trial_finish_then_ends(fake_time):
+    session = _make_session()
+    _enter_flash_window(session, fake_time)
+    session.request_stop()
+    fake_time(RESPONSE_WINDOW_MS / 1000 + 0.1)
+    session.tick()
+    assert session.render_state()["hud"]["phase"] == "COMPLETE"
+    assert session.stopped_early and len(session.results) <= 1
+
+
+def test_hud_trial_index_counts_logged_trials(fake_time):
+    session = _make_session()
+    assert session.render_state()["hud"]["trial_index"] == 0
