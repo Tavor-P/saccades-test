@@ -27,6 +27,7 @@ from include.experiment.constants import (
 from include.experiment.types import Orientation
 from include.eye_tracking.constants import CAMERA_INDEX, FRAME_HEIGHT, FRAME_WIDTH
 from src.eye_tracking.gaze_factory import (
+    BACKEND_NEON_HYBRID,
     BACKEND_NEON_SCREEN,
     BACKENDS,
     NEON_BACKENDS,
@@ -844,7 +845,7 @@ def main() -> None:
     )
     win = build_window(fullscreen=True)
     stimuli = build_stimuli(win)
-    if gaze_backend == BACKEND_NEON_SCREEN:
+    if gaze_backend in (BACKEND_NEON_SCREEN, BACKEND_NEON_HYBRID):
         stimuli["screen_markers"] = build_marker_stims(win)
     narrator = Narrator()
 

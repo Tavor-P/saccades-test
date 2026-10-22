@@ -5,10 +5,11 @@ from include.eye_tracking.interfaces import GazeSource
 
 BACKEND_NEON_SCREEN = "Pupil Labs Neon + screen markers"
 BACKEND_NEON_OUTLINE = "Pupil Labs Neon + screen outline (no tags)"
+BACKEND_NEON_HYBRID = "Pupil Labs Neon + screen markers and outline"
 BACKEND_NEON = "Pupil Labs Neon (no head compensation)"
 BACKEND_WEBCAM = "Blackfly S + MediaPipe"
-BACKENDS = [BACKEND_NEON_SCREEN, BACKEND_NEON_OUTLINE, BACKEND_NEON, BACKEND_WEBCAM]
-NEON_BACKENDS = (BACKEND_NEON_SCREEN, BACKEND_NEON_OUTLINE, BACKEND_NEON)
+BACKENDS = [BACKEND_NEON_SCREEN, BACKEND_NEON_OUTLINE, BACKEND_NEON_HYBRID, BACKEND_NEON, BACKEND_WEBCAM]
+NEON_BACKENDS = (BACKEND_NEON_SCREEN, BACKEND_NEON_OUTLINE, BACKEND_NEON_HYBRID, BACKEND_NEON)
 
 
 def build_gaze_source(
@@ -33,6 +34,12 @@ def build_gaze_source(
         if screen_size is None:
             raise ValueError("the screen-outline Neon backend needs the window size in pixels")
         return NeonOutlineGazeSource(screen_size, trace_path=trace_path)
+    if backend == BACKEND_NEON_HYBRID:
+        from src.eye_tracking.neon_hybrid_source import NeonHybridGazeSource
+
+        if screen_size is None:
+            raise ValueError("the hybrid Neon backend needs the window size in pixels")
+        return NeonHybridGazeSource(screen_size, trace_path=trace_path)
     from src.eye_tracking.neon_source import NeonGazeSource
 
     return NeonGazeSource(trace_path=trace_path)
