@@ -123,3 +123,23 @@ NEON_MARKER_HOLD_S = 0.2
 # moving" in the session quality summary / GazeSample.head_speed_dps.
 NEON_HEAD_SPEED_LIMIT_DPS = 30.0
 NEON_HEAD_SPEED_WINDOW_S = 0.1  # reported head speed = peak over this window
+
+# --- Neon marker-free screen detection (src/eye_tracking/screen_outline_mapper.py) ---
+# The monitor itself is found in each scene frame as a bright/dark quadrilateral
+# (the experiment screen is a uniform mid-grey rectangle), so no tags are drawn.
+NEON_OUTLINE_WORK_SCALE = 0.5  # contours are found on a frame this fraction of full size (speed); edges are line-fitted for sub-pixel corners
+NEON_OUTLINE_MIN_AREA_FRACTION = 0.03  # the screen must cover at least this share of the scene frame
+NEON_OUTLINE_MIN_FILL = 0.96  # blob area / fitted-quad area; lower = a corner is occluded or the blob is not a rectangle
+NEON_OUTLINE_MIN_CONTRAST = 12.0  # grey-level gap between the screen and the ring just outside it
+NEON_OUTLINE_BORDER_MARGIN_PX = 2  # a blob touching the frame edge is a screen partly out of view: not usable
+# The blob's convex hull must reduce to 4 corners within this tolerance (fraction of its
+# perimeter); a bigger bite out of a corner (a hand, a monitor stand) is rejected, not
+# silently turned into a quad with a cut corner.
+NEON_OUTLINE_MAX_APPROX_FRACTION = 0.03
+NEON_OUTLINE_MAX_SIDE_RATIO = 3.5  # opposite quad sides may differ at most this much (perspective sanity)
+NEON_OUTLINE_HOLD_S = 0.2  # keep the last good outline this long when detection fails
+# Corner smoothing: per-frame blend factor grows from MIN_ALPHA (corners still:
+# heavy smoothing, so detection noise does not move the mapping) to 1 (corners
+# moved >= JUMP_PX: a real head movement, follow it with no lag).
+NEON_OUTLINE_SMOOTH_MIN_ALPHA = 0.25
+NEON_OUTLINE_SMOOTH_JUMP_PX = 6.0
