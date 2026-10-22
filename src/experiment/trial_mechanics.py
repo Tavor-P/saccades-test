@@ -1,11 +1,17 @@
 """Small shared building blocks for session logic: zone_for, OnsetDetector (THE saccade-onset debounce - reuse it, don't hand-roll), ShuffledBag, average_ms."""
 
 import random
+import statistics
 from collections import deque
 from typing import Generic, Sequence, TypeVar
 
 from include.eye_tracking.types import GazeZone
-from include.experiment.constants import SACCADE_ONSET_STABILITY_MS
+from include.experiment.constants import (
+    RT_MIN_PLAUSIBLE_MS,
+    RT_OUTLIER_MAD_FLOOR_MS,
+    RT_OUTLIER_MAD_K,
+    SACCADE_ONSET_STABILITY_MS,
+)
 from include.experiment.types import Orientation, Target
 
 
@@ -29,6 +35,22 @@ def average_ms(samples: Sequence[float], default: float) -> float:
     "empty means fall back to X" can't drift between call sites duplicating
     it independently."""
     return sum(samples) / len(samples) if samples else default
+
+
+def robust_average_ms(samples: Sequence[float], default: float) -> float:
+    """Reaction-time average that one bad measurement can't move: drops
+    anticipations (< RT_MIN_PLAUSIBLE_MS), then slow outliers (more than
+    RT_OUTLIER_MAD_K scaled MADs above the median, MAD floored at
+    RT_OUTLIER_MAD_FLOOR_MS), and returns the median of the rest - or `default`
+    if nothing plausible is left. Used for avg_reaction_time_ms, which
+    schedules every flash."""
+    plausible = [s for s in samples if s >= RT_MIN_PLAUSIBLE_MS]
+    if not plausible:
+        return default
+    median = statistics.median(plausible)
+    mad = statistics.median(abs(s - median) for s in plausible) * 1.4826
+    limit = median + RT_OUTLIER_MAD_K * max(mad, RT_OUTLIER_MAD_FLOOR_MS)
+    return statistics.median(s for s in plausible if s <= limit)
 
 
 class OnsetDetector:
@@ -59,7 +81,10 @@ class OnsetDetector:
 
     def update(self, sample, now: float) -> bool:
         """Call once per tick while not yet confirmed. Returns True on the
-        exact tick confirmation fires."""
+        exact tick confirmation fires. `now` should be the sample's own
+        capture time on the session clock (see ExperimentSession._sample_time),
+        not the render tick's - then `since` and the debounce resolve at the
+        tracker's sample rate; re-reading the same sample is harmless."""
         if sample.face_found and sample.zone not in (self._avoid_zone, GazeZone.UNKNOWN):
             if self.since is None:
                 self.since = now

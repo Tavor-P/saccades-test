@@ -90,6 +90,11 @@ def load_session_trials(timestamp: str) -> list[TrialResult]:
                     grating_shown_at_unix_ms=_parse_optional_float(row.get("grating_shown_at_unix_ms", "")),
                     # .get(): sessions logged before tracking-quality gating have no tracking_ok column.
                     tracking_ok=_parse_optional_bool(row.get("tracking_ok", "")),
+                    # .get(): sessions logged before these per-trial timing fields existed lack the columns.
+                    flash_relative_to_onset_ms=_parse_optional_float(row.get("flash_relative_to_onset_ms", "")),
+                    avg_rt_used_ms=_parse_optional_float(row.get("avg_rt_used_ms", "")),
+                    scheduled_delay_ms=_parse_optional_float(row.get("scheduled_delay_ms", "")),
+                    gaze_latency_ms=_parse_optional_float(row.get("gaze_latency_ms", "")),
                 )
             )
     return trials
