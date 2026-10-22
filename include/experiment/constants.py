@@ -161,28 +161,23 @@ SACCADE_TIMEOUT_MS = 15_000  # force-advance a trial if gaze never lands (broken
 # flash_during_saccade check itself) can't be trusted across a tracking dropout.
 TRACKING_LOSS_WINDOW_MS = 150
 GAZE_LANDING_STABILITY_MS = 150  # gaze must hold in the target zone this long to count as "landed"
-# Gaze must hold outside the source zone this long before it counts as a real
-# saccade onset (debounces classifier noise so a single jittery/misclassified
-# frame doesn't get read as onset). This used to be tuned down to 10ms because
-# onset detection also *triggered the flash* in the old gaze-contingent
-# design, and this value ate directly into how much of a real saccade's short
-# (~65ms main-sequence) flight time was still ahead of the flash. That
-# tradeoff is gone now that flash timing is open-loop (scheduled off
-# avg_reaction_time_ms, independent of real-time detection speed - see
-# ExperimentSession) - onset detection is now purely a *measurement*
-# (reaction_latency_ms, and via that the reaction-time test's average and the
-# in-session rolling average), so accuracy matters more than latency. 10ms
-# was too short for that: a brief misclassified-zone blip (lighting flicker,
-# tracking glitch) reads as a real saccade onset just as easily as an actual
-# one, which is why the reaction-time test could measure something like 40ms
-# average against clearly-real onsets over 90ms - not a participant being
-# fast, just noise dragging the average down. Raised well above a single
-# frame's worth of jitter at this tracker's ~115-145fps (~7-9ms/frame).
-# reaction_latency_ms/onset_detection_lag_ms in the logged CSV (see
-# TrialResult) let you check empirically whether this is still catching false
-# positives - if avg_reaction_time_ms in real sessions is still
-# implausibly fast (well under ~100ms), raise this further.
-SACCADE_ONSET_STABILITY_MS = 10  # lowered from 40 for Neon (~16 ms latency, 200 Hz); verify with neon_fixation_test
+# Gaze must stay outside the source zone for this long before it counts as a
+# real saccade onset (debounces classifier noise: one misclassified sample must
+# not read as onset). 10 ms = two consecutive samples at Neon's 200 Hz (5 ms
+# apart), the smallest window that still rejects a single-sample glitch; it was
+# 40 ms back in the ~115-145 fps webcam days, when one frame was ~8 ms.
+# Onset detection no longer triggers the flash (flash timing is open-loop, off
+# avg_reaction_time_ms), so this only affects the measured reaction latency and
+# the flash_during_saccade window - a shorter window biases that latency down
+# (blips read as onsets) and a longer one up (every real saccade is detected
+# later). The stronger defence against blips is now the robust RT average
+# (RT_MIN_PLAUSIBLE_MS / RT_OUTLIER_*), which drops anticipations and slow
+# outliers instead of letting them drag a plain mean around. Timing is taken
+# from each sample's own timestamp (minus the measured gaze latency), so this
+# window is resolved at the tracker's rate, not the 60 Hz render tick. If
+# avg_reaction_time_ms in real sessions is implausibly fast (well under
+# ~100 ms), raise this. Verify with neon_fixation_test.
+SACCADE_ONSET_STABILITY_MS = 10
 
 # 3-point calibration is run this many times (round 1 discarded, rounds 2-3
 # averaged - see src/experiment/calibration.py) on the assumption that a
@@ -243,6 +238,29 @@ DEFAULT_REACTION_TIME_MS = 225.0
 # actual current reaction time.
 RT_AVERAGE_ROLLING_WINDOW = 5
 RT_AVERAGE_RECOMPUTE_EVERY = 5
+
+# Robust reaction-time average (trial_mechanics.robust_average_ms): measured
+# latencies below RT_MIN_PLAUSIBLE_MS are anticipations/noise blips (a real
+# go-cue-to-saccade latency is never that short) and are dropped; after that,
+# values more than RT_OUTLIER_MAD_K scaled-MADs above the median (MAD floored
+# at RT_OUTLIER_MAD_FLOOR_MS so a tight cluster doesn't reject ordinary
+# jitter) are dropped as slow outliers (lapses, blinks). The average is then
+# the median of what is left, so one stray value can't drag the schedule.
+RT_MIN_PLAUSIBLE_MS = 100.0
+RT_OUTLIER_MAD_K = 3.0
+RT_OUTLIER_MAD_FLOOR_MS = 25.0
+
+# Gaze-sample timestamps are the PC arrival time; the eye actually moved
+# (measured gaze latency) earlier. A source's reported latency is clamped to
+# this range before being subtracted, so a bad clock-offset estimate can't
+# shift onset/landing times by seconds.
+GAZE_LATENCY_MAX_MS = 150.0
+
+# The final ZEST threshold estimate (or its 68% credible interval) lying within
+# this many log10 units of the contrast grid's ends is flagged in _meta.json:
+# the true threshold is probably outside the searchable range, so the number is
+# a bound, not an estimate.
+ZEST_GRID_BOUND_MARGIN_LOG = 0.05
 
 # Stopping criterion for the main saccade block, replacing a fixed trial
 # count now that contrast stays ZEST-adaptive rather than a discrete level

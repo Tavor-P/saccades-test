@@ -19,6 +19,7 @@ from include.experiment.constants import (
     FOREPERIOD_MAX_MS,
     FOREPERIOD_MIN_MS,
     GAZE_LANDING_STABILITY_MS,
+    GAZE_LATENCY_MAX_MS,
     GRATING_DURATION_FRAMES,
     GRATING_POSITION,
     MAX_SACCADE_TRIALS_REAL,
@@ -37,6 +38,9 @@ from include.experiment.constants import (
     TIMING_OFFSETS_MS,
     TRACKING_LOSS_WINDOW_MS,
     ZEST_CREDIBLE_INTERVAL_MAX_LOG_WIDTH,
+    ZEST_GRID_BOUND_MARGIN_LOG,
+    ZEST_LOG_CONTRAST_MAX,
+    ZEST_LOG_CONTRAST_MIN,
     ZEST_MIN_VALID_TRIALS_REAL,
     ZEST_MIN_VALID_TRIALS_TEST,
 )
@@ -46,7 +50,7 @@ from src.experiment.logger import ResultLogger
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.scoring import is_valid_for_saccadic_analysis, score_outcome
 from src.experiment.trial_factory import build_saccade_sequence, generate_next_saccade_trial
-from src.experiment.trial_mechanics import OnsetDetector, ShuffledBag, average_ms, zone_for
+from src.experiment.trial_mechanics import OnsetDetector, ShuffledBag, robust_average_ms, zone_for
 from src.experiment.zest import ZestStaircase
 
 
@@ -103,8 +107,10 @@ class ExperimentSession:
         test_mode: bool = False,
         precomputed_calibration_ratios: tuple[float, float, float] | None = None,
         skip_practice_trials: bool = False,
+        gaze_latency_ms: float | None = None,
     ) -> None:
         self._gaze = gaze_source
+        self._gaze_latency_fallback_ms = gaze_latency_ms
         self._logger = logger
         self._clock = clock
         self._show_gaze_indicator = show_gaze_indicator
@@ -142,6 +148,7 @@ class ExperimentSession:
         self._calibration_rounds_data: list[tuple[float, float, float]] = []
         self._results: list[TrialResult] = []
         zest_kwargs = {"log_contrast_min": math.log10(contrast_floor)} if contrast_floor is not None else {}
+        self._zest_log_min = math.log10(contrast_floor) if contrast_floor is not None else ZEST_LOG_CONTRAST_MIN
         self._zest = ZestStaircase(**zest_kwargs)
         self._clear_trial_state()
 
@@ -162,8 +169,55 @@ class ExperimentSession:
         reads this."""
         return self._calibration_ratios
 
+    @property
+    def gaze_latency_ms(self) -> float:
+        """Eye-movement-to-sample latency subtracted from sample timestamps:
+        the source's own measurement (`gaze_latency_ms` attribute, e.g. Neon's
+        median clock-offset-corrected latency) if it has one, else the
+        constructor's value, else 0. Clamped to [0, GAZE_LATENCY_MAX_MS]."""
+        value = getattr(self._gaze, "gaze_latency_ms", None)
+        if value is None:
+            value = self._gaze_latency_fallback_ms
+        if value is None or value != value:
+            return 0.0
+        return min(max(float(value), 0.0), GAZE_LATENCY_MAX_MS)
+
+    def _sample_time(self, sample, now: float) -> float:
+        """When the eye was actually where `sample` says, on the session
+        clock: the sample's own timestamp (so onset/landing resolve at the
+        tracker's rate - 200 Hz for Neon - not the 60 Hz render tick) minus the
+        gaze latency. Falls back to the tick time `now` for samples without a
+        usable timestamp (<= 0, e.g. test doubles) or one that is stale (>1 s)."""
+        if sample.timestamp is None or sample.timestamp <= 0:
+            return now - self.gaze_latency_ms / 1000
+        t = self._clock.from_monotonic(sample.timestamp)
+        if t > now or now - t > 1.0:
+            t = now
+        return t - self.gaze_latency_ms / 1000
+
+    def _new_samples(self, latest) -> list[tuple[object, float]]:
+        """(sample, capture_time) for every gaze sample since the last call, in
+        order. Sources that keep a short history (`samples_since(timestamp)`,
+        e.g. Neon at 200 Hz) hand over all of them, so onset/landing resolve at
+        the tracker's rate even though the session only ticks at the render
+        rate; others (only `latest_sample()`) contribute just the latest one,
+        which is harmless to re-read."""
+        now = self._clock.now()
+        history = getattr(self._gaze, "samples_since", None)
+        if history is not None and latest.timestamp is not None and latest.timestamp > 0:
+            samples = history(self._last_sample_ts)
+            if samples:
+                self._last_sample_ts = samples[-1].timestamp
+        else:
+            samples = [latest]
+        return [(s, self._sample_time(s, now)) for s in samples]
+
     def _clear_trial_state(self) -> None:
         self._trial_start_time = 0.0
+        self._last_sample_ts: float | None = None
+        self._trial_avg_rt_ms: float | None = None
+        self._trial_scheduled_delay_ms: float | None = None
+        self._trial_gaze_latency_ms: float | None = None
         # Constructed properly (with the right zone to avoid) in
         # _reveal_target_and_start_trial, once the trial's source is known -
         # this placeholder is never read before then.
@@ -316,14 +370,14 @@ class ExperimentSession:
             self._cross_visible = True
             self._phase = Phase.RT_TEST_ACTIVE
             self._rt_test_start_time = self._clock.now()
+            self._last_sample_ts = getattr(self._gaze.latest_sample(), "timestamp", None)
 
     def _tick_rt_test_active(self) -> None:
         now = self._clock.now()
-        sample = self._gaze.latest_sample()
-
-        if not self._rt_test_onset_detector.confirmed and self._rt_test_onset_detector.update(sample, now):
-            self._finish_rt_test_attempt((self._rt_test_onset_detector.since - self._rt_test_start_time) * 1000)
-            return
+        for sample, sample_t in self._new_samples(self._gaze.latest_sample()):
+            if self._rt_test_onset_detector.update(sample, sample_t):
+                self._finish_rt_test_attempt((self._rt_test_onset_detector.since - self._rt_test_start_time) * 1000)
+                return
 
         if now - self._rt_test_start_time >= SACCADE_TIMEOUT_MS / 1000:
             self._finish_rt_test_attempt(None)
@@ -351,7 +405,7 @@ class ExperimentSession:
 
         self._rt_test_attempt += 1
         if self._rt_test_attempt >= self._rt_test_target_attempts:
-            self._avg_reaction_time_ms = average_ms(self._rt_samples_ms, default=DEFAULT_REACTION_TIME_MS)
+            self._avg_reaction_time_ms = robust_average_ms(self._rt_samples_ms, default=DEFAULT_REACTION_TIME_MS)
             self._begin_next_trial_or_complete()
         else:
             self._begin_rt_test_foreperiod()
@@ -371,6 +425,7 @@ class ExperimentSession:
             return
         if self._should_stop_main_block():
             self._phase = Phase.COMPLETE
+            self._log_phase_summary()
             return
         trial, self._trial_source = generate_next_saccade_trial(
             self._main_trial_counter, self._trial_source, self._timing_offset_bag
@@ -391,6 +446,33 @@ class ExperimentSession:
     @property
     def _valid_trial_count(self) -> int:
         return sum(1 for r in self._results if r.phase == "saccade" and is_valid_for_saccadic_analysis(r.flash_during_saccade, r.tracking_ok))
+
+    def _log_phase_summary(self) -> None:
+        """Final per-phase numbers for _meta.json (loggers without it, like the
+        simulator's in-memory one, are skipped)."""
+        log = getattr(self._logger, "set_phase_summary", None)
+        if log is None:
+            return
+        estimate = self._zest.threshold_estimate
+        lo, hi = self._zest.credible_interval(0.68)
+        log_lo, log_hi = self._zest_log_min, ZEST_LOG_CONTRAST_MAX
+        margin = ZEST_GRID_BOUND_MARGIN_LOG
+        at_lower = min(math.log10(estimate), math.log10(lo)) <= log_lo + margin
+        at_upper = max(math.log10(estimate), math.log10(hi)) >= log_hi - margin
+        log(
+            "saccade",
+            {
+                "threshold_estimate": estimate,
+                "credible_interval_68": [lo, hi],
+                "valid_trials": self._valid_trial_count,
+                "completed_trials": self._completed_main_trial_count,
+                "hit_max_trial_cap": self._completed_main_trial_count >= self._max_saccade_trials,
+                "zest_grid_log10_range": [log_lo, log_hi],
+                "threshold_at_grid_bound": "lower" if at_lower else "upper" if at_upper else None,
+                "final_avg_reaction_time_ms": self._avg_reaction_time_ms,
+                "gaze_latency_ms_used": self.gaze_latency_ms,
+            },
+        )
 
     def _should_stop_main_block(self) -> bool:
         """An efficient, well-estimated threshold rather than a fixed trial
@@ -437,6 +519,7 @@ class ExperimentSession:
         self._hide_source_symbol()
         self._phase = Phase.TRIAL_ACTIVE
         self._trial_start_time = self._clock.now()
+        self._last_sample_ts = self._gaze.latest_sample().timestamp
         self._onset_detector = OnsetDetector(zone_for(trial.source))
         # Open-loop: the flash (or catch) fires at a fixed delay from this
         # instant - avg_reaction_time_ms + this trial's offset - rather than
@@ -448,7 +531,10 @@ class ExperimentSession:
         # the right answer today (both branches happen to be 0) and silently
         # break if the fallback value or the offsets ever changed.
         offset_ms = trial.timing_offset_ms if trial.timing_offset_ms is not None else 0
-        self._flash_scheduled_at = self._trial_start_time + (self._avg_reaction_time_ms + offset_ms) / 1000
+        self._trial_avg_rt_ms = self._avg_reaction_time_ms
+        self._trial_scheduled_delay_ms = self._avg_reaction_time_ms + offset_ms
+        self._trial_gaze_latency_ms = self.gaze_latency_ms
+        self._flash_scheduled_at = self._trial_start_time + self._trial_scheduled_delay_ms / 1000
 
     def tick(self) -> None:
         if self._phase is Phase.RT_TEST_FOREPERIOD:
@@ -468,6 +554,7 @@ class ExperimentSession:
         trial = self._current_trial_spec
         sample = self._gaze.latest_sample()
         now = self._clock.now()
+        new_samples = self._new_samples(sample)
         target_zone = zone_for(trial.target)
 
         # Onset detection still runs every tick, purely as a measurement now
@@ -475,9 +562,10 @@ class ExperimentSession:
         # plus one bound of the flash_during_saccade window check in
         # _finish_trial) - it no longer triggers the flash. See the
         # scheduled-time block below for that.
-        if not self._onset_detector.confirmed and self._onset_detector.update(sample, now):
-            self._reaction_latency_ms = (self._onset_detector.since - self._trial_start_time) * 1000
-            self._onset_detection_lag_ms = (now - self._onset_detector.since) * 1000
+        for s, s_t in new_samples:
+            if not self._onset_detector.confirmed and self._onset_detector.update(s, s_t):
+                self._reaction_latency_ms = (self._onset_detector.since - self._trial_start_time) * 1000
+                self._onset_detection_lag_ms = (s_t - self._onset_detector.since) * 1000
 
         # Open-loop: fires once, at its scheduled absolute time, independent
         # of the onset detection above. Catch trials still "decide" here (no
@@ -509,14 +597,19 @@ class ExperimentSession:
         if self._response_window_open and now > self._response_deadline:
             self._response_window_open = False
 
-        if not sample.face_found and abs(now - self._flash_scheduled_at) <= TRACKING_LOSS_WINDOW_MS / 1000:
+        if any(
+            not s.face_found and abs(s_t - self._flash_scheduled_at) <= TRACKING_LOSS_WINDOW_MS / 1000
+            for s, s_t in new_samples
+        ):
             self._tracking_lost_near_flash = True
 
-        if not self._landed:
-            if sample.face_found and sample.zone is target_zone:
+        for s, s_t in new_samples:
+            if self._landed:
+                break
+            if s.face_found and s.zone is target_zone:
                 if self._target_landed_since is None:
-                    self._target_landed_since = now
-                elif now - self._target_landed_since >= GAZE_LANDING_STABILITY_MS / 1000:
+                    self._target_landed_since = s_t
+                elif s_t - self._target_landed_since >= GAZE_LANDING_STABILITY_MS / 1000:
                     # Land immediately, but don't finalize/log the trial yet -
                     # a real reaction time can easily outlast how quickly
                     # landing gets detected, so ending the trial here would
@@ -527,6 +620,7 @@ class ExperimentSession:
             else:
                 self._target_landed_since = None
 
+        if not self._landed:
             if now - self._trial_start_time >= SACCADE_TIMEOUT_MS / 1000:
                 self._finish_trial(landed=False)
                 return
@@ -569,13 +663,26 @@ class ExperimentSession:
         if self._completed_main_trial_count % RT_AVERAGE_RECOMPUTE_EVERY == 0:
             # default=current average: a window that's entirely timeouts
             # shouldn't zero it out, just leave it unchanged.
-            self._avg_reaction_time_ms = average_ms(self._recent_rt_ms, default=self._avg_reaction_time_ms)
+            self._avg_reaction_time_ms = robust_average_ms(self._recent_rt_ms, default=self._avg_reaction_time_ms)
 
     def _finish_trial(self, landed: bool) -> None:
         trial = self._current_trial_spec
         now = self._clock.now()
 
-        saccade_duration_ms = (now - self._trial_start_time) * 1000 if self._onset_detector.confirmed else None
+        # Landing minus onset, both on the capture-time axis: the time the eye
+        # spent between first leaving the source zone and settling in the
+        # target zone. None unless both were observed (a timeout, or landing
+        # that never confirmed, has no determinable duration).
+        onset_at = self._onset_detector.since
+        saccade_duration_ms = (
+            (self._target_landed_since - onset_at) * 1000
+            if self._onset_detector.confirmed
+            and self._landed
+            and onset_at is not None
+            and self._target_landed_since is not None
+            and self._target_landed_since >= onset_at
+            else None
+        )
         if not landed and not self._onset_detector.confirmed:
             outcome = "timeout"
         else:
@@ -623,6 +730,14 @@ class ExperimentSession:
                 timing_offset_ms=trial.timing_offset_ms,
                 grating_shown_at_unix_ms=self._grating_shown_at_unix_ms,
                 tracking_ok=tracking_ok,
+                flash_relative_to_onset_ms=(
+                    (self._flash_scheduled_at - onset_at) * 1000
+                    if self._grating_actually_shown and onset_at is not None
+                    else None
+                ),
+                avg_rt_used_ms=self._trial_avg_rt_ms,
+                scheduled_delay_ms=self._trial_scheduled_delay_ms,
+                gaze_latency_ms=self._trial_gaze_latency_ms,
             )
             self._logger.log(result)
             self._results.append(result)
