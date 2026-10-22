@@ -94,13 +94,25 @@ NEON_GAP_THRESHOLD_MS = 30.0
 NEON_STALE_TIMEOUT_S = 0.5
 
 # --- Neon screen-marker mapping (src/eye_tracking/screen_markers.py, neon_screen_gaze.py) ---
-# Small AprilTags in the four screen corners let the scene camera locate the
-# screen every frame, so gaze is reported in screen coordinates that don't
-# change when the head moves. Kept small/dim so they disturb the task as
-# little as possible - if detection gets unreliable, raise MARKER_PX first.
-SCREEN_MARKER_PX = 100  # black-bordered tag square, screen pixels
-SCREEN_MARKER_MARGIN_PX = 22  # quiet zone around each tag (needed for detection)
-SCREEN_MARKER_PAD_LEVEL = 200  # 0-255; light grey instead of full white (less glare, still high contrast)
+# AprilTags in the four screen corners let the scene camera locate the screen
+# every frame, so gaze is reported in screen coordinates that don't change when
+# the head moves. Sized physically (so they look the same on any monitor) and
+# drawn at low contrast with a mean luminance equal to the background, so each
+# corner is a faint texture rather than a bright patch. Synthetic-render study
+# (pupil_apriltags tag36h11, quad_decimate 1.0, 300 renders per row; "nominal" =
+# 12.6 scene px/cm, blur 0.9, noise 3, 20 deg tilt; "harsh" = 10 px/cm, blur 1.3,
+# noise 5, 40 deg tilt). Detection rate:
+#   old 100 px, black 0 / white 255, light-grey quiet zone: nominal 100%, harsh 0%
+#   216 px, contrast 110 (this setting):                    nominal 100%, harsh 94%
+#   216 px, contrast 80 / 130:                              nominal 100%, harsh 73% / 96%
+#   200 px, contrast 110:                                   nominal 100%, harsh 85%
+# Simulated only - not confirmed on real glasses. If detection gets unreliable
+# there, raise SCREEN_MARKER_CONTRAST first, then SCREEN_MARKER_WIDTH_CM.
+SCREEN_MARKER_WIDTH_CM = 6.0  # physical tag width
+SCREEN_MARKER_SCREEN_WIDTH_CM = 53.1  # physical width of the display (24in 16:9); None -> use SCREEN_MARKER_PX
+SCREEN_MARKER_PX = 216  # fallback tag width in screen px when the physical width is unknown (multiple of 8)
+SCREEN_MARKER_MARGIN_CELLS = 1  # quiet zone width in tag cells (tag = 8x8 cells), drawn at the background grey
+SCREEN_MARKER_CONTRAST = 110  # 0-255 gap between a tag's white and black cells; their mean is held at the background grey
 # Detector downscale (1.0 = full resolution). The library default of 2.0 is
 # fast but misses small tags; we use small tags, so full resolution.
 NEON_TAG_QUAD_DECIMATE = 1.0
