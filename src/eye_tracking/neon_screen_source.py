@@ -93,9 +93,19 @@ class NeonScreenGazeSource(NeonGazeSource):
     def _receive(self, fn):
         try:
             return fn(timeout_seconds=0.5)
-        except Exception:
+        except Exception as exc:
+            self._record_error(getattr(fn, "__name__", "receive"), exc)
             time.sleep(0.005)
             return None
+
+    def _guarded(self, where: str, fn, *args) -> None:
+        """Run a per-item handler so one bad frame/datum is counted and logged
+        instead of killing the receive thread."""
+        try:
+            fn(*args)
+        except Exception as exc:
+            self._record_error(where, exc)
+            time.sleep(0.005)
 
     def _gaze_loop(self) -> None:
         while self._running:
@@ -103,19 +113,19 @@ class NeonScreenGazeSource(NeonGazeSource):
             if datum is None:
                 time.sleep(0.005)
                 continue
-            self._ingest_screen(datum)
+            self._guarded("ingest_screen", self._ingest_screen, datum)
 
     def _scene_loop(self) -> None:
         while self._running:
             frame = self._receive(self._device.receive_scene_video_frame)
             if frame is not None:
-                self._screen_mapper.process_scene(frame)
+                self._guarded("process_scene", self._screen_mapper.process_scene, frame)
 
     def _imu_loop(self) -> None:
         while self._running:
             datum = self._receive(self._device.receive_imu_datum)
             if datum is not None:
-                self._ingest_imu(datum)
+                self._guarded("ingest_imu", self._ingest_imu, datum)
 
     # -- ingest ------------------------------------------------------------
 
