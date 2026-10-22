@@ -111,6 +111,9 @@ class ExperimentSession:
     ) -> None:
         self._gaze = gaze_source
         self._gaze_latency_fallback_ms = gaze_latency_ms
+        # Snapshot of gaze_latency_ms taken at each RT attempt / trial start, so the
+        # per-sample timing path never queries the source and onset/landing share one offset.
+        self._latency_s = 0.0
         self._logger = logger
         self._clock = clock
         self._show_gaze_indicator = show_gaze_indicator
@@ -189,11 +192,11 @@ class ExperimentSession:
         gaze latency. Falls back to the tick time `now` for samples without a
         usable timestamp (<= 0, e.g. test doubles) or one that is stale (>1 s)."""
         if sample.timestamp is None or sample.timestamp <= 0:
-            return now - self.gaze_latency_ms / 1000
+            return now - self._latency_s
         t = self._clock.from_monotonic(sample.timestamp)
         if t > now or now - t > 1.0:
             t = now
-        return t - self.gaze_latency_ms / 1000
+        return t - self._latency_s
 
     def _new_samples(self, latest) -> list[tuple[object, float]]:
         """(sample, capture_time) for every gaze sample since the last call, in
@@ -361,6 +364,7 @@ class ExperimentSession:
         self._foreperiod_start = self._clock.now()
         self._foreperiod_duration = random.uniform(FOREPERIOD_MIN_MS, FOREPERIOD_MAX_MS) / 1000
         self._rt_test_onset_detector = OnsetDetector(zone_for(Target.DOT))
+        self._latency_s = self.gaze_latency_ms / 1000
         self._dot_visible = True
         self._cross_visible = False
 
@@ -534,6 +538,7 @@ class ExperimentSession:
         self._trial_avg_rt_ms = self._avg_reaction_time_ms
         self._trial_scheduled_delay_ms = self._avg_reaction_time_ms + offset_ms
         self._trial_gaze_latency_ms = self.gaze_latency_ms
+        self._latency_s = self._trial_gaze_latency_ms / 1000
         self._flash_scheduled_at = self._trial_start_time + self._trial_scheduled_delay_ms / 1000
 
     def tick(self) -> None:
