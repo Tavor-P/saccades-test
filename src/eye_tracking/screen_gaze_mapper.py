@@ -7,11 +7,11 @@ process_scene() (~30 Hz); the gaze thread calls map_gaze() (~200 Hz) with
 whatever screen location is newest - head movement between the two is small.
 """
 import threading
-import time
 from dataclasses import dataclass
 
 from include.eye_tracking.constants import NEON_MARKER_HOLD_S, NEON_TAG_QUAD_DECIMATE
 from src.eye_tracking.screen_markers import marker_verts
+from src import timebase
 
 
 @dataclass(frozen=True)
@@ -56,7 +56,7 @@ class ScreenGazeMapper:
 
     def process_scene(self, frame) -> None:
         """Locate the screen in one scene frame (call from the scene thread)."""
-        now = time.monotonic()
+        now = timebase.now()
         with self._gm_lock:
             self._gm.process_scene(frame)
             locations = getattr(self._gm, "_surface_locations", {})
@@ -84,7 +84,7 @@ class ScreenGazeMapper:
         x, y = mapped[0].x * self._width, (1 - mapped[0].y) * self._height
         if not (-0.5 * self._width <= x <= 1.5 * self._width and -0.5 * self._height <= y <= 1.5 * self._height):
             return None  # a wild extrapolation from a bad marker fit
-        return ScreenGaze(x, y, time.monotonic() - good_at)
+        return ScreenGaze(x, y, timebase.now() - good_at)
 
     @property
     def markers_detected(self) -> int:

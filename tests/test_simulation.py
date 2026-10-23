@@ -4,6 +4,7 @@ import time
 
 import pytest
 
+from src import timebase
 from src.experiment.simulation import ParticipantProfile, simulate_session, simulate_trial
 
 
@@ -15,9 +16,12 @@ def test_simulation_never_imports_a_graphics_stack():
 
 def test_simulation_does_not_depend_on_real_time(monkeypatch):
     def boom():
-        raise AssertionError("simulation read the real monotonic clock")
+        raise AssertionError("simulation read the real clock")
 
+    monkeypatch.setattr(timebase, "_clock", boom)
+    monkeypatch.setattr(timebase, "_wall_clock", boom)
     monkeypatch.setattr(time, "monotonic", boom)
+    monkeypatch.setattr(time, "perf_counter", boom)
     assert simulate_trial(seed=2).saccade_results
 
 

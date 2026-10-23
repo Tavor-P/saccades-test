@@ -15,7 +15,6 @@ corners are low-pass filtered, with the filter opening up when they really move
 """
 import math
 import threading
-import time
 from dataclasses import dataclass
 
 import cv2
@@ -34,6 +33,7 @@ from include.eye_tracking.constants import (
     NEON_OUTLINE_WORK_SCALE,
 )
 from src.eye_tracking.screen_gaze_mapper import ScreenGaze
+from src import timebase
 
 _OPEN_KERNEL = np.ones((5, 5), np.uint8)
 
@@ -194,7 +194,7 @@ def _evaluate(contour, blur, undistorter, scale, size, margin, frame_area) -> Sc
 
 class ScreenOutlineMapper:
     def __init__(
-        self, calibration, screen_size: tuple[int, int], hold_s: float = NEON_OUTLINE_HOLD_S, clock=time.monotonic
+        self, calibration, screen_size: tuple[int, int], hold_s: float = NEON_OUTLINE_HOLD_S, clock=timebase.now
     ) -> None:
         self._undistorter = _Undistorter(calibration)
         self._width, self._height = screen_size

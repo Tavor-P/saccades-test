@@ -31,7 +31,6 @@ import math
 import random
 import sys
 import threading
-import time
 from datetime import datetime
 from pathlib import Path
 
@@ -40,6 +39,7 @@ from psychopy import core, event, visual
 
 from include.eye_tracking.constants import NEON_DEVICE_ADDRESS, NEON_DEVICE_PORT, NEON_DISCOVERY_TIMEOUT_S
 from src.eye_tracking.neon_video_recorder import SceneRecorderProcess, retime_video
+from src import timebase
 
 _retime_video = retime_video  # historical name
 
@@ -126,7 +126,7 @@ class NeonRecorder:
     def _loop(self) -> None:
         while self._running:
             datum = self._device.receive_gaze_datum(timeout_seconds=0.5)
-            arrival = time.time()
+            arrival = timebase.unix_now()
             if datum is None:
                 continue
             self._writer.writerow([f"{arrival:.6f}", f"{datum.timestamp_unix_seconds:.6f}", datum.x, datum.y, int(datum.worn)])
@@ -180,7 +180,7 @@ class WebcamRecorder:
     def _loop(self) -> None:
         while self._running:
             ok, frame = self._capture.read()
-            now = time.time()
+            now = timebase.unix_now()
             if not ok:
                 continue
             if self._overlay is not None:
@@ -257,7 +257,7 @@ def run(camera_index: int, num_jumps: int, stream_scene: bool = True) -> Path:
             dot.pos = (side * DOT_X * aspect, 0)
             dot.draw()
             win.flip()
-            shown_at = time.time()
+            shown_at = timebase.unix_now()
             stimulus_csv.writerow([i, f"{shown_at:.6f}", "right" if side > 0 else "left"])
             neon.send_event(f"jump_{i}_{'right' if side > 0 else 'left'}", shown_at)
             jumps_shown = i + 1
@@ -266,9 +266,9 @@ def run(camera_index: int, num_jumps: int, stream_scene: bool = True) -> Path:
             while core.getTime() < wait_until:
                 if event.getKeys(keyList=["escape"]):
                     return folder
-                if time.monotonic() - last_text_update > 0.1:  # re-rendering text every frame is costly
-                    clock_text.text = "\n".join(overlay_lines(neon, time.time()))
-                    last_text_update = time.monotonic()
+                if timebase.now() - last_text_update > 0.1:  # re-rendering text every frame is costly
+                    clock_text.text = "\n".join(overlay_lines(neon, timebase.unix_now()))
+                    last_text_update = timebase.now()
                 clock_text.draw()
                 dot.draw()
                 win.flip()

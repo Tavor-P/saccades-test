@@ -11,7 +11,6 @@ classification and smoothing behave identically to the live stream.
 
 import csv
 import math
-import time
 from bisect import bisect_right
 from pathlib import Path
 from typing import Callable, NamedTuple
@@ -20,12 +19,13 @@ from include.eye_tracking.constants import NEON_SCENE_WIDTH, NEON_STALE_TIMEOUT_
 from include.eye_tracking.interfaces import GazeSource
 from include.eye_tracking.types import GazeSample, GazeZone
 from src.eye_tracking.gaze_mapping import GazeMapper
+from src import timebase
 
 TRACE_FIELDS = ["t_s", "device_unix_s", "x_px", "worn"]
 
 
 class TraceRow(NamedTuple):
-    t_s: float  # PC arrival time (monotonic), seconds
+    t_s: float  # PC arrival time (timebase.now(), perf_counter), seconds
     device_unix_s: float | None  # the phone's capture timestamp, if known
     x_px: float | None  # scene-camera gaze x in pixels; None/NaN when unusable
     worn: bool
@@ -81,7 +81,7 @@ class ReplayGazeSource(GazeSource):
     often the caller polls. After the trace ends the source reports a lost
     track (as the live source does once its stream goes stale)."""
 
-    def __init__(self, trace: list[TraceRow], time_fn: Callable[[], float] = time.monotonic) -> None:
+    def __init__(self, trace: list[TraceRow], time_fn: Callable[[], float] = timebase.now) -> None:
         if not trace:
             raise ValueError("empty gaze trace")
         self._trace = trace

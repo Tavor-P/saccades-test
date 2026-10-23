@@ -37,14 +37,48 @@ def test_session_logic_does_not_import_a_graphics_or_hardware_stack(module):
 
 @pytest.mark.parametrize("module", ["session", "presaccade_session", "tutorial_session", "trial_mechanics"])
 def test_session_logic_reads_time_only_through_the_injected_clock(module):
-    """Why: a direct time.monotonic()/sleep() makes the logic untestable and breaks the simulated
-    clock (and pausing). (time.time() for the wall-clock unix timestamp is the one allowed use.)"""
+    """Why: a direct time.perf_counter()/sleep() makes the logic untestable and breaks the simulated
+    clock (and pausing). Wall-clock stamps come from clock.unix_ms() too."""
     forbidden = []
     for node in ast.walk(_tree(ROOT / "src" / "experiment" / f"{module}.py")):
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name):
-            if node.func.value.id == "time" and node.func.attr in {"monotonic", "sleep", "perf_counter"}:
+            if node.func.value.id == "time" and node.func.attr in {"monotonic", "sleep", "perf_counter", "time"}:
                 forbidden.append(f"time.{node.func.attr} at line {node.lineno}")
     assert not forbidden, forbidden
+
+
+def test_only_the_timebase_reads_the_coarse_or_raw_clocks():
+    """Why: on Windows time.monotonic()/time.time() tick every 15.6 ms (half a saccade). Event timing must
+    use src/timebase.py (perf_counter); wall-clock values are derived from it via an anchor."""
+    forbidden = []
+    for path in (ROOT / "src").rglob("*.py"):
+        if path.name == "timebase.py":
+            continue
+        for node in ast.walk(_tree(path)):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name):
+                if node.func.value.id == "time" and node.func.attr in {"monotonic", "time", "perf_counter", "monotonic_ns", "time_ns"}:
+                    forbidden.append(f"{path.relative_to(ROOT)}:{node.lineno} time.{node.func.attr}")
+    assert not forbidden, forbidden
+
+
+def test_timebase_uses_a_fine_resolution_clock():
+    import time
+
+    from src import timebase
+
+    assert timebase._clock is time.perf_counter
+    assert time.get_clock_info("perf_counter").resolution <= 1e-6  # 100 ns on Windows; the others are 15.6 ms there
+
+
+def test_timebase_anchor_gives_sub_tick_unix_time():
+    """The unix time derived from the perf counter must advance smoothly (not in 15.6 ms steps) and agree with the system clock."""
+    import time
+
+    from src import timebase
+
+    stamps = {timebase.unix_now() for _ in range(2000)}
+    assert len(stamps) > 1000
+    assert abs(timebase.unix_now() - time.time()) < 0.05
 
 
 def test_include_holds_data_only_no_functions():

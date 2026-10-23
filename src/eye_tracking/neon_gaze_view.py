@@ -12,7 +12,6 @@ Usage: python -m src.eye_tracking.neon_gaze_view      (SPACE start/recalibrate-c
 import psychopy  # noqa: F401
 
 import threading
-import time
 
 import numpy as np
 from psychopy import event, visual
@@ -26,6 +25,7 @@ from include.eye_tracking.constants import (
 )
 from src.eye_tracking.screen_gaze_mapper import ScreenGazeMapper
 from src.eye_tracking.screen_markers import build_marker_stims
+from src import timebase
 
 STALE_AFTER_S = 0.5  # hide the dot if no mapped gaze arrived this recently
 SMOOTHING = 0.35  # EMA weight of each new mapped reading; lower = steadier but laggier
@@ -85,7 +85,7 @@ def main() -> None:
             latest["markers"] = mapper.markers_detected
             mapped = mapper.map_gaze(gaze)
             if mapped is not None:
-                latest.update(x=mapped.x, y=mapped.y, t=time.monotonic())
+                latest.update(x=mapped.x, y=mapped.y, t=timebase.now())
 
     def imu_reader() -> None:
         while running:
@@ -103,7 +103,7 @@ def main() -> None:
     imu_thread.start()
 
     def fresh() -> bool:
-        return latest["x"] is not None and time.monotonic() - latest["t"] < STALE_AFTER_S
+        return latest["x"] is not None and timebase.now() - latest["t"] < STALE_AFTER_S
 
     def draw_markers() -> None:
         for stim in stims:
@@ -122,8 +122,8 @@ def main() -> None:
         while index < len(targets):
             tx, ty = targets[index]
             target.pos = (tx - width / 2, height / 2 - ty)
-            start, samples, last_seen = time.monotonic(), [], 0.0
-            while (elapsed := time.monotonic() - start) < CAL_SETTLE_S + CAL_SAMPLE_S:
+            start, samples, last_seen = timebase.now(), [], 0.0
+            while (elapsed := timebase.now() - start) < CAL_SETTLE_S + CAL_SAMPLE_S:
                 if event.getKeys(keyList=["escape"]):
                     return None
                 if elapsed >= CAL_SETTLE_S and latest["t"] != last_seen and fresh():
@@ -143,8 +143,8 @@ def main() -> None:
         ]
         before = [np.hypot(r[0] - t[0], r[1] - t[1]) for r, t in zip(raw_points, target_points)]
         print(f"Calibration residual: mean {np.mean(errors):.0f} px, max {np.max(errors):.0f} px (uncalibrated mean {np.mean(before):.0f} px)")
-        end = time.monotonic() + 2.5
-        while time.monotonic() < end:
+        end = timebase.now() + 2.5
+        while timebase.now() < end:
             show(f"Calibrated: mean error {np.mean(errors):.0f} px (was {np.mean(before):.0f} px before)")
             win.flip()
         return matrix
@@ -162,8 +162,8 @@ def main() -> None:
                 matrix, smoothed = None, None
 
             seen4 = latest["markers"] >= 4 and fresh()
-            markers_ok_since = (markers_ok_since or time.monotonic()) if seen4 else None
-            ready = markers_ok_since is not None and time.monotonic() - markers_ok_since > 0.5
+            markers_ok_since = (markers_ok_since or timebase.now()) if seen4 else None
+            ready = markers_ok_since is not None and timebase.now() - markers_ok_since > 0.5
 
             if matrix is None:
                 if "space" in keys and ready:
@@ -184,12 +184,12 @@ def main() -> None:
                 if latest["t"] != last_t:  # new mapped reading: fold into the smoothed, calibrated position
                     last_t = latest["t"]
                     cx, cy = apply_affine(matrix, latest["x"], latest["y"])
-                    if smoothed is None or time.monotonic() - prev_t > 1.0:
+                    if smoothed is None or timebase.now() - prev_t > 1.0:
                         smoothed = [cx, cy]
                     else:
                         smoothed[0] += (cx - smoothed[0]) * SMOOTHING
                         smoothed[1] += (cy - smoothed[1]) * SMOOTHING
-                    prev_t = time.monotonic()
+                    prev_t = timebase.now()
                 dot.pos = (smoothed[0] - width / 2, height / 2 - smoothed[1])
                 dot.draw()
                 hud.text = f"gaze x={smoothed[0]:.0f}  y={smoothed[1]:.0f} px  (markers {latest['markers']}/4, head {latest['head'] or 0:.0f} deg/s{' - HEAD MOVING' if (latest['head'] or 0) > NEON_HEAD_SPEED_LIMIT_DPS else ''})   R = recalibrate"

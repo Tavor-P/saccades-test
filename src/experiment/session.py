@@ -4,7 +4,6 @@ runs of this class: src/experiment/simulation.py."""
 
 import math
 import random
-import time
 from collections import deque
 from enum import Enum, auto
 
@@ -193,7 +192,7 @@ class ExperimentSession:
         usable timestamp (<= 0, e.g. test doubles) or one that is stale (>1 s)."""
         if sample.timestamp is None or sample.timestamp <= 0:
             return now - self._latency_s
-        t = self._clock.from_monotonic(sample.timestamp)
+        t = self._clock.from_perf_counter(sample.timestamp)
         if t > now or now - t > 1.0:
             t = now
         return t - self._latency_s
@@ -584,7 +583,7 @@ class ExperimentSession:
             self._response_deadline = now + RESPONSE_WINDOW_MS / 1000
             if trial.grating_shown:
                 self._grating_shown_at = now
-                self._grating_shown_at_unix_ms = time.time() * 1000
+                self._grating_shown_at_unix_ms = self._clock.unix_ms()
                 self._grating_visible = True
                 self._grating_frames_remaining = GRATING_DURATION_FRAMES
                 self._grating_actually_shown = True

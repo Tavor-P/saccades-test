@@ -1,6 +1,5 @@
 """GazeTracker (webcam backend): MediaPipe FaceLandmarker iris ratio -> GazeSample. Heavy imports (mediapipe/cv2) - not needed for the Neon backend."""
 
-import time
 import urllib.request
 from collections import deque
 from pathlib import Path
@@ -25,6 +24,7 @@ from include.eye_tracking.constants import (
     TRACKING_FRAME_WIDTH,
 )
 from include.eye_tracking.types import GazeSample, GazeZone
+from src import timebase
 
 LEFT_POSITION, CENTER_POSITION, RIGHT_POSITION = 0.0, 0.5, 1.0
 
@@ -97,7 +97,7 @@ class GazeTracker:
         rgb = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
         result = self._landmarker.detect(mp_image)
-        timestamp = time.monotonic()
+        timestamp = timebase.now()
 
         if not result.face_landmarks:
             return GazeSample(zone=GazeZone.UNKNOWN, ratio=None, face_found=False, timestamp=timestamp)

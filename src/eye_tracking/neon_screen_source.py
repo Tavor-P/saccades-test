@@ -13,6 +13,7 @@ from include.eye_tracking.constants import (
 )
 from include.eye_tracking.types import GazeSample, GazeZone
 from src.eye_tracking.neon_source import NeonGazeSource, _connect
+from src import timebase
 
 
 def _percentile(sorted_values: list[float], fraction: float) -> float | None:
@@ -51,7 +52,7 @@ class NeonScreenGazeSource(NeonGazeSource):
         self._screen_size = screen_size
         self._screen_mapper = screen_mapper
         self._extra_threads: list[threading.Thread] = []
-        self._speeds: deque[tuple[float, float]] = deque()  # (monotonic time, gyro magnitude deg/s)
+        self._speeds: deque[tuple[float, float]] = deque()  # (timebase time, gyro magnitude deg/s)
         self._head_speeds_dps: deque[float] = deque(maxlen=100_000)
         self._mapping_ages_ms: deque[float] = deque(maxlen=100_000)
         self._unmapped_samples = 0  # worn, valid gaze, but screen not located
@@ -133,7 +134,7 @@ class NeonScreenGazeSource(NeonGazeSource):
         gyro = datum.gyro_data
         speed = math.sqrt(gyro.x**2 + gyro.y**2 + gyro.z**2)
         with self._lock:
-            self._speeds.append((time.monotonic(), speed))
+            self._speeds.append((timebase.now(), speed))
 
     def _head_speed(self, now: float) -> float | None:
         """Peak gyro magnitude over the last NEON_HEAD_SPEED_WINDOW_S (caller holds the lock). None if no IMU data."""
@@ -142,7 +143,7 @@ class NeonScreenGazeSource(NeonGazeSource):
         return max(speed for _, speed in self._speeds) if self._speeds else None
 
     def _ingest_screen(self, datum) -> None:
-        now = time.monotonic()
+        now = timebase.now()
         x = getattr(datum, "x", None)
         worn = getattr(datum, "worn", True)
         usable = bool(worn) and x is not None and not math.isnan(x)

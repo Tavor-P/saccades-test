@@ -7,7 +7,6 @@ import importlib
 import json
 import platform
 import subprocess
-import time
 from datetime import datetime
 from pathlib import Path
 
@@ -18,6 +17,7 @@ from include.experiment.constants import (
     VIEWING_DISTANCE_CM,
 )
 from include.experiment.types import TrialResult
+from src import timebase
 
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 
@@ -107,7 +107,7 @@ class ResultLogger:
         test_mode: bool | None = None,
     ) -> None:
         DATA_DIR.mkdir(exist_ok=True)
-        self._timestamp = int(time.time())
+        self._timestamp = int(timebase.unix_now())
         csv_path = DATA_DIR / f"results_{self._timestamp}.csv"
         self._meta_path = DATA_DIR / f"results_{self._timestamp}_meta.json"
 

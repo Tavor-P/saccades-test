@@ -19,6 +19,7 @@ from pathlib import Path
 
 from src.eye_tracking.gaze_mapping import GazeMapper
 from src.eye_tracking.gaze_trace import GazeTraceWriter
+from src import timebase
 
 _MAX_LATENCY_SAMPLES = 100_000  # ~8 min at 200 Hz; older samples drop off, bounding memory
 _MAX_LOGGED_ERROR_KINDS = 50  # distinct error signatures remembered for log de-duplication
@@ -50,7 +51,7 @@ class NeonGazeSource(GazeSource):
         # Optional raw-gaze recording (see gaze_trace.py) for later replay.
         self._trace = GazeTraceWriter(trace_path) if trace_path is not None else None
         self._mapper = GazeMapper()
-        self._latest = GazeSample(zone=GazeZone.UNKNOWN, ratio=None, face_found=False, timestamp=time.monotonic())
+        self._latest = GazeSample(zone=GazeZone.UNKNOWN, ratio=None, face_found=False, timestamp=timebase.now())
         self._lock = threading.Lock()
         self._running = False
         self._thread: threading.Thread | None = None
@@ -93,7 +94,7 @@ class NeonGazeSource(GazeSource):
         """True once samples have been flowing but have now stopped for
         NEON_STALE_TIMEOUT_S (phone asleep, Wi-Fi dropped, glasses unplugged)."""
         with self._lock:
-            return self._last_arrival is not None and time.monotonic() - self._last_arrival > NEON_STALE_TIMEOUT_S
+            return self._last_arrival is not None and timebase.now() - self._last_arrival > NEON_STALE_TIMEOUT_S
 
     def start(self) -> None:
         if self._device is None:
@@ -141,7 +142,7 @@ class NeonGazeSource(GazeSource):
         'no face' so session logic treats it like a lost track.
         `device_timestamp_s` (the phone's unix timestamp for this sample) is
         only used for latency statistics."""
-        now = time.monotonic()
+        now = timebase.now()
         if not worn or x is None or math.isnan(x):
             sample = GazeSample(zone=GazeZone.UNKNOWN, ratio=None, face_found=False, timestamp=now)
         else:
@@ -172,7 +173,7 @@ class NeonGazeSource(GazeSource):
         # phone clock converted to PC time (local = device + offset).
         if self._clock_offset_ms is not None and device_timestamp_s is not None:
             local_capture_s = device_timestamp_s + self._clock_offset_ms / 1000
-            self._latencies_ms.append((time.time() - local_capture_s) * 1000)
+            self._latencies_ms.append((timebase.unix_now() - local_capture_s) * 1000)
 
     def quality_summary(self) -> dict:
         """Session-level tracking quality, for the results _meta.json: how many
@@ -207,8 +208,8 @@ class NeonGazeSource(GazeSource):
 
     def latest_sample(self) -> GazeSample:
         with self._lock:
-            if self._last_arrival is not None and time.monotonic() - self._last_arrival > NEON_STALE_TIMEOUT_S:
-                return GazeSample(zone=GazeZone.UNKNOWN, ratio=None, face_found=False, timestamp=time.monotonic())
+            if self._last_arrival is not None and timebase.now() - self._last_arrival > NEON_STALE_TIMEOUT_S:
+                return GazeSample(zone=GazeZone.UNKNOWN, ratio=None, face_found=False, timestamp=timebase.now())
             return self._latest
 
     def calibrate(self, left_ratio: float, center_ratio: float, right_ratio: float) -> None:

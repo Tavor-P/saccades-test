@@ -3,7 +3,7 @@ import pytest
 
 from include.eye_tracking.interfaces import GazeSource
 from include.eye_tracking.types import GazeSample, GazeZone
-from src.experiment import pausable_clock as pausable_clock_module
+from src import timebase
 
 
 class FakeGazeSource(GazeSource):
@@ -62,7 +62,7 @@ def fake_time(monkeypatch):
     tests can jump the clock forward deterministically instead of racing real
     wall-clock time through stability/response/timeout windows."""
     state = {"t": 0.0}
-    monkeypatch.setattr(pausable_clock_module.time, "monotonic", lambda: state["t"])
+    monkeypatch.setattr(timebase, "_clock", lambda: state["t"])
 
     def advance(seconds: float) -> None:
         state["t"] += seconds

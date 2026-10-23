@@ -5,6 +5,7 @@ import pytest
 from include.eye_tracking.constants import NEON_SCENE_WIDTH
 from include.eye_tracking.types import GazeZone
 from src.eye_tracking.gaze_factory import BACKEND_NEON, build_gaze_source
+from src import timebase
 from src.eye_tracking.neon_source import NeonGazeSource
 
 
@@ -86,7 +87,7 @@ def test_quality_summary_counts_samples_lost_and_gaps(monkeypatch):
 
     source = NeonGazeSource(device=object())  # built first: __init__ also reads the clock
     clock = iter([0.0, 0.005, 0.010, 0.100, 0.105])  # one 90 ms gap
-    monkeypatch.setattr(module.time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(timebase, "_clock", lambda: next(clock))
     source._ingest(_x(0.5))
     source._ingest(float("nan"))  # lost
     source._ingest(_x(0.5))
@@ -113,7 +114,7 @@ def test_latency_uses_clock_offset_with_correct_sign(monkeypatch):
 
     source = NeonGazeSource(device=_fake_offset(200.0))
     source._estimate_clock_offset()
-    monkeypatch.setattr(module.time, "time", lambda: 1000.0)
+    monkeypatch.setattr(timebase, "unix_now", lambda: 1000.0)
     source._ingest(_x(0.5), True, device_timestamp_s=1000.0 - 0.010 - 0.200)  # phone clock 200ms behind PC
     q = source.quality_summary()
     assert q["latency_ms_median"] == pytest.approx(10.0, abs=0.01)
@@ -133,8 +134,8 @@ def test_dead_stream_reports_no_gaze_instead_of_repeating_last_sample(monkeypatc
     source = NeonGazeSource(device=object())
     source._ingest(_x(0.8))
     assert source.latest_sample().face_found and source.is_available
-    real = module.time.monotonic
-    monkeypatch.setattr(module.time, "monotonic", lambda: real() + 5.0)  # 5 s with no samples
+    real = timebase._clock
+    monkeypatch.setattr(timebase, "_clock", lambda: real() + 5.0)  # 5 s with no samples
     assert not source.latest_sample().face_found
     assert source.latest_sample().zone is GazeZone.UNKNOWN
     assert not source.is_available

@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 
 import cv2
+from src import timebase
 
 SCENE_VIDEO_SCALE = 0.4  # scene video is encoded at 640x480 (from 1600x1200) - larger sizes did not keep up
 
@@ -78,7 +79,7 @@ class NeonVideoRecorder:
             self._pending = self._receive(timeout_seconds=15)
         except Exception as exc:
             self.error = repr(exc)
-        self._pending_arrival = time.time()
+        self._pending_arrival = timebase.unix_now()
         self._running = True
         self._thread = threading.Thread(target=self._loop, daemon=True)
 
@@ -96,7 +97,7 @@ class NeonVideoRecorder:
                     self.error = repr(exc)
                     time.sleep(0.2)
                     continue
-                arrival = time.time()
+                arrival = timebase.unix_now()
             if frame is None:
                 continue
             image = frame.bgr_pixels

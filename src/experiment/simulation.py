@@ -84,8 +84,11 @@ class SimulatedClock(PausableClock):
     def now(self) -> float:
         return self._t
 
-    def from_monotonic(self, timestamp: float) -> float:
+    def from_perf_counter(self, timestamp: float) -> float:
         return timestamp  # simulated gaze samples are already stamped in this clock's time
+
+    def unix_ms(self) -> float:
+        return 1_700_000_000_000.0 + self._t * 1000  # simulated wall clock, never the real one
 
 
 class SimulatedGazeSource(GazeSource):

@@ -13,6 +13,7 @@ import time
 
 from include.eye_tracking.constants import NEON_SCENE_WIDTH
 from src.eye_tracking.neon_source import _connect
+from src import timebase
 
 # Neon scene camera is ~103 deg wide horizontally; approximate, good enough to
 # put the jitter in rough degrees.
@@ -47,8 +48,8 @@ def main() -> None:
 
     samples: list[tuple[float, float]] = []  # (device timestamp s, x px)
     bad = 0
-    end = time.monotonic() + seconds
-    while time.monotonic() < end:
+    end = timebase.now() + seconds
+    while timebase.now() < end:
         g = device.receive_gaze_datum(timeout_seconds=1)
         if g is None:
             continue
