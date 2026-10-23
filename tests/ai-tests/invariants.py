@@ -15,6 +15,8 @@ from include.experiment.constants import (
     RESPONSE_WINDOW_MS,
     SACCADE_ONSET_STABILITY_MS,
     FLASH_ONSET_DELAYS_MS,
+    PRACTICE_CONTRAST,
+    SACCADE_FIXED_CONTRASTS,
     TIMING_OFFSETS_MS,
     ZEST_LOG_CONTRAST_MAX,
 )
@@ -50,7 +52,11 @@ def check_session(sim: SimulationResult, max_trials_cap: int = MAX_SACCADE_TRIAL
             v.append(f"{tag}: unknown outcome {r.outcome!r}")
 
         if r.grating_shown:
-            if r.contrast is None or not (0 < r.contrast <= 10**ZEST_LOG_CONTRAST_MAX + 1e-9):
+            # Fixed-contrast mode draws from SACCADE_FIXED_CONTRASTS (may exceed the staircase's
+            # ceiling); the practice contrast is always allowed; otherwise the ZEST range applies.
+            fixed_mode = sim.session._fixed_contrast_bag is not None
+            allowed = fixed_mode and (r.contrast in SACCADE_FIXED_CONTRASTS or r.contrast == PRACTICE_CONTRAST)
+            if r.contrast is None or not (allowed or 0 < r.contrast <= 10**ZEST_LOG_CONTRAST_MAX + 1e-9):
                 v.append(f"{tag}: flashed contrast out of range ({r.contrast})")
             if r.orientation is None:
                 v.append(f"{tag}: grating shown but no orientation logged")

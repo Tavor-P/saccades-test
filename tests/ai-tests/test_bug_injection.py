@@ -20,7 +20,7 @@ def test_baseline_is_clean():
 
 def test_catches_scoring_that_always_says_correct(monkeypatch):
     monkeypatch.setattr(session_module, "score_outcome", lambda *a, **k: "correct")
-    assert any("correct" in v for v in _violations())
+    assert any("correct" in v for v in _violations(trials=30))
 
 
 def test_catches_a_staircase_that_returns_impossible_contrast(monkeypatch, scheduled_flash_mode):

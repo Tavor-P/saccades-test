@@ -256,9 +256,13 @@ TIMING_JITTER_MS = 10
 # the saccade phase: it only learns from flashes the live check says landed in the saccade, and
 # with the current gaze latency (~90 ms) almost none do, so it never adapts. Instead every flash
 # is judged afterwards from the raw gaze trace (accuracy vs flash time relative to saccade
-# onset). The baseline threshold was ~1.2-1.4%, so 3% and 6% are ~2-5x threshold: near-perfect
-# detection at fixation, leaving room to see a suppression dip. () = back to the staircase.
-SACCADE_FIXED_CONTRASTS = (0.03, 0.06)
+# onset). The first values (3% and 6%, picked from the ~1.3% FOVEAL baseline) were nearly
+# invisible in a real session: the flash is at screen centre, ~15 deg off to the side while the
+# eye sits on the dot/cross, so the participant reported seeing nothing (19 of 26 flashes unanswered,
+# only 5/15 correct even far from any saccade). 20/40/80% should be clearly visible when fixating;
+# lower them once a fixating control (flashes far from onset) shows where the peripheral threshold
+# is. () = back to the staircase.
+SACCADE_FIXED_CONTRASTS = (0.2, 0.4, 0.8)
 # Number of main-block saccade trials in that mode (it stops by count, not by staircase width):
 # ~30 % of flashes should land near the saccade, so 150 trials give ~50 usable flashes.
 SACCADE_FIXED_TRIALS_TEST = 30
