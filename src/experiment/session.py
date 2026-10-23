@@ -110,8 +110,7 @@ class ExperimentSession:
     ) -> None:
         self._gaze = gaze_source
         self._gaze_latency_fallback_ms = gaze_latency_ms
-        # Snapshot of gaze_latency_ms taken at each RT attempt / trial start, so the
-        # per-sample timing path never queries the source and onset/landing share one offset.
+        # gaze_latency_ms snapshot taken at each RT attempt / trial start, so onset/landing share one offset.
         self._latency_s = 0.0
         self._logger = logger
         self._clock = clock
@@ -154,10 +153,7 @@ class ExperimentSession:
         self._zest = ZestStaircase(**zest_kwargs)
         self._clear_trial_state()
 
-        # A tutorial run before this session already did its own 3-round
-        # calibration - reuse that result instead of calibrating again. Its
-        # own scoped-down reaction-time test doesn't carry over though - this
-        # session always measures its own.
+        # A preceding tutorial already calibrated: reuse it. Its reaction-time test does not carry over.
         self._precomputed_calibration = precomputed_calibration_ratios is not None
         self._calibration_ratios: tuple[float, float, float] | None = None
         if precomputed_calibration_ratios is not None:
@@ -166,17 +162,12 @@ class ExperimentSession:
 
     @property
     def calibration_ratios(self) -> tuple[float, float, float] | None:
-        """(left_ratio, center_ratio, right_ratio) from the 3-point webcam
-        calibration, once it's completed - None before that. Session metadata
-        reads this."""
+        """(left, center, right) ratios from the 3-point calibration once done, else None; read by session metadata."""
         return self._calibration_ratios
 
     @property
     def gaze_latency_ms(self) -> float:
-        """Eye-movement-to-sample latency subtracted from sample timestamps:
-        the source's own measurement (`gaze_latency_ms` attribute, e.g. Neon's
-        median clock-offset-corrected latency) if it has one, else the
-        constructor's value, else 0. Clamped to [0, GAZE_LATENCY_MAX_MS]."""
+        """Gaze latency: the source's own `gaze_latency_ms` if it has one, else the constructor's value, else 0; clamped to [0, GAZE_LATENCY_MAX_MS]."""
         value = getattr(self._gaze, "gaze_latency_ms", None)
         if value is None:
             value = self._gaze_latency_fallback_ms
@@ -185,19 +176,15 @@ class ExperimentSession:
         return min(max(float(value), 0.0), GAZE_LATENCY_MAX_MS)
 
     def _timestamp_latency_s(self, logged_latency_ms: float) -> float:
-        """How much to subtract from sample timestamps: nothing if the source already stamps samples with their capture
-        time (Neon with a clock offset, trace replay: `timestamps_are_capture_time`) - subtracting the latency again
-        would put onset ~16 ms too early - else the measured latency."""
+        """Seconds to subtract from sample stamps: 0 if the source already stamps capture time (`timestamps_are_capture_time`; subtracting again
+        would put onset ~16 ms early), else the measured latency."""
         if getattr(self._gaze, "timestamps_are_capture_time", False):
             return 0.0
         return logged_latency_ms / 1000
 
     def _sample_time(self, sample, now: float) -> float:
-        """When the eye was actually where `sample` says, on the session
-        clock: the sample's own timestamp (so onset/landing resolve at the
-        tracker's rate - 200 Hz for Neon - not the 60 Hz render tick) minus the
-        gaze latency. Falls back to the tick time `now` for samples without a
-        usable timestamp (<= 0, e.g. test doubles) or one that is stale (>1 s)."""
+        """When the eye was where `sample` says, on the session clock: the sample's own stamp (so timing resolves at the tracker rate, not the
+        render tick) minus the latency correction. Falls back to the tick time `now` for unusable (<= 0) or stale (> 1 s) stamps."""
         if sample.timestamp is None or sample.timestamp <= 0:
             return now - self._latency_s
         t = self._clock.from_perf_counter(sample.timestamp)
@@ -206,12 +193,8 @@ class ExperimentSession:
         return t - self._latency_s
 
     def _new_samples(self, latest) -> list[tuple[object, float]]:
-        """(sample, capture_time) for every gaze sample since the last call, in
-        order. Sources that keep a short history (`samples_since(timestamp)`,
-        e.g. Neon at 200 Hz) hand over all of them, so onset/landing resolve at
-        the tracker's rate even though the session only ticks at the render
-        rate; others (only `latest_sample()`) contribute just the latest one,
-        which is harmless to re-read."""
+        """(sample, capture_time) for every gaze sample since the last call, in order. Sources with `samples_since()` hand over all of them;
+        others contribute just `latest_sample()` (harmless to re-read)."""
         now = self._clock.now()
         history = getattr(self._gaze, "samples_since", None)
         if history is not None and latest.timestamp is not None and latest.timestamp > 0:
@@ -231,9 +214,7 @@ class ExperimentSession:
         self._trial_avg_rt_ms: float | None = None
         self._trial_scheduled_delay_ms: float | None = None
         self._trial_gaze_latency_ms: float | None = None
-        # Constructed properly (with the right zone to avoid) in
-        # _reveal_target_and_start_trial, once the trial's source is known -
-        # this placeholder is never read before then.
+        # Built in _reveal_target_and_start_trial, once the trial's source is known.
         self._onset_detector: OnsetDetector | None = None
         self._target_landed_since: float | None = None
         self._flash_scheduled_at = 0.0
