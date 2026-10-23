@@ -50,16 +50,15 @@ LEFT_EYE_CORNERS = (362, 263)
 # downstream by the onset/landing stability windows in the experiment session.
 # This window is only used to average a steady fixation into a calibration baseline.
 CALIBRATION_SAMPLE_WINDOW = 30
-# +/- fraction around the calibrated midpoint treated as CENTER. This gates
-# onset detection just as much as SACCADE_ONSET_STABILITY_MS does, but
-# earlier and invisibly - the eye has to travel out of this whole band before
-# _tick_trial_active even starts counting the onset-stability window, and
-# that travel time doesn't show up in onset_detection_lag_ms at all (it's
-# already elapsed by the time that timer starts). Narrowed from 0.15 so the
-# eye doesn't have to travel as far before onset detection starts noticing.
-# Trade-off: too narrow makes fixational jitter near center misfire as a
-# false onset - watch the false_alarm rate (correct_rejection vs false_alarm
-# in the CSV) after tightening this, and widen it back if that climbs.
+# +/- fraction around the calibrated midpoint treated as CENTER (the GazeSample.zone
+# classification). Zones decide where gaze has LANDED (GAZE_LANDING_STABILITY_MS, the
+# target zone) and the gaze indicator / calibration checks. They no longer decide
+# saccade ONSET: that is a displacement of GazeSample.position from the fixation baseline
+# (SACCADE_ONSET_DISPLACEMENT in include/experiment/constants.py). Under the old zone-
+# crossing onset rule CENTER counted as "left the source", so a narrower band fired
+# earlier - that no longer applies. Landing needs gaze inside the far target zone, so a
+# wider band lands sooner but accepts less precise fixations; too narrow makes landing
+# fragile to calibration offset (the target zone is the 0.4 of travel beyond the band).
 GAZE_DEAD_ZONE = 0.10
 
 # Smoothing for GazeSample.smoothed_position (display only - the gaze
@@ -92,6 +91,21 @@ NEON_GAP_THRESHOLD_MS = 30.0
 # latest_sample() reports "no face" instead of repeating the last reading
 # forever (which would look like a perfectly still eye).
 NEON_STALE_TIMEOUT_S = 0.5
+# Each sample is stamped with when the eye was where it says (the phone's capture time
+# moved onto the PC's perf_counter timeline), not when it arrived over Wi-Fi - see
+# NeonGazeSource._stamp. A capture time implying more latency than this is treated as a bad
+# clock offset and the sample falls back to its arrival time.
+NEON_MAX_PLAUSIBLE_LATENCY_MS = 150.0
+# Recent samples kept for samples_since() (~2 s at 200 Hz) and the window of the rolling median behind gaze_latency_ms.
+NEON_HISTORY_SAMPLES = 400
+NEON_LATENCY_WINDOW_SAMPLES = 200
+# The phone-vs-PC clock offset is re-estimated this often in the background (phone and PC clocks drift apart);
+# an estimate noisier than the max std is ignored and a good one is blended 50/50 with the previous one.
+NEON_CLOCK_REESTIMATE_S = 60.0
+NEON_CLOCK_REESTIMATE_MAX_STD_MS = 10.0
+# Replaying a recorded trace (gaze_trace.py) has no clock offset; capture times come from the trace's device
+# timestamps, assuming this typical end-to-end latency (measured median on Neon, Oct 2026).
+NEON_REPLAY_LATENCY_MS = 16.0
 
 # --- Neon screen-marker mapping (src/eye_tracking/screen_markers.py, neon_screen_gaze.py) ---
 # AprilTags in the four screen corners let the scene camera locate the screen

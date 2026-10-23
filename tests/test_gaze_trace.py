@@ -186,3 +186,32 @@ def test_screen_marker_backend_records_a_trace_that_replays_to_the_same_zones(tm
         replayed.append(replay.latest_sample())
     assert [s.zone for s in replayed] == [s.zone for s in live]
     assert [s.face_found for s in replayed] == [False if s.ratio is None else True for s in live]
+
+
+def test_replay_stamps_samples_with_smooth_capture_times_before_arrival():
+    """The recorded trace's arrival stamps are quantised to 15.6 ms (many rows share one t_s); the replayed samples are
+    stamped from the phone's device timestamps instead: ~5 ms apart, strictly increasing, never after their arrival."""
+    trace = load_trace(SAMPLE_TRACE)
+    clock = _Clock()
+    source = ReplayGazeSource(trace, time_fn=clock)
+    assert source.timestamps_are_capture_time and source.gaze_latency_ms == 16.0
+    source.start()
+    clock.t += 3.0  # every row of the first 3 s has arrived
+    source.latest_sample()
+    samples = source.samples_since(None)
+    stamps = [s.timestamp for s in samples]
+    assert len(stamps) > 100
+    assert all(b > a for a, b in zip(stamps, stamps[1:]))
+    gaps = sorted(b - a for a, b in zip(stamps, stamps[1:]))
+    assert gaps[len(gaps) // 2] == pytest.approx(0.005, abs=0.001)  # median spacing: 200 Hz, not 15.6 ms steps
+    assert source.samples_since(stamps[-1]) == []
+    assert [s.timestamp for s in source.samples_since(stamps[-3])] == stamps[-2:]
+
+
+def test_replay_without_device_timestamps_stamps_with_arrival():
+    clock = _Clock()
+    source = ReplayGazeSource([TraceRow(0.0, None, 800.0, True), TraceRow(0.1, None, 800.0, True)], time_fn=clock)
+    assert not source.timestamps_are_capture_time and source.gaze_latency_ms is None
+    source.start()
+    clock.t += 0.11
+    assert [s.timestamp for s in source.samples_since(None)] == pytest.approx([100.0, 100.1])

@@ -161,22 +161,39 @@ SACCADE_TIMEOUT_MS = 15_000  # force-advance a trial if gaze never lands (broken
 # flash_during_saccade check itself) can't be trusted across a tracking dropout.
 TRACKING_LOSS_WINDOW_MS = 150
 GAZE_LANDING_STABILITY_MS = 150  # gaze must hold in the target zone this long to count as "landed"
-# Gaze must stay outside the source zone for this long before it counts as a
-# real saccade onset (debounces classifier noise: one misclassified sample must
-# not read as onset). 10 ms = two consecutive samples at Neon's 200 Hz (5 ms
-# apart), the smallest window that still rejects a single-sample glitch; it was
-# 40 ms back in the ~115-145 fps webcam days, when one frame was ~8 ms.
+# Saccade onset (OnsetDetector, src/experiment/trial_mechanics.py) is a displacement rule on
+# the calibrated GazeSample.position (0 = dot, 1 = cross): gaze has left the source once it
+# is more than SACCADE_ONSET_DISPLACEMENT away from its fixation baseline at the source,
+# and the reported onset is the first sample beyond it. It replaces a zone-crossing rule
+# whose dead-zone CENTER band counted as "left" only after ~40% of the travel; a saccade
+# between the symbols lasts just 30-35 ms, so that cost 10-20 ms of lead (see the table in
+# the commit that introduced this). Lower = earlier, truer onset but more fixational-jitter
+# false triggers (per-sample position noise on Neon is a few hundredths, and the screen-
+# mapped backends add spikes); higher = later. Chosen from recorded traces, see
+# tests/ai-tests/analyze_onset_threshold.py. Sweep it with
+# `run_sim.py --sweep SACCADE_ONSET_DISPLACEMENT=0.03,0.05,0.08,0.12`.
+SACCADE_ONSET_DISPLACEMENT = 0.08
+# The fixation baseline the displacement is measured from: the median of the last
+# ONSET_BASELINE_WINDOW_MS of samples that were within ONSET_BASELINE_NEAR_SOURCE of the
+# source symbol and not yet past the threshold (so the movement never drags it along);
+# until the first such sample, the nominal source position (0 or 1) is used.
+ONSET_BASELINE_WINDOW_MS = 150
+ONSET_BASELINE_NEAR_SOURCE = 0.25
+# Gaze must stay beyond the displacement threshold for this long (measured on the samples'
+# own capture times) before it counts as a real saccade onset - debounces tracker
+# spikes: a single stray sample must not read as an onset. 10 ms = three samples
+# at Neon's 200 Hz (5 ms apart: the first beyond the threshold and two more), which still
+# rejects one- and two-sample glitches; it was 40 ms back in the ~115-145 fps webcam days.
 # Onset detection no longer triggers the flash (flash timing is open-loop, off
 # avg_reaction_time_ms), so this only affects the measured reaction latency and
 # the flash_during_saccade window - a shorter window biases that latency down
 # (blips read as onsets) and a longer one up (every real saccade is detected
-# later). The stronger defence against blips is now the robust RT average
+# later). The stronger defence against blips is the robust RT average
 # (RT_MIN_PLAUSIBLE_MS / RT_OUTLIER_*), which drops anticipations and slow
-# outliers instead of letting them drag a plain mean around. Timing is taken
-# from each sample's own timestamp (minus the measured gaze latency), so this
-# window is resolved at the tracker's rate, not the 60 Hz render tick. If
-# avg_reaction_time_ms in real sessions is implausibly fast (well under
-# ~100 ms), raise this. Verify with neon_fixation_test.
+# outliers instead of letting them drag a plain mean around. Since `since` is the first
+# sample beyond the threshold, this debounce delays confirmation but not the reported onset.
+# If avg_reaction_time_ms in real sessions is implausibly fast (well under ~100 ms), raise
+# this or the displacement threshold. Verify with neon_fixation_test.
 SACCADE_ONSET_STABILITY_MS = 10
 
 # 3-point calibration is run this many times (round 1 discarded, rounds 2-3

@@ -125,7 +125,7 @@ def test_a_source_with_history_is_consumed_sample_by_sample(fake_gaze, fake_time
     start = session._trial_start_time
 
     def sample(dt, zone):
-        return GazeSample(zone=zone, ratio=0.5, face_found=True, timestamp=start + dt)
+        return GazeSample(zone=zone, ratio=0.5, face_found=True, timestamp=start + dt, position={GazeZone.LEFT: 0.0, GazeZone.CENTER: 0.5}.get(zone, 1.0))
 
     batch = [sample(0.10, GazeZone.LEFT), sample(0.105, GazeZone.CENTER), sample(0.112, GazeZone.CENTER), sample(0.120, GazeZone.CENTER)]
     gaze.samples_since = lambda ts: [s for s in batch if ts is None or s.timestamp > ts]
@@ -299,3 +299,28 @@ def test_phase_summary_flags_an_estimate_at_the_grid_bound(fake_gaze):
         session._zest.update(0.4, detected=False)  # never seen even at 40% -> piles up at the top
     session._log_phase_summary()
     assert summaries["saccade"]["threshold_at_grid_bound"] == "upper"
+
+
+def test_a_capture_stamped_source_is_not_shifted_by_its_latency_again(fake_gaze, fake_time):
+    """Neon (with a clock offset) and trace replay stamp samples with their capture time and still report
+    gaze_latency_ms for logging; the session must not subtract that latency a second time."""
+
+    def reaction_ms(capture_stamped):
+        gaze = _stamped_gaze(fake_gaze)  # reports a 20 ms latency
+        gaze.timestamps_are_capture_time = capture_stamped
+        session = _make_session(gaze)
+        _complete_calibration_and_rt_test(session, gaze, fake_time)
+        _set_single_trial(session)
+        _enter_trial_active(session, fake_time)
+        start = session._trial_start_time
+        fake_time(0.30)
+        gaze.zone = GazeZone.CENTER
+        for dt in (0.200, 0.205, 0.212):
+            gaze.timestamp = start + dt
+            session.tick()
+        assert session._onset_detector.confirmed
+        assert session.gaze_latency_ms == pytest.approx(20.0)  # still reported (and logged) either way
+        return session._reaction_latency_ms
+
+    assert reaction_ms(capture_stamped=False) == pytest.approx(180.0)
+    assert reaction_ms(capture_stamped=True) == pytest.approx(200.0)

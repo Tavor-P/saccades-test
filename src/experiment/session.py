@@ -4,7 +4,6 @@ runs of this class: src/experiment/simulation.py."""
 
 import math
 import random
-import time
 from collections import deque
 from enum import Enum, auto
 
@@ -189,6 +188,14 @@ class ExperimentSession:
             return 0.0
         return min(max(float(value), 0.0), GAZE_LATENCY_MAX_MS)
 
+    def _timestamp_latency_s(self, logged_latency_ms: float) -> float:
+        """How much to subtract from sample timestamps: nothing if the source already stamps samples with their capture
+        time (Neon with a clock offset, trace replay: `timestamps_are_capture_time`) - subtracting the latency again
+        would put onset ~16 ms too early - else the measured latency."""
+        if getattr(self._gaze, "timestamps_are_capture_time", False):
+            return 0.0
+        return logged_latency_ms / 1000
+
     def _sample_time(self, sample, now: float) -> float:
         """When the eye was actually where `sample` says, on the session
         clock: the sample's own timestamp (so onset/landing resolve at the
@@ -197,7 +204,7 @@ class ExperimentSession:
         usable timestamp (<= 0, e.g. test doubles) or one that is stale (>1 s)."""
         if sample.timestamp is None or sample.timestamp <= 0:
             return now - self._latency_s
-        t = self._clock.from_monotonic(sample.timestamp)
+        t = self._clock.from_perf_counter(sample.timestamp)
         if t > now or now - t > 1.0:
             t = now
         return t - self._latency_s
@@ -215,6 +222,9 @@ class ExperimentSession:
             samples = history(self._last_sample_ts)
             if samples:
                 self._last_sample_ts = samples[-1].timestamp
+            elif not latest.face_found and latest.timestamp > (self._last_sample_ts or 0.0):
+                # A stalled stream produces no new samples, only a synthetic "lost" latest_sample() - keep reporting it.
+                samples = [latest]
         else:
             samples = [latest]
         return [(s, self._sample_time(s, now)) for s in samples]
@@ -368,7 +378,7 @@ class ExperimentSession:
         self._foreperiod_start = self._clock.now()
         self._foreperiod_duration = random.uniform(FOREPERIOD_MIN_MS, FOREPERIOD_MAX_MS) / 1000
         self._rt_test_onset_detector = OnsetDetector(zone_for(Target.DOT))
-        self._latency_s = self.gaze_latency_ms / 1000
+        self._latency_s = self._timestamp_latency_s(self.gaze_latency_ms)
         self._dot_visible = True
         self._cross_visible = False
 
@@ -383,6 +393,8 @@ class ExperimentSession:
     def _tick_rt_test_active(self) -> None:
         now = self._clock.now()
         for sample, sample_t in self._new_samples(self._gaze.latest_sample()):
+            if sample_t < self._rt_test_start_time:
+                continue  # captured before the go-cue (it just arrived after it): cannot be a reaction to it
             if self._rt_test_onset_detector.update(sample, sample_t):
                 self._finish_rt_test_attempt((self._rt_test_onset_detector.since - self._rt_test_start_time) * 1000)
                 return
@@ -548,7 +560,7 @@ class ExperimentSession:
         self._trial_avg_rt_ms = self._avg_reaction_time_ms
         self._trial_scheduled_delay_ms = self._avg_reaction_time_ms + offset_ms
         self._trial_gaze_latency_ms = self.gaze_latency_ms
-        self._latency_s = self._trial_gaze_latency_ms / 1000
+        self._latency_s = self._timestamp_latency_s(self._trial_gaze_latency_ms)
         self._flash_scheduled_at = self._trial_start_time + self._trial_scheduled_delay_ms / 1000
 
     def tick(self) -> None:
@@ -578,6 +590,8 @@ class ExperimentSession:
         # _finish_trial) - it no longer triggers the flash. See the
         # scheduled-time block below for that.
         for s, s_t in new_samples:
+            if s_t < self._trial_start_time:
+                continue  # captured before the go-cue (it just arrived after it): cannot be a reaction to it
             if not self._onset_detector.confirmed and self._onset_detector.update(s, s_t):
                 self._reaction_latency_ms = (self._onset_detector.since - self._trial_start_time) * 1000
                 self._onset_detection_lag_ms = (s_t - self._onset_detector.since) * 1000
@@ -594,7 +608,7 @@ class ExperimentSession:
             self._response_deadline = now + RESPONSE_WINDOW_MS / 1000
             if trial.grating_shown:
                 self._grating_shown_at = now
-                self._grating_shown_at_unix_ms = time.time() * 1000
+                self._grating_shown_at_unix_ms = self._clock.unix_ms()
                 self._grating_visible = True
                 self._grating_frames_remaining = GRATING_DURATION_FRAMES
                 self._grating_actually_shown = True

@@ -2,7 +2,6 @@
 tick() + render_state() and draw the result. All experiment logic lives in the session classes, not here - this is the only module that needs PsychoPy."""
 
 import sys
-import time
 from functools import partial
 
 import cv2
@@ -53,6 +52,7 @@ from src.experiment.session_schedule import (
 )
 from src.experiment.settings import load_contrast_floor_percent, validate_contrast_floor_percent
 from src.experiment.tutorial_session import TutorialSession
+from src import timebase
 
 FADE_DURATION_S = 0.4  # dot/cross opacity fade; softens onset so it doesn't trigger a reflexive saccade
 
@@ -422,8 +422,8 @@ def wait_for_screen_markers(win: visual.Window, stimuli: dict, gaze) -> bool:
         if "escape" in event.getKeys(keyList=["escape"]):
             return False
         if gaze.screen_located and gaze.markers_detected >= 4:
-            located_since = located_since if located_since is not None else time.monotonic()
-            if time.monotonic() - located_since >= 1.0:
+            located_since = located_since if located_since is not None else timebase.now()
+            if timebase.now() - located_since >= 1.0:
                 return True
         else:
             located_since = None
@@ -989,9 +989,9 @@ def main() -> None:
             precomputed_calibration_ratios = tutorial_session.calibration_ratios
 
         schedule = (
-            SessionSchedule(time.monotonic, rest_every_s=None, max_session_s=None)
+            SessionSchedule(timebase.now, rest_every_s=None, max_session_s=None)
             if test_mode
-            else SessionSchedule(time.monotonic, rest_every_s=REST_BREAK_EVERY_S, max_session_s=MAX_SESSION_S)
+            else SessionSchedule(timebase.now, rest_every_s=REST_BREAK_EVERY_S, max_session_s=MAX_SESSION_S)
         )
         saccade_phase = partial(
             run_saccade_phase,
