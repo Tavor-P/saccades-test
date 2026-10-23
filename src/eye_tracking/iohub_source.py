@@ -1,7 +1,9 @@
-import time
+"""IOHubGazeSource: UNTESTED placeholder for hardware eye trackers (Tobii/EyeLink) via PsychoPy ioHub; never run against real hardware."""
+
 
 from include.eye_tracking.interfaces import GazeSource
 from include.eye_tracking.types import GazeSample, GazeZone
+from src import timebase
 
 
 class IOHubGazeSource(GazeSource):
@@ -48,7 +50,7 @@ class IOHubGazeSource(GazeSource):
         self._io = None
 
     def latest_sample(self) -> GazeSample:
-        timestamp = time.monotonic()
+        timestamp = timebase.now()
         if self._tracker is None:
             return GazeSample(zone=GazeZone.UNKNOWN, ratio=None, face_found=False, timestamp=timestamp)
 

@@ -7,7 +7,10 @@ from src.experiment.run_experiment import (
     _resolve_contrast_floor_percent,
     _resolve_record_video,
     _resolve_show_gaze_indicator,
+    _is_main_trial_label,
     _resolve_test_mode,
+    _selected_first,
+    _session_info_error,
     _second_monitor_screen_index,
     camera_preview_enabled,
     narrate_if_changed,
@@ -97,15 +100,32 @@ def test_narrate_if_changed_speaks_again_when_text_changes():
     assert result == "now look at the cross"
 
 
-def test_resolve_test_mode_true_when_participant_id_is_blank():
-    assert _resolve_test_mode("") is True
-    assert _resolve_test_mode("   ") is True  # whitespace-only counts as blank
+def test_resolve_test_mode_follows_the_mode_dropdown_not_the_participant_id():
+    assert _resolve_test_mode("Test") is True
+    assert _resolve_test_mode("Real") is False
 
 
-def test_resolve_test_mode_false_when_participant_id_is_given():
-    assert _resolve_test_mode("42") is False
-    assert _resolve_test_mode("alice") is False
-    assert _resolve_test_mode("  p001  ") is False
+def test_real_mode_requires_a_participant_id():
+    assert _session_info_error("Real", "") is not None
+    assert _session_info_error("Real", "   ") is not None  # whitespace-only counts as blank
+    assert _session_info_error("Real", " p001 ") is None
+
+
+def test_test_mode_may_leave_the_participant_id_blank():
+    assert _session_info_error("Test", "") is None
+
+
+def test_selected_first_restores_a_previous_pick_as_the_default():
+    assert _selected_first(["Real", "Test"], "Test") == ["Test", "Real"]
+    assert _selected_first(["Real", "Test"], None) == ["Real", "Test"]
+    assert _selected_first(["Real", "Test"], "gone") == ["Real", "Test"]
+
+
+def test_only_main_block_trial_labels_count_as_main_trials():
+    assert _is_main_trial_label("trial 3 (valid: 2)") is True
+    assert _is_main_trial_label("practice 1/5") is False
+    assert _is_main_trial_label("RT test 2/8") is False
+    assert _is_main_trial_label("-") is False
 
 
 def test_phase_just_became_active_true_on_entry():

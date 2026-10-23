@@ -2,6 +2,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+# PySpin only exists where the Spinnaker SDK is installed (the Blackfly webcam path) - skip, don't error.
+pytest.importorskip("PySpin")
+
 from src.eye_tracking.camera import Camera, list_available_cameras
 
 

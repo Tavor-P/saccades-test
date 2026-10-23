@@ -1,3 +1,6 @@
+"""End-of-run comparison figure (thresholds, psychometric curves, orientation accuracy) built from TrialResults; applies the same validity gate as the
+live ZEST update (scoring.is_valid_for_saccadic_analysis). Matplotlib 'Agg' backend, renders to a PNG."""
+
 from pathlib import Path
 
 import matplotlib
@@ -56,7 +59,7 @@ def _exclude_flashes_not_during_saccade(results: list[TrialResult]) -> list[Tria
     return [
         r
         for r in results
-        if not (r.phase == "saccade" and r.grating_shown and not is_valid_for_saccadic_analysis(r.flash_during_saccade))
+        if not (r.phase == "saccade" and r.grating_shown and not is_valid_for_saccadic_analysis(r.flash_during_saccade, r.tracking_ok))
     ]
 
 

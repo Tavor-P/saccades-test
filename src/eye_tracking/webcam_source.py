@@ -1,3 +1,5 @@
+"""WebcamGazeSource: Blackfly S Camera + MediaPipe GazeTracker on a background thread, exposed as a GazeSource."""
+
 import threading
 import time
 
@@ -6,6 +8,7 @@ from include.eye_tracking.interfaces import GazeSource
 from include.eye_tracking.types import GazeSample, GazeZone
 from src.eye_tracking.camera import Camera
 from src.eye_tracking.gaze_tracker import GazeTracker
+from src import timebase
 
 
 class WebcamGazeSource(GazeSource):
@@ -16,7 +19,7 @@ class WebcamGazeSource(GazeSource):
     def __init__(self, camera_index: int = CAMERA_INDEX) -> None:
         self._camera = Camera(camera_index)
         self._tracker = GazeTracker()
-        self._latest = GazeSample(zone=GazeZone.UNKNOWN, ratio=None, face_found=False, timestamp=time.monotonic())
+        self._latest = GazeSample(zone=GazeZone.UNKNOWN, ratio=None, face_found=False, timestamp=timebase.now())
         self._lock = threading.Lock()
         self._running = False
         self._thread: threading.Thread | None = None

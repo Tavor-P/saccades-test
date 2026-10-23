@@ -1,3 +1,5 @@
+"""VideoRecorder: optional session video (webcam backend only) with a per-frame wall-clock timestamp CSV. cv2.VideoWriter fails silently - see CLAUDE.md."""
+
 import csv
 import sys
 import threading
@@ -8,11 +10,12 @@ from typing import Callable
 import cv2
 
 from include.eye_tracking.constants import FRAME_HEIGHT, FRAME_WIDTH, VIDEO_RECORDING_FPS
+from src import timebase
 
 
 class VideoRecorder:
     """Records a session's camera feed to an .mp4 file, alongside a CSV
-    logging every written frame's wall-clock (time.time()) timestamp - lets
+    logging every written frame's wall-clock (timebase.unix_now()) timestamp - lets
     a session be replayed frame-accurately, and lined up exactly against the
     results CSV's own grating_shown_at_unix_ms timestamps, without relying on
     the video container's own frame-rate metadata (which drifts from real
@@ -85,11 +88,11 @@ class VideoRecorder:
     def _loop(self) -> None:
         interval_s = 1.0 / VIDEO_RECORDING_FPS
         while self._running:
-            loop_start = time.monotonic()
+            loop_start = timebase.now()
             frame = self._frame_source.latest_frame()
             if frame is not None:
-                self._write_one_frame(frame, time.time() * 1000)
-            elapsed = time.monotonic() - loop_start
+                self._write_one_frame(frame, timebase.unix_ms())
+            elapsed = timebase.now() - loop_start
             time.sleep(max(0.0, interval_s - elapsed))
 
     @property

@@ -1,3 +1,6 @@
+"""Flask dashboard (`-m src.dashboard.app`, localhost:5000) for browsing sessions in data/. Separate process from the
+experiment; it only reads/writes files via data_access.py."""
+
 from datetime import datetime
 
 from flask import Flask, abort, jsonify, render_template, request, send_file

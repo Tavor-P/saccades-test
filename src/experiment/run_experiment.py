@@ -1,3 +1,7 @@
+"""Entry point (`-m src.experiment.run_experiment`): startup dialog, PsychoPy window/stimuli, and the per-phase frame loops that call each session's
+tick() + render_state() and draw the result. All experiment logic lives in the session classes, not here - this is the only module that needs PsychoPy."""
+
+import sys
 from functools import partial
 
 import cv2
@@ -22,17 +26,33 @@ from include.experiment.constants import (
 )
 from include.experiment.types import Orientation
 from include.eye_tracking.constants import CAMERA_INDEX, FRAME_HEIGHT, FRAME_WIDTH
-from src.eye_tracking.camera import list_available_cameras
+from src.eye_tracking.gaze_factory import (
+    BACKEND_NEON_HYBRID,
+    BACKEND_NEON_SCREEN,
+    BACKENDS,
+    NEON_BACKENDS,
+    build_gaze_source,
+    list_cameras,
+)
+from src.eye_tracking.screen_markers import build_marker_stims
 from src.eye_tracking.video_recorder import VideoRecorder
-from src.eye_tracking.webcam_source import WebcamGazeSource
 from src.experiment.logger import ResultLogger
 from src.experiment.narrator import Narrator
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.presaccade_session import PresaccadeSession
 from src.experiment.results_graph import build_comparison_graph
 from src.experiment.session import ExperimentSession
+from src.experiment.session_schedule import (
+    MAX_SESSION_S,
+    PHASE_BASELINE,
+    PHASE_SACCADE,
+    REST_BREAK_EVERY_S,
+    SessionSchedule,
+    phase_order,
+)
 from src.experiment.settings import load_contrast_floor_percent, validate_contrast_floor_percent
 from src.experiment.tutorial_session import TutorialSession
+from src import timebase
 
 FADE_DURATION_S = 0.4  # dot/cross opacity fade; softens onset so it doesn't trigger a reflexive saccade
 
@@ -191,6 +211,17 @@ class PauseMenu:
         return None
 
 
+def _is_main_trial_label(trial_label: str) -> bool:
+    """The saccade HUD's trial label is "trial N (valid: M)" for a main-block trial, "practice i/n" for practice and "RT test i/n" for the
+    reaction-time test - the only distinction render_state() offers."""
+    return trial_label.startswith("trial ")
+
+
+def _rest_break_text(may_end: bool) -> str:
+    action = "Press SPACE to continue, or R to recalibrate first." if may_end else "Please rest for a moment..."
+    return f"Rest break\n\nLook away from the screen and relax your eyes.\n\n{action}"
+
+
 def luminance_to_color(luminance: float) -> list[float]:
     """Convert a 0 (black) - 1 (white) luminance into PsychoPy's -1..1 color space."""
     value = luminance * 2 - 1
@@ -289,6 +320,8 @@ def build_stimuli(win: visual.Window) -> dict:
         "pause_text": visual.TextStim(
             win, text="Paused — click anywhere to resume", pos=(0, 0), color="white", height=0.045
         ),
+        # Scheduled rest break (saccade phase) - see run_saccade_phase.
+        "rest_text": visual.TextStim(win, text="", pos=(0, 0), color="white", height=0.04, wrapWidth=1.4),
         "pause_menu_label": visual.TextStim(win, text="Paused", pos=(0, 0.14), color="white", height=0.045),
         "pause_return_button": visual.Rect(
             win, width=0.34, height=0.1, pos=(-0.19, 0), fillColor=(-0.2, -0.2, -0.2), lineColor="white"
@@ -373,7 +406,39 @@ def apply_render_state(state: dict, stimuli: dict, fade_opacities: dict, dt: flo
         tutorial_text_stim.opacity = 0.0
 
 
+def wait_for_screen_markers(win: visual.Window, stimuli: dict, gaze) -> bool:
+    """Pre-flight for the screen-marker Neon backend: holds on a screen until
+    the glasses have continuously located the screen for a moment (all four
+    corner markers in view), so calibration doesn't start with no mapping.
+    No-op for other backends. Returns False if the participant pressed ESCAPE."""
+    if not hasattr(gaze, "screen_located"):
+        return True
+    text = visual.TextStim(win, text="", pos=(0, 0), color="white", height=0.04, wrapWidth=1.2)
+    located_since: float | None = None
+    while True:
+        if "escape" in event.getKeys(keyList=["escape"]):
+            return False
+        if gaze.screen_located and gaze.markers_detected >= 4:
+            located_since = located_since if located_since is not None else timebase.now()
+            if timebase.now() - located_since >= 1.0:
+                return True
+        else:
+            located_since = None
+        text.text = (
+            "Look at the screen so the glasses can see all four corner markers.\n\n"
+            f"Markers seen: {gaze.markers_detected} of 4"
+        )
+        for marker in stimuli.get("screen_markers", ()):
+            marker.draw()
+        text.draw()
+        win.flip()
+
+
 def draw_all(stimuli: dict) -> None:
+    # Screen-marker backend only: corner tags the glasses use to locate the
+    # screen. Drawn first so everything else sits on top of them.
+    for marker in stimuli.get("screen_markers", ()):
+        marker.draw()
     # start_flash/feedback_flash first so they sit behind the fixation
     # stimuli, which stay visible/fixatable on top of them during a flash.
     for name in (
@@ -398,11 +463,49 @@ def run_presaccade_phase(
     narrator: Narrator,
     contrast_floor: float | None = None,
     test_mode: bool = False,
+    schedule: SessionSchedule | None = None,
+    gaze_backend: str = BACKEND_NEON_SCREEN,
+    camera_index: int = CAMERA_INDEX,
+    calibration_ratios: tuple[float, float, float] | None = None,
 ) -> PresaccadeSession | None:
-    """Phase 1: fixate center, detect flashes, no eye tracking. Returns the
-    completed session, or None if the participant quit early."""
+    """Phase 1: fixate center, detect flashes. No eye tracking, unless `calibration_ratios` is known (tutorial ran, or the saccade phase went
+    first): then a gaze source is built, calibrated and used only to hold a due flash until gaze is on center (fixation gating - see
+    PresaccadeSession); if it can't start, the baseline runs ungated. `schedule`'s session cap ends the phase early. Returns the completed
+    session, or None if the participant quit early."""
+    gaze = _start_gating_gaze(win, gaze_backend, camera_index, calibration_ratios)
+    try:
+        return _run_presaccade_loop(win, stimuli, logger, narrator, contrast_floor, test_mode, schedule, gaze)
+    finally:
+        if gaze is not None:
+            gaze.stop()
+
+
+def _start_gating_gaze(win, gaze_backend: str, camera_index: int, calibration_ratios):
+    """The calibrated gaze source for baseline fixation gating, or None (ungated baseline) when there is no calibration to classify zones with
+    or the source won't start - gating is a refinement, so a failure here must not cost the participant their session."""
+    if calibration_ratios is None:
+        return None
+    gaze = None
+    try:
+        gaze = build_gaze_source(gaze_backend, camera_index, screen_size=tuple(win.size))
+        gaze.start()
+        gaze.calibrate(*calibration_ratios)
+        return gaze
+    except Exception as exc:  # noqa: BLE001 - any hardware/SDK failure falls back to the ungated baseline
+        print(f"WARNING: baseline fixation gating unavailable ({exc!r}); running the baseline ungated", file=sys.stderr)
+        if gaze is not None:
+            try:
+                gaze.stop()
+            except Exception:  # noqa: BLE001
+                pass
+        return None
+
+
+def _run_presaccade_loop(win, stimuli, logger, narrator, contrast_floor, test_mode, schedule, gaze) -> PresaccadeSession | None:
     clock = PausableClock()
-    session = PresaccadeSession(logger=logger, clock=clock, contrast_floor=contrast_floor, test_mode=test_mode)
+    session = PresaccadeSession(
+        logger=logger, clock=clock, contrast_floor=contrast_floor, test_mode=test_mode, gaze=gaze
+    )
     pause_toggle = ClickPauseToggle(win, clock)
     fade_opacities = {"dot": 0.0, "cross": 0.0, "calibration_center": 0.0}
     frame_clock = core.Clock()
@@ -413,6 +516,9 @@ def run_presaccade_phase(
         keys = event.getKeys(keyList=["space", "escape", *RESPONSE_KEYS])
         if "escape" in keys:
             return None
+
+        if schedule is not None and schedule.cap_reached():
+            session.request_stop()  # idempotent; takes effect at the next safe point
 
         pause_toggle.update()
         if pause_toggle.paused:
@@ -449,12 +555,14 @@ def run_saccade_phase(
     logger: ResultLogger,
     narrator: Narrator,
     camera_index: int = CAMERA_INDEX,
+    gaze_backend: str = BACKEND_NEON_HYBRID,
     contrast_floor: float | None = None,
     show_gaze_indicator: bool = False,
     test_mode: bool = False,
     precomputed_calibration_ratios: tuple[float, float, float] | None = None,
     skip_practice_trials: bool = False,
     record_video: bool = False,
+    schedule: SessionSchedule | None = None,
 ) -> ExperimentSession | None:
     """Phase 2: the gaze-contingent saccade test. `precomputed_calibration_ratios`/
     `skip_practice_trials` come from a completed TutorialSession (see main())
@@ -463,10 +571,17 @@ def run_saccade_phase(
     (+ a companion per-frame-timestamp CSV, see VideoRecorder) alongside the
     results CSV - only this phase, since it's the only one with a running
     camera and real (non-practice, non-tutorial) data to replay against.
-    Returns the completed session, or None if the participant quit early."""
-    gaze = WebcamGazeSource(camera_index)
+    `schedule` (optional) adds scheduled rest breaks and the session cap, both acted on only at the start of a main trial: a break discards that
+    not-yet-started trial via resume_from_pause (so one main-trial index is skipped); the cap returns the session as-is (completed trials are
+    already logged). Returns the completed session, or None if the participant quit early."""
+    # Raw gaze is recorded alongside the results CSV (Neon only) so the session can be replayed offline.
+    gaze = build_gaze_source(gaze_backend, camera_index, trace_path=logger.gaze_trace_path, screen_size=tuple(win.size))
     gaze.start()
-    video_recorder = VideoRecorder(logger.video_path, logger.video_timestamps_path, gaze) if record_video else None
+    # Neon has no latest_frame() (gaze only, no Mono8 camera feed), so video + preview are webcam-only.
+    has_frames = hasattr(gaze, "latest_frame")
+    video_recorder = (
+        VideoRecorder(logger.video_path, logger.video_timestamps_path, gaze) if record_video and has_frames else None
+    )
     if video_recorder is not None:
         video_recorder.start()
     clock = PausableClock()
@@ -500,12 +615,31 @@ def run_saccade_phase(
     last_caption = ""
     flash_frames_remaining = 0
     start_flash_shown = False
+    resting = False
 
     try:
+        if not wait_for_screen_markers(win, stimuli, gaze):
+            return None
         while True:
-            keys = event.getKeys(keyList=["space", "escape", *RESPONSE_KEYS])
+            keys = event.getKeys(keyList=["space", "escape", "r", *RESPONSE_KEYS])
             if "escape" in keys:
                 return None
+
+            if resting:
+                # Clock paused and session not ticked, so nothing advances; only SPACE / R (after the minimum rest) do anything.
+                may_end = schedule.rest_may_end()
+                stimuli["rest_text"].text = _rest_break_text(may_end)
+                stimuli["rest_text"].draw()
+                win.flip()
+                frame_clock.reset()
+                if may_end and ("space" in keys or "r" in keys):
+                    schedule.end_rest()
+                    clock.resume()
+                    event.clearEvents()  # responses typed during the break must not leak into the trial
+                    session.resume_from_pause(recalibrate="r" in keys)
+                    resting = False
+                    last_spoken_instructions = None  # re-narrate the instructions now that the break is over
+                continue
 
             pause_action = pause_menu.update()
             if pause_action == "return":
@@ -538,7 +672,21 @@ def run_saccade_phase(
                 start_flash_shown = True
             if phase_just_became_active(phase, last_phase, _GO_CUE_PHASES):
                 go_cue_tone.play()
+            entered_main_trial = phase_just_became_active(phase, last_phase, {"FOREPERIOD"}) and _is_main_trial_label(
+                state["hud"]["trial"]
+            )
             last_phase = phase
+
+            if schedule is not None and entered_main_trial:
+                if schedule.cap_reached():
+                    print(f"Session time limit reached ({schedule.breaks_taken} rest break(s) taken); ending the saccade phase.")
+                    return session
+                if schedule.rest_due():
+                    clock.pause()
+                    schedule.begin_rest()
+                    resting = True
+                    narrator.speak("Time for a short rest. Look away from the screen and relax your eyes.")
+                    continue
 
             last_spoken_instructions = narrate_if_changed(narrator, state["instructions"], last_spoken_instructions)
             last_caption = render_caption(stimuli["caption"], state["instructions"], last_caption)
@@ -551,13 +699,15 @@ def run_saccade_phase(
             flash_frames_remaining = max(0, flash_frames_remaining - 1)
 
             draw_all(stimuli)
-            if camera_preview_enabled(state["hud"]["trial_index"]):
+            if has_frames and camera_preview_enabled(state["hud"]["trial_index"]):
                 frame = gaze.latest_frame()  # raw Mono8 (grayscale)
                 if frame is not None:
                     camera_preview.image = PILImage.fromarray(cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB))
                 camera_preview.draw()
             win.flip()
     finally:
+        if hasattr(gaze, "quality_summary"):
+            logger.set_gaze_quality(gaze.quality_summary())
         if video_recorder is not None:
             video_recorder.stop()
         gaze.stop()
@@ -568,6 +718,7 @@ def run_tutorial_phase(
     stimuli: dict,
     narrator: Narrator,
     camera_index: int = CAMERA_INDEX,
+    gaze_backend: str = BACKEND_NEON_HYBRID,
 ) -> TutorialSession | None:
     """A one-time, narrated on-ramp for first-time participants, run before
     both real phases (see main()). Unlike the other two phases, no key or
@@ -577,7 +728,7 @@ def run_tutorial_phase(
     heard yet. Returns the completed session (its calibration_ratios feeds
     the real saccade phase, skipping its own calibration), or None if the
     participant quit early."""
-    gaze = WebcamGazeSource(camera_index)
+    gaze = build_gaze_source(gaze_backend, camera_index, screen_size=tuple(win.size))
     gaze.start()
     clock = PausableClock()
     session = TutorialSession(gaze, clock)
@@ -592,6 +743,8 @@ def run_tutorial_phase(
     feedback_frames_remaining = 0
 
     try:
+        if not wait_for_screen_markers(win, stimuli, gaze):
+            return None
         while True:
             keys = event.getKeys(keyList=["space", "escape", *RESPONSE_KEYS])
             if "escape" in keys:
@@ -674,11 +827,31 @@ def _resolve_show_gaze_indicator(selected_label: str) -> bool:
     return selected_label == "Yes"
 
 
-def _resolve_test_mode(raw_participant_id: str) -> bool:
-    """Leaving Participant ID blank means this is a quick test/smoke run
-    (fewer trials, saccade phase first so you reach the thing you're testing
-    faster); entering an actual ID means a real data-collection session."""
-    return not raw_participant_id.strip()
+MODE_TEST = "Test"
+MODE_REAL = "Real"
+
+
+def _resolve_test_mode(mode_label: str) -> bool:
+    """The startup dialog's Mode dropdown decides this explicitly: Test is a
+    quick smoke run (fewer trials, saccade phase first, no rest breaks or
+    time cap); Real is a data-collection session."""
+    return mode_label == MODE_TEST
+
+
+def _session_info_error(mode_label: str, raw_participant_id: str) -> str | None:
+    """A real run must be attributable to a participant, so it needs a
+    non-empty ID; a test run may leave it blank (saved as "anonymous")."""
+    if mode_label == MODE_REAL and not raw_participant_id.strip():
+        return "Real mode needs a Participant ID"
+    return None
+
+
+def _selected_first(options: list[str], selected: str | None) -> list[str]:
+    """A DlgFromDict choice list with `selected` moved to the front (its
+    default), used to restore the picks when the dialog is re-shown."""
+    if selected is None or selected not in options:
+        return list(options)
+    return [selected] + [o for o in options if o != selected]
 
 
 def _resolve_run_tutorial(selected_label: str) -> bool:
@@ -689,7 +862,7 @@ def _resolve_record_video(selected_label: str) -> bool:
     return selected_label == "Yes"
 
 
-def prompt_session_info() -> tuple[str, int, str, float, bool, bool, bool, bool] | None:
+def prompt_session_info() -> tuple[str, str, int, str, float, bool, bool, bool, bool] | None:
     """Standard PsychoPy participant-info dialog, shown before the window
     opens - also offers a camera picker (a dropdown of every camera index
     that actually opens) so switching between multiple connected cameras
@@ -705,34 +878,51 @@ def prompt_session_info() -> tuple[str, int, str, float, bool, bool, bool, bool]
     for a full session video + per-frame-timestamp CSV alongside the results
     CSV, so a session can be replayed later by default - opt out per session
     (e.g. low disk space) rather than opting in. Whether this is a test run
-    (see _resolve_test_mode) is derived from the Participant ID field itself,
-    not a separate control. Returns None if the dialog was cancelled."""
-    camera_indices = list_available_cameras() or [CAMERA_INDEX]
+    (see _resolve_test_mode) is an explicit Mode dropdown (default Real); a
+    real run with a blank Participant ID re-shows the dialog with the problem
+    in its title. Returns None if the dialog was cancelled."""
+    try:
+        camera_indices = list_cameras() or [CAMERA_INDEX]
+    except ImportError:  # PySpin not installed (Neon-only machine)
+        camera_indices = [CAMERA_INDEX]
     camera_labels = _camera_labels(camera_indices)
     default_contrast_floor_percent = load_contrast_floor_percent()
 
-    info = {
-        "Participant ID": "",
-        "Camera": camera_labels,
-        "Contrast floor (%)": f"{default_contrast_floor_percent:.2f}",
-        "Show gaze indicator": ["No", "Yes"],
-        "Run tutorial": ["No", "Yes"],
-        "Record video": ["Yes", "No"],
-    }
-    dlg = gui.DlgFromDict(info, title="Saccade experiment")
-    if not dlg.OK:
-        return None
+    previous: dict = {}
+    error: str | None = None
+    while True:
+        info = {
+            "Mode": _selected_first([MODE_REAL, MODE_TEST], previous.get("Mode")),
+            "Participant ID": previous.get("Participant ID", ""),
+            "Gaze source": _selected_first(BACKENDS, previous.get("Gaze source")),
+            "Camera (webcam source only)": _selected_first(camera_labels, previous.get("Camera (webcam source only)")),
+            "Contrast floor (%)": previous.get("Contrast floor (%)", f"{default_contrast_floor_percent:.2f}"),
+            "Show gaze indicator": _selected_first(["No", "Yes"], previous.get("Show gaze indicator")),
+            "Run tutorial": _selected_first(["No", "Yes"], previous.get("Run tutorial")),
+            "Record video": _selected_first(["Yes", "No"], previous.get("Record video")),
+        }
+        dlg = gui.DlgFromDict(info, title="Saccade experiment" + (f" - {error}" if error else ""))
+        if not dlg.OK:
+            return None
+        previous = dict(info)
+        error = _session_info_error(info["Mode"], info["Participant ID"])
+        if error is None:
+            break
 
     raw_participant_id = info["Participant ID"]
-    test_mode = _resolve_test_mode(raw_participant_id)
+    test_mode = _resolve_test_mode(info["Mode"])
     participant_id = raw_participant_id.strip() or "anonymous"
-    camera_index, camera_label = _resolve_camera_choice(camera_indices, camera_labels, info["Camera"])
+    camera_index, camera_label = _resolve_camera_choice(camera_indices, camera_labels, info["Camera (webcam source only)"])
+    gaze_backend = info["Gaze source"]
+    if gaze_backend in NEON_BACKENDS:
+        camera_index, camera_label = CAMERA_INDEX, gaze_backend
     contrast_floor_percent = _resolve_contrast_floor_percent(info["Contrast floor (%)"], default_contrast_floor_percent)
     show_gaze_indicator = _resolve_show_gaze_indicator(info["Show gaze indicator"])
     run_tutorial = _resolve_run_tutorial(info["Run tutorial"])
     record_video = _resolve_record_video(info["Record video"])
     return (
         participant_id,
+        gaze_backend,
         camera_index,
         camera_label,
         contrast_floor_percent,
@@ -765,6 +955,7 @@ def main() -> None:
         return  # cancelled the participant-info dialog
     (
         participant_id,
+        gaze_backend,
         camera_index,
         camera_label,
         contrast_floor_percent,
@@ -780,49 +971,79 @@ def main() -> None:
     )
     win = build_window(fullscreen=True)
     stimuli = build_stimuli(win)
+    if gaze_backend in (BACKEND_NEON_SCREEN, BACKEND_NEON_HYBRID):
+        stimuli["screen_markers"] = build_marker_stims(win)
     narrator = Narrator()
 
     try:
         precomputed_calibration_ratios = None
         if run_tutorial:
-            tutorial_session = run_tutorial_phase(win, stimuli, narrator, camera_index=camera_index)
+            tutorial_session = run_tutorial_phase(
+                win, stimuli, narrator, camera_index=camera_index, gaze_backend=gaze_backend
+            )
             if tutorial_session is None:
                 return  # quit early
             precomputed_calibration_ratios = tutorial_session.calibration_ratios
 
+        schedule = (
+            SessionSchedule(timebase.now, rest_every_s=None, max_session_s=None)
+            if test_mode
+            else SessionSchedule(timebase.now, rest_every_s=REST_BREAK_EVERY_S, max_session_s=MAX_SESSION_S)
+        )
         saccade_phase = partial(
             run_saccade_phase,
             narrator=narrator,
             camera_index=camera_index,
+            gaze_backend=gaze_backend,
             contrast_floor=contrast_floor,
             show_gaze_indicator=show_gaze_indicator,
             test_mode=test_mode,
             precomputed_calibration_ratios=precomputed_calibration_ratios,
             skip_practice_trials=run_tutorial,
             record_video=record_video,
-        )
-        presaccade_phase = partial(
-            run_presaccade_phase, narrator=narrator, contrast_floor=contrast_floor, test_mode=test_mode
+            schedule=schedule,
         )
 
-        # A blank Participant ID (test_mode) runs the saccade phase first -
-        # that's the one under active development, so a smoke test shouldn't
-        # have to sit through the baseline phase first just to reach it.
-        phases = [saccade_phase, presaccade_phase] if test_mode else [presaccade_phase, saccade_phase]
+        # Test runs go saccade-first (the phase under development); real runs are counterbalanced by participant ID.
+        order = phase_order(participant_id, test_mode)
+        print(f"Phase order: {' -> '.join(order)} (rows in the results CSV appear in this order, distinguished by the phase column)")
 
-        results_by_phase = {}
-        for phase_fn in phases:
-            result = phase_fn(win, stimuli, logger)
+        sessions = {}
+        calibration_ratios = precomputed_calibration_ratios  # known up front only if the tutorial ran
+        for phase_name in order:
+            if phase_name == PHASE_SACCADE:
+                result = saccade_phase(win, stimuli, logger)
+                if result is not None and result.calibration_ratios is not None:
+                    calibration_ratios = result.calibration_ratios
+            else:
+                result = run_presaccade_phase(
+                    win,
+                    stimuli,
+                    logger,
+                    narrator,
+                    contrast_floor=contrast_floor,
+                    test_mode=test_mode,
+                    schedule=schedule,
+                    gaze_backend=gaze_backend,
+                    camera_index=camera_index,
+                    calibration_ratios=calibration_ratios,
+                )
+                if result is not None and result.gated_trials:
+                    print(f"Baseline fixation gating held {result.gated_trials} flash(es); {result.gate_timeouts} fired after timing out.")
             if result is None:
                 return  # quit early
-            results_by_phase[phase_fn] = result
+            sessions[phase_name] = result
+            if schedule.cap_reached():
+                print("Session time limit reached; skipping any remaining phase.")
+                break
 
-        saccade_session = results_by_phase[saccade_phase]
-        if saccade_session.calibration_ratios is not None:
+        saccade_session = sessions.get(PHASE_SACCADE)
+        if saccade_session is not None and saccade_session.calibration_ratios is not None:
             logger.set_calibration(*saccade_session.calibration_ratios)
 
-        all_results = results_by_phase[presaccade_phase].results + saccade_session.results
-        show_results_graph(win, all_results)
+        all_results = [r for name in (PHASE_BASELINE, PHASE_SACCADE) if name in sessions for r in sessions[name].results]
+        if all_results:
+            show_results_graph(win, all_results)
     finally:
         narrator.stop()
         logger.close()

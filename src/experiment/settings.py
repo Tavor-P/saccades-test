@@ -1,3 +1,5 @@
+"""Persistent dashboard-editable settings (data/settings.json), currently the default contrast floor, with validation against ZEST's renderable range."""
+
 import json
 from pathlib import Path
 

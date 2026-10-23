@@ -1,3 +1,6 @@
+"""GazeSource: the one interface the experiment uses to get gaze. Implemented by NeonGazeSource, WebcamGazeSource, IOHubGazeSource (untested),
+and the test/simulation doubles (tests/conftest.FakeGazeSource, src/experiment/simulation.SimulatedGazeSource, src/eye_tracking/gaze_trace.ReplayGazeSource)."""
+
 from abc import ABC, abstractmethod
 
 from include.eye_tracking.types import GazeSample

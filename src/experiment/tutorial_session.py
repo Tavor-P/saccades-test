@@ -1,3 +1,5 @@
+"""TutorialSession: the narrated first-timer on-ramp (calibration, gaze practice, dress rehearsal). Scoped-down mirrors of ExperimentSession's logic."""
+
 import random
 from enum import Enum, auto
 
