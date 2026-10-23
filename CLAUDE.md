@@ -113,7 +113,7 @@ it from tests or simulations (the simulator uses an in-memory logger).
    measurement script and ask the human to run it; don't guess numbers.
 
 Report test results truthfully (what ran, what was skipped). The suite passes at the time of writing
-(~360 tests, ~30 s, 2 skipped when PySpin/mediapipe are absent).
+(~460 tests, ~70 s, 2 skipped when PySpin/mediapipe are absent).
 
 **Bug-hunting tests** (`tests/ai-tests/`): `find_bugs.py` fuzzes the real session with random/hostile
 participants and checks `invariants.py` (run `find_bugs.py --sessions 300` after changing session,
@@ -278,6 +278,20 @@ latency only ~3% of kept flashes really hit the saccade. Samples are now stamped
 tracker_latency_ms=0,16,50`. The simulator hands the session the exact latency; a real Neon estimate is noisier.
 
 ## Gotchas that cost real debugging time
+
+**Open problem (Oct 2026): gaze arrives ~90-100 ms late in real sessions.** Every full session
+since the clock/onset work shows `gaze_quality.latency_ms_median` ~91-100 ms (plain Neon too; the
+screen-mapped backends additionally drop the rate to ~44-53 Hz), not the ~16-18 ms measured in
+standalone scripts. In the raw trace the delivery delay steps up by ~65 ms about 6 s in (when the
+render loop starts) and stays flat, while the rate falls from 200 to ~160/s (~19% of samples never
+arrive): the signature of the receiving thread being starved by the render loop (same process /
+GIL; the Real-Time API's simple device keeps only the newest sample, so the backlog is not in our
+code). Untested fixes: `sys.setswitchinterval(0.0005)`, or receive Neon in its own process.
+Consequence: the gaze-triggered flash (`FLASH_TRIGGER="onset"`) cannot land inside a saccade until
+this is fixed; judging flashes after the fact from the raw trace's phone capture times is
+unaffected. Also: the phone clock drifts ~1.2 ms/min against the PC (the clock offset is
+re-estimated every 60 s), and `time.monotonic()`/`time.time()` have 15.6 ms resolution on
+Windows (everything now uses `src/timebase.py` / `perf_counter`).
 
 **Neon timing and geometry (measured Oct 2026).** Gaze reaches the PC ~16 ms
 after the event (p95 ~21 ms, max ~35 ms), ~140-180 Hz effective with gaps up
