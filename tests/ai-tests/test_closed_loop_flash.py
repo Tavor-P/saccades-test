@@ -21,6 +21,9 @@ from test_session import (
 )
 
 
+pytestmark = pytest.mark.usefixtures("onset_flash_mode")
+
+
 def _gaze_leaves_source(session, fake_gaze, fake_time) -> None:
     """Gaze leaves the source zone (mid-flight, in CENTER) and the onset debounce elapses."""
     fake_gaze.zone = GazeZone.CENTER

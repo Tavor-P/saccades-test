@@ -338,8 +338,8 @@ don't have this restriction. If the tutorial ran, its
 practice/dress-rehearsal stage — this coupling isn't visible from
 `session.py` alone.
 
-**Flash trigger modes (`FLASH_TRIGGER` in `include/experiment/constants.py`).** The default,
-`"onset"`, is gaze-triggered: no reaction-time test and no prediction - the flash fires the
+**Flash trigger modes (`FLASH_TRIGGER` in `include/experiment/constants.py`).** The shipped default
+is `"scheduled"` (see the grant-demo setup at the end of this paragraph); `"onset"` is gaze-triggered: no reaction-time test and no prediction - the flash fires the
 tick `OnsetDetector` confirms a saccade (plus `FLASH_ONSET_DELAYS_MS`, default `(0,)`), so it can
 only land during/after the saccade (~35-50 ms after the true onset: Neon ~16 ms + displacement
 debounce + one frame + display). That only fits inside the movement if the saccade is long, which
@@ -351,6 +351,15 @@ simulator (latency 16 ms) gives ~94% valid flashes at 110 ms saccades but ~0% at
 0.08 -> 0.05 for the wider layout. The older mode, `"scheduled"` (below), is kept and tested via
 the `scheduled_flash_mode` fixture (`tests/ai-tests/conftest.py`). `SHARP_GO_CUE` shows the
 dot/cross instantly (no 0.4 s fade) in the trials.
+Shipped saccade-phase setup (branch `feature/saccade-flash-analysis`, built for judging flashes
+after the fact because the live check is useless at ~90 ms gaze latency): scheduled flashes at
+average RT + one of `TIMING_OFFSETS_MS` (-80..+80 ms) + a random `TIMING_JITTER_MS` (+/-10 ms)
+bounce (logged in `scheduled_delay_ms`), fixed probe contrasts `SACCADE_FIXED_CONTRASTS`
+(3 % and 6 %, method of constant stimuli: no live ZEST in the saccade phase) and a fixed count
+`SACCADE_FIXED_TRIALS_*`. Set `SACCADE_FIXED_CONTRASTS = ()` to return to the staircase. The
+analysis (accuracy vs flash time relative to saccade onset, from the raw trace's phone capture
+times) is still to be written. `run_experiment.main` sets `sys.setswitchinterval(0.0005)` as a
+first test of the receiver-starvation hypothesis above.
 
 **Saccade-phase flash timing is open-loop (the `"scheduled"` mode), not gaze-contingent, and
 `flash_during_saccade` is a post-hoc window check.** `ExperimentSession`

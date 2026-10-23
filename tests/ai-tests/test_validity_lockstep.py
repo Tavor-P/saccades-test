@@ -9,6 +9,8 @@ from src.experiment.scoring import is_valid_for_saccadic_analysis
 from src.experiment.simulation import ParticipantProfile, simulate_session
 from src.experiment.zest import ZestStaircase
 
+pytestmark = pytest.mark.usefixtures("scheduled_flash_mode")  # these tests drive the live staircase
+
 PROFILES = [
     ParticipantProfile(),
     ParticipantProfile(dropout_rate_per_s=2.0),  # produces tracking_ok=False rows

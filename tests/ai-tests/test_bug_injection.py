@@ -23,7 +23,7 @@ def test_catches_scoring_that_always_says_correct(monkeypatch):
     assert any("correct" in v for v in _violations())
 
 
-def test_catches_a_staircase_that_returns_impossible_contrast(monkeypatch):
+def test_catches_a_staircase_that_returns_impossible_contrast(monkeypatch, scheduled_flash_mode):
     monkeypatch.setattr(ZestStaircase, "next_contrast", lambda self: 7.0)
     assert any("contrast out of range" in v for v in _violations())
 

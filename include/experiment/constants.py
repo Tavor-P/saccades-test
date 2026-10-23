@@ -188,7 +188,7 @@ SACCADE_ONSET_DISPLACEMENT = 0.05
 # onset, 0 = as early as the pipeline allows, ~35-50 ms after the true onset); the flash can
 # only land during/after the saccade, never before it. "scheduled": the older open-loop mode
 # (reaction-time test, flash at average RT + TIMING_OFFSETS_MS from target onset).
-FLASH_TRIGGER = "onset"
+FLASH_TRIGGER = "scheduled"
 # Extra delay (ms, >= 0) after the detected onset in "onset" mode, drawn without repeats
 # like TIMING_OFFSETS_MS (it is what the CSV's timing_offset_ms records). (0,) = always asap;
 # e.g. (0, 10, 20) would spread flashes across the saccade.
@@ -242,7 +242,27 @@ RECALIBRATION_ROUNDS = 2
 # some trials' flashes landing outside the actual saccade window entirely
 # (see flash_during_saccade in include/experiment/types.py) - expected and
 # handled by only feeding valid trials to ZEST (see ExperimentSession).
-TIMING_OFFSETS_MS = (-40, -20, 0, 20, 40)
+TIMING_OFFSETS_MS = (-80, -60, -40, -20, 0, 20, 40, 60, 80)
+# Random "bounce" added on top of each trial's offset (uniform +/- this many ms, drawn per
+# trial) so flash times form a continuous spread instead of nine fixed spikes - together with
+# the offsets above it sweeps the flash across roughly -90..+90 ms around the average reaction
+# time, which with a sharp go-cue should put a good share of flashes in or near the saccade.
+# The jitter is part of the logged scheduled_delay_ms; timing_offset_ms stays the nominal draw.
+# 0 disables it.
+TIMING_JITTER_MS = 10
+
+# Fixed probe contrasts for the saccade phase (method of constant stimuli), drawn without
+# repeats like the timing offsets. With them the live ZEST staircase is NOT used or updated in
+# the saccade phase: it only learns from flashes the live check says landed in the saccade, and
+# with the current gaze latency (~90 ms) almost none do, so it never adapts. Instead every flash
+# is judged afterwards from the raw gaze trace (accuracy vs flash time relative to saccade
+# onset). The baseline threshold was ~1.2-1.4%, so 3% and 6% are ~2-5x threshold: near-perfect
+# detection at fixation, leaving room to see a suppression dip. () = back to the staircase.
+SACCADE_FIXED_CONTRASTS = (0.03, 0.06)
+# Number of main-block saccade trials in that mode (it stops by count, not by staircase width):
+# ~30 % of flashes should land near the saccade, so 150 trials give ~50 usable flashes.
+SACCADE_FIXED_TRIALS_TEST = 30
+SACCADE_FIXED_TRIALS_REAL = 150
 
 # Upfront reaction-time test: repeated beep+target-appear -> saccade-onset
 # attempts (no grating, no response), averaged into the initial

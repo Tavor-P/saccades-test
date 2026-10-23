@@ -35,8 +35,12 @@ from include.experiment.constants import (
     RESPONSE_WINDOW_MS,
     RT_AVERAGE_RECOMPUTE_EVERY,
     RT_AVERAGE_ROLLING_WINDOW,
+    SACCADE_FIXED_CONTRASTS,
+    SACCADE_FIXED_TRIALS_REAL,
+    SACCADE_FIXED_TRIALS_TEST,
     SHARP_GO_CUE,
     SACCADE_TIMEOUT_MS,
+    TIMING_JITTER_MS,
     TIMING_OFFSETS_MS,
     TRACKING_LOSS_WINDOW_MS,
     ZEST_CREDIBLE_INTERVAL_MAX_LOG_WIDTH,
@@ -134,6 +138,12 @@ class ExperimentSession:
         # "onset": the flash fires when the onset detector confirms a saccade (no RT test, no
         # prediction); "scheduled": the older open-loop mode. See FLASH_TRIGGER in constants.py.
         self._closed_loop = FLASH_TRIGGER == "onset"
+        # Fixed probe contrasts (method of constant stimuli) instead of the live staircase - see
+        # SACCADE_FIXED_CONTRASTS. Practice trials keep PRACTICE_CONTRAST either way.
+        self._fixed_contrast_bag: ShuffledBag[float] | None = (
+            ShuffledBag(SACCADE_FIXED_CONTRASTS) if SACCADE_FIXED_CONTRASTS else None
+        )
+        self._fixed_trials = SACCADE_FIXED_TRIALS_TEST if test_mode else SACCADE_FIXED_TRIALS_REAL
         self._timing_offset_bag: ShuffledBag[int] = ShuffledBag(
             FLASH_ONSET_DELAYS_MS if self._closed_loop else TIMING_OFFSETS_MS
         )
@@ -523,6 +533,8 @@ class ExperimentSession:
         enough valid trials have actually shaped it, or unconditionally once
         the safety cap is hit (open-loop misses are structural now, not rare
         lag noise, so this needs real headroom to guarantee termination)."""
+        if self._fixed_contrast_bag is not None:
+            return self._completed_main_trial_count >= self._fixed_trials  # constant stimuli: stop by count
         if self._completed_main_trial_count >= self._max_saccade_trials:
             return True
         if self._valid_trial_count < self._min_valid_trials:
@@ -585,7 +597,8 @@ class ExperimentSession:
             self._onset_flash_due_at = None
         else:
             self._trial_avg_rt_ms = self._avg_reaction_time_ms
-            self._trial_scheduled_delay_ms = self._avg_reaction_time_ms + offset_ms
+            jitter_ms = random.uniform(-TIMING_JITTER_MS, TIMING_JITTER_MS) if TIMING_JITTER_MS else 0.0
+            self._trial_scheduled_delay_ms = self._avg_reaction_time_ms + offset_ms + jitter_ms
             self._flash_scheduled_at = self._trial_start_time + self._trial_scheduled_delay_ms / 1000
 
     def tick(self) -> None:
@@ -645,7 +658,12 @@ class ExperimentSession:
                 self._grating_visible = True
                 self._grating_frames_remaining = GRATING_DURATION_FRAMES
                 self._grating_actually_shown = True
-                self._trial_contrast = PRACTICE_CONTRAST if trial.practice else self._zest.next_contrast()
+                if trial.practice:
+                    self._trial_contrast = PRACTICE_CONTRAST
+                elif self._fixed_contrast_bag is not None:
+                    self._trial_contrast = self._fixed_contrast_bag.draw()
+                else:
+                    self._trial_contrast = self._zest.next_contrast()
 
         # Frame-counted (not time-based) so the flash lasts exactly N drawn
         # frames regardless of the display's refresh rate. Skipped on the tick
@@ -772,6 +790,7 @@ class ExperimentSession:
                 self._grating_actually_shown
                 and outcome in ("correct", "incorrect", "miss")
                 and is_valid_for_saccadic_analysis(self._flash_during_saccade, tracking_ok)
+                and self._fixed_contrast_bag is None  # constant-stimuli mode: no live staircase
             ):
                 self._zest.update(self._trial_contrast, detected=outcome == "correct")
 

@@ -953,6 +953,10 @@ def show_results_graph(win: visual.Window, results: list) -> None:
 
 
 def main() -> None:
+    # Let the Neon receiver thread get the interpreter lock within ~0.5 ms instead of the default
+    # 5 ms while the render loop is busy: in real sessions gaze delivery steps up ~65 ms late and
+    # drops ~19% of samples once drawing starts (see CLAUDE.md). A cheap first test of the cause.
+    sys.setswitchinterval(0.0005)
     session_info = prompt_session_info()
     if session_info is None:
         return  # cancelled the participant-info dialog
