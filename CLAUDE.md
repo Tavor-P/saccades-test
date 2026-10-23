@@ -67,10 +67,12 @@ Paths in this section are checked by `tests/test_docs.py` - keep them real.
 | `src/experiment/tutorial_session.py` | `TutorialSession`: narrated first-timer on-ramp |
 | `src/experiment/run_experiment.py` | entry point + PsychoPy rendering; the only PsychoPy-dependent module |
 | `src/experiment/scoring.py` | `score_outcome`, `is_valid_for_saccadic_analysis` (the validity gate) |
-| `src/experiment/trial_mechanics.py` | `OnsetDetector`, `ShuffledBag`, `zone_for`, `average_ms` (shared helpers) |
+| `src/experiment/trial_mechanics.py` | `OnsetDetector`, `ShuffledBag`, `zone_for`, `average_ms`, `robust_average_ms` (shared helpers; the robust one drops anticipations/outliers then takes the median) |
+| `src/experiment/calibration.py` | `average_calibration_rounds`, `validate_calibration` / `CalibrationCheck` / `fit_residual` (monotonic, span, noise, residual checks; not yet wired into `session.py`) |
+| `src/experiment/session_schedule.py` | `phase_order` (counterbalanced by participant ID), rest-break and wall-clock session-cap schedule (`SessionSchedule`) |
 | `src/experiment/trial_factory.py` | builds trial sequences |
 | `src/experiment/zest.py` | adaptive contrast staircase |
-| `src/experiment/logger.py` | `ResultLogger`: CSV + `_meta.json` + side-file paths |
+| `src/experiment/logger.py` | `ResultLogger`: CSV + `_meta.json` (git SHA, constants snapshot, per-phase threshold summary) + side-file paths |
 | `src/experiment/results_graph.py` | end-of-run comparison figure |
 | `src/experiment/simulation.py` | headless simulator (simulated participant, clock, gaze) |
 | `src/eye_tracking/neon_source.py` | `NeonGazeSource` (default backend): Real-Time API stream + quality stats |
@@ -171,8 +173,9 @@ one `ResultLogger` (one CSV, distinguished by a `phase` column) but run
 independent `ZestStaircase` instances so each condition converges on its own
 threshold. Test mode (shortened trial counts, saccade phase first for smoke
 testing) is a runtime decision, not a constant: `run_experiment.py`'s
-`_resolve_test_mode()` treats a blank Participant ID in the startup dialog as
-a test run and any other value as a real data-collection session.
+`_resolve_test_mode()` reads the startup dialog's explicit Mode dropdown
+(Real/Test); a Real run requires a non-empty Participant ID. Real runs also get
+counterbalanced phase order, rest breaks and a session cap (`session_schedule.py`).
 `PresaccadeSession` still picks between fixed `_TEST`/`_REAL` trial-count
 constant pairs in `include/experiment/constants.py`; `ExperimentSession`'s
 real block is open-ended instead (see the open-loop-timing gotcha below) and
@@ -265,13 +268,17 @@ session also writes `gaze_quality` (rate, gaps, latency, clock offset) into
 `_meta.json` and a raw `results_<ts>_gaze_trace.csv` (both Neon backends; for the screen-marker backend the
 trace's `x_px` column holds screen-ratio x `NEON_SCENE_WIDTH`, so replay reproduces its head-compensated zones).
 
-**Known simulator finding (unresolved).** In simulation the
+**Known simulator finding (partly addressed).** In simulation the
 `flash_during_saccade` window is built from classifier observation times, which
 trail the real eye by the tracker latency (~16 ms on Neon); with 16 ms latency
 only ~3% of flashes the check keeps really hit the saccade (100% at 0 ms).
-`run_sim.py --sweep-profile tracker_latency_ms=0,16,50` reproduces it. Not yet
-fixed in the experiment code; verify with real traces before trusting
-`flash_during_saccade` precision.
+`run_sim.py --sweep-profile tracker_latency_ms=0,16,50` reproduces it. The session
+now computes onset/landing from per-sample timestamps minus the source's
+`gaze_latency_ms` and consumes `samples_since(ts)` when a source offers them,
+but the Neon sources do not implement those hooks yet (so on hardware latency is
+treated as 0 and precision stays low), and event times still use the coarse
+Windows clock (`time.monotonic()` has 15.6 ms resolution; `perf_counter` is the
+fix). Verify with real traces before trusting `flash_during_saccade` precision.
 
 ## Gotchas that cost real debugging time
 
