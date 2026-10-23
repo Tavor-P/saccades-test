@@ -82,6 +82,7 @@ class NeonScreenGazeSource(NeonGazeSource):
         self._thread.start()
         for thread in self._extra_threads:
             thread.start()
+        self._start_offset_thread()
 
     def stop(self) -> None:
         self._running = False
@@ -143,29 +144,29 @@ class NeonScreenGazeSource(NeonGazeSource):
         return max(speed for _, speed in self._speeds) if self._speeds else None
 
     def _ingest_screen(self, datum) -> None:
-        now = timebase.now()
+        arrival = timebase.now()
         x = getattr(datum, "x", None)
         worn = getattr(datum, "worn", True)
+        device_ts = getattr(datum, "timestamp_unix_seconds", None)
         usable = bool(worn) and x is not None and not math.isnan(x)
         screen = self._screen_mapper.map_gaze(datum) if usable else None
 
         with self._lock:
-            head_speed = self._head_speed(now)
-        if screen is None:
-            sample = GazeSample(
-                zone=GazeZone.UNKNOWN, ratio=None, face_found=False, timestamp=now, head_speed_dps=head_speed
-            )
-        else:
-            width, height = self._screen_size
-            sample = replace(
-                self._mapper.map(screen.x / width, now),
-                ratio_y=screen.y / height,
-                head_speed_dps=head_speed,
-                mapping_age_ms=screen.mapping_age_s * 1000,
-            )
-        with self._lock:
-            self._latest = sample
-            self._record_quality(now, sample.face_found, getattr(datum, "timestamp_unix_seconds", None))
+            head_speed = self._head_speed(arrival)
+            stamp = self._stamp(arrival, device_ts)  # capture time, not arrival - see NeonGazeSource._stamp
+            if screen is None:
+                sample = GazeSample(
+                    zone=GazeZone.UNKNOWN, ratio=None, face_found=False, timestamp=stamp, head_speed_dps=head_speed
+                )
+            else:
+                width, height = self._screen_size
+                sample = replace(
+                    self._mapper.map(screen.x / width, stamp),
+                    ratio_y=screen.y / height,
+                    head_speed_dps=head_speed,
+                    mapping_age_ms=screen.mapping_age_s * 1000,
+                )
+            self._publish(sample, arrival)
             if usable and screen is None:
                 self._unmapped_samples += 1
             if screen is not None:
@@ -177,7 +178,7 @@ class NeonScreenGazeSource(NeonGazeSource):
         # Outside the lock, like NeonGazeSource._ingest: a disk write must never stall latest_sample().
         if self._trace is not None:
             x_px = sample.ratio * NEON_SCENE_WIDTH if sample.ratio is not None else None
-            self._trace.write(now, getattr(datum, "timestamp_unix_seconds", None), x_px, sample.face_found)
+            self._trace.write(arrival, device_ts, x_px, sample.face_found)
 
     # -- status for the experiment's pre-flight gate and logs ---------------
 

@@ -10,6 +10,11 @@ from include.eye_tracking.constants import (
     NEON_DEVICE_PORT,
     NEON_GAP_THRESHOLD_MS,
     NEON_STALE_TIMEOUT_S,
+    NEON_MAX_PLAUSIBLE_LATENCY_MS,
+    NEON_HISTORY_SAMPLES,
+    NEON_LATENCY_WINDOW_SAMPLES,
+    NEON_CLOCK_REESTIMATE_S,
+    NEON_CLOCK_REESTIMATE_MAX_STD_MS,
     NEON_DISCOVERY_TIMEOUT_S,
     NEON_SCENE_WIDTH,
 )
@@ -57,9 +62,16 @@ class NeonGazeSource(GazeSource):
         self._thread: threading.Thread | None = None
         # Session quality bookkeeping (see quality_summary()) - all guarded by _lock.
         self._clock_offset_ms: float | None = None
+        self._anchor = timebase.measure_anchor()  # pairs with _clock_offset_ms; refreshed together (phone/PC clocks drift)
+        self._offset_stop = threading.Event()
+        self._offset_thread: threading.Thread | None = None
         self._clock_offset_std_ms: float | None = None
         self._roundtrip_ms: float | None = None
         self._latencies_ms: deque[float] = deque(maxlen=_MAX_LATENCY_SAMPLES)
+        self._history: deque[GazeSample] = deque(maxlen=NEON_HISTORY_SAMPLES)  # for samples_since()
+        self._recent_latencies_ms: deque[float] = deque(maxlen=NEON_LATENCY_WINDOW_SAMPLES)
+        self._latency_median_ms: float | None = None
+        self._last_stamp = 0.0
         self._samples = 0
         self._lost_samples = 0  # not worn / NaN gaze
         self._gaps = 0
@@ -108,6 +120,7 @@ class NeonGazeSource(GazeSource):
         self._running = True
         self._thread = threading.Thread(target=self._loop, daemon=True)
         self._thread.start()
+        self._start_offset_thread()
 
     def _loop(self) -> None:
         while self._running:
@@ -131,33 +144,125 @@ class NeonGazeSource(GazeSource):
         effort: a failure just leaves latency unreported."""
         try:
             est = self._device.estimate_time_offset()
-            self._clock_offset_ms = float(est.time_offset_ms.mean)
-            self._clock_offset_std_ms = float(est.time_offset_ms.std)
-            self._roundtrip_ms = float(est.roundtrip_duration_ms.mean)
+            offset_ms = float(est.time_offset_ms.mean)
+            std_ms = float(est.time_offset_ms.std)
+            roundtrip_ms = float(est.roundtrip_duration_ms.mean)
+            anchor = timebase.measure_anchor()  # as soon after the estimate as possible: offset is in system-clock terms
         except Exception:
-            pass
+            return
+        with self._lock:
+            self._clock_offset_ms = offset_ms
+            self._clock_offset_std_ms = std_ms
+            self._roundtrip_ms = roundtrip_ms
+            self._anchor = anchor
+
+    def _start_offset_thread(self) -> None:
+        if NEON_CLOCK_REESTIMATE_S and self._clock_offset_ms is not None:
+            self._offset_stop.clear()
+            self._offset_thread = threading.Thread(target=self._offset_loop, daemon=True)
+            self._offset_thread.start()
+
+    def _offset_loop(self) -> None:
+        """Re-estimates the phone-vs-PC clock offset every NEON_CLOCK_REESTIMATE_S: the two clocks drift apart (tens of ppm,
+        plus time-service slews), and capture stamps depend on it. Runs on its own thread, over the device's separate
+        time-echo connection; a noisy or failed estimate is ignored and the previous offset kept."""
+        while not self._offset_stop.wait(NEON_CLOCK_REESTIMATE_S):
+            try:
+                est = self._device.estimate_time_offset()
+                offset_ms = float(est.time_offset_ms.mean)
+                std_ms = float(est.time_offset_ms.std)
+                roundtrip_ms = float(est.roundtrip_duration_ms.mean)
+                anchor = timebase.measure_anchor()
+            except Exception as exc:
+                self._record_error("estimate_time_offset", exc)
+                continue
+            if not (std_ms <= NEON_CLOCK_REESTIMATE_MAX_STD_MS):
+                continue
+            with self._lock:
+                previous = self._clock_offset_ms
+                # The anchor moves too, so express the old offset in the new anchor's terms is unnecessary: both
+                # are system-clock values and the blend only smooths estimator noise.
+                self._clock_offset_ms = offset_ms if previous is None else 0.5 * previous + 0.5 * offset_ms
+                self._clock_offset_std_ms = std_ms
+                self._roundtrip_ms = roundtrip_ms
+                self._anchor = anchor
+
+    @property
+    def timestamps_are_capture_time(self) -> bool:
+        """True when samples are stamped with their capture time (phone clock offset known), so the session must not
+        subtract `gaze_latency_ms` from the stamps again."""
+        return self._clock_offset_ms is not None
+
+    @property
+    def gaze_latency_ms(self) -> float | None:
+        """Rolling median of recent arrival-minus-capture latency (cheap: a cached value refreshed every few samples),
+        None until measured. For logging and for sessions whose stamps are arrival times."""
+        return self._latency_median_ms
+
+    def samples_since(self, timestamp: float | None) -> list[GazeSample]:
+        """Buffered samples (about the last NEON_HISTORY_SAMPLES) stamped after `timestamp`, oldest first; all of
+        them for None. Stamps are strictly increasing, so a caller can use the last one as its cursor."""
+        with self._lock:
+            if timestamp is None:
+                return list(self._history)
+            newer: list[GazeSample] = []
+            for sample in reversed(self._history):
+                if sample.timestamp <= timestamp:
+                    break
+                newer.append(sample)
+        newer.reverse()
+        return newer
+
+    def _stamp(self, arrival: float, device_timestamp_s: float | None) -> float:
+        """Capture time of a sample on the perf_counter timeline: the phone's timestamp + clock offset, moved through the
+        clock anchor - the eye was there ~16 ms before the sample arrived, and arrival time is Wi-Fi jitter. Falls back to
+        `arrival` when the device timestamp or offset is missing, the result is in the future, or it implies an absurd
+        latency (> NEON_MAX_PLAUSIBLE_LATENCY_MS: a bad offset). Always strictly increasing across calls, so
+        samples_since() cursors never skip a sample. Caller holds self._lock."""
+        capture = arrival
+        if self._clock_offset_ms is not None and device_timestamp_s is not None and not math.isnan(device_timestamp_s):
+            raw = self._anchor.to_perf(device_timestamp_s + self._clock_offset_ms / 1000)
+            latency_ms = (arrival - raw) * 1000
+            self._recent_latencies_ms.append(latency_ms)
+            self._latencies_ms.append(latency_ms)
+            if self._samples % 20 == 0 or self._latency_median_ms is None:
+                self._latency_median_ms = statistics.median(self._recent_latencies_ms)
+            if 0.0 <= latency_ms <= NEON_MAX_PLAUSIBLE_LATENCY_MS:
+                capture = raw
+            elif latency_ms < 0.0:
+                capture = arrival  # offset error put the capture in the future
+        capture = max(capture, self._last_stamp + 1e-6)
+        self._last_stamp = capture
+        return capture
 
     def _ingest(self, x: float | None, worn: bool = True, device_timestamp_s: float | None = None) -> None:
         """One gaze reading (scene-camera pixel x). Not worn / NaN counts as
         'no face' so session logic treats it like a lost track.
-        `device_timestamp_s` (the phone's unix timestamp for this sample) is
-        only used for latency statistics."""
-        now = timebase.now()
-        if not worn or x is None or math.isnan(x):
-            sample = GazeSample(zone=GazeZone.UNKNOWN, ratio=None, face_found=False, timestamp=now)
-        else:
-            sample = self._mapper.map(x / NEON_SCENE_WIDTH, now)
+        `device_timestamp_s` (the phone's unix timestamp for this sample) gives
+        the sample's capture time - see _stamp()."""
+        arrival = timebase.now()
+        usable = worn and x is not None and not math.isnan(x)
         with self._lock:
-            self._latest = sample
-            self._record_quality(now, sample.face_found, device_timestamp_s)
+            stamp = self._stamp(arrival, device_timestamp_s)
+            if usable:
+                sample = self._mapper.map(x / NEON_SCENE_WIDTH, stamp)
+            else:
+                sample = GazeSample(zone=GazeZone.UNKNOWN, ratio=None, face_found=False, timestamp=stamp)
+            self._publish(sample, arrival)
         # Outside the lock: latest_sample() takes it every rendered frame, and a
         # disk write (the buffer fills ~every 0.5 s) must never stall that. Safe
         # because only this receive thread writes and stop() joins it before close().
         if self._trace is not None:
-            self._trace.write(now, device_timestamp_s, x, bool(worn))
+            self._trace.write(arrival, device_timestamp_s, x, bool(worn))
 
-    def _record_quality(self, now: float, valid: bool, device_timestamp_s: float | None) -> None:
+    def _publish(self, sample: GazeSample, arrival: float) -> None:
         # Caller holds self._lock.
+        self._latest = sample
+        self._history.append(sample)
+        self._record_quality(arrival, sample.face_found)
+
+    def _record_quality(self, now: float, valid: bool) -> None:
+        # Caller holds self._lock. `now` is the ARRIVAL time (gaps/staleness are about the stream, not the eye).
         self._samples += 1
         if not valid:
             self._lost_samples += 1
@@ -169,11 +274,6 @@ class NeonGazeSource(GazeSource):
         else:
             self._first_arrival = now
         self._last_arrival = now
-        # Latency = PC receive time minus the sample's capture time, with the
-        # phone clock converted to PC time (local = device + offset).
-        if self._clock_offset_ms is not None and device_timestamp_s is not None:
-            local_capture_s = device_timestamp_s + self._clock_offset_ms / 1000
-            self._latencies_ms.append((timebase.unix_now() - local_capture_s) * 1000)
 
     def quality_summary(self) -> dict:
         """Session-level tracking quality, for the results _meta.json: how many
@@ -223,6 +323,9 @@ class NeonGazeSource(GazeSource):
 
     def stop(self) -> None:
         self._running = False
+        self._offset_stop.set()
+        if self._offset_thread is not None:
+            self._offset_thread.join(timeout=1)
         if self._thread is not None:
             self._thread.join(timeout=1)
         if self._trace is not None:

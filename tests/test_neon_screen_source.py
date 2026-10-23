@@ -142,3 +142,26 @@ def test_mapper_exception_in_scene_loop_does_not_kill_thread():
     assert all(t.is_alive() for t in source._extra_threads)
     source.stop()
     assert "ValueError: bad frame" in source.quality_summary()["last_receive_error"]
+
+
+def test_screen_samples_are_stamped_with_capture_time(monkeypatch):
+    from src import timebase
+
+    source = NeonScreenGazeSource(SCREEN, device=_fake_offset_device(200.0), screen_mapper=FakeScreenMapper())
+    source._estimate_clock_offset()
+    source._anchor = timebase.Anchor(unix_s=1000.0, perf_s=50.0)
+    monkeypatch.setattr(timebase, "_clock", lambda: 50.0)
+    datum = _datum()
+    datum.timestamp_unix_seconds = 1000.0 - 0.016 - 0.200
+    source._ingest_screen(datum)
+    assert source.timestamps_are_capture_time
+    assert source.latest_sample().timestamp == pytest.approx(50.0 - 0.016)
+    assert [s.timestamp for s in source.samples_since(None)] == [pytest.approx(50.0 - 0.016)]
+    assert source.gaze_latency_ms == pytest.approx(16.0)
+
+
+def _fake_offset_device(mean_ms):
+    est = SimpleNamespace(
+        time_offset_ms=SimpleNamespace(mean=mean_ms, std=1.0), roundtrip_duration_ms=SimpleNamespace(mean=4.0)
+    )
+    return SimpleNamespace(estimate_time_offset=lambda: est)

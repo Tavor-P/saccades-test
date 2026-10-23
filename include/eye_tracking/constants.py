@@ -92,6 +92,21 @@ NEON_GAP_THRESHOLD_MS = 30.0
 # latest_sample() reports "no face" instead of repeating the last reading
 # forever (which would look like a perfectly still eye).
 NEON_STALE_TIMEOUT_S = 0.5
+# Each sample is stamped with when the eye was where it says (the phone's capture time
+# moved onto the PC's perf_counter timeline), not when it arrived over Wi-Fi - see
+# NeonGazeSource._stamp. A capture time implying more latency than this is treated as a bad
+# clock offset and the sample falls back to its arrival time.
+NEON_MAX_PLAUSIBLE_LATENCY_MS = 150.0
+# Recent samples kept for samples_since() (~2 s at 200 Hz) and the window of the rolling median behind gaze_latency_ms.
+NEON_HISTORY_SAMPLES = 400
+NEON_LATENCY_WINDOW_SAMPLES = 200
+# The phone-vs-PC clock offset is re-estimated this often in the background (phone and PC clocks drift apart);
+# an estimate noisier than the max std is ignored and a good one is blended 50/50 with the previous one.
+NEON_CLOCK_REESTIMATE_S = 60.0
+NEON_CLOCK_REESTIMATE_MAX_STD_MS = 10.0
+# Replaying a recorded trace (gaze_trace.py) has no clock offset; capture times come from the trace's device
+# timestamps, assuming this typical end-to-end latency (measured median on Neon, Oct 2026).
+NEON_REPLAY_LATENCY_MS = 16.0
 
 # --- Neon screen-marker mapping (src/eye_tracking/screen_markers.py, neon_screen_gaze.py) ---
 # AprilTags in the four screen corners let the scene camera locate the screen

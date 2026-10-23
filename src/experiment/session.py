@@ -184,6 +184,14 @@ class ExperimentSession:
             return 0.0
         return min(max(float(value), 0.0), GAZE_LATENCY_MAX_MS)
 
+    def _timestamp_latency_s(self, logged_latency_ms: float) -> float:
+        """How much to subtract from sample timestamps: nothing if the source already stamps samples with their capture
+        time (Neon with a clock offset, trace replay: `timestamps_are_capture_time`) - subtracting the latency again
+        would put onset ~16 ms too early - else the measured latency."""
+        if getattr(self._gaze, "timestamps_are_capture_time", False):
+            return 0.0
+        return logged_latency_ms / 1000
+
     def _sample_time(self, sample, now: float) -> float:
         """When the eye was actually where `sample` says, on the session
         clock: the sample's own timestamp (so onset/landing resolve at the
@@ -210,6 +218,9 @@ class ExperimentSession:
             samples = history(self._last_sample_ts)
             if samples:
                 self._last_sample_ts = samples[-1].timestamp
+            elif not latest.face_found and latest.timestamp > (self._last_sample_ts or 0.0):
+                # A stalled stream produces no new samples, only a synthetic "lost" latest_sample() - keep reporting it.
+                samples = [latest]
         else:
             samples = [latest]
         return [(s, self._sample_time(s, now)) for s in samples]
@@ -363,7 +374,7 @@ class ExperimentSession:
         self._foreperiod_start = self._clock.now()
         self._foreperiod_duration = random.uniform(FOREPERIOD_MIN_MS, FOREPERIOD_MAX_MS) / 1000
         self._rt_test_onset_detector = OnsetDetector(zone_for(Target.DOT))
-        self._latency_s = self.gaze_latency_ms / 1000
+        self._latency_s = self._timestamp_latency_s(self.gaze_latency_ms)
         self._dot_visible = True
         self._cross_visible = False
 
@@ -537,7 +548,7 @@ class ExperimentSession:
         self._trial_avg_rt_ms = self._avg_reaction_time_ms
         self._trial_scheduled_delay_ms = self._avg_reaction_time_ms + offset_ms
         self._trial_gaze_latency_ms = self.gaze_latency_ms
-        self._latency_s = self._trial_gaze_latency_ms / 1000
+        self._latency_s = self._timestamp_latency_s(self._trial_gaze_latency_ms)
         self._flash_scheduled_at = self._trial_start_time + self._trial_scheduled_delay_ms / 1000
 
     def tick(self) -> None:
