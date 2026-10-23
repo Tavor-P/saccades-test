@@ -19,6 +19,7 @@ import argparse
 import math
 import random
 import statistics
+from collections import deque
 from dataclasses import dataclass, field
 
 from include.eye_tracking.interfaces import GazeSource
@@ -83,6 +84,9 @@ class SimulatedClock(PausableClock):
     def now(self) -> float:
         return self._t
 
+    def from_monotonic(self, timestamp: float) -> float:
+        return timestamp  # simulated gaze samples are already stamped in this clock's time
+
 
 class SimulatedGazeSource(GazeSource):
     """Gaze source fed by the simulator; uses the real GazeMapper so
@@ -91,12 +95,19 @@ class SimulatedGazeSource(GazeSource):
     def __init__(self) -> None:
         self._mapper = GazeMapper()
         self._latest = GazeSample(zone=GazeZone.UNKNOWN, ratio=None, face_found=False, timestamp=0.0)
+        self._history: deque[GazeSample] = deque(maxlen=GAZE_HZ)  # ~1 s of samples, like a real source's buffer
+        self.gaze_latency_ms: float | None = None  # what a real source (Neon) measures; set from the profile by the participant
 
     def push(self, ratio: float | None, t: float) -> None:
         if ratio is None:
             self._latest = GazeSample(zone=GazeZone.UNKNOWN, ratio=None, face_found=False, timestamp=t)
         else:
             self._latest = self._mapper.map(ratio, t)
+        self._history.append(self._latest)
+
+    def samples_since(self, timestamp: float | None) -> list[GazeSample]:
+        """Samples newer than `timestamp` (all buffered ones for None), oldest first."""
+        return [s for s in self._history if timestamp is None or s.timestamp > timestamp]
 
     def start(self) -> None:
         pass
@@ -135,6 +146,7 @@ class SimulatedParticipant:
         self._session = session
         self._gaze = gaze
         self._p = profile
+        gaze.gaze_latency_ms = profile.tracker_latency_ms
         self._rng = rng
         self._events = events
         self._phase: str | None = None

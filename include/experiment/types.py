@@ -96,3 +96,15 @@ class TrialResult:
     # within TRACKING_LOSS_WINDOW_MS of the scheduled flash. See
     # scoring.is_valid_for_saccadic_analysis.
     tracking_ok: bool | None = None
+    # Saccade phase, flash-shown trials only: the scheduled flash time minus
+    # the detected onset (ms; positive = flash after onset, None if onset was
+    # never detected) - the quantity the open-loop timing is trying to land
+    # inside the saccade. avg_rt_used_ms / scheduled_delay_ms: the reaction-
+    # time average in effect when the trial was scheduled and the resulting
+    # go-cue-to-flash delay (avg + timing offset), for every saccade trial.
+    # gaze_latency_ms: the eye-to-sample latency subtracted from onset/landing
+    # timestamps for this trial (0 if the source reports none).
+    flash_relative_to_onset_ms: float | None = None
+    avg_rt_used_ms: float | None = None
+    scheduled_delay_ms: float | None = None
+    gaze_latency_ms: float | None = None

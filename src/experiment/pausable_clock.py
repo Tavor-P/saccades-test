@@ -23,6 +23,12 @@ class PausableClock:
             return self._paused_at - self._total_paused
         return time.monotonic() - self._total_paused
 
+    def from_monotonic(self, timestamp: float) -> float:
+        """Converts a time.monotonic() timestamp (what gaze sources stamp
+        their samples with) onto this clock's timebase, i.e. the value now()
+        had at that instant - valid for instants since the last pause ended."""
+        return timestamp - self._total_paused
+
     @property
     def is_paused(self) -> bool:
         return self._paused_at is not None
