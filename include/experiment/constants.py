@@ -232,12 +232,25 @@ DEFAULT_REACTION_TIME_MS = 225.0
 # only overwrites the average value itself - see resume_from_pause). Kept as
 # two separate names even though equal today, since "how many samples feed
 # the average" and "how often it's recomputed" are conceptually distinct
-# knobs a future tweak might decouple. Lowered from 10 to 5 - reaction time
-# can drift (fatigue, practice effects) meaningfully within 10 trials, so
-# updating twice as often keeps the schedule closer to the participant's
-# actual current reaction time.
-RT_AVERAGE_ROLLING_WINDOW = 5
-RT_AVERAGE_RECOMPUTE_EVERY = 5
+# knobs a future tweak might decouple. Recomputed after EVERY completed trial
+# (was every 5) so the flash schedule tracks fatigue/practice drift as it
+# happens; the window is 10 and is seeded with the upfront RT-test samples
+# (see ExperimentSession._finish_rt_test_attempt), so a single early trial
+# can't swing the median. The average is robust (trial_mechanics.robust_average_ms:
+# drops anticipations/outliers, then the median), so a wide window is safe.
+RT_AVERAGE_ROLLING_WINDOW = 10
+RT_AVERAGE_RECOMPUTE_EVERY = 1
+
+# Sharp go-cue: when True the dot/cross appear and disappear instantly during
+# the reaction-time test and the trials (calibration steps and the tutorial
+# keep the gentle fade). A 0.4 s fade has no definite "go" moment, so
+# participants start moving anywhere in that ramp - measured trial reaction
+# times had SD ~119 ms, far wider than a ~35 ms saccade, so open-loop flashes
+# almost never landed in it. An instant onset (plus the beep) is expected to
+# tighten that to a few tens of ms. Trade-off: abrupt onsets can provoke more
+# reflexive/express saccades - watch the early-RT tail in the logged
+# reaction_latency_ms.
+SHARP_GO_CUE = True
 
 # Robust reaction-time average (trial_mechanics.robust_average_ms): measured
 # latencies below RT_MIN_PLAUSIBLE_MS are anticipations/noise blips (a real

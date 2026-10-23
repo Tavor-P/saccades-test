@@ -178,3 +178,38 @@ def test_render_caption_hidden_when_nothing_has_ever_been_shown():
     result = render_caption(stim, "", last_caption="")
     assert result == ""
     assert stim.opacity == 0.0
+
+
+def _symbol_state(visible: bool) -> dict:
+    return {"visible": visible, "x": 0.3, "y": 0.5}
+
+
+def _render_state_for_fade_test(snap: bool, dot_visible: bool) -> dict:
+    return {
+        "dot": _symbol_state(dot_visible),
+        "cross": _symbol_state(False),
+        "calibration_center": _symbol_state(False),
+        "grating": {"visible": False, "x": 0.5, "y": 0.5, "contrast": 0, "orientation": None},
+        "hud": {"phase": "TRIAL_ACTIVE", "trial": "-", "gaze_zone": "left", "face_found": True, "source_available": True},
+        "snap_symbols": snap,
+    }
+
+
+def test_apply_render_state_snaps_symbols_when_the_session_asks_for_a_sharp_cue():
+    from src.experiment.run_experiment import apply_render_state
+
+    stimuli = {name: MagicMock() for name in ("dot", "cross", "calibration_center", "gaze_indicator", "grating", "hud", "tutorial_text")}
+    stimuli["aspect"] = 1.78
+    fades = {"dot": 0.0, "cross": 0.0, "calibration_center": 0.0}
+    apply_render_state(_render_state_for_fade_test(snap=True, dot_visible=True), stimuli, fades, dt=0.016)
+    assert fades["dot"] == 1.0  # instant, not 0.016 / FADE_DURATION_S
+
+
+def test_apply_render_state_still_fades_when_not_snapping():
+    from src.experiment.run_experiment import FADE_DURATION_S, apply_render_state
+
+    stimuli = {name: MagicMock() for name in ("dot", "cross", "calibration_center", "gaze_indicator", "grating", "hud", "tutorial_text")}
+    stimuli["aspect"] = 1.78
+    fades = {"dot": 0.0, "cross": 0.0, "calibration_center": 0.0}
+    apply_render_state(_render_state_for_fade_test(snap=False, dot_visible=True), stimuli, fades, dt=0.016)
+    assert fades["dot"] == __import__("pytest").approx(0.016 / FADE_DURATION_S)

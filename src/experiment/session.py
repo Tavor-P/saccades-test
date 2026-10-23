@@ -34,6 +34,7 @@ from include.experiment.constants import (
     RESPONSE_WINDOW_MS,
     RT_AVERAGE_RECOMPUTE_EVERY,
     RT_AVERAGE_ROLLING_WINDOW,
+    SHARP_GO_CUE,
     SACCADE_TIMEOUT_MS,
     TIMING_OFFSETS_MS,
     TRACKING_LOSS_WINDOW_MS,
@@ -88,6 +89,9 @@ class ExperimentSession:
     FADE_DURATION_S in run_experiment.py), rather than staying fully lit
     until gaze lands on the target - two identical, fully-opaque symbols on
     screen at once made it genuinely ambiguous which one was the new go-cue.
+    With SHARP_GO_CUE (default) the swap is instead instant during the RT test
+    and trials (render_state()["snap_symbols"]), so the go-cue has a definite
+    onset and reaction times stay tight enough for open-loop flash timing.
 
     Framework-agnostic: `on_space()` and `tick()` are called synchronously by
     the PsychoPy frame loop, and `render_state()` returns a plain dict the
@@ -410,6 +414,12 @@ class ExperimentSession:
         self._rt_test_attempt += 1
         if self._rt_test_attempt >= self._rt_test_target_attempts:
             self._avg_reaction_time_ms = robust_average_ms(self._rt_samples_ms, default=DEFAULT_REACTION_TIME_MS)
+            # Seed the rolling window with these samples (the cue is the same
+            # sharp onset as in the trials), so re-estimating after every
+            # trial blends the RT test with the first trials instead of
+            # jumping to a single trial's latency.
+            self._recent_rt_ms.clear()
+            self._recent_rt_ms.extend(self._rt_samples_ms)
             self._begin_next_trial_or_complete()
         else:
             self._begin_rt_test_foreperiod()
@@ -890,6 +900,11 @@ class ExperimentSession:
                 "orientation": trial.orientation if trial is not None else None,
             },
             "gaze_indicator": self._gaze_indicator_state(sample),
+            # Renderer hint: show/hide dot and cross instantly (no crossfade) so
+            # the go-cue has a definite onset - see SHARP_GO_CUE. Calibration
+            # steps keep the fade (it signals "new step").
+            "snap_symbols": SHARP_GO_CUE
+            and self._phase in (Phase.RT_TEST_FOREPERIOD, Phase.RT_TEST_ACTIVE, Phase.FOREPERIOD, Phase.TRIAL_ACTIVE),
             "hud": {
                 "phase": self._phase.name,
                 "gaze_zone": sample.zone.value,

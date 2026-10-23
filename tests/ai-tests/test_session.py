@@ -19,6 +19,7 @@ from include.experiment.constants import (
     RECALIBRATION_ROUNDS,
     RESPONSE_WINDOW_MS,
     RT_AVERAGE_RECOMPUTE_EVERY,
+    RT_AVERAGE_ROLLING_WINDOW,
     SACCADE_ONSET_STABILITY_MS,
     SACCADE_TIMEOUT_MS,
     ZEST_CREDIBLE_INTERVAL_MAX_LOG_WIDTH,
@@ -28,7 +29,7 @@ from include.experiment.constants import (
 )
 from include.experiment.types import Orientation, Target, TrialResult, TrialSpec
 from src.experiment.pausable_clock import PausableClock
-from src.experiment.session import ExperimentSession
+from src.experiment.session import ExperimentSession, Phase
 
 
 class _NullLogger:
@@ -587,14 +588,36 @@ def test_rolling_average_recomputes_every_n_completed_trials(fake_gaze, fake_tim
     session = _make_session(fake_gaze, test_mode=True)
     _complete_calibration_and_rt_test(session, fake_gaze, fake_time, reaction_time_s=0.2)
     initial_average = session._avg_reaction_time_ms
+    assert initial_average == pytest.approx(200.0)
 
     for i in range(RT_AVERAGE_RECOMPUTE_EVERY - 1):
         _run_catch_trial_with_reaction_time(session, fake_gaze, fake_time, i, reaction_time_s=0.3)
         assert session._avg_reaction_time_ms == initial_average  # not yet recomputed
 
-    # One more (the Nth) completed trial triggers the recompute.
+    # The Nth completed trial triggers the recompute. The window is seeded
+    # with the RT-test samples, so it blends them with the new trials.
     _run_catch_trial_with_reaction_time(session, fake_gaze, fake_time, RT_AVERAGE_RECOMPUTE_EVERY, reaction_time_s=0.3)
+    assert initial_average <= session._avg_reaction_time_ms <= 300.0
+
+    # Once the window is full of 300 ms trials the average is exactly 300.
+    for i in range(RT_AVERAGE_ROLLING_WINDOW):
+        _run_catch_trial_with_reaction_time(session, fake_gaze, fake_time, 10 + i, reaction_time_s=0.3)
     assert session._avg_reaction_time_ms == pytest.approx(300.0)
+
+
+def test_rt_average_is_recomputed_after_every_trial():
+    assert RT_AVERAGE_RECOMPUTE_EVERY == 1
+
+
+def test_render_state_snaps_symbols_during_rt_test_and_trials_but_not_calibration(fake_gaze, fake_time):
+    session = _make_session(fake_gaze, test_mode=True)
+    assert session.render_state()["snap_symbols"] is False  # waiting to start
+    _complete_calibration_and_rt_test(session, fake_gaze, fake_time, reaction_time_s=0.2)
+    assert session.render_state()["snap_symbols"] is True  # in the trial loop
+    session._phase = Phase.CALIBRATE_LEFT
+    assert session.render_state()["snap_symbols"] is False
+    session._phase = Phase.RT_TEST_ACTIVE
+    assert session.render_state()["snap_symbols"] is True
 
 
 # -- stopping criterion ---------------------------------------------------------

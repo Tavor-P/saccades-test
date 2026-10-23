@@ -360,7 +360,10 @@ def apply_render_state(state: dict, stimuli: dict, fade_opacities: dict, dt: flo
     for name in ("dot", "cross", "calibration_center"):
         symbol_state = state.get(name, {"visible": False, "x": 0.0, "y": 0.0})
         target_opacity = 1.0 if symbol_state["visible"] else 0.0
-        fade_opacities[name] = _move_toward(fade_opacities[name], target_opacity, fade_step)
+        if state.get("snap_symbols"):
+            fade_opacities[name] = target_opacity  # sharp go-cue: instant on/off (see SHARP_GO_CUE)
+        else:
+            fade_opacities[name] = _move_toward(fade_opacities[name], target_opacity, fade_step)
         stim = stimuli[name]
         stim.opacity = fade_opacities[name]
         stim.pos = ratio_to_pos(symbol_state["x"], symbol_state["y"], aspect)
