@@ -389,6 +389,8 @@ class ExperimentSession:
     def _tick_rt_test_active(self) -> None:
         now = self._clock.now()
         for sample, sample_t in self._new_samples(self._gaze.latest_sample()):
+            if sample_t < self._rt_test_start_time:
+                continue  # captured before the go-cue (it just arrived after it): cannot be a reaction to it
             if self._rt_test_onset_detector.update(sample, sample_t):
                 self._finish_rt_test_attempt((self._rt_test_onset_detector.since - self._rt_test_start_time) * 1000)
                 return
@@ -578,6 +580,8 @@ class ExperimentSession:
         # _finish_trial) - it no longer triggers the flash. See the
         # scheduled-time block below for that.
         for s, s_t in new_samples:
+            if s_t < self._trial_start_time:
+                continue  # captured before the go-cue (it just arrived after it): cannot be a reaction to it
             if not self._onset_detector.confirmed and self._onset_detector.update(s, s_t):
                 self._reaction_latency_ms = (self._onset_detector.since - self._trial_start_time) * 1000
                 self._onset_detection_lag_ms = (s_t - self._onset_detector.since) * 1000

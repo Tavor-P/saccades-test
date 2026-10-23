@@ -88,7 +88,7 @@ def main() -> None:
         f"p99 {steps[int(.99 * len(steps))]:.2f} deg, max {steps[-1]:.2f} deg"
     )
     print(f"  effective sample rate: {len(samples) / seconds:.0f} Hz")
-    print("\nIf the p99 jitter is well under your dead-zone size, a short (~10 ms) onset debounce is safe.")
+    print("\nIf the p99 jitter is well under SACCADE_ONSET_DISPLACEMENT (include/experiment/constants.py), a short (~10 ms) onset debounce is safe.")
 
 
 if __name__ == "__main__":

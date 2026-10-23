@@ -125,7 +125,7 @@ def test_a_source_with_history_is_consumed_sample_by_sample(fake_gaze, fake_time
     start = session._trial_start_time
 
     def sample(dt, zone):
-        return GazeSample(zone=zone, ratio=0.5, face_found=True, timestamp=start + dt)
+        return GazeSample(zone=zone, ratio=0.5, face_found=True, timestamp=start + dt, position={GazeZone.LEFT: 0.0, GazeZone.CENTER: 0.5}.get(zone, 1.0))
 
     batch = [sample(0.10, GazeZone.LEFT), sample(0.105, GazeZone.CENTER), sample(0.112, GazeZone.CENTER), sample(0.120, GazeZone.CENTER)]
     gaze.samples_since = lambda ts: [s for s in batch if ts is None or s.timestamp > ts]

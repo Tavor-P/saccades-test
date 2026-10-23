@@ -67,7 +67,8 @@ Paths in this section are checked by `tests/test_docs.py` - keep them real.
 | `src/experiment/tutorial_session.py` | `TutorialSession`: narrated first-timer on-ramp |
 | `src/experiment/run_experiment.py` | entry point + PsychoPy rendering; the only PsychoPy-dependent module |
 | `src/experiment/scoring.py` | `score_outcome`, `is_valid_for_saccadic_analysis` (the validity gate) |
-| `src/experiment/trial_mechanics.py` | `OnsetDetector`, `ShuffledBag`, `zone_for`, `average_ms` (shared helpers) |
+| `src/experiment/trial_mechanics.py` | `OnsetDetector` (displacement rule), `ShuffledBag`, `zone_for`, `average_ms` (shared helpers) |
+| `src/timebase.py` | the ONE time source: `now()` = `time.perf_counter()`; wall-clock via an edge-synchronised anchor (`unix_now()`, `perf_to_unix`) |
 | `src/experiment/trial_factory.py` | builds trial sequences |
 | `src/experiment/zest.py` | adaptive contrast staircase |
 | `src/experiment/logger.py` | `ResultLogger`: CSV + `_meta.json` + side-file paths |
@@ -90,6 +91,7 @@ Paths in this section are checked by `tests/test_docs.py` - keep them real.
 | `tests/ai-tests/find_bugs.py` | randomized bug-hunting campaign over the simulator; prints a repro command per finding |
 | `tests/ai-tests/invariants.py` | `check_session()`: contract checks every simulated session must satisfy |
 | `tests/fixtures/neon_trace_sample.csv` | a real recorded Neon gaze trace |
+| `tests/ai-tests/analyze_onset_threshold.py` | offline onset-rule study on recorded traces (lead/delay/false triggers per threshold) |
 | `scripts/py.ps1` | interpreter wrapper (see Start here) |
 
 `data/` (results, traces, graphs) is git-ignored runtime output: never commit it, and don't write to
@@ -118,7 +120,7 @@ known bugs to prove the checks and regression tests still catch them. Also enfor
 TrialResult/CSV/dashboard schema sync (`test_schema_sync.py`), constant relations
 (`test_constants_sanity.py`), live-vs-graph validity lockstep (`test_validity_lockstep.py`) and the
 architecture rules in this file (`test_architecture_rules.py`: no PsychoPy in session logic, no direct
-`time.monotonic()`, lazy backend imports, no logic in `include/`).
+`time.monotonic()`/`time.time()` anywhere in `src/` outside `timebase.py`, lazy backend imports, no logic in `include/`).
 
 ## Recipes
 
@@ -265,13 +267,12 @@ session also writes `gaze_quality` (rate, gaps, latency, clock offset) into
 `_meta.json` and a raw `results_<ts>_gaze_trace.csv` (both Neon backends; for the screen-marker backend the
 trace's `x_px` column holds screen-ratio x `NEON_SCENE_WIDTH`, so replay reproduces its head-compensated zones).
 
-**Known simulator finding (unresolved).** In simulation the
-`flash_during_saccade` window is built from classifier observation times, which
-trail the real eye by the tracker latency (~16 ms on Neon); with 16 ms latency
-only ~3% of flashes the check keeps really hit the saccade (100% at 0 ms).
-`run_sim.py --sweep-profile tracker_latency_ms=0,16,50` reproduces it. Not yet
-fixed in the experiment code; verify with real traces before trusting
-`flash_during_saccade` precision.
+**Simulator finding (fixed in simulation, unverified on glasses).** Onset/landing used to be
+stamped with classifier observation times that trail the real eye by the tracker latency, so with 16 ms
+latency only ~3% of kept flashes really hit the saccade. Samples are now stamped with capture time
+(Neon: `device_unix_s` + clock offset on the perf_counter timeline; sim: arrival minus the exact
+`gaze_latency_ms`), giving precision 1.0 at 0/16/50 ms in `run_sim.py --sweep-profile
+tracker_latency_ms=0,16,50`. The simulator hands the session the exact latency; a real Neon estimate is noisier.
 
 ## Gotchas that cost real debugging time
 
@@ -280,7 +281,12 @@ after the event (p95 ~21 ms, max ~35 ms), ~140-180 Hz effective with gaps up
 to ~47 ms. Latency is only right if you convert with
 `local = device_ts + offset` from `estimate_time_offset()` (the sign is easy
 to get backwards: it gave a bogus 414 ms once). `NeonGazeSource` stamps
-samples with arrival `time.monotonic()`, not Neon timestamps. The scene
+samples with their *capture* time (`device_unix_s + offset`, moved onto the
+`timebase.now()` perf_counter timeline; arrival time only as a fallback, strictly increasing, clamped
+to <=150 ms latency) and the session then must not subtract `gaze_latency_ms` again
+(`timestamps_are_capture_time`). The offset is re-estimated every 60 s in the background (unverified on
+hardware whether `estimate_time_offset` is safe while streaming). Latency was ~18 ms for the plain scene-camera
+backend but 90-100 ms in the screen-mapped sessions of Oct 2026 - check `gaze_quality.latency_ms_median`. The scene
 camera is head-mounted, so head movement shifts gaze x with no eye movement -
 calibration assumes a still head (chin rest); `neon_gaze_view.py` uses
 AprilTag screen mapping instead and needs no calibration. The Neon source has
@@ -338,13 +344,19 @@ narrows enough (with a minimum valid-trial floor and a max-trial safety
 cap), so `NUM_TRIALS_PER_PHASE_TEST`/`_REAL` only apply to
 `PresaccadeSession` now, not `ExperimentSession`'s real block.
 
-**`GAZE_DEAD_ZONE` (`include/eye_tracking/constants.py`) hides real latency.**
-Gaze must cross this band before saccade-onset detection starts counting
-`SACCADE_ONSET_STABILITY_MS`, so travel time through the dead zone is real
-latency that never shows up in the logged `onset_detection_lag_ms` metric.
-Narrowing it trades that hidden latency against a higher false-alarm rate —
-see the comment above `SACCADE_ONSET_STABILITY_MS` in
-`include/experiment/constants.py` before retuning either constant.
+**Saccade onset is a displacement rule, not a zone crossing.** `OnsetDetector` fires when
+`GazeSample.position` is more than `SACCADE_ONSET_DISPLACEMENT` (0.08, position units 0=dot..1=cross)
+from the fixation baseline at the source for `SACCADE_ONSET_STABILITY_MS` of capture time, and
+`since` is the first sample beyond it. The old rule waited for gaze to leave the source *zone* (CENTER
+counted as left, i.e. ~40% of the travel) so narrowing `GAZE_DEAD_ZONE` used to help onset - it no longer
+does; the dead zone now only matters for landing/zones. Tests/fakes that only set `.zone` must move
+`.position` too (`FakeGazeSource.position` follows the zone). Threshold evidence:
+`tests/ai-tests/analyze_onset_threshold.py` on recorded traces; recorded screen-mapped traces
+contain mapping spikes (position jumps of ~1.0 for a few samples) that any rule will trigger on.
+
+**Never use `time.monotonic()` / `time.time()` for event timing on Windows.** Both tick every 15.6 ms
+(`time.get_clock_info`); use `src/timebase.py` (`now()`, `unix_now()`), enforced by `test_architecture_rules.py`.
+Tests patch `timebase._clock` (see `fake_time`), never the global `time` module.
 
 **`CAMERA_GAIN_DB` is an unvalidated placeholder.** Fixed exposure/gain was
 long claimed in `_configure_camera`'s docstring before gain was actually

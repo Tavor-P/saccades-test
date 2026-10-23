@@ -57,3 +57,10 @@ def test_neon_staleness_is_longer_than_a_gap_and_calibration_window_fills_quickl
 
 def test_smoothing_parameters_are_valid():
     assert 0 < g.POSITION_SMOOTHING <= 1
+
+
+def test_onset_displacement_is_between_fixation_noise_and_the_old_zone_exit():
+    """Noise on Neon is a few hundredths of the dot-to-cross span; the old zone rule fired at 0.5 - GAZE_DEAD_ZONE of travel."""
+    assert 0.03 <= c.SACCADE_ONSET_DISPLACEMENT < 0.5 - g.GAZE_DEAD_ZONE
+    assert 0 < c.ONSET_BASELINE_WINDOW_MS < 1000
+    assert c.SACCADE_ONSET_DISPLACEMENT < c.ONSET_BASELINE_NEAR_SOURCE < 0.5

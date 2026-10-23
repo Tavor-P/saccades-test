@@ -14,12 +14,24 @@ class FakeGazeSource(GazeSource):
     def __init__(self) -> None:
         self.zone = GazeZone.CENTER
         self.ratio: float | None = None
-        self.position: float | None = 0.5  # 0=left target, 0.5=center, 1=right target
+        self._position: float | None = None  # explicit override; None = follow .zone
         self.smoothed_position: float | None = 0.5  # smoothed version - see GazeSample
         self.face_found = True
         self._available = True
         self.calibrated: tuple[float, float, float] | None = None
         self.calibration_samples_begun = 0
+
+    @property
+    def position(self) -> float | None:
+        """0=left target, 0.5=center, 1=right target. Follows `.zone` (LEFT 0, CENTER 0.5, RIGHT 1) unless a test sets it
+        explicitly - saccade onset is a displacement of the position, so tests that only flip the zone must move it too."""
+        if self._position is not None:
+            return self._position
+        return {GazeZone.LEFT: 0.0, GazeZone.CENTER: 0.5, GazeZone.RIGHT: 1.0}.get(self.zone, 0.5)
+
+    @position.setter
+    def position(self, value: float | None) -> None:
+        self._position = value
 
     def start(self) -> None:
         pass
