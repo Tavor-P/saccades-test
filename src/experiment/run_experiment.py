@@ -877,10 +877,10 @@ def prompt_session_info() -> tuple[str, str, int, str, float, bool, bool, bool, 
     """Standard PsychoPy participant-info dialog, shown before the window
     opens - also offers a camera picker (a dropdown of every camera index
     that actually opens) so switching between multiple connected cameras
-    doesn't require hand-editing CAMERA_INDEX, and a contrast-floor field
-    pre-filled with the dashboard-configured default (see
-    src/experiment/settings.py and the dashboard's settings box) so a run can
-    override it per-session without editing code. Also offers a "Show gaze
+    doesn't require hand-editing CAMERA_INDEX, and the saccade phase's
+    probe-contrast range (min/max fields, see SACCADE_FIXED_CONTRASTS; the baseline
+    staircase floor is the dashboard-configured default in src/experiment/settings.py,
+    not a dialog field). Also offers a "Show gaze
     indicator" toggle (default No) for the saccade phase's debug gaze dot -
     off by default since it's not something a real participant should see -
     a "Run tutorial" toggle (default No) for the first-timer on-ramp (see
@@ -907,7 +907,6 @@ def prompt_session_info() -> tuple[str, str, int, str, float, bool, bool, bool, 
             "Participant ID": previous.get("Participant ID", ""),
             "Gaze source": _selected_first(BACKENDS, previous.get("Gaze source")),
             "Camera (webcam source only)": _selected_first(camera_labels, previous.get("Camera (webcam source only)")),
-            "Contrast floor (%)": previous.get("Contrast floor (%)", f"{default_contrast_floor_percent:.2f}"),
             # The saccade phase flashes fixed contrasts evenly spaced between these two (SACCADE_FIXED_CONTRASTS).
             "Saccade contrast min (%)": previous.get("Saccade contrast min (%)", f"{DEFAULT_SACCADE_CONTRAST_MIN_PERCENT:g}"),
             "Saccade contrast max (%)": previous.get("Saccade contrast max (%)", f"{DEFAULT_SACCADE_CONTRAST_MAX_PERCENT:g}"),
@@ -930,7 +929,8 @@ def prompt_session_info() -> tuple[str, str, int, str, float, bool, bool, bool, 
     gaze_backend = info["Gaze source"]
     if gaze_backend in NEON_BACKENDS:
         camera_index, camera_label = CAMERA_INDEX, gaze_backend
-    contrast_floor_percent = _resolve_contrast_floor_percent(info["Contrast floor (%)"], default_contrast_floor_percent)
+    # No dialog field any more: the baseline staircase's floor is the dashboard-configured default.
+    contrast_floor_percent = default_contrast_floor_percent
     saccade_contrasts = resolve_saccade_contrasts(info["Saccade contrast min (%)"], info["Saccade contrast max (%)"])
     show_gaze_indicator = _resolve_show_gaze_indicator(info["Show gaze indicator"])
     run_tutorial = _resolve_run_tutorial(info["Run tutorial"])
