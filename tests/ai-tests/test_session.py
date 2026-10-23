@@ -32,6 +32,9 @@ from src.experiment.pausable_clock import PausableClock
 from src.experiment.session import ExperimentSession, Phase
 
 
+pytestmark = pytest.mark.usefixtures("scheduled_flash_mode")
+
+
 class _NullLogger:
     """Swallows .log() calls - tests check session.results/_saccade_results()
     instead of a real CSV, so they don't need filesystem isolation."""

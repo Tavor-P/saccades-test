@@ -30,6 +30,9 @@ from test_session import (
 )
 
 
+pytestmark = pytest.mark.usefixtures("scheduled_flash_mode")
+
+
 def _stamped_gaze(fake_gaze):
     """fake_gaze, but latest_sample() carries a settable timestamp and the source
     reports a measured latency - like Neon, whose samples are stamped on arrival."""

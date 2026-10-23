@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 
 from include.eye_tracking.interfaces import GazeSource
 from include.eye_tracking.types import GazeSample, GazeZone
+from include.experiment.constants import CROSS_POSITION, DOT_POSITION, SCREEN_HEIGHT_CM, VIEWING_DISTANCE_CM
 from include.experiment.types import Orientation, TrialResult
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.scoring import is_valid_for_saccadic_analysis
@@ -36,6 +37,20 @@ _STEPS_PER_FRAME = GAZE_HZ // FRAME_HZ
 _MAX_SIM_SECONDS = 3600.0
 
 
+def _main_sequence_saccade_ms() -> float:
+    """Typical duration of the dot<->cross saccade from the main sequence (~21 ms + ~2.2 ms per
+    degree), for the current DOT/CROSS positions on a 16:9 screen at the assumed viewing distance.
+    A rule of thumb from the literature, not measured on this setup: check the logged
+    saccade_duration_ms of a real session and override saccade_ms_min/max if it differs."""
+    half_width_cm = SCREEN_HEIGHT_CM * 16 / 9 / 2
+    x1, x2 = (DOT_POSITION[0] - 0.5) * 2 * half_width_cm, (CROSS_POSITION[0] - 0.5) * 2 * half_width_cm
+    amplitude_deg = math.degrees(math.atan2(x2, VIEWING_DISTANCE_CM) - math.atan2(x1, VIEWING_DISTANCE_CM))
+    return 21.0 + 2.2 * amplitude_deg
+
+
+_SACCADE_MS = _main_sequence_saccade_ms()
+
+
 @dataclass
 class ParticipantProfile:
     """Behaviour of the simulated participant. Defaults roughly match a
@@ -43,8 +58,8 @@ class ParticipantProfile:
 
     reaction_ms_mean: float = 230.0  # go-cue to saccade start
     reaction_ms_sd: float = 35.0
-    saccade_ms_min: float = 45.0
-    saccade_ms_max: float = 60.0
+    saccade_ms_min: float = _SACCADE_MS * 0.85  # scales with the dot-cross distance (~110 ms for 15%/85%)
+    saccade_ms_max: float = _SACCADE_MS * 1.15
     response_ms_mean: float = 450.0  # flash to key press
     response_ms_sd: float = 90.0
     # Psychometric function: P(see flash) is logistic in log10(contrast),

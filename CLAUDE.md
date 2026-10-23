@@ -324,7 +324,21 @@ don't have this restriction. If the tutorial ran, its
 practice/dress-rehearsal stage — this coupling isn't visible from
 `session.py` alone.
 
-**Saccade-phase flash timing is open-loop, not gaze-contingent, and
+**Flash trigger modes (`FLASH_TRIGGER` in `include/experiment/constants.py`).** The default,
+`"onset"`, is gaze-triggered: no reaction-time test and no prediction - the flash fires the
+tick `OnsetDetector` confirms a saccade (plus `FLASH_ONSET_DELAYS_MS`, default `(0,)`), so it can
+only land during/after the saccade (~35-50 ms after the true onset: Neon ~16 ms + displacement
+debounce + one frame + display). That only fits inside the movement if the saccade is long, which
+is why `DOT_POSITION`/`CROSS_POSITION` are now 15%/85% of the screen (~41 deg, expected ~110 ms by
+the main sequence - unverified on this setup: check `saccade_duration_ms` in the next real
+session; the simulator's `ParticipantProfile.saccade_ms_*` scale with the same geometry). The
+simulator (latency 16 ms) gives ~94% valid flashes at 110 ms saccades but ~0% at 35-45 ms ones.
+`SACCADE_ONSET_DISPLACEMENT` is a fraction of the dot-cross span (an angle), so it was rescaled
+0.08 -> 0.05 for the wider layout. The older mode, `"scheduled"` (below), is kept and tested via
+the `scheduled_flash_mode` fixture (`tests/ai-tests/conftest.py`). `SHARP_GO_CUE` shows the
+dot/cross instantly (no 0.4 s fade) in the trials.
+
+**Saccade-phase flash timing is open-loop (the `"scheduled"` mode), not gaze-contingent, and
 `flash_during_saccade` is a post-hoc window check.** `ExperimentSession`
 first runs a reaction-time test (`Phase.RT_TEST_FOREPERIOD`/`RT_TEST_ACTIVE`)
 to measure the participant's own beep-to-saccade-onset latency, then

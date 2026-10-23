@@ -4,8 +4,12 @@ commented with why it has its value; read the comment before retuning one. Const
 
 import math
 
-DOT_POSITION = (0.3, 0.5)  # (xRatio, yRatio), 0-1 fraction of screen, framework-agnostic
-CROSS_POSITION = (0.7, 0.5)
+# (xRatio, yRatio), 0-1 fraction of screen, framework-agnostic. Wide on purpose: a saccade's
+# duration grows with its size (~21 ms + ~2.2 ms/deg), so 15%/85% of a 53 cm screen at 50 cm
+# (~41 deg, ~110 ms) leaves a gaze-triggered flash (~40 ms after onset) room to land INSIDE
+# the movement, where the old 30%/70% (~24 deg) saccades were nearly over by then.
+DOT_POSITION = (0.15, 0.5)
+CROSS_POSITION = (0.85, 0.5)
 CENTER_POSITION = (0.5, 0.5)  # presaccade-phase fixation point
 GRATING_POSITION = (
     (DOT_POSITION[0] + CROSS_POSITION[0]) / 2,
@@ -172,7 +176,23 @@ GAZE_LANDING_STABILITY_MS = 150  # gaze must hold in the target zone this long t
 # mapped backends add spikes); higher = later. Chosen from recorded traces, see
 # tests/ai-tests/analyze_onset_threshold.py. Sweep it with
 # `run_sim.py --sweep SACCADE_ONSET_DISPLACEMENT=0.03,0.05,0.08,0.12`.
-SACCADE_ONSET_DISPLACEMENT = 0.08
+#
+# The threshold is a fraction of the dot-to-cross span, i.e. an ANGLE that scales with
+# DOT_POSITION/CROSS_POSITION: 0.08 was ~1.9 deg of a ~24 deg span; with the wider ~41 deg
+# span 0.05 is ~2.0 deg, the same physical threshold (re-check with
+# analyze_onset_threshold.py on a fresh trace of the wider layout).
+SACCADE_ONSET_DISPLACEMENT = 0.05
+
+# How the flash is timed. "onset": fire the flash as soon as the onset detector confirms a
+# saccade (no reaction-time test, no prediction - the delay below is added to the detected
+# onset, 0 = as early as the pipeline allows, ~35-50 ms after the true onset); the flash can
+# only land during/after the saccade, never before it. "scheduled": the older open-loop mode
+# (reaction-time test, flash at average RT + TIMING_OFFSETS_MS from target onset).
+FLASH_TRIGGER = "onset"
+# Extra delay (ms, >= 0) after the detected onset in "onset" mode, drawn without repeats
+# like TIMING_OFFSETS_MS (it is what the CSV's timing_offset_ms records). (0,) = always asap;
+# e.g. (0, 10, 20) would spread flashes across the saccade.
+FLASH_ONSET_DELAYS_MS = (0,)
 # The fixation baseline the displacement is measured from: the median of the last
 # ONSET_BASELINE_WINDOW_MS of samples that were within ONSET_BASELINE_NEAR_SOURCE of the
 # source symbol and not yet past the threshold (so the movement never drags it along);

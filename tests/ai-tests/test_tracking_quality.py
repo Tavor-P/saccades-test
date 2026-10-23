@@ -1,6 +1,7 @@
 """Trials whose gaze tracking dropped out around the flash are flagged
 tracking_ok=False and excluded from ZEST and analysis (scoring.py)."""
 
+import pytest
 from unittest.mock import Mock
 
 from test_session import (  # the session-driving helpers live with the session tests
@@ -19,6 +20,9 @@ from include.experiment.constants import (
 )
 from include.experiment.types import Orientation, Target, TrialResult
 from src.experiment.scoring import is_valid_for_saccadic_analysis
+
+
+pytestmark = pytest.mark.usefixtures("scheduled_flash_mode")
 
 
 def _session_in_first_trial(fake_gaze, fake_time, **trial_spec):
