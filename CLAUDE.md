@@ -13,6 +13,43 @@ picked in the startup dialog, a FLIR Blackfly S camera (Spinnaker SDK /
 `PySpin`) + MediaPipe iris landmarks. See [README.md](README.md) for the full participant-facing
 walkthrough (controls, output files, troubleshooting).
 
+## Status and next steps (written 2026-10-22 for the next session)
+
+**Goal.** A grant (due ~a week out) to test saccadic suppression in people with TBI vs without. Present
+what exists as a *feasibility pilot (n=1)*, not as a group result. The experiment flashes a brief grating around
+the participant's saccades (Neon glasses, 2AFC orientation) and measures detection vs flash time relative to onset.
+
+**Where the work is.** Branch `feature/saccade-flash-analysis` (cut from `main` == the old `feature/neon-glasses`
+tip `befac0e`). Nothing pushed by us; sessions pushed `claude/clock-onset-05b6cf` and `claude/simplify-comments` to
+origin by themselves (ignore/delete). Defaults: scheduled flashes (avg RT + offset -80..+80 ms + random +/-10 ms),
+fixed saccade-phase contrasts 10/15/20 % (startup dialog "Saccade contrast min/max (%)"), sharp go-cue, dot/cross at
+15 %/85 % of the screen, plain Neon backend + still head recommended. Run the experiment, then
+`.\scripts\py.ps1 -m src.experiment.analyze_session` (newest session) for the report, plot and per-flash CSV.
+
+**Pilot findings (one participant, test mode).** Foveal baseline threshold ~1.3 %. Saccades ~75 ms / ~30 deg with
+the 15/85 layout. 3 %/6 % flashes were invisible when fixating the dot/cross (flash ~15 deg off to the side);
+10-20 % are seen. Flashes within +-50 ms of saccade onset: 3/12 correct vs 12/13 for flashes 50-300 ms away
+(Fisher p=0.001; the earlier 20-80 % session pointed the same way, pooled p<1e-4), sharpest in the 50 ms
+*before* onset. Small n, no true fixation control yet, the +-50 ms window was chosen after seeing session 1.
+
+**Known problems.**
+1. Gaze reaches the PC ~95 ms late at ~160 Hz (screen-mapped backends: ~45 Hz) in real sessions; see the open
+   problem in the Gotchas. `sys.setswitchinterval(0.0005)` did not fix it. Irrelevant to the post-hoc analysis
+   (phone capture times) but it makes the live `flash_during_saccade` flag useless and blocks `FLASH_TRIGGER="onset"`.
+2. Reaction time varies (SD ~60-80 ms), so only ~1/3 of flashes land near onset; TBI will likely be worse.
+3. The screen geometry constants (`VIEWING_DISTANCE_CM`, `SCREEN_HEIGHT_CM`, `SCREEN_MARKER_SCREEN_WIDTH_CM`) are
+   still the 24-inch defaults; the user's monitor is small (~12 in wide) and 60 Hz. Ask for real width/height (cm)
+   and viewing distance.
+4. The baseline (foveal) phase is not a like-for-like control for the saccade phase (different retinal location).
+
+**Next steps, in priority order.** (1) Add deliberate control flashes far from onset (>=300 ms before/after) in the
+saccade phase. (2) A per-person suppression index (accuracy away from onset minus near onset) and a group-level
+analysis (per-person index + group test, or a mixed model) for TBI vs controls. (3) A full 150-trial real run
+(Mode Real + participant ID), analysed with `analyze_session`. (4) A one-page grant figure + wording. (5) Clinical
+metadata fields (group, time since injury, severity, symptoms, medication; needs the IRB) in the dashboard.
+(6) Find the cause of the ~95 ms gaze delay (e.g. receive Neon in its own process). (7) Ask the user for the screen
+measurements and update the geometry constants.
+
 ## Start here (read this first)
 
 - **Run everything through the wrapper**: `.\scripts\py.ps1 <python args>` (PowerShell) or
