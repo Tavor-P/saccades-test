@@ -61,36 +61,17 @@ def robust_average_ms(samples: Sequence[float], default: float) -> float:
 
 
 class OnsetDetector:
-    """Detects "gaze left the source symbol" as a displacement of the calibrated
-    gaze position: fires once `sample.position` has moved away from the
-    fixation baseline at the source by more than SACCADE_ONSET_DISPLACEMENT
-    (position units: 0 = dot, 1 = cross) and stayed beyond it for
-    SACCADE_ONSET_STABILITY_MS of sample capture time. `since` is the first
-    sample that exceeded the threshold, i.e. the onset estimate, so the
-    debounce delays confirmation but not the reported onset.
+    """Detects "gaze left the source symbol" as a displacement of the calibrated `sample.position`: it confirms once the position is more than
+    SACCADE_ONSET_DISPLACEMENT (0 = dot, 1 = cross) from the fixation baseline for SACCADE_ONSET_STABILITY_MS of sample capture time.
+    `since` is the first sample beyond the threshold (the onset estimate), so the debounce delays confirmation, not the onset.
 
-    This replaces a zone-crossing rule ("outside the source zone, CENTER
-    included") that only noticed the movement after ~40% of the travel
-    (GAZE_DEAD_ZONE) - a real saccade lasts 30-35 ms in total. The baseline is
-    the median of the last ONSET_BASELINE_WINDOW_MS of samples that were still
-    near the source (within ONSET_BASELINE_NEAR_SOURCE of it and not yet past
-    the threshold), so a fixation offset or slow drift is subtracted but the
-    movement itself never drags the baseline along. The first near-source
-    sample seeds it at once (the participant is already fixating the source
-    when the detector is created); with none yet, the nominal source position
-    (0 or 1) is used. A sample without a face/position resets the detector
-    (a blink is not an onset, and the baseline is stale afterwards).
+    The baseline is the median of the last ONSET_BASELINE_WINDOW_MS of samples near the source and not yet past the threshold, so a fixation
+    offset or slow drift is subtracted but the movement never drags it along. The first near-source sample seeds it; before that the nominal
+    source position (0 or 1) is used. A sample without a face/position resets the detector (a blink is not an onset). `avoid_zone` LEFT/RIGHT
+    picks the source side; anything else means "away from the middle" either way.
 
-    Used in four places (ExperimentSession's RT-test and main trials,
-    TutorialSession's scoped-down mirrors of both) - one tested implementation
-    here instead of four hand-copied ones. `avoid_zone` LEFT/RIGHT picks the
-    source side; any other value means "away from the middle" in either direction.
-
-    `since` is set the first tick gaze is beyond the threshold and reset to None
-    on any tick it isn't - readable at any time, not just once confirmed.
-    `confirmed` is the flag. Once `confirmed` is True, the caller is expected to
-    stop calling `update()` (matching every call site's `if not <confirmed>:`
-    gate) so `since` freezes at the sample that actually triggered confirmation.
+    The one onset implementation, used by the RT test and main trials in ExperimentSession and TutorialSession. `since` is readable at any time
+    (None while gaze is within the threshold); once `confirmed`, callers stop calling `update()` so `since` freezes at the triggering sample.
     """
 
     def __init__(self, avoid_zone: GazeZone) -> None:
