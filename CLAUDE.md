@@ -38,6 +38,7 @@ All via the wrapper (PowerShell shown; from Git Bash use `scripts/py.sh` with th
 .\scripts\py.ps1 tests/ai-tests/run_sim.py --help               # headless simulation runner (scenarios, sweeps, JSON)
 .\scripts\py.ps1 -m src.experiment.run_experiment               # REAL experiment (opens a window - human only)
 .\scripts\py.ps1 -m src.dashboard.app                           # session dashboard at localhost:5000
+.\scripts\py.ps1 -m src.experiment.analyze_session [timestamp]  # accuracy vs flash time relative to saccade onset (newest session by default)
 .\scripts\py.ps1 -m src.eye_tracking.neon_fixation_test [secs]  # Neon jitter check (glasses on; human)
 .\scripts\py.ps1 -m src.eye_tracking.neon_gaze_view             # live screen-gaze dot via AprilTags (human)
 .\scripts\py.ps1 -m src.eye_tracking.latency_test               # Neon vs webcam latency recording (human)
@@ -75,6 +76,7 @@ Paths in this section are checked by `tests/test_docs.py` - keep them real.
 | `src/experiment/zest.py` | adaptive contrast staircase |
 | `src/experiment/logger.py` | `ResultLogger`: CSV + `_meta.json` (git SHA, constants snapshot, per-phase threshold summary) + side-file paths |
 | `src/experiment/results_graph.py` | end-of-run comparison figure |
+| `src/experiment/analyze_session.py` | post-hoc saccade analysis: finds saccades in a session's raw gaze trace (phone capture times), places each flash against the nearest onset, writes accuracy-vs-time report + plot + per-flash CSV |
 | `src/experiment/simulation.py` | headless simulator (simulated participant, clock, gaze) |
 | `src/eye_tracking/neon_source.py` | `NeonGazeSource` (default backend): Real-Time API stream + quality stats |
 | `src/eye_tracking/neon_screen_source.py` | Neon + screen-marker backend (head-compensated gaze) |
@@ -355,10 +357,11 @@ Shipped saccade-phase setup (branch `feature/saccade-flash-analysis`, built for 
 after the fact because the live check is useless at ~90 ms gaze latency): scheduled flashes at
 average RT + one of `TIMING_OFFSETS_MS` (-80..+80 ms) + a random `TIMING_JITTER_MS` (+/-10 ms)
 bounce (logged in `scheduled_delay_ms`), fixed probe contrasts `SACCADE_FIXED_CONTRASTS`
-(3 % and 6 %, method of constant stimuli: no live ZEST in the saccade phase) and a fixed count
+(10/15/20 %: evenly spaced between the startup dialog's "Saccade contrast min/max (%)" fields, logged as `saccade_contrasts` in the meta file; method of constant stimuli: no live ZEST in the saccade phase) and a fixed count
 `SACCADE_FIXED_TRIALS_*`. Set `SACCADE_FIXED_CONTRASTS = ()` to return to the staircase. The
-analysis (accuracy vs flash time relative to saccade onset, from the raw trace's phone capture
-times) is still to be written. `run_experiment.main` sets `sys.setswitchinterval(0.0005)` as a
+analysis is `src.experiment.analyze_session` (accuracy vs flash time relative to saccade onset, from the
+raw trace's phone capture times; first real data: 3 %/6 % were invisible 15 deg off to the side, 20-80 %
+were seen, with a possible dip within +-50 ms of onset, n=28). `run_experiment.main` sets `sys.setswitchinterval(0.0005)` as a
 first test of the receiver-starvation hypothesis above.
 
 **Saccade-phase flash timing is open-loop (the `"scheduled"` mode), not gaze-contingent, and

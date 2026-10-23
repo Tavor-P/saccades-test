@@ -50,7 +50,13 @@ from src.experiment.session_schedule import (
     SessionSchedule,
     phase_order,
 )
-from src.experiment.settings import load_contrast_floor_percent, validate_contrast_floor_percent
+from src.experiment.settings import (
+    DEFAULT_SACCADE_CONTRAST_MAX_PERCENT,
+    DEFAULT_SACCADE_CONTRAST_MIN_PERCENT,
+    load_contrast_floor_percent,
+    resolve_saccade_contrasts,
+    validate_contrast_floor_percent,
+)
 from src.experiment.tutorial_session import TutorialSession
 from src import timebase
 
@@ -566,6 +572,7 @@ def run_saccade_phase(
     skip_practice_trials: bool = False,
     record_video: bool = False,
     schedule: SessionSchedule | None = None,
+    saccade_contrasts: tuple[float, ...] | None = None,
 ) -> ExperimentSession | None:
     """Phase 2: the gaze-contingent saccade test. `precomputed_calibration_ratios`/
     `skip_practice_trials` come from a completed TutorialSession (see main())
@@ -597,6 +604,7 @@ def run_saccade_phase(
         test_mode=test_mode,
         precomputed_calibration_ratios=precomputed_calibration_ratios,
         skip_practice_trials=skip_practice_trials,
+        fixed_contrasts=saccade_contrasts,
     )
     pause_menu = PauseMenu(win, clock, stimuli["pause_return_button"], stimuli["pause_recalibrate_button"])
     go_cue_tone = build_go_cue_tone()
@@ -865,7 +873,7 @@ def _resolve_record_video(selected_label: str) -> bool:
     return selected_label == "Yes"
 
 
-def prompt_session_info() -> tuple[str, str, int, str, float, bool, bool, bool, bool] | None:
+def prompt_session_info() -> tuple[str, str, int, str, float, bool, bool, bool, bool, tuple[float, ...]] | None:
     """Standard PsychoPy participant-info dialog, shown before the window
     opens - also offers a camera picker (a dropdown of every camera index
     that actually opens) so switching between multiple connected cameras
@@ -900,6 +908,9 @@ def prompt_session_info() -> tuple[str, str, int, str, float, bool, bool, bool, 
             "Gaze source": _selected_first(BACKENDS, previous.get("Gaze source")),
             "Camera (webcam source only)": _selected_first(camera_labels, previous.get("Camera (webcam source only)")),
             "Contrast floor (%)": previous.get("Contrast floor (%)", f"{default_contrast_floor_percent:.2f}"),
+            # The saccade phase flashes fixed contrasts evenly spaced between these two (SACCADE_FIXED_CONTRASTS).
+            "Saccade contrast min (%)": previous.get("Saccade contrast min (%)", f"{DEFAULT_SACCADE_CONTRAST_MIN_PERCENT:g}"),
+            "Saccade contrast max (%)": previous.get("Saccade contrast max (%)", f"{DEFAULT_SACCADE_CONTRAST_MAX_PERCENT:g}"),
             "Show gaze indicator": _selected_first(["No", "Yes"], previous.get("Show gaze indicator")),
             "Run tutorial": _selected_first(["No", "Yes"], previous.get("Run tutorial")),
             "Record video": _selected_first(["Yes", "No"], previous.get("Record video")),
@@ -920,6 +931,7 @@ def prompt_session_info() -> tuple[str, str, int, str, float, bool, bool, bool, 
     if gaze_backend in NEON_BACKENDS:
         camera_index, camera_label = CAMERA_INDEX, gaze_backend
     contrast_floor_percent = _resolve_contrast_floor_percent(info["Contrast floor (%)"], default_contrast_floor_percent)
+    saccade_contrasts = resolve_saccade_contrasts(info["Saccade contrast min (%)"], info["Saccade contrast max (%)"])
     show_gaze_indicator = _resolve_show_gaze_indicator(info["Show gaze indicator"])
     run_tutorial = _resolve_run_tutorial(info["Run tutorial"])
     record_video = _resolve_record_video(info["Record video"])
@@ -933,6 +945,7 @@ def prompt_session_info() -> tuple[str, str, int, str, float, bool, bool, bool, 
         run_tutorial,
         record_video,
         test_mode,
+        saccade_contrasts,
     )
 
 
@@ -970,12 +983,14 @@ def main() -> None:
         run_tutorial,
         record_video,
         test_mode,
+        saccade_contrasts,
     ) = session_info
     contrast_floor = contrast_floor_percent / 100
 
     logger = ResultLogger(
         participant_id, camera_label=camera_label, contrast_floor_percent=contrast_floor_percent, test_mode=test_mode
     )
+    logger.set_saccade_contrasts(saccade_contrasts)
     win = build_window(fullscreen=True)
     stimuli = build_stimuli(win)
     if gaze_backend in (BACKEND_NEON_SCREEN, BACKEND_NEON_HYBRID):
@@ -1009,6 +1024,7 @@ def main() -> None:
             skip_practice_trials=run_tutorial,
             record_video=record_video,
             schedule=schedule,
+            saccade_contrasts=saccade_contrasts,
         )
 
         # Test runs go saccade-first (the phase under development); real runs are counterbalanced by participant ID.

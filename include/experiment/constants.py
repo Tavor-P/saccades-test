@@ -262,7 +262,11 @@ TIMING_JITTER_MS = 10
 # only 5/15 correct even far from any saccade). 20/40/80% should be clearly visible when fixating;
 # lower them once a fixating control (flashes far from onset) shows where the peripheral threshold
 # is. () = back to the staircase.
-SACCADE_FIXED_CONTRASTS = (0.2, 0.4, 0.8)
+# The startup dialog's "Saccade contrast min/max (%)" fields (defaults: the ends of the tuple below)
+# rebuild it per session as SACCADE_CONTRAST_LEVELS evenly spaced values between them (see
+# src/experiment/settings.py); 1 level or min == max gives a single contrast.
+SACCADE_CONTRAST_LEVELS = 3
+SACCADE_FIXED_CONTRASTS = (0.10, 0.15, 0.20)
 # Number of main-block saccade trials in that mode (it stops by count, not by staircase width):
 # ~30 % of flashes should land near the saccade, so 150 trials give ~50 usable flashes.
 SACCADE_FIXED_TRIALS_TEST = 30

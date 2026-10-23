@@ -117,6 +117,7 @@ class ExperimentSession:
         precomputed_calibration_ratios: tuple[float, float, float] | None = None,
         skip_practice_trials: bool = False,
         gaze_latency_ms: float | None = None,
+        fixed_contrasts: tuple[float, ...] | None = None,
     ) -> None:
         self._gaze = gaze_source
         self._gaze_latency_fallback_ms = gaze_latency_ms
@@ -140,9 +141,9 @@ class ExperimentSession:
         self._closed_loop = FLASH_TRIGGER == "onset"
         # Fixed probe contrasts (method of constant stimuli) instead of the live staircase - see
         # SACCADE_FIXED_CONTRASTS. Practice trials keep PRACTICE_CONTRAST either way.
-        self._fixed_contrast_bag: ShuffledBag[float] | None = (
-            ShuffledBag(SACCADE_FIXED_CONTRASTS) if SACCADE_FIXED_CONTRASTS else None
-        )
+        # `fixed_contrasts` (from the startup dialog) overrides the SACCADE_FIXED_CONTRASTS default.
+        contrasts = SACCADE_FIXED_CONTRASTS if fixed_contrasts is None else tuple(fixed_contrasts)
+        self._fixed_contrast_bag: ShuffledBag[float] | None = ShuffledBag(contrasts) if contrasts else None
         self._fixed_trials = SACCADE_FIXED_TRIALS_TEST if test_mode else SACCADE_FIXED_TRIALS_REAL
         self._timing_offset_bag: ShuffledBag[int] = ShuffledBag(
             FLASH_ONSET_DELAYS_MS if self._closed_loop else TIMING_OFFSETS_MS

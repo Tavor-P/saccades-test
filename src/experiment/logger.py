@@ -176,6 +176,11 @@ class ResultLogger:
         self._metadata.setdefault("phase_summaries", {})[phase] = summary
         self._write_metadata()
 
+    def set_saccade_contrasts(self, levels) -> None:
+        """The fixed probe contrasts (0-1 fractions) used in the saccade phase of this session."""
+        self._metadata["saccade_contrasts"] = [float(c) for c in levels]
+        self._write_metadata()
+
     def set_gaze_quality(self, summary: dict) -> None:
         """Session-level gaze tracking quality (sample rate, gaps, latency,
         clock offset) from a GazeSource that reports it - see
