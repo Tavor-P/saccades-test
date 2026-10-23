@@ -13,6 +13,7 @@ from include.eye_tracking.constants import (
     POSITION_MEDIAN_WINDOW,
     POSITION_SMOOTHING,
 )
+from src.experiment.calibration import CalibrationCheck, validate_calibration
 from include.eye_tracking.types import GazeSample, GazeZone
 
 LEFT_POSITION, CENTER_POSITION, RIGHT_POSITION = 0.0, 0.5, 1.0
@@ -44,6 +45,27 @@ class GazeMapper:
         slope, intercept = self._fit(left_ratio, center_ratio, right_ratio)
         with self._lock:
             self._slope, self._intercept = slope, intercept
+
+    def calibrate_checked(
+        self, left_ratio: float, center_ratio: float, right_ratio: float, sample_stds: tuple[float, ...] | None = None
+    ) -> CalibrationCheck:
+        """Validating variant of calibrate(): applies the fit only if
+        validate_calibration() passes, and returns the check either way so the
+        caller can show a retry message. A rejected calibration leaves the
+        previous fit untouched."""
+        check = validate_calibration((left_ratio, center_ratio, right_ratio), sample_stds)
+        if check.ok:
+            self.calibrate(left_ratio, center_ratio, right_ratio)
+        return check
+
+    def recent_ratio_std(self) -> float | None:
+        """Standard deviation of the current (full) ratio window - the noise
+        figure to pass as sample_stds for the point just sampled. None until the
+        window is full, like average_recent_ratio()."""
+        with self._lock:
+            if len(self._ratio_history) < self._ratio_history.maxlen:
+                return None
+            return float(np.std(self._ratio_history))
 
     def map(self, ratio: float, timestamp: float) -> GazeSample:
         with self._lock:

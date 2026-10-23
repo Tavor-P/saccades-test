@@ -67,11 +67,13 @@ Paths in this section are checked by `tests/test_docs.py` - keep them real.
 | `src/experiment/tutorial_session.py` | `TutorialSession`: narrated first-timer on-ramp |
 | `src/experiment/run_experiment.py` | entry point + PsychoPy rendering; the only PsychoPy-dependent module |
 | `src/experiment/scoring.py` | `score_outcome`, `is_valid_for_saccadic_analysis` (the validity gate) |
-| `src/experiment/trial_mechanics.py` | `OnsetDetector` (displacement rule), `ShuffledBag`, `zone_for`, `average_ms` (shared helpers) |
+| `src/experiment/trial_mechanics.py` | `OnsetDetector` (displacement rule), `ShuffledBag`, `zone_for`, `average_ms`, `robust_average_ms` (shared helpers; the robust one drops anticipations/outliers then takes the median) |
+| `src/experiment/calibration.py` | `average_calibration_rounds`, `validate_calibration` / `CalibrationCheck` / `fit_residual` (monotonic, span, noise, residual checks; not yet wired into `session.py`) |
+| `src/experiment/session_schedule.py` | `phase_order` (counterbalanced by participant ID), rest-break and wall-clock session-cap schedule (`SessionSchedule`) |
 | `src/timebase.py` | the ONE time source: `now()` = `time.perf_counter()`; wall-clock via an edge-synchronised anchor (`unix_now()`, `perf_to_unix`) |
 | `src/experiment/trial_factory.py` | builds trial sequences |
 | `src/experiment/zest.py` | adaptive contrast staircase |
-| `src/experiment/logger.py` | `ResultLogger`: CSV + `_meta.json` + side-file paths |
+| `src/experiment/logger.py` | `ResultLogger`: CSV + `_meta.json` (git SHA, constants snapshot, per-phase threshold summary) + side-file paths |
 | `src/experiment/results_graph.py` | end-of-run comparison figure |
 | `src/experiment/simulation.py` | headless simulator (simulated participant, clock, gaze) |
 | `src/eye_tracking/neon_source.py` | `NeonGazeSource` (default backend): Real-Time API stream + quality stats |
@@ -173,8 +175,9 @@ one `ResultLogger` (one CSV, distinguished by a `phase` column) but run
 independent `ZestStaircase` instances so each condition converges on its own
 threshold. Test mode (shortened trial counts, saccade phase first for smoke
 testing) is a runtime decision, not a constant: `run_experiment.py`'s
-`_resolve_test_mode()` treats a blank Participant ID in the startup dialog as
-a test run and any other value as a real data-collection session.
+`_resolve_test_mode()` reads the startup dialog's explicit Mode dropdown
+(Real/Test); a Real run requires a non-empty Participant ID. Real runs also get
+counterbalanced phase order, rest breaks and a session cap (`session_schedule.py`).
 `PresaccadeSession` still picks between fixed `_TEST`/`_REAL` trial-count
 constant pairs in `include/experiment/constants.py`; `ExperimentSession`'s
 real block is open-ended instead (see the open-loop-timing gotcha below) and
