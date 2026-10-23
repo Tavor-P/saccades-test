@@ -1,5 +1,6 @@
 import math
 import statistics
+import sys
 import threading
 import time
 from collections import deque
@@ -20,6 +21,7 @@ from src.eye_tracking.gaze_mapping import GazeMapper
 from src.eye_tracking.gaze_trace import GazeTraceWriter
 
 _MAX_LATENCY_SAMPLES = 100_000  # ~8 min at 200 Hz; older samples drop off, bounding memory
+_MAX_LOGGED_ERROR_KINDS = 50  # distinct error signatures remembered for log de-duplication
 
 
 def _connect():
@@ -63,6 +65,25 @@ class NeonGazeSource(GazeSource):
         self._longest_gap_ms = 0.0
         self._first_arrival: float | None = None
         self._last_arrival: float | None = None
+        # Receive-loop error bookkeeping - guarded by _lock.
+        self._error_count = 0
+        self._last_error: str | None = None
+        self._seen_errors: set[tuple[str, str]] = set()
+
+    def _record_error(self, where: str, exc: Exception) -> None:
+        """Count a receive-loop error and print the first occurrence of each
+        distinct (type, message) to stderr; repeats are only counted, so a
+        persistent failure at ~200 Hz can't flood the console."""
+        text = f"{type(exc).__name__}: {exc}"
+        key = (type(exc).__name__, str(exc))
+        with self._lock:
+            self._error_count += 1
+            self._last_error = f"{where}: {text}"
+            is_new = key not in self._seen_errors and len(self._seen_errors) < _MAX_LOGGED_ERROR_KINDS
+            if is_new:
+                self._seen_errors.add(key)
+        if is_new:
+            print(f"[neon] {where} error (further repeats counted, not logged): {text}", file=sys.stderr)
 
     @property
     def is_available(self) -> bool:
@@ -91,12 +112,17 @@ class NeonGazeSource(GazeSource):
         while self._running:
             try:
                 datum = self._device.receive_gaze_datum(timeout_seconds=0.5)
-            except Exception:
+            except Exception as exc:
+                self._record_error("receive_gaze_datum", exc)
                 datum = None
             if datum is None:
                 time.sleep(0.005)
                 continue
-            self._ingest(datum.x, getattr(datum, "worn", True), getattr(datum, "timestamp_unix_seconds", None))
+            try:
+                self._ingest(datum.x, getattr(datum, "worn", True), getattr(datum, "timestamp_unix_seconds", None))
+            except Exception as exc:
+                self._record_error("ingest", exc)
+                time.sleep(0.005)
 
     def _estimate_clock_offset(self) -> None:
         """Phone-vs-PC clock offset (Pupil's Time Echo protocol), needed to turn
@@ -175,6 +201,8 @@ class NeonGazeSource(GazeSource):
                 "latency_ms_median": round(statistics.median(latencies), 1) if latencies else None,
                 "latency_ms_p95": round(latencies[int(0.95 * (len(latencies) - 1))], 1) if latencies else None,
                 "latency_ms_max": round(latencies[-1], 1) if latencies else None,
+                "receive_errors": self._error_count,
+                "last_receive_error": self._last_error,
             }
 
     def latest_sample(self) -> GazeSample:

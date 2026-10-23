@@ -161,3 +161,44 @@ def test_mapper_is_safe_to_read_while_another_thread_appends():
     finally:
         stop.set()
         t.join()
+
+
+def test_receive_errors_are_counted_logged_once_and_loop_survives(capsys):
+    import time
+
+    calls = {"n": 0}
+
+    def receive(timeout_seconds=None):
+        calls["n"] += 1
+        if calls["n"] <= 5:
+            raise ConnectionError("phone unreachable")
+        return SimpleNamespace(x=_x(0.8), worn=True)
+
+    source = NeonGazeSource(device=SimpleNamespace(receive_gaze_datum=receive, close=lambda: None))
+    source.start()
+    time.sleep(0.2)
+    source.stop()
+    summary = source.quality_summary()
+    assert summary["receive_errors"] == 5
+    assert summary["last_receive_error"] == "receive_gaze_datum: ConnectionError: phone unreachable"
+    assert capsys.readouterr().err.count("phone unreachable") == 1  # repeats counted, not re-logged
+    assert source.latest_sample().zone is GazeZone.RIGHT  # recovered after the errors
+
+
+def test_ingest_exception_does_not_kill_the_thread():
+    import time
+
+    source = NeonGazeSource(
+        device=SimpleNamespace(receive_gaze_datum=lambda timeout_seconds=None: SimpleNamespace(x=_x(0.8), worn=True), close=lambda: None)
+    )
+    source._ingest = lambda *a: (_ for _ in ()).throw(ValueError("bad datum"))
+    source.start()
+    time.sleep(0.1)
+    assert source._thread.is_alive()
+    source.stop()
+    assert source.quality_summary()["receive_errors"] > 0
+
+
+def test_quality_summary_reports_zero_errors_by_default():
+    summary = NeonGazeSource(device=object()).quality_summary()
+    assert summary["receive_errors"] == 0 and summary["last_receive_error"] is None

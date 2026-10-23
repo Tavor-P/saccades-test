@@ -94,3 +94,51 @@ def test_threads_feed_all_three_streams_and_stop_cleanly():
     assert mapper.scene_frames > 0
     assert source.latest_sample().head_speed_dps == pytest.approx(10)
     assert source.markers_detected == 4 and source.screen_located
+
+
+def test_stream_errors_are_counted_per_stream_and_threads_survive(capsys):
+    mapper = FakeScreenMapper()
+
+    def boom(timeout_seconds=None):
+        raise OSError("stream dropped")
+
+    device = SimpleNamespace(
+        receive_gaze_datum=lambda timeout_seconds=None: _datum(),
+        receive_scene_video_frame=boom,
+        receive_imu_datum=boom,
+        estimate_time_offset=lambda: (_ for _ in ()).throw(RuntimeError("no clock")),
+        close=lambda: None,
+    )
+    source = NeonScreenGazeSource(SCREEN, device=device, screen_mapper=mapper)
+    source.start()
+    time.sleep(0.2)
+    assert all(t.is_alive() for t in source._extra_threads)
+    source.stop()
+    summary = source.quality_summary()
+    assert summary["receive_errors"] >= 2
+    assert "OSError: stream dropped" in summary["last_receive_error"]
+    assert summary["source"] == "pupil_labs_neon_screen_markers"
+    assert source.latest_sample().ratio == pytest.approx(0.7)  # gaze stream unaffected
+    err = capsys.readouterr().err
+    assert err.count("stream dropped") == 1  # same message logged once
+    assert "[neon]" in err
+
+
+def test_mapper_exception_in_scene_loop_does_not_kill_thread():
+    class BadMapper(FakeScreenMapper):
+        def process_scene(self, frame):
+            raise ValueError("bad frame")
+
+    device = SimpleNamespace(
+        receive_gaze_datum=lambda timeout_seconds=None: _datum(),
+        receive_scene_video_frame=lambda timeout_seconds=None: object(),
+        receive_imu_datum=lambda timeout_seconds=None: _imu(),
+        estimate_time_offset=lambda: (_ for _ in ()).throw(RuntimeError("no clock")),
+        close=lambda: None,
+    )
+    source = NeonScreenGazeSource(SCREEN, device=device, screen_mapper=BadMapper())
+    source.start()
+    time.sleep(0.15)
+    assert all(t.is_alive() for t in source._extra_threads)
+    source.stop()
+    assert "ValueError: bad frame" in source.quality_summary()["last_receive_error"]
