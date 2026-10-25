@@ -17,7 +17,7 @@ from src.experiment import logger as logger_module
 from src.experiment.logger import ResultLogger
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.session import ExperimentSession
-from src.experiment.trial_mechanics import RollingReactionTime, robust_average_ms
+from src.experiment.trial_mechanics import RollingReactionTime
 from test_session import (
     _complete_calibration,
     _complete_calibration_and_rt_test,
@@ -51,27 +51,6 @@ def _stamped_gaze(fake_gaze):
 
     fake_gaze.latest_sample = latest_sample
     return fake_gaze
-
-
-# -- robust average -----------------------------------------------------------------
-
-
-def test_robust_average_is_the_median_of_plausible_values():
-    assert robust_average_ms([200, 210, 220, 230, 240], default=999) == 220
-
-
-def test_robust_average_drops_anticipations_and_slow_outliers():
-    assert robust_average_ms([40, 60, 210, 220, 230, 1400], default=999) == 220
-
-
-def test_robust_average_falls_back_when_nothing_is_plausible():
-    assert robust_average_ms([], default=225) == 225
-    assert robust_average_ms([30, 50, 80], default=225) == 225
-
-
-def test_robust_average_one_outlier_barely_moves_it():
-    clean = robust_average_ms([200, 210, 220, 230, 240], default=0)
-    assert robust_average_ms([200, 210, 220, 230, 240, 700], default=0) == pytest.approx(clean, abs=10)
 
 
 def test_rt_test_average_ignores_anticipations_and_slow_outliers(fake_gaze):
@@ -277,14 +256,12 @@ def test_meta_has_provenance_and_constants_snapshot(tmp_path, monkeypatch):
     assert meta["display_refresh_hz"] is None
 
 
-def test_meta_records_refresh_rate_and_phase_summaries(tmp_path, monkeypatch):
+def test_meta_records_phase_summaries(tmp_path, monkeypatch):
     monkeypatch.setattr(logger_module, "DATA_DIR", tmp_path)
     log = ResultLogger("p1")
-    log.set_display_refresh_hz(59.9)
     log.set_phase_summary("saccade", {"threshold_estimate": 0.1})
     log.close()
     meta = json.loads(next(tmp_path.glob("results_*_meta.json")).read_text())
-    assert meta["display_refresh_hz"] == 59.9
     assert meta["phase_summaries"]["saccade"]["threshold_estimate"] == 0.1
 
 

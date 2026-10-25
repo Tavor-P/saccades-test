@@ -761,7 +761,6 @@ class ExperimentSession:
 
     def _finish_trial(self, landed: bool) -> None:
         trial = self._current_trial_spec
-        now = self._clock.now()
 
         # Landing minus onset, both on the capture-time axis: the time the eye
         # spent between first leaving the source zone and settling in the

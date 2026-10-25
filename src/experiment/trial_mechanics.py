@@ -1,4 +1,4 @@
-"""Small shared building blocks for session logic: zone_for, OnsetDetector (THE saccade-onset debounce - reuse it, don't hand-roll), ShuffledBag, average_ms."""
+"""Small shared building blocks for session logic: zone_for, OnsetDetector (THE saccade-onset debounce - reuse it, don't hand-roll), ShuffledBag, RollingReactionTime."""
 
 import random
 import statistics
@@ -33,19 +33,8 @@ def random_orientation() -> Orientation:
     return random.choice([Orientation.VERTICAL, Orientation.HORIZONTAL])
 
 
-def average_ms(samples: Sequence[float], default: float) -> float:
-    """Mean of `samples`, or `default` if empty - shared by the reaction-time
-    test's initial average (ExperimentSession and TutorialSession both fall
-    back to DEFAULT_REACTION_TIME_MS if every attempt timed out) and
-    ExperimentSession's in-session rolling-average recompute (falls back to
-    the current average unchanged if the whole window was timeouts), so
-    "empty means fall back to X" can't drift between call sites duplicating
-    it independently."""
-    return sum(samples) / len(samples) if samples else default
-
-
 def robust_filter_ms(samples: Sequence[float]) -> list[float]:
-    """The samples robust_average_ms keeps: anticipations (< RT_MIN_PLAUSIBLE_MS)
+    """The samples the robust average keeps: anticipations (< RT_MIN_PLAUSIBLE_MS)
     and slow outliers (more than RT_OUTLIER_MAD_K scaled MADs above the median,
     MAD floored at RT_OUTLIER_MAD_FLOOR_MS) removed."""
     plausible = [s for s in samples if s >= RT_MIN_PLAUSIBLE_MS]
@@ -55,14 +44,6 @@ def robust_filter_ms(samples: Sequence[float]) -> list[float]:
     mad = statistics.median(abs(s - median) for s in plausible) * 1.4826
     limit = median + RT_OUTLIER_MAD_K * max(mad, RT_OUTLIER_MAD_FLOOR_MS)
     return [s for s in plausible if s <= limit]
-
-
-def robust_average_ms(samples: Sequence[float], default: float) -> float:
-    """Reaction-time average that one bad measurement can't move: the median of
-    robust_filter_ms(samples), or `default` if nothing plausible is left. Used
-    for avg_reaction_time_ms, which schedules every flash."""
-    kept = robust_filter_ms(samples)
-    return statistics.median(kept) if kept else default
 
 
 class RollingReactionTime:

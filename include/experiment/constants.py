@@ -294,7 +294,7 @@ DEFAULT_REACTION_TIME_MS = 225.0
 # attempt, tutorial practice trial, practice or main trial, valid or not -
 # adds its go-cue-to-onset latency and the average is recomputed at once, so
 # the NEXT trial's flash already uses it (a flash already scheduled never
-# moves). It is the robust average (robust_average_ms: drops anticipations and
+# moves). It is the robust average (robust_filter_ms: drops anticipations and
 # outliers, then the median) of the last RT_AVERAGE_ROLLING_WINDOW samples.
 # 12: trial-to-trial SD is ~60-80 ms, so the median of 12 has a standard error
 # of ~25 ms (a window of 6 would be ~35 ms) while still following a drift
@@ -316,7 +316,7 @@ RT_AVERAGE_MIN_USABLE = 3
 # reaction_latency_ms.
 SHARP_GO_CUE = True
 
-# Robust reaction-time average (trial_mechanics.robust_average_ms): measured
+# Robust reaction-time average (trial_mechanics.robust_filter_ms): measured
 # latencies below RT_MIN_PLAUSIBLE_MS are anticipations/noise blips (a real
 # go-cue-to-saccade latency is never that short) and are dropped; after that,
 # values more than RT_OUTLIER_MAD_K scaled-MADs above the median (MAD floored

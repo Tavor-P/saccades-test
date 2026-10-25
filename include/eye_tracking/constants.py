@@ -84,7 +84,6 @@ NEON_DISCOVERY_TIMEOUT_S = 10.0
 # Also keep: traces of old sessions recorded with the removed screen-mapped backends store screen-ratio x * this width
 # in `x_px`, and analyze_session / ReplayGazeSource still divide by it to read them.
 NEON_SCENE_WIDTH = 1600
-NEON_SCENE_HEIGHT = 1200
 # Gaze samples arriving further apart than this count as a "gap" in the
 # session quality summary (Neon streams ~200 Hz, i.e. 5 ms apart, so this is
 # roughly 6 missed samples - enough to matter for onset detection).
