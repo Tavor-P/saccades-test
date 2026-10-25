@@ -9,14 +9,15 @@ import numpy as np
 
 from include.eye_tracking.constants import (
     CALIBRATION_SAMPLE_WINDOW,
+    CENTER_POSITION,
     GAZE_DEAD_ZONE,
+    LEFT_POSITION,
     POSITION_MEDIAN_WINDOW,
     POSITION_SMOOTHING,
+    RIGHT_POSITION,
 )
 from src.experiment.calibration import CalibrationCheck, validate_calibration
 from include.eye_tracking.types import GazeSample, GazeZone
-
-LEFT_POSITION, CENTER_POSITION, RIGHT_POSITION = 0.0, 0.5, 1.0
 
 
 class GazeMapper:

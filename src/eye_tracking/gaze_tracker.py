@@ -12,21 +12,22 @@ from mediapipe.tasks.python.core.base_options import BaseOptions
 
 from include.eye_tracking.constants import (
     CALIBRATION_SAMPLE_WINDOW,
-    GAZE_DEAD_ZONE,
+    CENTER_POSITION,
     LEFT_EYE_CORNERS,
     LEFT_IRIS_CENTER,
+    LEFT_POSITION,
     MODEL_PATH,
     MODEL_URL,
     POSITION_MEDIAN_WINDOW,
     POSITION_SMOOTHING,
     RIGHT_EYE_CORNERS,
     RIGHT_IRIS_CENTER,
+    RIGHT_POSITION,
     TRACKING_FRAME_WIDTH,
 )
 from include.eye_tracking.types import GazeSample, GazeZone
 from src import timebase
-
-LEFT_POSITION, CENTER_POSITION, RIGHT_POSITION = 0.0, 0.5, 1.0
+from src.eye_tracking.gaze_mapping import GazeMapper
 
 
 def _download_model_if_missing(model_path: str) -> None:
@@ -112,7 +113,7 @@ class GazeTracker:
         smoothed_position = self._smooth(position)
 
         return GazeSample(
-            zone=self._classify(position),
+            zone=GazeMapper.classify(position),
             ratio=ratio,
             face_found=True,
             timestamp=timestamp,
@@ -153,8 +154,3 @@ class GazeTracker:
         participant is actually looking at it - not a stale mix left over
         from whatever they were fixating before."""
         self._ratio_history.clear()
-
-    def _classify(self, position: float) -> GazeZone:
-        if abs(position - CENTER_POSITION) < GAZE_DEAD_ZONE:
-            return GazeZone.CENTER
-        return GazeZone.LEFT if position < CENTER_POSITION else GazeZone.RIGHT

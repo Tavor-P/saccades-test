@@ -60,6 +60,8 @@ CALIBRATION_SAMPLE_WINDOW = 30
 # wider band lands sooner but accepts less precise fixations; too narrow makes landing
 # fragile to calibration offset (the target zone is the 0.4 of travel beyond the band).
 GAZE_DEAD_ZONE = 0.10
+# GazeSample.position scale: 0 = the dot (left target), 1 = the cross (right target); calibration maps the ratio onto it.
+LEFT_POSITION, CENTER_POSITION, RIGHT_POSITION = 0.0, 0.5, 1.0
 
 # Smoothing for GazeSample.smoothed_position (display only - the gaze
 # indicator - never used for onset/landing scoring, which stays on the raw,

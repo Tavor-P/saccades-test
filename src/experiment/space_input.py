@@ -48,6 +48,13 @@ class CalibrationLatch:
         self.pending = False
         self._since: float | None = None
 
+    def press_recorded(self, gaze, now: float, tally: SpaceTally) -> float | None:
+        """`press()`, except that a press made while one is already pending is ignored and counted in `tally`."""
+        if self.pending:
+            tally.record("already waiting for gaze samples")
+            return None
+        return self.press(gaze, now)
+
     def press(self, gaze, now: float) -> float | None:
         ratio = gaze.average_recent_ratio()
         if ratio is not None:
