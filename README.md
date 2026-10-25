@@ -78,7 +78,7 @@ Accuracy vs flash time relative to saccade onset (newest session by default); wr
 .\scripts\py.ps1 -m pytest -q
 ```
 
-About 480 tests in ~70 s; no camera, glasses or PsychoPy window needed (fakes for the gaze source and clock). A headless
+About 500 tests in ~70 s; no camera, glasses or PsychoPy window needed (fakes for the gaze source and clock). A headless
 simulator runs whole sessions: see `tests/ai-tests/README.md`.
 
 ## Browsing past sessions

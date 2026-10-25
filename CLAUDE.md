@@ -41,7 +41,7 @@ Everything else (scheduled flashes, gates, analysis, SPACE gating, rolling react
 ## Status and next steps (updated 2026-10-25)
 
 **Goal.** A grant to test saccadic suppression in people with TBI vs without. Present what exists as a
-*feasibility pilot (n=1)*, not as a group result. The experiment flashes a brief grating around the participant's
+*feasibility pilot (n=1)*, not as a group result. The experiment flashes a brief thin line around the participant's
 saccades (Neon glasses, 2AFC orientation) and measures detection vs flash time relative to saccade onset.
 
 **Shipped setup (`FLASH_TRIGGER="scheduled"`).** Flashes (a line above/below the target, UP/DOWN) at average RT + offset (-80..+80 ms) + random +/-10 ms, fixed
@@ -174,7 +174,7 @@ it from tests or simulations (the simulator uses an in-memory logger).
    measurement script and ask the human to run it; don't guess numbers.
 
 Report test results truthfully (what ran, what was skipped). The suite passes at the time of writing
-(~480 tests, ~70 s, 2 skipped when PySpin/mediapipe are absent).
+(~500 tests, ~70 s, 2 skipped when PySpin/mediapipe are absent).
 
 **Bug-hunting tests** (`tests/ai-tests/`): `find_bugs.py` fuzzes the real session with random/hostile
 participants and checks `invariants.py` (run `find_bugs.py --sessions 300` after changing session,
