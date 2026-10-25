@@ -13,11 +13,11 @@ picked in the startup dialog, a FLIR Blackfly S camera (Spinnaker SDK /
 `PySpin`) + MediaPipe iris landmarks. See [README.md](README.md) for the full participant-facing
 walkthrough (controls, output files, troubleshooting).
 
-## Status and next steps (written 2026-10-22 for the next session)
+## Status and next steps (updated 2026-10-25 for the next session)
 
-**Goal.** A grant (due ~a week out) to test saccadic suppression in people with TBI vs without. Present
-what exists as a *feasibility pilot (n=1)*, not as a group result. The experiment flashes a brief grating around
-the participant's saccades (Neon glasses, 2AFC orientation) and measures detection vs flash time relative to onset.
+**Goal.** A grant to test saccadic suppression in people with TBI vs without. Present what exists as a
+*feasibility pilot (n=1)*, not as a group result. The experiment flashes a brief grating around the participant's
+saccades (Neon glasses, 2AFC orientation) and measures detection vs flash time relative to saccade onset.
 
 **Where the work is.** Branch `feature/saccade-flash-analysis` (cut from `main` == the old `feature/neon-glasses`
 tip `befac0e`). Nothing pushed by us; sessions pushed `claude/clock-onset-05b6cf` and `claude/simplify-comments` to
@@ -26,11 +26,25 @@ fixed saccade-phase contrasts 10/15/20 % (startup dialog "Saccade contrast min/m
 15 %/85 % of the screen, plain Neon backend + still head recommended. Run the experiment, then
 `.\scripts\py.ps1 -m src.experiment.analyze_session` (newest session) for the report, plot and per-flash CSV.
 
-**Pilot findings (one participant, test mode).** Foveal baseline threshold ~1.3 %. Saccades ~75 ms / ~30 deg with
-the 15/85 layout. 3 %/6 % flashes were invisible when fixating the dot/cross (flash ~15 deg off to the side);
-10-20 % are seen. Flashes within +-50 ms of saccade onset: 3/12 correct vs 12/13 for flashes 50-300 ms away
-(Fisher p=0.001; the earlier 20-80 % session pointed the same way, pooled p<1e-4), sharpest in the 50 ms
-*before* onset. Small n, no true fixation control yet, the +-50 ms window was chosen after seeing session 1.
+**Done since the first version of this section.**
+- Space-gated trials: every trial waits for SPACE and the swap comes 500-1000 ms after it; no pausing, rest breaks,
+  session cap or mid-session recalibration.
+- Control flashes (+400/+500 ms after the average RT, eye already landed) and pre-specified post-hoc gates
+  (`src/experiment/flash_gates.py`: each flash is `saccade`, `fixation` or `excluded`).
+- Per-person suppression index in `analyze_session` (psychometric fit with an accuracy fallback; uses the gates).
+- Simplified onboarding: calibration -> how-to-answer quiz -> 8 practice trials that seed the reaction-time average
+  (no separate RT test).
+- HUD only in Test mode; the bottom caption is hidden and silent during real trials.
+- SPACE presses are never silently dropped (`src/experiment/space_input.py`: calibration latch, tutorial narration
+  hold, per-phase ignored-press tally in the console and `_meta.json`).
+- None of the new behaviour above (onboarding, space-gating, SPACE latching, gates, suppression index) has been run
+  in a real session on glasses yet; it is covered by the simulator and ~520 tests only.
+
+**Pilot findings (one participant, test mode, before the changes above).** Foveal baseline threshold ~1.3 %. Saccades
+~75 ms / ~30 deg with the 15/85 layout. 3 %/6 % flashes were invisible when fixating the dot/cross (flash ~15 deg off
+to the side); 10-20 % are seen. Flashes within +-50 ms of saccade onset: 3/12 correct vs 12/13 for flashes 50-300 ms
+away (Fisher p=0.001; the earlier 20-80 % session pointed the same way, pooled p<1e-4), sharpest in the 50 ms
+*before* onset. Small n, the +-50 ms window was chosen after seeing session 1 (the gates are now pre-specified).
 
 **Known problems.**
 1. Gaze reaches the PC ~95 ms late at ~160 Hz (screen-mapped backends: ~45 Hz) in real sessions; see the open
@@ -40,15 +54,15 @@ the 15/85 layout. 3 %/6 % flashes were invisible when fixating the dot/cross (fl
 3. The screen geometry constants (`VIEWING_DISTANCE_CM`, `SCREEN_HEIGHT_CM`, `SCREEN_MARKER_SCREEN_WIDTH_CM`) are
    still the 24-inch defaults; the user's monitor is small (~12 in wide) and 60 Hz. Ask for real width/height (cm)
    and viewing distance.
-4. The baseline (foveal) phase is not a like-for-like control for the saccade phase (different retinal location).
+4. The baseline (foveal) phase is not a like-for-like control for the saccade phase (different retinal location);
+   the fixation-control flashes inside the saccade phase address this.
 
-**Next steps, in priority order.** (1) Add deliberate control flashes far from onset (>=300 ms before/after) in the
-saccade phase. (2) A per-person suppression index (accuracy away from onset minus near onset) and a group-level
-analysis (per-person index + group test, or a mixed model) for TBI vs controls. (3) A full 150-trial real run
-(Mode Real + participant ID), analysed with `analyze_session`. (4) A one-page grant figure + wording. (5) Clinical
-metadata fields (group, time since injury, severity, symptoms, medication; needs the IRB) in the dashboard.
-(6) Find the cause of the ~95 ms gaze delay (e.g. receive Neon in its own process). (7) Ask the user for the screen
-measurements and update the geometry constants.
+**Next steps, in priority order.** (1) Check all the new behaviour on real glasses (a short Test-mode run, then a
+full 150-trial Real run with a participant ID, analysed with `analyze_session`). (2) Group-level analysis (per-person
+suppression index + group test, or a mixed model) for TBI vs controls. (3) A one-page grant figure + wording.
+(4) Clinical metadata fields (group, time since injury, severity, symptoms, medication; needs the IRB) in the
+dashboard. (5) Find the cause of the ~95 ms gaze delay (e.g. receive Neon in its own process). (6) Ask the user for
+the screen measurements and update the geometry constants.
 
 ## Start here (read this first)
 
@@ -108,7 +122,7 @@ Paths in this section are checked by `tests/test_docs.py` - keep them real.
 | `src/experiment/trial_mechanics.py` | `OnsetDetector` (displacement rule), `ShuffledBag`, `zone_for`, `average_ms`, `robust_average_ms` (shared helpers; the robust one drops anticipations/outliers then takes the median) |
 | `src/experiment/calibration.py` | `average_calibration_rounds`, `validate_calibration` / `CalibrationCheck` / `fit_residual` (monotonic, span, noise, residual checks; not yet wired into `session.py`) |
 | `src/experiment/space_input.py` | SPACE bookkeeping with no PsychoPy: `CalibrationLatch` (a calibration press made before the gaze window is full is latched and completed in `tick()`), `NarrationKeyGate` (tutorial: a press during narration is delivered after it), `SpaceTally` (ignored presses per phase + reason), `deliver_space`, `leaves_complete_screen` |
-| `src/experiment/session_schedule.py` | `phase_order` (counterbalanced by participant ID), `phase_order` only (rest breaks / session cap were removed) |
+| `src/experiment/session_schedule.py` | `phase_order`: baseline/saccade order counterbalanced by participant ID |
 | `src/timebase.py` | the ONE time source: `now()` = `time.perf_counter()`; wall-clock via an edge-synchronised anchor (`unix_now()`, `perf_to_unix`) |
 | `src/experiment/trial_factory.py` | builds trial sequences |
 | `src/experiment/zest.py` | adaptive contrast staircase |
@@ -154,7 +168,7 @@ it from tests or simulations (the simulator uses an in-memory logger).
    measurement script and ask the human to run it; don't guess numbers.
 
 Report test results truthfully (what ran, what was skipped). The suite passes at the time of writing
-(~460 tests, ~70 s, 2 skipped when PySpin/mediapipe are absent).
+(~520 tests, ~70 s, 2 skipped when PySpin/mediapipe are absent).
 
 **Bug-hunting tests** (`tests/ai-tests/`): `find_bugs.py` fuzzes the real session with random/hostile
 participants and checks `invariants.py` (run `find_bugs.py --sessions 300` after changing session,
