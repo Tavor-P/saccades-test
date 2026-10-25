@@ -6,7 +6,7 @@ nearest saccade onset, and reports detection accuracy as a function of flash tim
 saccadic-suppression curve - plus a plot and a per-flash CSV. The live `flash_during_saccade` flag is not used.
 
 Run it on the latest session with no arguments, or give a session timestamp (`results_<timestamp>.csv`) or a path.
-Units: gaze x is a 0-1 ratio of the scene (or screen) width per `x_px / NEON_SCENE_WIDTH`; speeds are ratio/s.
+Units: gaze x is a 0-1 ratio of the scene width per `x_px / NEON_SCENE_WIDTH` (old traces from the removed screen-mapped backends hold a screen ratio there instead; they read the same way); speeds are ratio/s.
 """
 
 import argparse

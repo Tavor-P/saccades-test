@@ -38,7 +38,7 @@ fixed saccade-phase contrasts 10/15/20 % (startup dialog "Saccade contrast min/m
 - SPACE presses are never silently dropped (`src/experiment/space_input.py`: calibration latch, tutorial narration
   hold, per-phase ignored-press tally in the console and `_meta.json`).
 - None of the new behaviour above (onboarding, space-gating, SPACE latching, gates, suppression index) has been run
-  in a real session on glasses yet; it is covered by the simulator and ~520 tests only.
+  in a real session on glasses yet; it is covered by the simulator and ~420 tests only.
 
 **Pilot findings (one participant, test mode, before the changes above).** Foveal baseline threshold ~1.3 %. Saccades
 ~75 ms / ~30 deg with the 15/85 layout. 3 %/6 % flashes were invisible when fixating the dot/cross (flash ~15 deg off
@@ -47,11 +47,11 @@ away (Fisher p=0.001; the earlier 20-80 % session pointed the same way, pooled p
 *before* onset. Small n, the +-50 ms window was chosen after seeing session 1 (the gates are now pre-specified).
 
 **Known problems.**
-1. Gaze reaches the PC ~95 ms late at ~160 Hz (screen-mapped backends: ~45 Hz) in real sessions; see the open
+1. Gaze reaches the PC ~95 ms late at ~160 Hz (the since-removed screen-mapped backends: ~45 Hz) in real sessions; see the open
    problem in the Gotchas. `sys.setswitchinterval(0.0005)` did not fix it. Irrelevant to the post-hoc analysis
    (phone capture times) but it makes the live `flash_during_saccade` flag useless and blocks `FLASH_TRIGGER="onset"`.
 2. Reaction time varies (SD ~60-80 ms), so only ~1/3 of flashes land near onset; TBI will likely be worse.
-3. The screen geometry constants (`VIEWING_DISTANCE_CM`, `SCREEN_HEIGHT_CM`, `SCREEN_MARKER_SCREEN_WIDTH_CM`) are
+3. The screen geometry constants (`VIEWING_DISTANCE_CM`, `SCREEN_HEIGHT_CM`; the screen width constant went with the markers) are
    still the 24-inch defaults; the user's monitor is small (~12 in wide) and 60 Hz. Ask for real width/height (cm)
    and viewing distance.
 4. The baseline (foveal) phase is not a like-for-like control for the saccade phase (different retinal location);
@@ -91,7 +91,6 @@ All via the wrapper (PowerShell shown; from Git Bash use `scripts/py.sh` with th
 .\scripts\py.ps1 -m src.dashboard.app                           # session dashboard at localhost:5000
 .\scripts\py.ps1 -m src.experiment.analyze_session [timestamp]  # accuracy vs flash time relative to saccade onset (newest session by default)
 .\scripts\py.ps1 -m src.eye_tracking.neon_fixation_test [secs]  # Neon jitter check (glasses on; human)
-.\scripts\py.ps1 -m src.eye_tracking.neon_gaze_view             # live screen-gaze dot via AprilTags (human)
 .\scripts\py.ps1 -m src.eye_tracking.latency_test               # Neon vs webcam latency recording (human)
 .\scripts\py.ps1 -m src.eye_tracking.record_gaze_trace out.csv 10   # record raw Neon gaze for replay (glasses on)
 ```
@@ -132,11 +131,6 @@ Paths in this section are checked by `tests/test_docs.py` - keep them real.
 | `src/experiment/flash_gates.py` | pre-specified post-hoc gates (Braun et al. 2021): each flash is `saccade` (eye fast at the flash, latency 100-500 ms, amplitude within 0.5-1.5x median), `fixation` (>=100 ms from any saccade, no tracking gap) or `excluded`; control flashes come from `CONTROL_OFFSETS_MS` (+400/+500 ms after the average RT, eye already landed) |
 | `src/experiment/simulation.py` | headless simulator (simulated participant, clock, gaze) |
 | `src/eye_tracking/neon_source.py` | `NeonGazeSource` (default backend): Real-Time API stream + quality stats |
-| `src/eye_tracking/neon_screen_source.py` | Neon + screen-marker backend (head-compensated gaze) |
-| `src/eye_tracking/screen_markers.py` | corner AprilTag layout/rendering: physical size (`SCREEN_MARKER_WIDTH_CM`), mean-matched dim levels; `marker_verts` order is what the screen-gaze library expects (BR,BL,TL,TR), not TL-clockwise |
-| `src/eye_tracking/screen_outline_mapper.py` | tag-free screen locator (`ScreenOutlineMapper`, same interface as `ScreenGazeMapper`); backend "screen outline (no tags)" via `neon_outline_source.py` |
-| `src/eye_tracking/hybrid_screen_mapper.py` | `HybridScreenMapper`: corner tags when located, outline mapper as fallback; backend "markers and outline" via `neon_hybrid_source.py` |
-| `src/eye_tracking/screen_detect_compare.py` | offline detector report on a scene video/frames (jitter, optional AprilTag comparison) |
 | `src/eye_tracking/gaze_mapping.py` | `GazeMapper`: ratio -> calibrated position / zone / smoothing |
 | `src/eye_tracking/gaze_factory.py` | `build_gaze_source()` backend picker (lazy imports) |
 | `src/eye_tracking/gaze_trace.py` | raw gaze recording + `ReplayGazeSource` |
@@ -168,7 +162,7 @@ it from tests or simulations (the simulator uses an in-memory logger).
    measurement script and ask the human to run it; don't guess numbers.
 
 Report test results truthfully (what ran, what was skipped). The suite passes at the time of writing
-(~520 tests, ~70 s, 2 skipped when PySpin/mediapipe are absent).
+(~420 tests, ~70 s, 2 skipped when PySpin/mediapipe are absent).
 
 **Bug-hunting tests** (`tests/ai-tests/`): `find_bugs.py` fuzzes the real session with random/hostile
 participants and checks `invariants.py` (run `find_bugs.py --sessions 300` after changing session,
@@ -324,8 +318,8 @@ fixture `tests/fixtures/neon_trace_sample.csv`).
 gaze tracking dropped out within `TRACKING_LOSS_WINDOW_MS` of the flash - see
 `scoring.is_valid_for_saccadic_analysis(flash, tracking_ok)`. A saccade-phase
 session also writes `gaze_quality` (rate, gaps, latency, clock offset) into
-`_meta.json` and a raw `results_<ts>_gaze_trace.csv` (both Neon backends; for the screen-marker backend the
-trace's `x_px` column holds screen-ratio x `NEON_SCENE_WIDTH`, so replay reproduces its head-compensated zones).
+`_meta.json` and a raw `results_<ts>_gaze_trace.csv` (plain Neon). Traces of old sessions recorded with the removed screen-mapped backends hold screen-ratio x
+`NEON_SCENE_WIDTH` in `x_px`; `analyze_session` and replay still read them (kept `NEON_SCENE_WIDTH` for that).
 
 **Simulator finding (fixed in simulation, unverified on glasses).** Onset/landing used to be
 stamped with classifier observation times that trail the real eye by the tracker latency, so with 16 ms
@@ -338,7 +332,7 @@ tracker_latency_ms=0,16,50`. The simulator hands the session the exact latency; 
 
 **Open problem (Oct 2026): gaze arrives ~90-100 ms late in real sessions.** Every full session
 since the clock/onset work shows `gaze_quality.latency_ms_median` ~91-100 ms (plain Neon too; the
-screen-mapped backends additionally drop the rate to ~44-53 Hz), not the ~16-18 ms measured in
+the since-removed screen-mapped backends additionally dropped the rate to ~44-53 Hz), not the ~16-18 ms measured in
 standalone scripts. In the raw trace the delivery delay steps up by ~65 ms about 6 s in (when the
 render loop starts) and stays flat, while the rate falls from 200 to ~160/s (~19% of samples never
 arrive): the signature of the receiving thread being starved by the render loop (same process /
@@ -362,8 +356,8 @@ to <=150 ms latency) and the session then must not subtract `gaze_latency_ms` ag
 hardware whether `estimate_time_offset` is safe while streaming). Latency was ~18 ms for the plain scene-camera
 backend but 90-100 ms in the screen-mapped sessions of Oct 2026 - check `gaze_quality.latency_ms_median`. The scene
 camera is head-mounted, so head movement shifts gaze x with no eye movement -
-calibration assumes a still head (chin rest); `neon_gaze_view.py` uses
-AprilTag screen mapping instead and needs no calibration. The Neon source has
+calibration assumes a still head (chin rest). The screen-marker/outline head compensation and the AprilTag live view
+was removed in Oct 2026. The Neon source has
 no `latest_frame()`, so the debug camera preview and video recording are
 skipped for it (`has_frames = hasattr(gaze, "latest_frame")` in
 `run_saccade_phase`). `NEON_DEVICE_ADDRESS` in
