@@ -9,7 +9,6 @@ from include.experiment.constants import (
     FOREPERIOD_MAX_MS,
     FOREPERIOD_MIN_MS,
     GRATING_DURATION_FRAMES,
-    GRATING_POSITION,
     NUM_PRACTICE_TRIALS_REAL,
     NUM_PRACTICE_TRIALS_TEST,
     NUM_TRIALS_PER_PHASE_REAL,
@@ -17,13 +16,14 @@ from include.experiment.constants import (
     PRACTICE_CONTRAST,
     RESPONSE_WINDOW_MS,
 )
-from include.experiment.types import Orientation, TrialResult
+from include.experiment.types import Side, TrialResult
 from include.eye_tracking.interfaces import GazeSource
 from include.eye_tracking.types import GazeZone
 from src.experiment.logger import ResultLogger
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.scoring import score_outcome
 from src.experiment.space_input import SpaceTally
+from src.experiment.trial_mechanics import line_position
 from src.experiment.trial_factory import build_presaccade_sequence
 from src.experiment.zest import ZestStaircase
 
@@ -131,7 +131,7 @@ class PresaccadeSession:
         self._response_window_open = False
         self._response_deadline = 0.0
         self._responded = False
-        self._response_orientation: Orientation | None = None
+        self._response_orientation: Side | None = None
         self._response_time_ms: float | None = None
 
     @property
@@ -166,10 +166,9 @@ class PresaccadeSession:
         else:
             self.space_tally.record("early press, no trial left to start")
 
-    def on_response_key(self, orientation: Orientation) -> None:
+    def on_response_key(self, orientation: Side) -> None:
         """Called when an arrow key is pressed during the flash window:
-        up/down report `Orientation.VERTICAL`, left/right report
-        `Orientation.HORIZONTAL` - see run_experiment.py's key dispatch."""
+        UP reports `Side.ABOVE`, DOWN reports `Side.BELOW` - see run_experiment.py's key dispatch."""
         if self._phase is not Phase.FLASH_WINDOW:
             return
         if self._responded or not self._response_window_open:
@@ -279,7 +278,7 @@ class PresaccadeSession:
         prefix = "Practice (doesn't count) — " if self._current_trial().practice else ""
         if self._phase is Phase.AWAITING_SPACE:
             return f"{prefix}Fixate the center. Press SPACE when you are ready for the next trial"
-        return f"{prefix}UP/DOWN if the grating is vertical, LEFT/RIGHT if horizontal — not sure? Guess"
+        return f"{prefix}UP if the line was above the center, DOWN if below — not sure? Guess"
 
     def _trial_label(self) -> str:
         real_total = len(self._trials) - self._num_practice
@@ -298,6 +297,8 @@ class PresaccadeSession:
         # contrast-detection trial. The participant just holds gaze on center
         # without a marker.
         trial = self._current_trial() if self._phase is not Phase.COMPLETE and self._trials else None
+        side = trial.orientation if trial is not None else None
+        line_x, line_y = line_position(CENTER_POSITION, side or Side.ABOVE)
         return {
             "instructions": self._instructions(),
             "hide_caption": trial is not None
@@ -305,10 +306,12 @@ class PresaccadeSession:
             and not trial.practice,
             "dot": {"visible": False, "x": CENTER_POSITION[0], "y": CENTER_POSITION[1]},
             "cross": {"visible": False, "x": CENTER_POSITION[0], "y": CENTER_POSITION[1]},
+            # The flashed line, 2 deg above/below the fixation point (screen centre) - same offset as
+            # the saccade phase uses around its target.
             "grating": {
                 "visible": self._grating_visible,
-                "x": GRATING_POSITION[0],
-                "y": GRATING_POSITION[1],
+                "x": line_x,
+                "y": line_y,
                 "contrast": self._trial_contrast if (self._grating_visible and self._trials) else 0,
                 "orientation": trial.orientation if trial is not None else None,
             },

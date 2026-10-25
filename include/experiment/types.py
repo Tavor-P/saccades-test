@@ -1,4 +1,4 @@
-"""Dataclasses/enums for experiment data: Target, Orientation, trial specs, and TrialResult (one logged CSV row per trial).
+"""Dataclasses/enums for experiment data: Target, Side, trial specs, and TrialResult (one logged CSV row per trial).
 Adding a TrialResult field means touching: this file, logger.FIELDNAMES + ResultLogger.log, dashboard data_access parsing, and tests."""
 
 from dataclasses import dataclass
@@ -10,14 +10,17 @@ class Target(str, Enum):
     CROSS = "cross"
 
 
-class Orientation(str, Enum):
-    """The grating's stripe orientation on a given trial - reported back via
-    up/down (vertical) or left/right (horizontal) arrow keys, turning
-    detection into a 2-alternative forced-choice discrimination task. None
-    on catch trials, where no grating (and so no orientation) is shown."""
+class Side(str, Enum):
+    """Where the flashed line sits relative to the saccade target (or the fixation point in the
+    baseline) on a given trial - reported back with the UP / DOWN arrow key, turning detection
+    into a 2-alternative forced-choice task (Braun, Schutz & Gegenfurtner 2021). None on catch
+    trials, where no line (and so no side) is shown. The trial/result fields that hold a Side are
+    still called `orientation` / `response_orientation` (and so is the CSV column) so existing
+    CSVs, the dashboard and the schema checks keep working; old CSVs hold 'vertical' / 'horizontal'
+    there, new ones 'above' / 'below'."""
 
-    VERTICAL = "vertical"
-    HORIZONTAL = "horizontal"
+    ABOVE = "above"
+    BELOW = "below"
 
 
 @dataclass(frozen=True)
@@ -29,7 +32,7 @@ class FlashTrialSpec:
 
     index: int
     grating_shown: bool
-    orientation: Orientation | None = None
+    orientation: Side | None = None
     practice: bool = False
 
 
@@ -39,7 +42,7 @@ class TrialSpec:
     source: Target
     target: Target
     grating_shown: bool
-    orientation: Orientation | None = None
+    orientation: Side | None = None
     practice: bool = False
     # Which of TIMING_OFFSETS_MS this trial's flash is scheduled at, relative
     # to the avg_reaction_time_ms in effect when the trial started - None for
@@ -57,9 +60,9 @@ class TrialResult:
     saccade_duration_ms: float | None
     grating_shown: bool
     contrast: float | None
-    orientation: Orientation | None
+    orientation: Side | None
     responded: bool
-    response_orientation: Orientation | None
+    response_orientation: Side | None
     response_time_ms: float | None
     outcome: str  # "correct" | "incorrect" | "miss" | "false_alarm" | "correct_rejection" | "timeout"
     # Saccade phase only (None in presaccade rows, which have no saccade to

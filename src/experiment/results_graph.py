@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.ticker import FuncFormatter
 
-from include.experiment.types import Orientation, TrialResult
+from include.experiment.types import Side, TrialResult
 from src.experiment.scoring import is_valid_for_saccadic_analysis
 from src.experiment.zest import ZestStaircase, psychometric_function
 
@@ -22,8 +22,8 @@ _PHASE_STYLE = {
 }
 
 _ORIENTATION_COLORS = {
-    Orientation.VERTICAL: "#55A868",
-    Orientation.HORIZONTAL: "#8172B2",
+    Side.ABOVE: "#55A868",
+    Side.BELOW: "#8172B2",
 }
 
 # False alarms (responded on a catch trial, where no grating was ever shown)
@@ -175,17 +175,16 @@ def _orientation_accuracy(trials: list[TrialResult]) -> tuple[int, int]:
 
 def _plot_orientation_v_curve(ax, results: list[TrialResult]) -> None:
     """Fitted detection-rate-vs-contrast curve, combined across both phases,
-    for each grating orientation - vertical-striped gratings get smeared by
-    the saccade's own (horizontal) motion in a way horizontal-striped ones
-    don't, so this is worth checking directly rather than assuming
-    orientation doesn't matter. Horizontal is mirrored onto the negative half
-    of the x-axis and vertical onto the positive half, both anchored at
+    for each line side (above / below the target) - the saccade's own
+    (horizontal) motion could make one side easier than the other, so this is
+    worth checking directly. Below is mirrored onto the negative half
+    of the x-axis and above onto the positive half, both anchored at
     (0, guess rate) - the two curves meet in the middle, forming a V/notch
     shape whose two arms' steepness and threshold position (readable off
-    where each arm crosses the dotted 50% line) show the orientation gap at a
-    glance instead of collapsing it into one number per orientation like a
+    where each arm crosses the dotted 50% line) show the above/below gap at a
+    glance instead of collapsing it into one number per side like a
     plain accuracy bar would."""
-    by_orientation: dict[Orientation, list[TrialResult]] = {Orientation.HORIZONTAL: [], Orientation.VERTICAL: []}
+    by_orientation: dict[Side, list[TrialResult]] = {Side.BELOW: [], Side.ABOVE: []}
     for r in results:
         if r.orientation in by_orientation and r.outcome in ("correct", "incorrect", "miss") and r.contrast is not None:
             by_orientation[r.orientation].append(r)
@@ -207,7 +206,7 @@ def _plot_orientation_v_curve(ax, results: list[TrialResult]) -> None:
     xs = np.linspace(0, max_contrast * 1.05, 200)
     rng = np.random.default_rng(0)  # deterministic scatter jitter between graph renders
 
-    for orientation, sign in ((Orientation.HORIZONTAL, -1), (Orientation.VERTICAL, 1)):
+    for orientation, sign in ((Side.BELOW, -1), (Side.ABOVE, 1)):
         if orientation not in fits:
             continue
         zest = fits[orientation]
@@ -231,17 +230,17 @@ def _plot_orientation_v_curve(ax, results: list[TrialResult]) -> None:
     ax.axvline(0, color="#999999", linewidth=1, linestyle=":")
     ax.axhline(guess_rate_percent, color="#999999", linewidth=1, linestyle=":")
     ax.xaxis.set_major_formatter(FuncFormatter(lambda val, _pos: f"{abs(val):.0f}"))
-    ax.set_xlabel("Contrast (%) - horizontal (left) vs. vertical (right)")
+    ax.set_xlabel("Contrast (%) - line below (left) vs. above (right)")
     ax.set_ylabel("Accuracy / detection rate (%)")
     ax.set_ylim(-8, 108)
-    ax.set_title("Orientation discrimination vs. contrast")
+    ax.set_title("Line above/below discrimination vs. contrast")
     ax.legend(loc="lower center", fontsize=9)
     ax.grid(True, alpha=0.3)
 
 
 def _plot_orientation_accuracy_by_phase(ax, results: list[TrialResult]) -> None:
-    """Orientation-accuracy comparison broken out per phase - lets you check
-    whether any vertical-vs-horizontal gap shows up in both the presaccade
+    """Accuracy per line side broken out per phase - lets you check
+    whether any above-vs-below gap shows up in both the presaccade
     baseline and the saccade condition, or only appears once an actual
     saccade (and its motion smear) is involved."""
     phases = [p for p in ("presaccade", "saccade") if any(r.phase == p for r in results)]
@@ -249,7 +248,7 @@ def _plot_orientation_accuracy_by_phase(ax, results: list[TrialResult]) -> None:
         ax.set_visible(False)
         return
 
-    orientations = (Orientation.VERTICAL, Orientation.HORIZONTAL)
+    orientations = (Side.ABOVE, Side.BELOW)
     width = 0.35
     x = np.arange(len(phases))
 
@@ -270,7 +269,7 @@ def _plot_orientation_accuracy_by_phase(ax, results: list[TrialResult]) -> None:
     ax.set_xticklabels([_PHASE_STYLE[p]["label"] for p in phases])
     ax.set_ylim(0, 108)
     ax.set_ylabel("Correct (%)")
-    ax.set_title("Accuracy by orientation × phase")
+    ax.set_title("Accuracy by line side × phase")
     ax.legend(fontsize=9)
     ax.grid(True, alpha=0.3, axis="y")
 
@@ -280,9 +279,9 @@ def build_comparison_graph(results: list[TrialResult], output_path: Path = OUTPU
     credible interval) presaccade vs. saccade; the fitted psychometric
     function each threshold came from, with actual trial responses (and false
     alarms, marked in black) scattered on top so the fit can be sanity-checked
-    by eye; a mirrored detection-rate-vs-contrast curve (horizontal vs.
-    vertical orientation, combined across phases) meeting at chance level in
-    the middle; and orientation accuracy broken out per phase."""
+    by eye; a mirrored detection-rate-vs-contrast curve (line below vs.
+    above, combined across phases) meeting at chance level in
+    the middle; and accuracy per line side broken out per phase."""
     results = _exclude_flashes_not_during_saccade(results)
     replays = {}
     for phase in ("presaccade", "saccade"):

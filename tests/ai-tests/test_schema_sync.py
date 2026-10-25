@@ -6,7 +6,7 @@ import dataclasses
 
 import pytest
 
-from include.experiment.types import Orientation, Target, TrialResult
+from include.experiment.types import Side, Target, TrialResult
 from src.dashboard import data_access
 from src.experiment import logger as logger_module
 from src.experiment.logger import FIELDNAMES, ResultLogger
@@ -25,9 +25,9 @@ def _full_result() -> TrialResult:
         saccade_duration_ms=61.25,
         grating_shown=True,
         contrast=0.1234,
-        orientation=Orientation.HORIZONTAL,
+        orientation=Side.BELOW,
         responded=True,
-        response_orientation=Orientation.VERTICAL,
+        response_orientation=Side.ABOVE,
         response_time_ms=432.5,
         outcome="incorrect",
         reaction_latency_ms=251.5,

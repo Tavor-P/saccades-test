@@ -18,7 +18,7 @@ from include.experiment.constants import (
     SACCADE_ONSET_STABILITY_MS,
     TRACKING_LOSS_WINDOW_MS,
 )
-from include.experiment.types import Orientation, Target, TrialResult
+from include.experiment.types import Side, Target, TrialResult
 from src.experiment.scoring import is_valid_for_saccadic_analysis
 
 
@@ -47,7 +47,7 @@ def _run_valid_saccade(session, fake_gaze, fake_time, lose_tracking_at_flash: bo
     session.tick()
     fake_time(GAZE_LANDING_STABILITY_MS / 1000 + 0.01)
     session.tick()  # landed
-    session.on_response_key(Orientation.VERTICAL)
+    session.on_response_key(Side.ABOVE)
     session.tick()
     return [r for r in session.results if r.phase == "saccade"][0]
 
@@ -106,8 +106,8 @@ def test_logger_writes_and_dashboard_reads_tracking_ok(tmp_path, monkeypatch):
     log.log(
         TrialResult(
             index=0, phase="saccade", source=Target.DOT, target=Target.CROSS, saccade_duration_ms=50.0,
-            grating_shown=True, contrast=0.1, orientation=Orientation.VERTICAL, responded=True,
-            response_orientation=Orientation.VERTICAL, response_time_ms=300.0, outcome="correct",
+            grating_shown=True, contrast=0.1, orientation=Side.ABOVE, responded=True,
+            response_orientation=Side.ABOVE, response_time_ms=300.0, outcome="correct",
             flash_during_saccade=True, tracking_ok=False,
         )
     )

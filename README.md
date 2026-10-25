@@ -9,8 +9,10 @@ Ross & Morrone (2000, *J Neurosci* 20:3449-3455).
 takes you to move your eyes after a "go" beep. Then, in the real trials, you
 stare at a target and jump your gaze to a second one when it beeps. Timed to
 land around that eye movement — based on your own measured reaction time,
-not on watching your eyes in real time — a faint striped pattern flashes for
-a single frame, and you report which way it was oriented. A camera tracks
+not on watching your eyes in real time — a faint thin horizontal line flashes
+for a single frame just above or below the target you are looking at, and you
+report which side it was on (this is the line-stimulus version of the task,
+after Braun, Schutz & Gegenfurtner 2021). A camera tracks
 your eyes throughout so the software can tell afterward whether each flash
 actually landed during the eye movement or not (trials where it didn't are
 excluded automatically). The same test also runs *without* eye movements (a
@@ -52,7 +54,7 @@ Each phase's flow:
   session.
 
 If you ran the tutorial, it walks through calibration, how to answer with
-the arrow keys (3 correct in a row), and 8 practice trials that look exactly
+UP/DOWN (a line above or below a dot, 3 correct in a row), and 8 practice trials that look exactly
 like the real ones (press SPACE, look at the dot, then the cross, answer the
 flash). The practice trials also measure your reaction time, so the saccade
 phase reuses that calibration and reaction time and starts the real trials
@@ -69,8 +71,7 @@ During the real measured trials (after practice) the caption is hidden and silen
 | Key / action | Effect |
 |---|---|
 | **Space** | Start / calibrate / continue past results — and **start each trial** (take as long a break as you like between trials; the dot/cross swaps 0.5–1 s after you press). In calibration one press is enough even if the glasses are still gathering samples (it completes by itself a moment later); during the tutorial's spoken instructions a press is held until the voice finishes. A press during a trial's 0.5–1 s wait is ignored (it does not restart the wait); every ignored press is counted per phase on the console and in the session's `_meta.json` (`ignored_space_presses`) |
-| **Up / Down** | "It looked vertical" |
-| **Left / Right** | "It looked horizontal" |
+| **Up / Down** | "The line was above / below the dot (or cross)" — in the baseline, above / below the centre |
 | **Escape** | Quit immediately |
 
 Every trial waits for you to press Space, so the wait between trials is your

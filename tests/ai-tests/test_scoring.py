@@ -1,4 +1,4 @@
-from include.experiment.types import Orientation
+from include.experiment.types import Side
 from src.experiment.scoring import score_outcome
 
 
@@ -7,8 +7,8 @@ def test_correct_when_response_orientation_matches():
         score_outcome(
             grating_shown=True,
             responded=True,
-            response_orientation=Orientation.VERTICAL,
-            actual_orientation=Orientation.VERTICAL,
+            response_orientation=Side.ABOVE,
+            actual_orientation=Side.ABOVE,
         )
         == "correct"
     )
@@ -19,8 +19,8 @@ def test_incorrect_when_response_orientation_does_not_match():
         score_outcome(
             grating_shown=True,
             responded=True,
-            response_orientation=Orientation.HORIZONTAL,
-            actual_orientation=Orientation.VERTICAL,
+            response_orientation=Side.BELOW,
+            actual_orientation=Side.ABOVE,
         )
         == "incorrect"
     )
@@ -29,7 +29,7 @@ def test_incorrect_when_response_orientation_does_not_match():
 def test_miss_when_grating_shown_but_no_response():
     assert (
         score_outcome(
-            grating_shown=True, responded=False, response_orientation=None, actual_orientation=Orientation.VERTICAL
+            grating_shown=True, responded=False, response_orientation=None, actual_orientation=Side.ABOVE
         )
         == "miss"
     )
@@ -37,7 +37,7 @@ def test_miss_when_grating_shown_but_no_response():
 
 def test_false_alarm():
     assert (
-        score_outcome(grating_shown=False, responded=True, response_orientation=Orientation.HORIZONTAL, actual_orientation=None)
+        score_outcome(grating_shown=False, responded=True, response_orientation=Side.BELOW, actual_orientation=None)
         == "false_alarm"
     )
 

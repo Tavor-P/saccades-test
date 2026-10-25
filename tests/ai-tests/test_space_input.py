@@ -5,7 +5,7 @@ import json
 import pytest
 
 from include.experiment.constants import CALIBRATION_ROUNDS, FOREPERIOD_MAX_MS, RESPONSE_WINDOW_MS
-from include.experiment.types import Orientation
+from include.experiment.types import Side
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.presaccade_session import PresaccadeSession
 from src.experiment.session import ExperimentSession
@@ -233,7 +233,7 @@ def test_space_after_answering_starts_the_next_trial_as_soon_as_it_is_ready(fake
 
     session.on_space()  # before answering: ignored and counted
     assert session.space_tally.as_dict() == {"TRIAL_ACTIVE: during trial": 1}
-    session.on_response_key(Orientation.VERTICAL)
+    session.on_response_key(Side.ABOVE)
     session.on_space()  # answered: carried to the next trial
     assert _phase(session) == "TRIAL_ACTIVE"
     session.tick()  # trial finalizes -> AWAITING_SPACE -> the carried press starts the next foreperiod
@@ -263,7 +263,7 @@ def test_baseline_space_rules(fake_time):
     session.on_space()  # not answered yet
     assert session.space_tally.as_dict()["FLASH_WINDOW: during trial"] == 1
 
-    session.on_response_key(Orientation.VERTICAL)
+    session.on_response_key(Side.ABOVE)
     session.on_space()  # answered: carried
     fake_time(RESPONSE_WINDOW_MS / 1000 + 0.1)
     session.tick()  # trial ends -> AWAITING_SPACE -> carried press starts the next trial

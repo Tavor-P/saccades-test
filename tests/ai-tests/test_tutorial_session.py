@@ -11,7 +11,7 @@ from include.experiment.constants import (
     TUTORIAL_PRACTICE_ATTEMPTS,
     TUTORIAL_QUIZ_STREAK_TARGET,
 )
-from include.experiment.types import Orientation, Target
+from include.experiment.types import Side, Target
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.tutorial_session import TutorialSession
 
@@ -65,7 +65,7 @@ def _run_attempt(session, fake_gaze, fake_time, reaction_time_s: float = 0.2, re
 
     orientation = session._orientation
     if not respond_correctly:
-        orientation = Orientation.HORIZONTAL if orientation is Orientation.VERTICAL else Orientation.VERTICAL
+        orientation = Side.BELOW if orientation is Side.ABOVE else Side.ABOVE
     session.on_response_key(orientation)
     session.tick()  # landed + flashed + responded -> finalizes
 
@@ -105,7 +105,7 @@ def test_quiz_passes_after_three_in_a_row_and_a_miss_resets_the_streak(fake_gaze
     session.on_response_key(session._quiz_orientation)
     assert session._quiz_streak == 2
 
-    wrong = Orientation.HORIZONTAL if session._quiz_orientation is Orientation.VERTICAL else Orientation.VERTICAL
+    wrong = Side.BELOW if session._quiz_orientation is Side.ABOVE else Side.ABOVE
     session.on_response_key(wrong)
     assert session._quiz_streak == 0
     assert session.render_state()["feedback_flash"]["color"] == "red"
@@ -124,7 +124,9 @@ def test_quiz_explains_the_keys_once(fake_gaze):
     session = _make_session(fake_gaze)
     _complete_calibration(session)
     state = session.render_state()
-    assert "UP or DOWN" in state["instructions"] and "LEFT or RIGHT" in state["instructions"]
+    assert "UP" in state["instructions"] and "DOWN" in state["instructions"]
+    assert "LEFT" not in state["instructions"] and "RIGHT" not in state["instructions"]
+    assert state["dot"]["visible"]  # the line is shown just above/below the dot
     assert state["tutorial_text"]["visible"]
     assert state["grating"]["visible"]
 

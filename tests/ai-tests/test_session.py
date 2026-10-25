@@ -26,7 +26,7 @@ from include.experiment.constants import (
     ZEST_MIN_VALID_TRIALS_REAL,
     ZEST_MIN_VALID_TRIALS_TEST,
 )
-from include.experiment.types import Orientation, Target, TrialResult, TrialSpec
+from include.experiment.types import Side, Target, TrialResult, TrialSpec
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.session import ExperimentSession, Phase
 
@@ -140,7 +140,7 @@ def _set_single_trial(session, **kwargs) -> None:
     visibility (set at foreperiod-start from the current trial's source -
     see ExperimentSession._begin_foreperiod) reflects this trial, not
     whatever was auto-generated before it."""
-    defaults = dict(index=0, source=Target.DOT, target=Target.CROSS, grating_shown=True, orientation=Orientation.VERTICAL)
+    defaults = dict(index=0, source=Target.DOT, target=Target.CROSS, grating_shown=True, orientation=Side.ABOVE)
     defaults.update(kwargs)
     session._current_trial_spec = TrialSpec(**defaults)
     session._begin_foreperiod()
@@ -364,7 +364,7 @@ def test_flash_during_saccade_true_when_flash_lands_between_onset_and_landing(fa
     _enter_trial_active(session, fake_time)
 
     _trigger_onset_and_landing(session, fake_gaze, fake_time, GazeZone.RIGHT)
-    session.on_response_key(Orientation.VERTICAL)
+    session.on_response_key(Side.ABOVE)
     session.tick()  # finalizes
 
     assert _saccade_results(session)[0].flash_during_saccade is True
@@ -398,7 +398,7 @@ def test_flash_during_saccade_false_when_flash_lands_after_landing(fake_gaze, fa
     session.tick()
     fake_time(0.2)
     session.tick()  # flash fires now, response window opens
-    session.on_response_key(Orientation.VERTICAL)
+    session.on_response_key(Side.ABOVE)
     session.tick()  # finalizes
 
     assert _saccade_results(session)[0].flash_during_saccade is False
@@ -431,7 +431,7 @@ def test_valid_trial_updates_zest(fake_gaze, fake_time):
     initial_threshold = session._zest.threshold_estimate
 
     _trigger_onset_and_landing(session, fake_gaze, fake_time, GazeZone.RIGHT)
-    session.on_response_key(Orientation.VERTICAL)
+    session.on_response_key(Side.ABOVE)
     session.tick()
 
     assert _saccade_results(session)[0].outcome == "correct"
@@ -464,7 +464,7 @@ def test_false_alarm_does_not_update_zest(fake_gaze, fake_time):
     initial_threshold = session._zest.threshold_estimate
 
     _trigger_onset_and_landing(session, fake_gaze, fake_time, GazeZone.RIGHT)
-    session.on_response_key(Orientation.VERTICAL)  # guess during the response window even though nothing was shown
+    session.on_response_key(Side.ABOVE)  # guess during the response window even though nothing was shown
     session.tick()
 
     assert len(_saccade_results(session)) == 1
@@ -498,7 +498,7 @@ def test_incorrect_orientation_is_still_scored_correctly(fake_gaze, fake_time):
     _enter_trial_active(session, fake_time)
 
     _trigger_onset_and_landing(session, fake_gaze, fake_time, GazeZone.RIGHT)
-    session.on_response_key(Orientation.HORIZONTAL)  # wrong guess
+    session.on_response_key(Side.BELOW)  # wrong guess
     session.tick()
 
     assert _saccade_results(session)[0].outcome == "incorrect"
@@ -541,7 +541,7 @@ def test_practice_trial_is_not_logged_or_staircased(fake_gaze, fake_time):
 
     _trigger_onset_and_landing(session, fake_gaze, fake_time, GazeZone.RIGHT)
     assert session._trial_contrast == PRACTICE_CONTRAST  # fixed, not drawn from the staircase
-    session.on_response_key(Orientation.VERTICAL)
+    session.on_response_key(Side.ABOVE)
     session.tick()
 
     assert _saccade_results(session) == []  # practice trials never get logged
@@ -670,9 +670,9 @@ def _fake_valid_saccade_results(count: int) -> list[TrialResult]:
             saccade_duration_ms=200.0,
             grating_shown=True,
             contrast=0.1,
-            orientation=Orientation.VERTICAL,
+            orientation=Side.ABOVE,
             responded=True,
-            response_orientation=Orientation.VERTICAL,
+            response_orientation=Side.ABOVE,
             response_time_ms=250.0,
             outcome="correct",
             flash_during_saccade=True,

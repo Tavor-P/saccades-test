@@ -13,6 +13,28 @@ picked in the startup dialog, a FLIR Blackfly S camera (Spinnaker SDK /
 `PySpin`) + MediaPipe iris landmarks. See [README.md](README.md) for the full participant-facing
 walkthrough (controls, output files, troubleshooting).
 
+## Line-stimulus branch (`claude/line-stimulus-ab4bdf`)
+
+An ALTERNATIVE to the grating on `feature/saccade-flash-analysis` (cut from it; that branch's grating behaviour is
+untouched). The flash is a thin horizontal line as in Braun, Schutz & Gegenfurtner 2021 (J Vis): full screen width,
+vertical Gaussian profile (`LINE_SD_DEG` 0.15), centred `LINE_OFFSET_DEG` (2 deg) above or below the saccade TARGET (the
+symbol the eye is moving to; in the baseline the screen centre), drawn `GRATING_DURATION_FRAMES` frame(s); the participant
+presses UP (above) or DOWN (below), LEFT/RIGHT are unused. Everything else (scheduled flashes, gates, analysis, SPACE
+gating) is unchanged.
+- `Orientation` is replaced by `Side.ABOVE/BELOW` (`include/experiment/types.py`). The trial/result fields and the CSV
+  columns are still called `orientation` / `response_orientation` (now holding 'above'/'below'); old CSVs with
+  'vertical'/'horizontal' load via `data_access._LEGACY_SIDES` (vertical->above, horizontal->below, an arbitrary but
+  consistent relabel). The render-state key is still `"grating"` (now the line: x/y = line position, `orientation` = side).
+- Geometry: `LINE_*` constants (`include/experiment/constants.py`) via `SCREEN_HEIGHT_DEG`, so they are only right once
+  `VIEWING_DISTANCE_CM`/`SCREEN_HEIGHT_CM` are the real monitor's (still placeholders). `trial_mechanics.line_position`
+  places the line. Rendering (`run_experiment.build_stimuli`): a `GratingStim` with `tex=None` and the `'gauss'` mask,
+  sized (`LINE_WIDTH_SCREENS` x screen width, 6 SD tall); `contrast` scales the white field, so a light line.
+- Tutorial quiz = a line above/below a dot (UP/DOWN, 3 in a row); trial captions say "UP if the line was above ...".
+- **Contrasts are NOT re-tuned**: the 10/15/20 % defaults (`SACCADE_FIXED_CONTRASTS`, startup dialog) were chosen for the old
+  off-centre grating; a line next to the target will probably need lower values, to be piloted on glasses.
+- **Untested on glasses / a real window**: the PsychoPy line rendering (profile, width, brightness, one-frame visibility,
+  how it looks at 60 Hz), the quiz/captions, and every contrast level. Covered by the simulator and tests only.
+
 ## Status and next steps (updated 2026-10-25 for the next session)
 
 **Goal.** A grant to test saccadic suppression in people with TBI vs without. Present what exists as a
@@ -38,7 +60,7 @@ fixed saccade-phase contrasts 10/15/20 % (startup dialog "Saccade contrast min/m
 - SPACE presses are never silently dropped (`src/experiment/space_input.py`: calibration latch, tutorial narration
   hold, per-phase ignored-press tally in the console and `_meta.json`).
 - None of the new behaviour above (onboarding, space-gating, SPACE latching, gates, suppression index) has been run
-  in a real session on glasses yet; it is covered by the simulator and ~520 tests only.
+  in a real session on glasses yet; it is covered by the simulator and ~535 tests only.
 
 **Pilot findings (one participant, test mode, before the changes above).** Foveal baseline threshold ~1.3 %. Saccades
 ~75 ms / ~30 deg with the 15/85 layout. 3 %/6 % flashes were invisible when fixating the dot/cross (flash ~15 deg off
@@ -110,7 +132,7 @@ Paths in this section are checked by `tests/test_docs.py` - keep them real.
 | Path | What it is |
 |---|---|
 | `include/experiment/constants.py` | every tunable experiment constant (timing, stimulus, ZEST, trial counts) |
-| `include/experiment/types.py` | `TrialResult` (one CSV row), `TrialSpec`, `Target`, `Orientation` |
+| `include/experiment/types.py` | `TrialResult` (one CSV row), `TrialSpec`, `Target`, `Side` (line above/below; was `Orientation`) |
 | `include/eye_tracking/constants.py` | gaze constants incl. `GAZE_DEAD_ZONE`, all `NEON_*` settings |
 | `include/eye_tracking/interfaces.py` | the `GazeSource` interface the experiment talks to |
 | `include/eye_tracking/types.py` | `GazeZone`, `GazeSample` |
@@ -119,7 +141,7 @@ Paths in this section are checked by `tests/test_docs.py` - keep them real.
 | `src/experiment/tutorial_session.py` | `TutorialSession`: narrated first-timer on-ramp (calibration -> how-to-answer quiz -> 8 practice trials that yield the first reaction-time samples) |
 | `src/experiment/run_experiment.py` | entry point + PsychoPy rendering; the only PsychoPy-dependent module |
 | `src/experiment/scoring.py` | `score_outcome`, `is_valid_for_saccadic_analysis` (the validity gate) |
-| `src/experiment/trial_mechanics.py` | `OnsetDetector` (displacement rule), `ShuffledBag`, `zone_for`, `average_ms`, `robust_average_ms` (shared helpers; the robust one drops anticipations/outliers then takes the median) |
+| `src/experiment/trial_mechanics.py` | `OnsetDetector` (displacement rule), `ShuffledBag`, `zone_for`, `line_position` (line placement above/below a reference point), `average_ms`, `robust_average_ms` (shared helpers; the robust one drops anticipations/outliers then takes the median) |
 | `src/experiment/calibration.py` | `average_calibration_rounds`, `validate_calibration` / `CalibrationCheck` / `fit_residual` (monotonic, span, noise, residual checks; not yet wired into `session.py`) |
 | `src/experiment/space_input.py` | SPACE bookkeeping with no PsychoPy: `CalibrationLatch` (a calibration press made before the gaze window is full is latched and completed in `tick()`), `NarrationKeyGate` (tutorial: a press during narration is delivered after it), `SpaceTally` (ignored presses per phase + reason), `deliver_space`, `leaves_complete_screen` |
 | `src/experiment/session_schedule.py` | `phase_order`: baseline/saccade order counterbalanced by participant ID |
@@ -143,6 +165,7 @@ Paths in this section are checked by `tests/test_docs.py` - keep them real.
 | `src/eye_tracking/webcam_source.py` | Blackfly S + MediaPipe backend (alternative) |
 | `src/dashboard/app.py` | Flask dashboard (separate process, reads `data/`) |
 | `tests/conftest.py` | `FakeGazeSource`, `fake_time` fixture |
+| `tests/ai-tests/test_line_stimulus.py` | line-stimulus branch: placement above/below the target (both directions) and the baseline centre, UP/DOWN keys only, quiz, old-CSV loading |
 | `tests/ai-tests/README.md` | headless-simulation guide for AI agents |
 | `tests/ai-tests/run_sim.py` | simulation CLI (`--set`, `--sweep`, `--timeline`, `--json`) |
 | `tests/ai-tests/find_bugs.py` | randomized bug-hunting campaign over the simulator; prints a repro command per finding |
@@ -168,7 +191,7 @@ it from tests or simulations (the simulator uses an in-memory logger).
    measurement script and ask the human to run it; don't guess numbers.
 
 Report test results truthfully (what ran, what was skipped). The suite passes at the time of writing
-(~520 tests, ~70 s, 2 skipped when PySpin/mediapipe are absent).
+(~535 tests, ~70 s, 2 skipped when PySpin/mediapipe are absent).
 
 **Bug-hunting tests** (`tests/ai-tests/`): `find_bugs.py` fuzzes the real session with random/hostile
 participants and checks `invariants.py` (run `find_bugs.py --sessions 300` after changing session,

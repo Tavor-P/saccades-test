@@ -1,9 +1,9 @@
-from include.experiment.types import Orientation, TrialResult
+from include.experiment.types import Side, TrialResult
 from src.experiment.results_graph import _exclude_flashes_not_during_saccade, _replay_zest, build_comparison_graph
 
 
 def _trial(
-    phase, index, contrast, correct, grating_shown=True, orientation=Orientation.VERTICAL, flash_during_saccade=None
+    phase, index, contrast, correct, grating_shown=True, orientation=Side.ABOVE, flash_during_saccade=None
 ):
     return TrialResult(
         index=index,
@@ -97,7 +97,7 @@ def _false_alarm_trial(phase, index):
         contrast=None,
         orientation=None,
         responded=True,
-        response_orientation=Orientation.VERTICAL,
+        response_orientation=Side.ABOVE,
         response_time_ms=300.0,
         outcome="false_alarm",
     )
@@ -129,10 +129,10 @@ def test_build_comparison_graph_handles_mixed_orientations(tmp_path):
     # horizontal trials mixed together shouldn't crash the new bar charts,
     # including the per-phase breakdown across both phases.
     results = [
-        _trial("presaccade", 0, 0.05, True, orientation=Orientation.VERTICAL),
-        _trial("presaccade", 1, 0.05, False, orientation=Orientation.HORIZONTAL),
-        _trial("saccade", 2, 0.1, True, orientation=Orientation.HORIZONTAL),
-        _trial("saccade", 3, 0.1, False, orientation=Orientation.VERTICAL),
+        _trial("presaccade", 0, 0.05, True, orientation=Side.ABOVE),
+        _trial("presaccade", 1, 0.05, False, orientation=Side.BELOW),
+        _trial("saccade", 2, 0.1, True, orientation=Side.BELOW),
+        _trial("saccade", 3, 0.1, False, orientation=Side.ABOVE),
     ]
     out = tmp_path / "orientations.png"
     build_comparison_graph(results, output_path=out)

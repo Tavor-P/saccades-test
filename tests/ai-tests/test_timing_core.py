@@ -12,7 +12,7 @@ from include.experiment.constants import (
     RESPONSE_WINDOW_MS,
     SACCADE_TIMEOUT_MS,
 )
-from include.experiment.types import Orientation, Target, TrialResult
+from include.experiment.types import Side, Target, TrialResult
 from src.experiment import logger as logger_module
 from src.experiment.logger import ResultLogger
 from src.experiment.pausable_clock import PausableClock
@@ -210,7 +210,7 @@ def test_trial_rows_log_the_scheduling_inputs_and_flash_relative_to_onset(fake_g
     _set_single_trial(session, timing_offset_ms=40)
     _enter_trial_active(session, fake_time)
     _trigger_onset_and_landing(session, gaze, fake_time, GazeZone.RIGHT)
-    session.on_response_key(Orientation.VERTICAL)
+    session.on_response_key(Side.ABOVE)
     session.tick()
 
     row = _saccade_results(session)[0]

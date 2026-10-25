@@ -17,14 +17,14 @@ from include.experiment.constants import (
     FEEDBACK_FLASH_RED,
     GAZE_INDICATOR_OPACITY,
     GAZE_INDICATOR_RADIUS_RATIO,
-    GRATING_SF_CYCLES_PER_HEIGHT_UNIT,
-    GRATING_SIZE_HEIGHT_UNITS,
-    HORIZONTAL_RESPONSE_KEYS,
-    VERTICAL_RESPONSE_KEYS,
+    ABOVE_RESPONSE_KEYS,
+    BELOW_RESPONSE_KEYS,
+    LINE_HEIGHT_HEIGHT_UNITS,
+    LINE_WIDTH_SCREENS,
     WARNING_TONE_DURATION_S,
     WARNING_TONE_HZ,
 )
-from include.experiment.types import Orientation
+from include.experiment.types import Side
 from include.eye_tracking.constants import CAMERA_INDEX, FRAME_HEIGHT, FRAME_WIDTH
 from src.eye_tracking.gaze_factory import (
     BACKEND_NEON_HYBRID,
@@ -75,13 +75,9 @@ def camera_preview_enabled(trial_index: int) -> bool:
     return trial_index == 0
 
 
-# Orientation response keys, and the GratingStim `ori` degrees each orientation
-# renders as (0=vertical stripes, 90=horizontal stripes).
-_RESPONSE_KEY_ORIENTATION = {key: Orientation.VERTICAL for key in VERTICAL_RESPONSE_KEYS} | {
-    key: Orientation.HORIZONTAL for key in HORIZONTAL_RESPONSE_KEYS
-}
-_ORIENTATION_DEGREES = {Orientation.VERTICAL: 0, Orientation.HORIZONTAL: 90}
-RESPONSE_KEYS = list(_RESPONSE_KEY_ORIENTATION)
+# Answer keys: UP = the line was above the target, DOWN = below (LEFT/RIGHT are not used).
+_RESPONSE_KEY_SIDE = {key: Side.ABOVE for key in ABOVE_RESPONSE_KEYS} | {key: Side.BELOW for key in BELOW_RESPONSE_KEYS}
+RESPONSE_KEYS = list(_RESPONSE_KEY_SIDE)
 
 # Phase names (ExperimentSession.Phase.name / TutorialSession.Phase.name)
 # whose entry is a target/cross appearing and should play the go-cue beep -
@@ -92,9 +88,9 @@ _TUTORIAL_GO_CUE_PHASES = frozenset({"PRACTICE_ACTIVE"})
 
 def dispatch_response_keys(session, keys: list[str]) -> None:
     for key in keys:
-        orientation = _RESPONSE_KEY_ORIENTATION.get(key)
-        if orientation is not None:
-            session.on_response_key(orientation)
+        side = _RESPONSE_KEY_SIDE.get(key)
+        if side is not None:
+            session.on_response_key(side)
 
 
 def narrate_if_changed(narrator: Narrator, text: str, last_spoken: str | None) -> str | None:
@@ -244,16 +240,17 @@ def build_stimuli(win: visual.Window, show_hud: bool = False) -> dict:
         "gaze_indicator": visual.Circle(
             win, radius=GAZE_INDICATOR_RADIUS_RATIO, fillColor="white", lineColor=None, opacity=0
         ),
-        # Diamond, Ross & Morrone (2000)'s probe: a horizontal sinusoidal
-        # luminance grating (bars parallel to the saccade direction) windowed
-        # by a Gaussian envelope - not a flat square.
+        # Braun, Schutz & Gegenfurtner (2021)'s probe: a thin horizontal line with a vertical Gaussian
+        # profile. A GratingStim with no texture (a flat white field) under PsychoPy's 'gauss' mask, sized
+        # (very wide, 6 SDs tall): the mask's SD is size/6, so it is LINE_SD_DEG tall and, being
+        # LINE_WIDTH_SCREENS screen widths wide, flat across the visible screen. Its `contrast` scales the
+        # white field around the mid-grey background, so the peak luminance step is contrast/2 of the
+        # 0-1 luminance range (a light line), the same convention as the old grating's contrast.
         "grating": visual.GratingStim(
             win,
-            tex="sin",
+            tex=None,
             mask="gauss",
-            sf=GRATING_SF_CYCLES_PER_HEIGHT_UNIT,
-            ori=90,
-            size=GRATING_SIZE_HEIGHT_UNITS,
+            size=(LINE_WIDTH_SCREENS * aspect, LINE_HEIGHT_HEIGHT_UNITS),
             color="white",
             contrast=0,
             opacity=0,
@@ -307,14 +304,12 @@ def apply_render_state(state: dict, stimuli: dict, fade_opacities: dict, dt: flo
     grating = stimuli["grating"]
     grating.opacity = 1.0 if state["grating"]["visible"] else 0.0
     if state["grating"]["visible"]:
-        grating.pos = ratio_to_pos(state["grating"]["x"], state["grating"]["y"], aspect)
+        # Full screen width, so only the vertical position matters (x is just the target the line belongs to).
+        grating.pos = (0.0, ratio_to_pos(state["grating"]["x"], state["grating"]["y"], aspect)[1])
         # Window background is mid-grey at rgb 0 (see luminance_to_color), so the
-        # grating's own contrast parameter is exactly the Michelson contrast of
-        # the flash around that background - no extra luminance math needed.
+        # line's own contrast parameter is its peak contrast around that
+        # background - no extra luminance math needed.
         grating.contrast = state["grating"]["contrast"]
-        orientation = state["grating"]["orientation"]
-        if orientation is not None:
-            grating.ori = _ORIENTATION_DEGREES[orientation]
 
     # Debug text: Test mode only (stimuli["show_hud"], set in build_stimuli); never drawn in a real run.
     if stimuli.get("show_hud"):
@@ -680,9 +675,9 @@ def run_tutorial_phase(
                 # could otherwise fire two stage transitions - or silently
                 # cost a quiz streak - off a single keypress.
                 for key in response_keys:
-                    orientation = _RESPONSE_KEY_ORIENTATION.get(key)
-                    if orientation is not None:
-                        session.on_response_key(orientation)
+                    side = _RESPONSE_KEY_SIDE.get(key)
+                    if side is not None:
+                        session.on_response_key(side)
                         break
                 session.tick()
 

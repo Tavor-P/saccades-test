@@ -15,7 +15,6 @@ from include.experiment.constants import (
     GAZE_LANDING_STABILITY_MS,
     GAZE_LATENCY_MAX_MS,
     GRATING_DURATION_FRAMES,
-    GRATING_POSITION,
     RESPONSE_WINDOW_MS,
     SACCADE_TIMEOUT_MS,
     TUTORIAL_PRACTICE_ATTEMPTS,
@@ -23,12 +22,12 @@ from include.experiment.constants import (
     TUTORIAL_QUIZ_CONTRAST,
     TUTORIAL_QUIZ_STREAK_TARGET,
 )
-from include.experiment.types import Orientation, Target
+from include.experiment.types import Side, Target
 from src.experiment.calibration import average_calibration_rounds
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.scoring import score_outcome
 from src.experiment.space_input import CalibrationLatch, SpaceTally
-from src.experiment.trial_mechanics import OnsetDetector, robust_average_ms
+from src.experiment.trial_mechanics import OnsetDetector, line_position, robust_average_ms
 from src.experiment.trial_mechanics import random_orientation as _random_orientation
 from src.experiment.trial_mechanics import zone_for as _zone_for
 
@@ -54,8 +53,8 @@ class TutorialSession:
        so a participant who takes the tutorial gets the exact same quality
        calibration as one who doesn't. The result is exposed via
        `calibration_ratios` for the real saccade phase to reuse.
-    2. QUIZ ("how to answer") - mixed-orientation, fixed-contrast gratings,
-       streak-gated: TUTORIAL_QUIZ_STREAK_TARGET correct in a row, a miss
+    2. QUIZ ("how to answer") - a fixed-contrast line shown above or below a
+       dot, UP / DOWN to answer, streak-gated: TUTORIAL_QUIZ_STREAK_TARGET correct in a row, a miss
        resets the streak. The only stage gated by success.
     3. PRACTICE - TUTORIAL_PRACTICE_ATTEMPTS trials that look exactly like
        real saccade trials (SPACE -> dot -> cross -> clearly visible flash ->
@@ -96,7 +95,7 @@ class TutorialSession:
 
         # -- quiz --
         self._quiz_streak = 0
-        self._quiz_orientation: Orientation | None = None
+        self._quiz_orientation: Side | None = None
 
         # -- feedback flash: color + a token that increments on every new
         # event, so the renderer can edge-detect "a new flash just happened"
@@ -110,7 +109,7 @@ class TutorialSession:
         self._rt_samples_ms: list[float] = []
         self._source = Target.DOT
         self._target = Target.CROSS
-        self._orientation: Orientation | None = None
+        self._orientation: Side | None = None
         self._onset_detector: OnsetDetector = OnsetDetector(_zone_for(self._source))
         self._flash_scheduled_at = 0.0
         self._flash_decided = False
@@ -120,7 +119,7 @@ class TutorialSession:
         self._response_window_open = False
         self._response_deadline = 0.0
         self._responded = False
-        self._response_orientation: Orientation | None = None
+        self._response_orientation: Side | None = None
         self._landed = False
         self._trial_start = 0.0
 
@@ -186,7 +185,7 @@ class TutorialSession:
                 self._gaze.calibrate(*self._calibration_ratios)
                 self._enter_quiz()
 
-    def on_response_key(self, orientation: Orientation) -> None:
+    def on_response_key(self, orientation: Side) -> None:
         if self._phase is Phase.QUIZ:
             if orientation == self._quiz_orientation:
                 self._quiz_streak += 1
@@ -347,8 +346,8 @@ class TutorialSession:
 
     # -- rendering -------------------------------------------------------------
 
-    _QUIZ_TEXT = "Lines going up-and-down: press UP or DOWN. Side-to-side: press LEFT or RIGHT."
-    _PRACTICE_INTRO = "Press SPACE, look at the dot, then at the cross. Then press an arrow key."
+    _QUIZ_TEXT = "Press UP if the line is above the dot, DOWN if it is below."
+    _PRACTICE_INTRO = "Press SPACE. Look at the dot, then the cross. Answer UP or DOWN."
 
     def _instructions(self) -> str:
         if self._phase is Phase.WAITING_TO_START:
@@ -386,28 +385,29 @@ class TutorialSession:
             return False, False, True
         if self._phase is Phase.CALIBRATE_RIGHT:
             return False, True, False
+        if self._phase is Phase.QUIZ:
+            return True, False, False  # the line is shown just above/below the dot
         if self._phase in (Phase.PRACTICE_AWAITING_SPACE, Phase.PRACTICE_FOREPERIOD, Phase.PRACTICE_ACTIVE):
             return self._dot_visible, self._cross_visible, False
         return False, False, False
 
     def _grating_state(self) -> dict:
+        """The flashed line (key kept as "grating"): in the quiz 2 deg above/below the dot, in a practice trial
+        above/below the symbol the eye is moving to."""
         if self._phase is Phase.QUIZ:
-            return {
-                "visible": True,
-                "x": GRATING_POSITION[0],
-                "y": GRATING_POSITION[1],
-                "contrast": TUTORIAL_QUIZ_CONTRAST,
-                "orientation": self._quiz_orientation,
-            }
+            x, y = line_position(DOT_POSITION, self._quiz_orientation or Side.ABOVE)
+            return {"visible": True, "x": x, "y": y, "contrast": TUTORIAL_QUIZ_CONTRAST, "orientation": self._quiz_orientation}
+        target_position = DOT_POSITION if self._target is Target.DOT else CROSS_POSITION
+        x, y = line_position(target_position, self._orientation or Side.ABOVE)
         if self._phase is Phase.PRACTICE_ACTIVE:
             return {
                 "visible": self._grating_visible,
-                "x": GRATING_POSITION[0],
-                "y": GRATING_POSITION[1],
+                "x": x,
+                "y": y,
                 "contrast": TUTORIAL_PRACTICE_CONTRAST if self._grating_visible else 0,
                 "orientation": self._orientation,
             }
-        return {"visible": False, "x": GRATING_POSITION[0], "y": GRATING_POSITION[1], "contrast": 0, "orientation": None}
+        return {"visible": False, "x": x, "y": y, "contrast": 0, "orientation": None}
 
     def _trial_label(self) -> str:
         if self._phase is Phase.QUIZ:

@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from include.eye_tracking.interfaces import GazeSource
 from include.eye_tracking.types import GazeSample, GazeZone
 from include.experiment.constants import CROSS_POSITION, DOT_POSITION, SCREEN_HEIGHT_CM, VIEWING_DISTANCE_CM
-from include.experiment.types import Orientation, TrialResult
+from include.experiment.types import Side, TrialResult
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.scoring import is_valid_for_saccadic_analysis
 from src.experiment.session import ExperimentSession
@@ -178,7 +178,7 @@ class SimulatedParticipant:
         """State that belongs to one screen phase - cleared whenever a new phase starts."""
         self.saccade_onset: float | None = None
         self._pending_space_at: float | None = None  # re-armed for the phases where SPACE is used
-        self._pending_response: tuple[float, Orientation] | None = None
+        self._pending_response: tuple[float, Side] | None = None
         self._flash_seen = False
         # Ground truth for the flash currently in flight (None if none): True if it
         # really fell inside the participant's saccade. Collected by the simulator
@@ -286,7 +286,7 @@ class SimulatedParticipant:
         if seen:
             answer = orientation
         elif self._rng.random() < self._p.guess_response_probability:
-            answer = self._rng.choice([Orientation.VERTICAL, Orientation.HORIZONTAL])
+            answer = self._rng.choice([Side.ABOVE, Side.BELOW])
         else:
             return  # no response -> "miss"
         delay = max(0.15, self._rng.gauss(self._p.response_ms_mean, self._p.response_ms_sd)) / 1000

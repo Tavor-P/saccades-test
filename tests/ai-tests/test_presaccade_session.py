@@ -13,7 +13,7 @@ from include.experiment.constants import (
     RESPONSE_WINDOW_MS,
     ZEST_LOG_CONTRAST_MAX,
 )
-from include.experiment.types import FlashTrialSpec, Orientation
+from include.experiment.types import FlashTrialSpec, Side
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.presaccade_session import Phase, PresaccadeSession
 
@@ -36,12 +36,12 @@ def _enter_flash_window(session, fake_time) -> None:
 
 def test_correct_orientation_scores_and_updates_zest(fake_time):
     session = _make_session()
-    session._trials = [FlashTrialSpec(index=0, grating_shown=True, orientation=Orientation.VERTICAL)]
+    session._trials = [FlashTrialSpec(index=0, grating_shown=True, orientation=Side.ABOVE)]
     _enter_flash_window(session, fake_time)
     initial_threshold = session._zest.threshold_estimate
     assert session._trial_contrast is not None
 
-    session.on_response_key(Orientation.VERTICAL)  # correctly reports the shown orientation
+    session.on_response_key(Side.ABOVE)  # correctly reports the shown orientation
     fake_time(RESPONSE_WINDOW_MS / 1000 + 0.1)
     session.tick()  # window closes -> finalizes
 
@@ -53,11 +53,11 @@ def test_correct_orientation_scores_and_updates_zest(fake_time):
 
 def test_incorrect_orientation_scores_and_updates_zest(fake_time):
     session = _make_session()
-    session._trials = [FlashTrialSpec(index=0, grating_shown=True, orientation=Orientation.VERTICAL)]
+    session._trials = [FlashTrialSpec(index=0, grating_shown=True, orientation=Side.ABOVE)]
     _enter_flash_window(session, fake_time)
     initial_threshold = session._zest.threshold_estimate
 
-    session.on_response_key(Orientation.HORIZONTAL)  # wrong guess
+    session.on_response_key(Side.BELOW)  # wrong guess
     fake_time(RESPONSE_WINDOW_MS / 1000 + 0.1)
     session.tick()
 
@@ -68,7 +68,7 @@ def test_incorrect_orientation_scores_and_updates_zest(fake_time):
 
 def test_miss_scores_and_updates_zest(fake_time):
     session = _make_session()
-    session._trials = [FlashTrialSpec(index=0, grating_shown=True, orientation=Orientation.VERTICAL)]
+    session._trials = [FlashTrialSpec(index=0, grating_shown=True, orientation=Side.ABOVE)]
     _enter_flash_window(session, fake_time)
     initial_threshold = session._zest.threshold_estimate
 
@@ -86,7 +86,7 @@ def test_false_alarm_does_not_update_zest(fake_time):
     _enter_flash_window(session, fake_time)
     initial_threshold = session._zest.threshold_estimate
 
-    session.on_response_key(Orientation.VERTICAL)  # guessed something despite nothing being shown
+    session.on_response_key(Side.ABOVE)  # guessed something despite nothing being shown
     fake_time(RESPONSE_WINDOW_MS / 1000 + 0.1)
     session.tick()
 
@@ -111,12 +111,12 @@ def test_correct_rejection_does_not_update_zest(fake_time):
 
 def test_practice_trial_is_not_logged_or_staircased(fake_time):
     session = _make_session()
-    session._trials = [FlashTrialSpec(index=0, grating_shown=True, orientation=Orientation.VERTICAL, practice=True)]
+    session._trials = [FlashTrialSpec(index=0, grating_shown=True, orientation=Side.ABOVE, practice=True)]
     _enter_flash_window(session, fake_time)
     initial_threshold = session._zest.threshold_estimate
     assert session._trial_contrast == PRACTICE_CONTRAST
 
-    session.on_response_key(Orientation.VERTICAL)
+    session.on_response_key(Side.ABOVE)
     fake_time(RESPONSE_WINDOW_MS / 1000 + 0.1)
     session.tick()
 
@@ -141,8 +141,8 @@ def test_response_key_before_flash_window_does_nothing(fake_time):
     # Regression guard: on_response_key() must be a no-op outside FLASH_WINDOW,
     # mirroring the old on_space()/_on_response() guard it replaced.
     session = _make_session()
-    session._trials = [FlashTrialSpec(index=0, grating_shown=True, orientation=Orientation.VERTICAL)]
-    session.on_response_key(Orientation.VERTICAL)  # still WAITING_TO_START
+    session._trials = [FlashTrialSpec(index=0, grating_shown=True, orientation=Side.ABOVE)]
+    session.on_response_key(Side.ABOVE)  # still WAITING_TO_START
     assert session._responded is False
 
 
@@ -220,9 +220,9 @@ def test_ungated_session_ignores_gaze(fake_time):
 
 def test_next_trial_waits_for_space_and_the_flash_comes_500_to_1000_ms_after_the_press(fake_time):
     session = _make_session()
-    session._trials = [FlashTrialSpec(index=i, grating_shown=True, orientation=Orientation.VERTICAL) for i in range(2)]
+    session._trials = [FlashTrialSpec(index=i, grating_shown=True, orientation=Side.ABOVE) for i in range(2)]
     _enter_flash_window(session, fake_time)
-    session.on_response_key(Orientation.VERTICAL)
+    session.on_response_key(Side.ABOVE)
     fake_time(RESPONSE_WINDOW_MS / 1000 + 0.1)
     session.tick()  # trial 0 finishes
     assert session.render_state()["hud"]["phase"] == "AWAITING_SPACE"
@@ -258,8 +258,8 @@ def test_hud_trial_index_counts_logged_trials(fake_time):
 def test_hide_caption_only_for_real_trials_not_practice_or_start_or_results():
     session = _make_session()
     session._trials = [
-        FlashTrialSpec(index=0, grating_shown=True, orientation=Orientation.VERTICAL, practice=True),
-        FlashTrialSpec(index=1, grating_shown=True, orientation=Orientation.VERTICAL),
+        FlashTrialSpec(index=0, grating_shown=True, orientation=Side.ABOVE, practice=True),
+        FlashTrialSpec(index=1, grating_shown=True, orientation=Side.ABOVE),
     ]
     assert session.render_state()["hide_caption"] is False  # WAITING_TO_START
     session.on_space()

@@ -7,7 +7,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from include.experiment.types import Orientation, Target, TrialResult
+from include.experiment.types import Side, Target, TrialResult
 
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 GRAPH_CACHE_DIR = DATA_DIR / "dashboard_cache"
@@ -35,8 +35,16 @@ def _parse_target(value: str) -> Target | None:
     return Target(value) if value else None
 
 
-def _parse_orientation(value: str) -> Orientation | None:
-    return Orientation(value) if value else None
+# CSVs logged before the line stimulus hold the grating's 'vertical' / 'horizontal' in the orientation columns;
+# they map to ABOVE / BELOW (an arbitrary but consistent relabel: answers are still scored against the same
+# column, and the old UP/DOWN-vs-LEFT/RIGHT keys were the two alternatives just as above/below are now).
+_LEGACY_SIDES = {"vertical": Side.ABOVE, "horizontal": Side.BELOW}
+
+
+def _parse_orientation(value: str) -> Side | None:
+    if not value:
+        return None
+    return _LEGACY_SIDES.get(value) or Side(value)
 
 
 def csv_path_for(timestamp: str) -> Path:

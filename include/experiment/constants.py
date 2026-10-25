@@ -31,6 +31,18 @@ VIEWING_DISTANCE_CM = 50.0
 SCREEN_HEIGHT_CM = 26.0
 SCREEN_HEIGHT_DEG = 2 * math.degrees(math.atan((SCREEN_HEIGHT_CM / 2) / VIEWING_DISTANCE_CM))
 
+# LINE-STIMULUS BRANCH: the flash is NOT the grating below but a thin horizontal line (Braun, Schutz &
+# Gegenfurtner 2021, J Vis): full screen width, a vertical Gaussian luminance profile, 2 deg above or below
+# the saccade target (the symbol the eye is moving to; in the baseline the fixation point), and the
+# participant says which side with UP / DOWN. Their values: SD 0.15 deg, offset 2 deg, one frame at 120 Hz.
+# Sizes go through SCREEN_HEIGHT_DEG like the grating's, so they are only right once VIEWING_DISTANCE_CM /
+# SCREEN_HEIGHT_CM match the real monitor (they are still the 24-inch placeholders).
+LINE_OFFSET_DEG = 2.0  # distance of the line's centre above/below the target
+LINE_SD_DEG = 0.15  # vertical standard deviation of the Gaussian profile
+LINE_WIDTH_SCREENS = 24.0  # drawn this many screen widths wide so the horizontal Gaussian edge-fade is invisible (~1 % at the screen edge)
+# The grating constants below are kept (the grating code path still exists on feature/saccade-flash-analysis and
+# the grating values are written to the meta file) but nothing on this branch draws a grating.
+
 # The paper's probe: a horizontal sinusoidal luminance grating (bars parallel
 # to the saccade direction, so the saccade's own motion doesn't smear the
 # pattern into a spurious signal) windowed by a Gaussian envelope, flashed for
@@ -60,6 +72,11 @@ GRATING_ENVELOPE_SIGMA_HEIGHT_UNITS = GRATING_ENVELOPE_SIGMA_DEG / SCREEN_HEIGHT
 # PsychoPy's 'gauss' mask tapers to ~0 by the edge of `size`, at a standard
 # deviation of size/6 - so size = 6 * sigma reproduces the paper's space constant.
 GRATING_SIZE_HEIGHT_UNITS = GRATING_ENVELOPE_SIGMA_HEIGHT_UNITS * 6
+
+LINE_OFFSET_HEIGHT_UNITS = LINE_OFFSET_DEG / SCREEN_HEIGHT_DEG  # = offset as a fraction of the screen height
+LINE_SD_HEIGHT_UNITS = LINE_SD_DEG / SCREEN_HEIGHT_DEG
+# PsychoPy's 'gauss' mask has a standard deviation of size/6, so a mask this tall has SD = LINE_SD_DEG.
+LINE_HEIGHT_HEIGHT_UNITS = LINE_SD_HEIGHT_UNITS * 6
 
 # Whether a session is a quick test/smoke run (fewer trials, saccade phase
 # first so you reach the thing you're testing faster) or a real
@@ -117,7 +134,7 @@ ZEST_LOG_CONTRAST_MIN = math.log10(HARDWARE_CONTRAST_FLOOR) + 0.05  # ~0.0088 (0
 ZEST_LOG_CONTRAST_MAX = math.log10(0.5)
 ZEST_GRID_SIZE = 120
 ZEST_BETA = 3.5
-# The task is a 2-alternative forced choice (report vertical vs horizontal),
+# The task is a 2-alternative forced choice (report line above vs below the target),
 # not plain yes/no detection - so chance performance is 50%, not a small
 # guess-rate floor. Using anything lower than 0.5 here would systematically
 # bias the fitted threshold, since the model would wrongly attribute
@@ -135,11 +152,10 @@ ZEST_BETA = 3.5
 ZEST_GUESS_RATE = 0.5
 ZEST_LAPSE_RATE = 0.02
 
-# Trial responses: report the grating's orientation via arrow key rather than
-# a plain yes/no SPACE press, so accuracy can't be inflated by just always
-# pressing "I saw it".
-VERTICAL_RESPONSE_KEYS = ("up", "down")
-HORIZONTAL_RESPONSE_KEYS = ("left", "right")
+# Trial responses: report which side of the target the line was on (UP = above, DOWN = below) rather than
+# a plain yes/no SPACE press, so accuracy can't be inflated by just always pressing "I saw it".
+ABOVE_RESPONSE_KEYS = ("up",)
+BELOW_RESPONSE_KEYS = ("down",)
 
 RESPONSE_WINDOW_MS = 1000
 

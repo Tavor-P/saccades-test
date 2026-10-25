@@ -12,6 +12,8 @@ from pathlib import Path
 
 from include.experiment.constants import (
     GRATING_ENVELOPE_SIGMA_DEG,
+    LINE_OFFSET_DEG,
+    LINE_SD_DEG,
     GRATING_SPATIAL_FREQUENCY_CPD,
     SCREEN_HEIGHT_CM,
     VIEWING_DISTANCE_CM,
@@ -124,6 +126,8 @@ class ResultLogger:
             "screen_height_cm": SCREEN_HEIGHT_CM,
             "grating_spatial_frequency_cpd": GRATING_SPATIAL_FREQUENCY_CPD,
             "grating_envelope_sigma_deg": GRATING_ENVELOPE_SIGMA_DEG,
+            "line_offset_deg": LINE_OFFSET_DEG,
+            "line_sd_deg": LINE_SD_DEG,
             "contrast_floor_percent": contrast_floor_percent,
             "calibration": None,
             "git": _git_state(),

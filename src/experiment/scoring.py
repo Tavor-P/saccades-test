@@ -1,14 +1,14 @@
 """score_outcome (correct/incorrect/miss/false_alarm/correct_rejection) and is_valid_for_saccadic_analysis - the single validity gate for saccade-phase
 flashes (flash_during_saccade AND tracking_ok), shared by live ZEST updates and the end-of-run graph."""
 
-from include.experiment.types import Orientation
+from include.experiment.types import Side
 
 
 def score_outcome(
     grating_shown: bool,
     responded: bool,
-    response_orientation: Orientation | None,
-    actual_orientation: Orientation | None,
+    response_orientation: Side | None,
+    actual_orientation: Side | None,
 ) -> str:
     """Shared scoring used by both phases (outside of the saccade phase's
     "timeout" case, which its own state machine handles before falling back

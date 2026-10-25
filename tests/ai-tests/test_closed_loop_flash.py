@@ -11,7 +11,7 @@ from include.experiment.constants import (
     SACCADE_ONSET_STABILITY_MS,
     SACCADE_TIMEOUT_MS,
 )
-from include.experiment.types import Orientation
+from include.experiment.types import Side
 from test_session import (
     _complete_calibration,
     _enter_trial_active,
@@ -95,13 +95,13 @@ def test_trial_times_out_without_a_flash_if_gaze_never_leaves(fake_gaze, fake_ti
 
 
 def test_flash_during_the_saccade_is_valid_and_logged_without_rt_prediction(fake_gaze, fake_time):
-    session = _trial_after_calibration(fake_gaze, fake_time, orientation=Orientation.VERTICAL)
+    session = _trial_after_calibration(fake_gaze, fake_time, orientation=Side.ABOVE)
     _gaze_leaves_source(session, fake_gaze, fake_time)  # flash fires here, gaze still in transit
     fake_gaze.zone = GazeZone.RIGHT
     session.tick()  # landing timer starts
     fake_time(GAZE_LANDING_STABILITY_MS / 1000 + 0.01)
     session.tick()  # landed
-    session.on_response_key(Orientation.VERTICAL)
+    session.on_response_key(Side.ABOVE)
     session.tick()  # responded -> trial finalises
     fake_time(RESPONSE_WINDOW_MS / 1000 + 0.1)
     session.tick()

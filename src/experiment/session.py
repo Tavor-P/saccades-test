@@ -23,7 +23,6 @@ from include.experiment.constants import (
     GAZE_LANDING_STABILITY_MS,
     GAZE_LATENCY_MAX_MS,
     GRATING_DURATION_FRAMES,
-    GRATING_POSITION,
     MAX_SACCADE_TRIALS_REAL,
     MAX_SACCADE_TRIALS_TEST,
     MIN_CATCH_TRIALS_FOR_RELIABILITY,
@@ -50,14 +49,14 @@ from include.experiment.constants import (
     ZEST_MIN_VALID_TRIALS_REAL,
     ZEST_MIN_VALID_TRIALS_TEST,
 )
-from include.experiment.types import Orientation, Target, TrialResult, TrialSpec
+from include.experiment.types import Side, Target, TrialResult, TrialSpec
 from src.experiment.calibration import average_calibration_rounds
 from src.experiment.logger import ResultLogger
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.scoring import is_valid_for_saccadic_analysis, score_outcome
 from src.experiment.space_input import CalibrationLatch, SpaceTally
 from src.experiment.trial_factory import build_saccade_sequence, generate_next_saccade_trial
-from src.experiment.trial_mechanics import OnsetDetector, ShuffledBag, robust_average_ms, zone_for
+from src.experiment.trial_mechanics import OnsetDetector, ShuffledBag, line_position, robust_average_ms, zone_for
 from src.experiment.zest import ZestStaircase
 
 
@@ -86,20 +85,20 @@ _TRIAL_PHASES = (
 )
 
 
-_ANSWER_TEXT = "Lines going up-and-down: press UP or DOWN. Side-to-side: LEFT or RIGHT."
+_ANSWER_TEXT = "Press UP if the line was above the dot or cross, DOWN if below."
 
 
 class ExperimentSession:
     """Gaze-contingent saccade experiment: calibration, an alternating dot/cross
-    trial loop, perisaccadic grating flashes, response scoring, and CSV logging.
+    trial loop, perisaccadic line flashes, response scoring, and CSV logging.
 
     Trial structure follows Diamond, Ross & Morrone (2000, J Neurosci
     20:3449-3455): a jittered foreperiod during which only the current
     fixation symbol is shown, then the other symbol's appearance is the go-cue
-    for the saccade; a brief flash may occur around saccade onset, oriented
-    either vertically or horizontally at random, and is scored as a
-    2-alternative forced-choice orientation discrimination (up/down arrow =
-    vertical, left/right arrow = horizontal) rather than plain yes/no
+    for the saccade; a brief flash may occur around saccade onset - here (line-stimulus
+    branch, after Braun, Schutz & Gegenfurtner 2021) a thin horizontal line just above or
+    below the saccade target, at random - and is scored as a 2-alternative forced-choice
+    above/below discrimination (UP arrow = above, DOWN arrow = below) rather than plain yes/no
     detection, with false-alarm rate tracked as a data-quality check exactly
     as in that paper. Contrast is picked trial by trial by a ZEST staircase
     (see src.experiment.zest), the same adaptive procedure the paper used, run
@@ -302,7 +301,7 @@ class ExperimentSession:
         self._response_window_open = False
         self._response_deadline = 0.0
         self._responded = False
-        self._response_orientation: Orientation | None = None
+        self._response_orientation: Side | None = None
         self._response_time_ms: float | None = None
         self._landed = False
         self._foreperiod_start = 0.0
@@ -383,10 +382,21 @@ class ExperimentSession:
         else:
             self.space_tally.record("early press, no trial left to start")
 
-    def on_response_key(self, orientation: Orientation) -> None:
-        """Called when an arrow key is pressed during a trial: up/down report
-        `Orientation.VERTICAL`, left/right report `Orientation.HORIZONTAL` -
-        see run_experiment.py's key dispatch."""
+    def _line_state(self, trial: TrialSpec | None) -> dict:
+        side = trial.orientation if trial is not None else None
+        target_position = DOT_POSITION if trial is None or trial.target is Target.DOT else CROSS_POSITION
+        x, y = line_position(target_position, side or Side.ABOVE)
+        return {
+            "visible": self._grating_visible,
+            "x": x,
+            "y": y,
+            "contrast": self._trial_contrast if self._grating_visible else 0,
+            "orientation": side,
+        }
+
+    def on_response_key(self, orientation: Side) -> None:
+        """Called when an arrow key is pressed during a trial: UP reports
+        `Side.ABOVE`, DOWN reports `Side.BELOW` - see run_experiment.py's key dispatch."""
         if self._phase is not Phase.TRIAL_ACTIVE:
             return
         if self._responded or not self._response_window_open:
@@ -982,13 +992,9 @@ class ExperimentSession:
                 "x": CENTER_POSITION[0],
                 "y": CENTER_POSITION[1],
             },
-            "grating": {
-                "visible": self._grating_visible,
-                "x": GRATING_POSITION[0],
-                "y": GRATING_POSITION[1],
-                "contrast": self._trial_contrast if self._grating_visible else 0,
-                "orientation": trial.orientation if trial is not None else None,
-            },
+            # The flashed line (key kept as "grating" for the renderer/tests): centred 2 deg above/below the
+            # saccade TARGET (the symbol the eye is moving to), at the trial's contrast.
+            "grating": self._line_state(trial),
             "gaze_indicator": self._gaze_indicator_state(sample),
             # Renderer hint: show/hide dot and cross instantly (no crossfade) so
             # the go-cue has a definite onset - see SHARP_GO_CUE. Calibration
