@@ -154,3 +154,88 @@ def test_session_uses_the_dialog_contrasts_instead_of_the_default(fake_gaze, fak
     session = _make_session(fake_gaze, fixed_contrasts=(0.07,))
     assert {session._fixed_contrast_bag.draw() for _ in range(4)} == {0.07}
     assert _make_session(fake_gaze, fixed_contrasts=())._fixed_contrast_bag is None  # empty = the staircase
+
+
+# -- suppression index ---------------------------------------------------------------------------
+
+
+def _placed(rel_ms, contrast, correct, n=1):
+    return [an.Placed(an.Flash(i, 0.0, contrast, "vertical", "correct" if i < correct else "incorrect"), rel_ms, False) for i in range(n)]
+
+
+def _synthetic(threshold_sac, threshold_fix, contrasts=(0.01, 0.02, 0.04, 0.08, 0.16), n=60, slope=3.0, seed=1):
+    """Binomial answers from a known Weibull threshold per condition: saccade flashes at +10 ms, fixation at +500 ms."""
+    rng = np.random.default_rng(seed)
+    placed = []
+    for rel, thr in ((10.0, threshold_sac), (500.0, threshold_fix)):
+        for c in contrasts:
+            k = int(rng.binomial(n, float(an._weibull(np.asarray(c), np.asarray(thr), np.asarray(slope)))))
+            placed += _placed(rel, c, k, n)
+    return placed
+
+
+def test_suppression_index_recovers_known_suppression():
+    r = an.suppression_index(_synthetic(0.04, 0.02), n_boot=300)  # sensitivity halved: index 0.5
+    assert r["method"] == "psychometric"
+    assert r["index"] == pytest.approx(0.5, abs=0.12)
+    assert r["ci"][0] < 0.5 < r["ci"][1]
+    assert (r["n_saccade"], r["n_fixation"]) == (300, 300)
+
+
+def test_suppression_index_is_near_zero_without_suppression():
+    r = an.suppression_index(_synthetic(0.03, 0.03, seed=2), n_boot=300)
+    assert r["method"] == "psychometric"
+    assert r["ci"][0] < 0 < r["ci"][1]
+
+
+def test_window_definitions_are_parameters():
+    placed = _placed(80.0, 0.1, 5, 10) + _placed(500.0, 0.1, 10, 10)
+    assert an.suppression_index(placed)["n_saccade"] == 0  # 80 ms is outside the default +-50 ms
+    assert an.suppression_index(placed, near_ms=100)["n_saccade"] == 10
+    assert an.suppression_index(placed, near_ms=100, far_ms=600)["n_fixation"] == 0
+
+
+def test_too_few_flashes_near_onset_is_reported_not_raised():
+    r = an.suppression_index(_placed(500.0, 0.1, 9, 10))
+    assert r["index"] is None and r["method"] is None
+    assert "cannot compute" in r["notes"][0]
+    assert "cannot be computed" in an.format_suppression(r)
+    assert an.suppression_index([])["index"] is None
+    assert an.suppression_index([an.Placed(_placed(0, 0.1, 1)[0].flash, None, False)])["index"] is None  # no saccades at all
+
+
+def test_ceiling_falls_back_to_a_labelled_accuracy_index():
+    placed = _placed(0.0, 0.1, 6, 10) + _placed(500.0, 0.1, 10, 10)  # one contrast, so no psychometric fit
+    r = an.suppression_index(placed)
+    assert r["method"] == "accuracy"
+    assert r["index"] == pytest.approx(0.4)
+    assert r["ci"][0] < 0.4 < r["ci"][1]
+    assert any("psychometric index not computed" in n for n in r["notes"])
+    assert "ACCURACY index" in an.format_suppression(r)
+
+
+def test_all_correct_everywhere_is_flagged_as_ceiling_not_a_threshold():
+    placed = []
+    for c in (0.1, 0.2, 0.4):
+        placed += _placed(0.0, c, 10, 10) + _placed(500.0, c, 10, 10)
+    r = an.suppression_index(placed)
+    assert r["method"] == "accuracy" and r["index"] == pytest.approx(0.0)
+    assert any("ceiling" in n for n in r["notes"])
+
+
+def test_fixation_at_floor_is_not_computable():
+    placed = []
+    for c in (0.1, 0.2):
+        placed += _placed(0.0, c, 5, 10) + _placed(500.0, c, 5, 10)  # 50 % everywhere: nothing visible
+    r = an.suppression_index(placed)
+    assert r["index"] is None
+    assert any("floor" in n for n in r["notes"])
+
+
+def test_analyze_writes_the_index_to_report_and_json(tmp_path):
+    flashes = [(rel, "correct", c) for rel in (0, 10, -10, 20) for c in (0.1, 0.2)]
+    stamp = _write_session(tmp_path, ONSETS, flashes)
+    result = an.analyze(stamp, tmp_path)
+    assert "suppression index" in result["report"]
+    saved = json.loads(result["suppression_json"].read_text())
+    assert saved["n_saccade"] == len(flashes) and "notes" in saved

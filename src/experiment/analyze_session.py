@@ -252,6 +252,148 @@ def format_report(summary: dict, label: str = "") -> str:
     return "\n".join(lines)
 
 
+# -- suppression index ---------------------------------------------------------------------------
+# Braun, Schutz & Gegenfurtner (2021, J Vis 21(6):11): suppression = 1 - CS_saccade / CS_fixation, with contrast
+# sensitivity CS = 1 / threshold. 0 = no suppression, 1 = flashes are never seen; negative = better during saccades.
+
+CHANCE = 0.5  # 2AFC guess rate
+LAPSE = 0.02  # small lapse rate in the psychometric function
+_SLOPES = (1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0)  # Weibull slopes tried; one slope is shared by both conditions
+_EXTRAPOLATION = 2.0  # a fitted threshold more than this factor outside the tested contrasts counts as not identified
+_THRESHOLDS = np.logspace(-3, 1, 121)  # candidate thresholds as a contrast fraction (0.1 % .. 1000 %)
+
+
+def _contrast_counts(placed: list[Placed]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """(contrasts, trials, correct) per distinct contrast."""
+    contrasts = sorted({p.flash.contrast for p in placed})
+    n = np.asarray([sum(p.flash.contrast == c for p in placed) for c in contrasts], dtype=float)
+    k = np.asarray([sum(p.flash.contrast == c and p.flash.correct for p in placed) for c in contrasts], dtype=float)
+    return np.asarray(contrasts, dtype=float), n, k
+
+
+def _weibull(contrast: np.ndarray, threshold: np.ndarray, slope: np.ndarray) -> np.ndarray:
+    """P(correct) = chance + (1 - chance - lapse) * (1 - exp(-(c / threshold) ** slope)); the threshold alpha
+    is the contrast giving ~63 % of the way from chance to the ceiling (only the ratio of two alphas matters)."""
+    return CHANCE + (1 - CHANCE - LAPSE) * (1 - np.exp(-((contrast / threshold) ** slope)))
+
+
+def _loglik_grid(contrasts: np.ndarray, n: np.ndarray, k: np.ndarray) -> np.ndarray:
+    """Log-likelihood over (slope, threshold) for one condition."""
+    s = np.asarray(_SLOPES)[:, None, None]
+    t = _THRESHOLDS[None, :, None]
+    p = np.clip(_weibull(contrasts[None, None, :], t, s), 1e-9, 1 - 1e-9)
+    return (k * np.log(p) + (n - k) * np.log(1 - p)).sum(axis=2)  # (slope, threshold)
+
+
+def _fit_pair(contrasts_s, n_s, k_s, contrasts_f, n_f, k_f) -> tuple[float, float, bool]:
+    """Maximum-likelihood thresholds (saccade, fixation) with a slope shared by the two conditions.
+    The last value is True when either threshold sits on the edge of the search grid (not identified)."""
+    ll_s, ll_f = _loglik_grid(contrasts_s, n_s, k_s), _loglik_grid(contrasts_f, n_f, k_f)
+    best_s, best_f = ll_s.argmax(axis=1), ll_f.argmax(axis=1)
+    rows = np.arange(len(_SLOPES))
+    b = int((ll_s[rows, best_s] + ll_f[rows, best_f]).argmax())
+    ts, tf = float(_THRESHOLDS[best_s[b]]), float(_THRESHOLDS[best_f[b]])
+    edge = any(t in (_THRESHOLDS[0], _THRESHOLDS[-1]) for t in (ts, tf))
+    # Not identified either when the threshold lies far outside the tested contrasts (flat likelihood: all near
+    # chance or all near ceiling).
+    for t, c in ((ts, contrasts_s), (tf, contrasts_f)):
+        edge = edge or t > _EXTRAPOLATION * c.max() or t < c.min() / _EXTRAPOLATION
+    return ts, tf, bool(edge)
+
+
+def suppression_index(
+    placed: list[Placed],
+    near_ms: float | None = None,
+    far_ms: float | None = None,
+    min_fit_trials: int = 12,
+    min_accuracy_trials: int = 5,
+    n_boot: int = 1000,
+    seed: int = 0,
+) -> dict:
+    """Per-person saccadic suppression index from the placed flashes (see the section comment above).
+
+    'saccade' = flashes with |time from the nearest onset| < near_ms; 'fixation' = flashes at least far_ms from
+    every onset (defaults: NEAR_ONSET_MS / FAR_MS). Primary: a 2AFC Weibull fit per condition (shared slope) giving
+    1 - threshold_fixation / threshold_saccade, with a bootstrap 95 % CI. When the fit is not possible or not
+    identified (too few trials or contrasts, accuracy at ceiling or floor) the fallback is the clearly labelled
+    accuracy index accuracy_fixation - accuracy_saccade with a Newcombe (Wilson-based) 95 % CI. If neither can be
+    computed, "method" is None and "notes" says why. Never raises on sparse data."""
+    near_ms = NEAR_ONSET_MS if near_ms is None else near_ms
+    far_ms = FAR_MS if far_ms is None else far_ms
+    timed = [p for p in placed if p.rel_ms is not None]
+    sac = [p for p in timed if abs(p.rel_ms) < near_ms]
+    fix = [p for p in timed if abs(p.rel_ms) >= far_ms]
+    out = {
+        "near_ms": near_ms, "far_ms": far_ms, "n_saccade": len(sac), "n_fixation": len(fix),
+        "correct_saccade": sum(p.flash.correct for p in sac), "correct_fixation": sum(p.flash.correct for p in fix),
+        "method": None, "index": None, "ci": None, "label": "", "threshold_saccade": None, "threshold_fixation": None,
+        "notes": [],
+    }
+    notes = out["notes"]
+    if not sac or not fix:
+        notes.append(f"cannot compute: {len(sac)} flashes within {near_ms:.0f} ms of an onset, {len(fix)} at least {far_ms:.0f} ms away")
+        return out
+
+    # Primary: psychometric fit.
+    cs, ns, ks = _contrast_counts(sac)
+    cf, nf, kf = _contrast_counts(fix)
+    fit_problem = None
+    if len(sac) < min_fit_trials or len(fix) < min_fit_trials:
+        fit_problem = f"fewer than {min_fit_trials} flashes per condition ({len(sac)} saccade, {len(fix)} fixation)"
+    elif len(cs) < 2 or len(cf) < 2:
+        fit_problem = "fewer than 2 distinct contrasts in a condition"
+    else:
+        ts, tf, edge = _fit_pair(cs, ns, ks, cf, nf, kf)
+        if edge:
+            fit_problem = "accuracy at ceiling or floor across the tested contrasts, so a threshold is not identified"
+    if fit_problem is None:
+        rng = np.random.default_rng(seed)
+        boot = []
+        edges = 0
+        for _ in range(n_boot):
+            bs = _fit_pair(cs, ns, rng.binomial(ns.astype(int), ks / ns), cf, nf, rng.binomial(nf.astype(int), kf / nf))
+            edges += bs[2]
+            boot.append(1 - bs[1] / bs[0])
+        lo, hi = np.percentile(boot, [2.5, 97.5])
+        out.update(method="psychometric", index=1 - tf / ts, ci=(float(lo), float(hi)), threshold_saccade=ts, threshold_fixation=tf,
+                   label="1 - CS_saccade/CS_fixation from per-condition Weibull thresholds (2AFC, guess 0.5, lapse 0.02, shared slope)")
+        if edges > 0.25 * n_boot:
+            notes.append(f"{100 * edges / n_boot:.0f}% of bootstrap fits were unidentified: treat the interval as unreliable")
+        return out
+    notes.append(f"psychometric index not computed: {fit_problem}")
+
+    # Fallback: accuracy difference.
+    if len(sac) < min_accuracy_trials or len(fix) < min_accuracy_trials:
+        notes.append(f"accuracy index not computed: fewer than {min_accuracy_trials} flashes in a condition")
+        return out
+    k_sac, k_fix = out["correct_saccade"], out["correct_fixation"]
+    p_sac, p_fix = k_sac / len(sac), k_fix / len(fix)
+    if p_fix < CHANCE + 0.1:
+        notes.append(f"accuracy index not computed: accuracy away from onset is only {100 * p_fix:.0f}% (floor), so the flashes are not visible even during fixation")
+        return out
+    (l_sac, u_sac), (l_fix, u_fix) = wilson(k_sac, len(sac)), wilson(k_fix, len(fix))
+    d = p_fix - p_sac
+    out.update(method="accuracy", index=d, label="ACCURACY index (not a threshold ratio): accuracy_fixation - accuracy_saccade",
+               ci=(d - math.sqrt((p_fix - l_fix) ** 2 + (u_sac - p_sac) ** 2), d + math.sqrt((u_fix - p_fix) ** 2 + (p_sac - l_sac) ** 2)))
+    if p_sac >= 0.95 and p_fix >= 0.95:
+        notes.append("both conditions are at ceiling: this index cannot show suppression at these contrasts")
+    return out
+
+
+def format_suppression(s: dict) -> str:
+    lines = [f"  suppression index (saccade = within +-{s['near_ms']:.0f} ms of onset, fixation = >= {s['far_ms']:.0f} ms away):",
+             f"    trials: saccade {s['correct_saccade']}/{s['n_saccade']} correct, fixation {s['correct_fixation']}/{s['n_fixation']} correct"]
+    if s["index"] is None:
+        lines.append("    index: cannot be computed")
+    else:
+        lo, hi = s["ci"]
+        lines.append(f"    index = {s['index']:+.2f} (95% CI {lo:+.2f} to {hi:+.2f}); {s['label']}")
+        if s["threshold_saccade"] is not None:
+            lines.append(f"    thresholds: saccade {100 * s['threshold_saccade']:.1f}%, fixation {100 * s['threshold_fixation']:.1f}% contrast")
+    lines += [f"    note: {n}" for n in s["notes"]]
+    return "\n".join(lines)
+
+
 # -- plot ----------------------------------------------------------------------------------------
 
 
@@ -329,6 +471,8 @@ def analyze(
     flash_delay_ms: float = 0.0,
     min_amplitude: float = MIN_AMPLITUDE,
     out_dir: Path | None = None,
+    near_ms: float | None = None,
+    far_ms: float | None = None,
 ) -> dict:
     """Runs the whole analysis for one session; writes `analysis_<ts>.png` and `analysis_<ts>_flashes.csv`
     to `out_dir` (default: data_dir) and returns {"summary", "report", "png", "csv"}."""
@@ -346,6 +490,9 @@ def analyze(
     placed = place_flashes(flashes, saccades, flash_delay_ms)
     summary = summarize(placed, saccades)
     report = format_report(summary, label=f"(session {stamp})")
+    suppression = suppression_index(placed, near_ms, far_ms)
+    summary["suppression"] = suppression
+    report += "\n" + format_suppression(suppression)
 
     out_dir = Path(out_dir) if out_dir is not None else data_dir
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -356,7 +503,9 @@ def analyze(
         writer.writerow(["trial", "contrast", "orientation", "outcome", "flash_rel_onset_ms", "inside_saccade"])
         for p in placed:
             writer.writerow([p.flash.trial, p.flash.contrast, p.flash.orientation, p.flash.outcome, "" if p.rel_ms is None else round(p.rel_ms, 1), p.inside])
-    return {"summary": summary, "report": report, "png": png, "csv": csv_path}
+    json_path = out_dir / f"analysis_{stamp}_suppression.json"
+    json_path.write_text(json.dumps(suppression, indent=2))
+    return {"summary": summary, "report": report, "png": png, "csv": csv_path, "suppression_json": json_path}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -366,10 +515,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--offset-ms", type=float, default=None, help="phone-to-PC clock offset (default: from the meta file)")
     parser.add_argument("--flash-delay-ms", type=float, default=0.0, help="time from drawing the flash to light leaving the screen")
     parser.add_argument("--min-amplitude", type=float, default=MIN_AMPLITUDE, help="smallest saccade to count (fraction of the width)")
+    parser.add_argument("--index-near-ms", type=float, default=None, help="suppression index: 'saccade' = within this many ms of an onset")
+    parser.add_argument("--index-far-ms", type=float, default=None, help="suppression index: 'fixation' = at least this many ms from every onset")
     args = parser.parse_args(argv)
-    result = analyze(args.timestamp, args.data_dir, args.offset_ms, args.flash_delay_ms, args.min_amplitude)
+    result = analyze(args.timestamp, args.data_dir, args.offset_ms, args.flash_delay_ms, args.min_amplitude, near_ms=args.index_near_ms, far_ms=args.index_far_ms)
     print(result["report"])
-    print(f"\nplot: {result['png']}\nper-flash rows: {result['csv']}")
+    print(f"\nplot: {result['png']}\nper-flash rows: {result['csv']}\nsuppression index: {result['suppression_json']}")
     return 0
 
 
