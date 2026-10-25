@@ -75,6 +75,63 @@ class ParticipantProfile:
     dropout_ms: float = 80.0
     gaze_offset_ratio: float = 0.01  # constant offset of this participant's gaze readings
 
+    # -- optional reaction-time realism (all off by default: with the defaults the latency is
+    # exactly gauss(reaction_ms_mean, reaction_ms_sd), floored at 120 ms, as before). Each is
+    # independent so it can be swept on its own. One "cue" = one go-cue (RT-test attempt, practice
+    # or main trial), counted from 0 across the whole session. -----------------------------------
+    # Ex-Gaussian shape: an exponential tail (mean tau) is added to the Gaussian. reaction_ms_mean
+    # stays the MEAN of the latency (the Gaussian part is centred on mean - tau), so the total SD is
+    # sqrt(sd^2 + tau^2). 0 = plain Gaussian.
+    reaction_ms_tau: float = 0.0
+    # Slow change of the true mean: linear drift per cue, plus a sinusoid ("fatigue/vigilance
+    # wave") of amplitude reaction_wave_ms and period reaction_wave_period_trials cues.
+    reaction_drift_ms_per_trial: float = 0.0
+    reaction_wave_ms: float = 0.0
+    reaction_wave_period_trials: float = 60.0
+    # Trial-to-trial AR(1) autocorrelation of the deviation from the true mean (keeps its variance).
+    reaction_autocorr: float = 0.0
+    # Anticipations (latency uniform in anticipation_ms_min..max, ignoring the mean) and lapses
+    # (+ lapse_extra_ms_min..max on top of the normal latency), as per-cue probabilities.
+    anticipation_rate: float = 0.0
+    anticipation_ms_min: float = 80.0
+    anticipation_ms_max: float = 130.0
+    lapse_rate: float = 0.0
+    lapse_extra_ms_min: float = 300.0
+    lapse_extra_ms_max: float = 600.0
+    # Direction dependence: dot->cross (rightward) saccades are this much slower than cross->dot
+    # ones; split +-half around the mean so the overall mean is unchanged.
+    reaction_dir_offset_ms: float = 0.0
+
+    @classmethod
+    def realistic(cls, **overrides) -> "ParticipantProfile":
+        """The 'realistic' reaction-time preset (also the `realistic` scenario of the sim tools):
+        mean 220 ms, total SD ~74 ms (Gaussian SD 55 + tail tau 50), +40 ms drift over 100 cues,
+        AR(1) 0.3, 3 % anticipations, 2 % lapses. Plausible numbers, not fitted to data."""
+        return cls(**{**REALISTIC_RT, **overrides})
+
+
+REALISTIC_RT: dict[str, float] = {
+    "reaction_ms_mean": 220.0,
+    "reaction_ms_sd": 55.0,
+    "reaction_ms_tau": 50.0,
+    "reaction_drift_ms_per_trial": 0.4,
+    "reaction_autocorr": 0.3,
+    "anticipation_rate": 0.03,
+    "lapse_rate": 0.02,
+}
+
+
+@dataclass
+class CueRecord:
+    """Ground truth of one go-cue's reaction time (the session never sees these)."""
+
+    t: float  # simulated time of the cue
+    phase: str  # RT_TEST_ACTIVE or TRIAL_ACTIVE
+    cue_index: int
+    latency_ms: float  # the participant's true go-cue -> saccade-start latency
+    true_mean_ms: float  # the underlying mean at this cue: mean + drift + wave + direction offset
+    kind: str  # "normal", "anticipation" or "lapse"
+
 
 class MemoryLogger:
     """Stands in for ResultLogger: keeps rows in memory, touches no files."""
@@ -172,6 +229,8 @@ class SimulatedParticipant:
         self._move_start = 0.0
         self._move_dur = 0.05
         self._dropout_until = -1.0
+        self.cues: list[CueRecord] = []  # ground-truth latency of every go-cue so far
+        self._ar_dev = 0.0  # AR(1) state: last cue's deviation from its true mean
         self._reset_phase_state()
 
     def _reset_phase_state(self) -> None:
@@ -261,7 +320,10 @@ class SimulatedParticipant:
         elif phase in ("RT_TEST_ACTIVE", "TRIAL_ACTIVE"):
             # The go-cue: the other symbol just appeared (the source fades out).
             if x is not None:
-                reaction = max(0.12, self._rng.gauss(self._p.reaction_ms_mean, self._p.reaction_ms_sd)) / 1000
+                rightward = x > self._eye_x(t)  # dot -> cross
+                latency_ms, true_mean_ms, kind = self._draw_reaction_ms(rightward)
+                self.cues.append(CueRecord(t, phase, len(self.cues), latency_ms, true_mean_ms, kind))
+                reaction = latency_ms / 1000
                 dur = self._rng.uniform(self._p.saccade_ms_min, self._p.saccade_ms_max) / 1000
                 self._eye_from = self._eye_x(t)
                 self._eye_to = x
@@ -270,6 +332,31 @@ class SimulatedParticipant:
                 self.saccade_onset = t + reaction
                 self._log(t, "go-cue: target appeared")
                 self._log(t + reaction, f"[true] saccade onset (reaction {reaction * 1000:.0f} ms, flight {dur * 1000:.0f} ms)")
+
+    def _draw_reaction_ms(self, rightward: bool) -> tuple[float, float, str]:
+        """(latency ms, true mean ms, kind) for the next go-cue. With every realism field at its
+        default this is exactly max(120, gauss(mean, sd)) and draws nothing else from the rng."""
+        p, n = self._p, len(self.cues)
+        true_mean = p.reaction_ms_mean + p.reaction_drift_ms_per_trial * n
+        if p.reaction_wave_ms:
+            true_mean += p.reaction_wave_ms * math.sin(2 * math.pi * n / p.reaction_wave_period_trials)
+        if p.reaction_dir_offset_ms:
+            true_mean += p.reaction_dir_offset_ms / 2 * (1 if rightward else -1)
+        if p.reaction_ms_tau:
+            noise = self._rng.gauss(-p.reaction_ms_tau, p.reaction_ms_sd) + self._rng.expovariate(1 / p.reaction_ms_tau)
+        else:
+            noise = self._rng.gauss(0.0, p.reaction_ms_sd)
+        if p.reaction_autocorr:
+            noise = p.reaction_autocorr * self._ar_dev + math.sqrt(1 - p.reaction_autocorr**2) * noise
+            self._ar_dev = noise
+        latency, kind = max(120.0, true_mean + noise), "normal"
+        if p.anticipation_rate or p.lapse_rate:
+            u = self._rng.random()
+            if u < p.anticipation_rate:
+                latency, kind = self._rng.uniform(p.anticipation_ms_min, p.anticipation_ms_max), "anticipation"
+            elif u < p.anticipation_rate + p.lapse_rate:
+                latency, kind = latency + self._rng.uniform(p.lapse_extra_ms_min, p.lapse_extra_ms_max), "lapse"
+        return latency, true_mean, kind
 
     def _see_flash(self, state: dict, t: float) -> None:
         self._flash_seen = True
@@ -303,6 +390,10 @@ class SimulationResult:
     # logged flash trials.
     flash_truth: dict[tuple[str, int], bool] = field(default_factory=dict)
     duration_s: float = 0.0
+    # Ground-truth reaction time: every go-cue's CueRecord in order (RT test, practice and main
+    # trials), and the one belonging to each logged saccade-phase trial, keyed like flash_truth.
+    cues: list[CueRecord] = field(default_factory=list)
+    trial_cues: dict[tuple[str, int], CueRecord] = field(default_factory=dict)
 
     @property
     def saccade_results(self) -> list[TrialResult]:
@@ -339,6 +430,7 @@ def simulate_session(
         logged = 0
         saccade_rows_logged = 0
         flash_truth: dict[tuple[str, int], bool] = {}
+        trial_cues: dict[tuple[str, int], CueRecord] = {}
         while True:
             clock.advance(1 / GAZE_HZ)
             t = clock.now()
@@ -362,6 +454,8 @@ def simulate_session(
                 row = logger.rows[logged]
                 if row.phase == "saccade":
                     saccade_rows_logged += 1
+                    if participant.cues:
+                        trial_cues[(row.phase, row.index)] = participant.cues[-1]
                     if row.grating_shown and participant.pending_flash_truth is not None:
                         flash_truth[(row.phase, row.index)] = participant.pending_flash_truth
                 logged += 1
@@ -374,7 +468,8 @@ def simulate_session(
                 break
         events.sort(key=lambda e: e[0])
         return SimulationResult(
-            session=session, results=logger.rows, events=events, duration_s=clock.now(), flash_truth=flash_truth
+            session=session, results=logger.rows, events=events, duration_s=clock.now(), flash_truth=flash_truth,
+            cues=participant.cues, trial_cues=trial_cues,
         )
     finally:
         random.setstate(saved_state)

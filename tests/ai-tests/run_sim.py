@@ -35,6 +35,7 @@ def main() -> None:
     p.add_argument("--sweep-profile", metavar="FIELD=V1,V2,...", help="like --sweep, but for a participant field")
     p.add_argument("--seeds", type=int, default=5, help="seeds per value in a sweep")
     p.add_argument("--timeline", action="store_true", help="print the event timeline of a single trial (forces --trials 1)")
+    p.add_argument("--real", action="store_true", help="Real mode (full trial counts) instead of the short Test mode; needed for >30 saccade trials")
     p.add_argument("--json", action="store_true", help="machine-readable output")
     p.add_argument("--list", action="store_true", help="list scenarios, participant fields and what they mean")
     a = p.parse_args()
@@ -49,7 +50,7 @@ def main() -> None:
     if a.sweep or a.sweep_profile:
         spec, target = (a.sweep, "constant") if a.sweep else (a.sweep_profile, "profile")
         name, parsed = parse_sweep(spec)
-        rows = sweep(name, parsed, a.scenario, a.trials, a.seeds, profile, constants, target)
+        rows = sweep(name, parsed, a.scenario, a.trials, a.seeds, profile, constants, target, test_mode=not a.real)
         if a.json:
             print(json.dumps(rows, indent=1))
         else:
@@ -57,7 +58,7 @@ def main() -> None:
         return
 
     trials = 1 if a.timeline else a.trials
-    sim, summary = run(a.scenario, trials, a.seed, profile, constants)
+    sim, summary = run(a.scenario, trials, a.seed, profile, constants, test_mode=not a.real)
     if a.timeline:
         print_trial_timeline(sim)
         return
