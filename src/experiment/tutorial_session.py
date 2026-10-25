@@ -154,10 +154,7 @@ class TutorialSession:
 
     def _press_calibration(self) -> None:
         """One press is enough: if the gaze window is not full yet the press is latched and tick() completes it."""
-        if self._calibration_latch.pending:
-            self.space_tally.record("already waiting for gaze samples")
-            return
-        ratio = self._calibration_latch.press(self._gaze, self._clock.now())
+        ratio = self._calibration_latch.press_recorded(self._gaze, self._clock.now(), self.space_tally)
         if ratio is not None:
             self._advance_calibration(ratio)
 

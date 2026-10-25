@@ -5,6 +5,7 @@ import statistics
 from collections import deque
 from typing import Generic, Sequence, TypeVar
 
+from include.eye_tracking.constants import CENTER_POSITION, LEFT_POSITION, RIGHT_POSITION
 from include.eye_tracking.types import GazeZone
 from include.experiment.constants import (
     ONSET_BASELINE_NEAR_SOURCE,
@@ -17,9 +18,6 @@ from include.experiment.constants import (
 )
 from include.experiment.types import Orientation, Target
 
-
-# GazeSample.position scale: 0 = the dot (left target), 1 = the cross (right target) - see GazeMapper.
-LEFT_POSITION, CENTER_POSITION, RIGHT_POSITION = 0.0, 0.5, 1.0
 
 
 def zone_for(target: Target) -> GazeZone:
