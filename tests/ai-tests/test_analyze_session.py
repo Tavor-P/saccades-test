@@ -239,3 +239,23 @@ def test_analyze_writes_the_index_to_report_and_json(tmp_path):
     assert "suppression index" in result["report"]
     saved = json.loads(result["suppression_json"].read_text())
     assert saved["n_saccade"] == len(flashes) and "notes" in saved
+
+
+def test_identical_conditions_give_a_finite_ci_or_none():
+    placed = []
+    for c, k in ((0.10, 3), (0.15, 4), (0.20, 5)):
+        placed += _placed(0.0, c, k, 5) + _placed(500.0, c, k, 5)
+    r = an.suppression_index(placed)
+    assert r["index"] is not None
+    if r["ci"] is None:
+        assert any("no CI" in n for n in r["notes"])
+    else:
+        assert all(-1.5 <= v <= 1.0 for v in r["ci"])
+    an.format_suppression(r)
+
+
+def test_missing_ci_is_formatted():
+    r = an.suppression_index(_synthetic(0.04, 0.02), n_boot=300)
+    r["ci"] = None
+    assert "CI not available" in an.format_suppression(r)
+    json.dumps(r)

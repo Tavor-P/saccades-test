@@ -353,12 +353,17 @@ def suppression_index(
         for _ in range(n_boot):
             bs = _fit_pair(cs, ns, rng.binomial(ns.astype(int), ks / ns), cf, nf, rng.binomial(nf.astype(int), kf / nf))
             edges += bs[2]
-            boot.append(1 - bs[1] / bs[0])
-        lo, hi = np.percentile(boot, [2.5, 97.5])
-        out.update(method="psychometric", index=1 - tf / ts, ci=(float(lo), float(hi)), threshold_saccade=ts, threshold_fixation=tf,
+            if not bs[2]:
+                boot.append(1 - bs[1] / bs[0])
+        ci = None
+        if len(boot) >= 0.75 * n_boot and len(boot) >= 200:
+            ci = tuple(float(v) for v in np.percentile(boot, [2.5, 97.5]))
+        else:
+            notes.append(f"no CI: only {len(boot)} of {n_boot} bootstrap fits were identified (need >= 75% and >= 200)")
+        out.update(method="psychometric", index=1 - tf / ts, ci=ci, threshold_saccade=ts, threshold_fixation=tf,
                    label="1 - CS_saccade/CS_fixation from per-condition Weibull thresholds (2AFC, guess 0.5, lapse 0.02, shared slope)")
-        if edges > 0.25 * n_boot:
-            notes.append(f"{100 * edges / n_boot:.0f}% of bootstrap fits were unidentified: treat the interval as unreliable")
+        if edges:
+            notes.append(f"{100 * edges / n_boot:.0f}% of bootstrap fits were unidentified and excluded from the CI")
         return out
     notes.append(f"psychometric index not computed: {fit_problem}")
 
@@ -386,8 +391,8 @@ def format_suppression(s: dict) -> str:
     if s["index"] is None:
         lines.append("    index: cannot be computed")
     else:
-        lo, hi = s["ci"]
-        lines.append(f"    index = {s['index']:+.2f} (95% CI {lo:+.2f} to {hi:+.2f}); {s['label']}")
+        ci = "95% CI not available" if s["ci"] is None else f"95% CI {s['ci'][0]:+.2f} to {s['ci'][1]:+.2f}"
+        lines.append(f"    index = {s['index']:+.2f} ({ci}); {s['label']}")
         if s["threshold_saccade"] is not None:
             lines.append(f"    thresholds: saccade {100 * s['threshold_saccade']:.1f}%, fixation {100 * s['threshold_fixation']:.1f}% contrast")
     lines += [f"    note: {n}" for n in s["notes"]]
