@@ -42,14 +42,7 @@ from src.experiment.pausable_clock import PausableClock
 from src.experiment.presaccade_session import PresaccadeSession
 from src.experiment.results_graph import build_comparison_graph
 from src.experiment.session import ExperimentSession
-from src.experiment.session_schedule import (
-    MAX_SESSION_S,
-    PHASE_BASELINE,
-    PHASE_SACCADE,
-    REST_BREAK_EVERY_S,
-    SessionSchedule,
-    phase_order,
-)
+from src.experiment.session_schedule import PHASE_BASELINE, PHASE_SACCADE, phase_order
 from src.experiment.settings import (
     DEFAULT_SACCADE_CONTRAST_MAX_PERCENT,
     DEFAULT_SACCADE_CONTRAST_MIN_PERCENT,
@@ -131,29 +124,6 @@ def render_caption(caption_stim, text: str, last_caption: str) -> str:
     return caption
 
 
-class ClickPauseToggle:
-    """Edge-detects mouse clicks to toggle a pause, so a participant can rest
-    their eyes mid-session. Pausing/resuming the given PausableClock ensures
-    whatever timer the session is mid-way through (foreperiod, response
-    window, etc.) doesn't get corrupted by however long the pause lasted."""
-
-    def __init__(self, win: visual.Window, clock: PausableClock) -> None:
-        self._mouse = event.Mouse(win=win)
-        self._was_pressed = False
-        self._clock = clock
-        self.paused = False
-
-    def update(self) -> None:
-        pressed = self._mouse.getPressed()[0] == 1
-        if pressed and not self._was_pressed:
-            self.paused = not self.paused
-            if self.paused:
-                self._clock.pause()
-            else:
-                self._clock.resume()
-        self._was_pressed = pressed
-
-
 def build_go_cue_tone() -> sound.Sound:
     """The go-cue beep, played the instant the target/cross appears (see
     _phase_just_became_active below) - anchors the reaction-time measurement
@@ -169,63 +139,6 @@ def phase_just_became_active(phase: str, last_phase: str | None, active_phases: 
     practice trial, or a reaction-time-test attempt. Used both to fire the
     go-cue beep and (in run_saccade_phase) the peripheral start flash."""
     return phase in active_phases and last_phase not in active_phases
-
-
-class PauseMenu:
-    """Two-button pause menu for the saccade phase - unlike the presaccade
-    phase's anywhere-click ClickPauseToggle, this offers "Return" (resume as-
-    is) and "Return and Recalibrate" (re-run eye-position calibration and the
-    reaction-time test before resuming - see
-    ExperimentSession.resume_from_pause), since recalibration only makes
-    sense where there's gaze tracking to recalibrate. The first click (while
-    not yet paused) just opens the menu, same edge-detected toggle-on
-    behavior as ClickPauseToggle; once paused, only a click landing inside
-    one of the two button rects does anything."""
-
-    def __init__(
-        self, win: visual.Window, clock: PausableClock, return_rect: visual.Rect, recalibrate_rect: visual.Rect
-    ) -> None:
-        self._mouse = event.Mouse(win=win)
-        self._was_pressed = False
-        self._clock = clock
-        self._return_rect = return_rect
-        self._recalibrate_rect = recalibrate_rect
-        self.paused = False
-
-    def update(self) -> str | None:
-        """Call once per frame. Returns "return"/"recalibrate" on the frame
-        the matching button is clicked (already resumed the clock by then),
-        else None."""
-        pressed = self._mouse.getPressed()[0] == 1
-        clicked = pressed and not self._was_pressed
-        self._was_pressed = pressed
-        if not clicked:
-            return None
-        if not self.paused:
-            self.paused = True
-            self._clock.pause()
-            return None
-        pos = self._mouse.getPos()
-        if self._return_rect.contains(pos):
-            self.paused = False
-            self._clock.resume()
-            return "return"
-        if self._recalibrate_rect.contains(pos):
-            self.paused = False
-            self._clock.resume()
-            return "recalibrate"
-        return None
-
-
-def _is_main_trial_label(trial_label: str) -> bool:
-    """The saccade HUD's trial label is "trial N (valid: M)" for a main-block trial, "practice i/n" for practice and "RT test i/n" for the
-    reaction-time test - the only distinction render_state() offers."""
-    return trial_label.startswith("trial ")
-
-
-def _rest_break_text(may_end: bool) -> str:
-    action = "Press SPACE to continue, or R to recalibrate first." if may_end else "Please rest for a moment..."
-    return f"Rest break\n\nLook away from the screen and relax your eyes.\n\n{action}"
 
 
 def luminance_to_color(luminance: float) -> list[float]:
@@ -319,25 +232,6 @@ def build_stimuli(win: visual.Window) -> dict:
             color="white",
             contrast=0,
             opacity=0,
-        ),
-        # Presaccade phase only - anywhere-click toggle, no recalibration
-        # (no gaze tracking there to recalibrate). See PauseMenu for the
-        # saccade phase's two-button version below.
-        "pause_text": visual.TextStim(
-            win, text="Paused — click anywhere to resume", pos=(0, 0), color="white", height=0.045
-        ),
-        # Scheduled rest break (saccade phase) - see run_saccade_phase.
-        "rest_text": visual.TextStim(win, text="", pos=(0, 0), color="white", height=0.04, wrapWidth=1.4),
-        "pause_menu_label": visual.TextStim(win, text="Paused", pos=(0, 0.14), color="white", height=0.045),
-        "pause_return_button": visual.Rect(
-            win, width=0.34, height=0.1, pos=(-0.19, 0), fillColor=(-0.2, -0.2, -0.2), lineColor="white"
-        ),
-        "pause_return_text": visual.TextStim(win, text="Return", pos=(-0.19, 0), color="white", height=0.032),
-        "pause_recalibrate_button": visual.Rect(
-            win, width=0.34, height=0.1, pos=(0.19, 0), fillColor=(-0.2, -0.2, -0.2), lineColor="white"
-        ),
-        "pause_recalibrate_text": visual.TextStim(
-            win, text="Return and\nRecalibrate", pos=(0.19, 0), color="white", height=0.026
         ),
         "hud": visual.TextStim(
             win,
@@ -472,18 +366,17 @@ def run_presaccade_phase(
     narrator: Narrator,
     contrast_floor: float | None = None,
     test_mode: bool = False,
-    schedule: SessionSchedule | None = None,
     gaze_backend: str = BACKEND_NEON_SCREEN,
     camera_index: int = CAMERA_INDEX,
     calibration_ratios: tuple[float, float, float] | None = None,
 ) -> PresaccadeSession | None:
     """Phase 1: fixate center, detect flashes. No eye tracking, unless `calibration_ratios` is known (tutorial ran, or the saccade phase went
     first): then a gaze source is built, calibrated and used only to hold a due flash until gaze is on center (fixation gating - see
-    PresaccadeSession); if it can't start, the baseline runs ungated. `schedule`'s session cap ends the phase early. Returns the completed
+    PresaccadeSession); if it can't start, the baseline runs ungated. Returns the completed
     session, or None if the participant quit early."""
     gaze = _start_gating_gaze(win, gaze_backend, camera_index, calibration_ratios)
     try:
-        return _run_presaccade_loop(win, stimuli, logger, narrator, contrast_floor, test_mode, schedule, gaze)
+        return _run_presaccade_loop(win, stimuli, logger, narrator, contrast_floor, test_mode, gaze)
     finally:
         if gaze is not None:
             gaze.stop()
@@ -510,12 +403,11 @@ def _start_gating_gaze(win, gaze_backend: str, camera_index: int, calibration_ra
         return None
 
 
-def _run_presaccade_loop(win, stimuli, logger, narrator, contrast_floor, test_mode, schedule, gaze) -> PresaccadeSession | None:
+def _run_presaccade_loop(win, stimuli, logger, narrator, contrast_floor, test_mode, gaze) -> PresaccadeSession | None:
     clock = PausableClock()
     session = PresaccadeSession(
         logger=logger, clock=clock, contrast_floor=contrast_floor, test_mode=test_mode, gaze=gaze
     )
-    pause_toggle = ClickPauseToggle(win, clock)
     fade_opacities = {"dot": 0.0, "cross": 0.0, "calibration_center": 0.0}
     frame_clock = core.Clock()
     last_spoken_instructions: str | None = None
@@ -525,16 +417,6 @@ def _run_presaccade_loop(win, stimuli, logger, narrator, contrast_floor, test_mo
         keys = event.getKeys(keyList=["space", "escape", *RESPONSE_KEYS])
         if "escape" in keys:
             return None
-
-        if schedule is not None and schedule.cap_reached():
-            session.request_stop()  # idempotent; takes effect at the next safe point
-
-        pause_toggle.update()
-        if pause_toggle.paused:
-            stimuli["pause_text"].draw()
-            win.flip()
-            frame_clock.reset()  # don't let a big paused dt snap the fade animation on resume
-            continue
 
         for _ in range(keys.count("space")):  # no-op if already COMPLETE
             session.on_space()
@@ -571,7 +453,6 @@ def run_saccade_phase(
     precomputed_calibration_ratios: tuple[float, float, float] | None = None,
     skip_practice_trials: bool = False,
     record_video: bool = False,
-    schedule: SessionSchedule | None = None,
     saccade_contrasts: tuple[float, ...] | None = None,
 ) -> ExperimentSession | None:
     """Phase 2: the gaze-contingent saccade test. `precomputed_calibration_ratios`/
@@ -581,9 +462,7 @@ def run_saccade_phase(
     (+ a companion per-frame-timestamp CSV, see VideoRecorder) alongside the
     results CSV - only this phase, since it's the only one with a running
     camera and real (non-practice, non-tutorial) data to replay against.
-    `schedule` (optional) adds scheduled rest breaks and the session cap, both acted on only at the start of a main trial: a break discards that
-    not-yet-started trial via resume_from_pause (so one main-trial index is skipped); the cap returns the session as-is (completed trials are
-    already logged). Returns the completed session, or None if the participant quit early."""
+    Every trial waits for the participant's SPACE (the built-in break). Returns the completed session, or None if the participant quit early."""
     # Raw gaze is recorded alongside the results CSV (Neon only) so the session can be replayed offline.
     gaze = build_gaze_source(gaze_backend, camera_index, trace_path=logger.gaze_trace_path, screen_size=tuple(win.size))
     gaze.start()
@@ -606,7 +485,6 @@ def run_saccade_phase(
         skip_practice_trials=skip_practice_trials,
         fixed_contrasts=saccade_contrasts,
     )
-    pause_menu = PauseMenu(win, clock, stimuli["pause_return_button"], stimuli["pause_recalibrate_button"])
     go_cue_tone = build_go_cue_tone()
 
     aspect = stimuli["aspect"]
@@ -626,46 +504,14 @@ def run_saccade_phase(
     last_caption = ""
     flash_frames_remaining = 0
     start_flash_shown = False
-    resting = False
 
     try:
         if not wait_for_screen_markers(win, stimuli, gaze):
             return None
         while True:
-            keys = event.getKeys(keyList=["space", "escape", "r", *RESPONSE_KEYS])
+            keys = event.getKeys(keyList=["space", "escape", *RESPONSE_KEYS])
             if "escape" in keys:
                 return None
-
-            if resting:
-                # Clock paused and session not ticked, so nothing advances; only SPACE / R (after the minimum rest) do anything.
-                may_end = schedule.rest_may_end()
-                stimuli["rest_text"].text = _rest_break_text(may_end)
-                stimuli["rest_text"].draw()
-                win.flip()
-                frame_clock.reset()
-                if may_end and ("space" in keys or "r" in keys):
-                    schedule.end_rest()
-                    clock.resume()
-                    event.clearEvents()  # responses typed during the break must not leak into the trial
-                    session.resume_from_pause(recalibrate="r" in keys)
-                    resting = False
-                    last_spoken_instructions = None  # re-narrate the instructions now that the break is over
-                continue
-
-            pause_action = pause_menu.update()
-            if pause_action == "return":
-                session.resume_from_pause(recalibrate=False)
-            elif pause_action == "recalibrate":
-                session.resume_from_pause(recalibrate=True)
-            if pause_menu.paused:
-                stimuli["pause_menu_label"].draw()
-                stimuli["pause_return_button"].draw()
-                stimuli["pause_return_text"].draw()
-                stimuli["pause_recalibrate_button"].draw()
-                stimuli["pause_recalibrate_text"].draw()
-                win.flip()
-                frame_clock.reset()
-                continue
 
             for _ in range(keys.count("space")):  # no-op if already COMPLETE
                 session.on_space()
@@ -683,21 +529,7 @@ def run_saccade_phase(
                 start_flash_shown = True
             if phase_just_became_active(phase, last_phase, _GO_CUE_PHASES):
                 go_cue_tone.play()
-            entered_main_trial = phase_just_became_active(phase, last_phase, {"FOREPERIOD"}) and _is_main_trial_label(
-                state["hud"]["trial"]
-            )
             last_phase = phase
-
-            if schedule is not None and entered_main_trial:
-                if schedule.cap_reached():
-                    print(f"Session time limit reached ({schedule.breaks_taken} rest break(s) taken); ending the saccade phase.")
-                    return session
-                if schedule.rest_due():
-                    clock.pause()
-                    schedule.begin_rest()
-                    resting = True
-                    narrator.speak("Time for a short rest. Look away from the screen and relax your eyes.")
-                    continue
 
             last_spoken_instructions = narrate_if_changed(narrator, state["instructions"], last_spoken_instructions)
             last_caption = render_caption(stimuli["caption"], state["instructions"], last_caption)
@@ -844,8 +676,7 @@ MODE_REAL = "Real"
 
 def _resolve_test_mode(mode_label: str) -> bool:
     """The startup dialog's Mode dropdown decides this explicitly: Test is a
-    quick smoke run (fewer trials, saccade phase first, no rest breaks or
-    time cap); Real is a data-collection session."""
+    quick smoke run (fewer trials, saccade phase first); Real is a data-collection session."""
     return mode_label == MODE_TEST
 
 
@@ -1007,11 +838,6 @@ def main() -> None:
                 return  # quit early
             precomputed_calibration_ratios = tutorial_session.calibration_ratios
 
-        schedule = (
-            SessionSchedule(timebase.now, rest_every_s=None, max_session_s=None)
-            if test_mode
-            else SessionSchedule(timebase.now, rest_every_s=REST_BREAK_EVERY_S, max_session_s=MAX_SESSION_S)
-        )
         saccade_phase = partial(
             run_saccade_phase,
             narrator=narrator,
@@ -1023,7 +849,6 @@ def main() -> None:
             precomputed_calibration_ratios=precomputed_calibration_ratios,
             skip_practice_trials=run_tutorial,
             record_video=record_video,
-            schedule=schedule,
             saccade_contrasts=saccade_contrasts,
         )
 
@@ -1046,7 +871,6 @@ def main() -> None:
                     narrator,
                     contrast_floor=contrast_floor,
                     test_mode=test_mode,
-                    schedule=schedule,
                     gaze_backend=gaze_backend,
                     camera_index=camera_index,
                     calibration_ratios=calibration_ratios,
@@ -1056,9 +880,6 @@ def main() -> None:
             if result is None:
                 return  # quit early
             sessions[phase_name] = result
-            if schedule.cap_reached():
-                print("Session time limit reached; skipping any remaining phase.")
-                break
 
         saccade_session = sessions.get(PHASE_SACCADE)
         if saccade_session is not None and saccade_session.calibration_ratios is not None:

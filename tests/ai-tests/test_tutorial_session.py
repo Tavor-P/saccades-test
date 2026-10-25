@@ -5,6 +5,7 @@ from include.experiment.constants import (
     CALIBRATION_ROUNDS,
     DEFAULT_REACTION_TIME_MS,
     FOREPERIOD_MAX_MS,
+    FOREPERIOD_MIN_MS,
     GAZE_LANDING_STABILITY_MS,
     SACCADE_ONSET_STABILITY_MS,
     SACCADE_TIMEOUT_MS,
@@ -38,6 +39,7 @@ def _complete_demos_and_win_quiz(session) -> None:
 
 
 def _run_gaze_practice_attempt(session, fake_gaze, fake_time, land: bool) -> None:
+    session.on_space()  # *_AWAITING_SPACE -> *_FOREPERIOD
     fake_time(FOREPERIOD_MAX_MS / 1000 + 0.1)
     session.tick()  # foreperiod elapses -> reveals this attempt's target
     assert session.render_state()["hud"]["phase"] == "GAZE_PRACTICE_ACTIVE"
@@ -55,6 +57,7 @@ def _run_gaze_practice_attempt(session, fake_gaze, fake_time, land: bool) -> Non
 
 
 def _run_one_rt_test_attempt(session, fake_gaze, fake_time, reaction_time_s: float = 0.2) -> None:
+    session.on_space()  # *_AWAITING_SPACE -> *_FOREPERIOD
     fake_time(FOREPERIOD_MAX_MS / 1000 + 0.1)
     session.tick()  # RT_TEST_FOREPERIOD -> RT_TEST_ACTIVE
     fake_time(reaction_time_s)
@@ -75,12 +78,13 @@ def _reach_dress_rehearsal(session, fake_gaze, fake_time) -> None:
     _complete_demos_and_win_quiz(session)
     for _ in range(TUTORIAL_GAZE_PRACTICE_ATTEMPTS):
         _run_gaze_practice_attempt(session, fake_gaze, fake_time, land=True)
-    assert session.render_state()["hud"]["phase"] == "RT_TEST_FOREPERIOD"
+    assert session.render_state()["hud"]["phase"] == "RT_TEST_AWAITING_SPACE"
     _complete_rt_test(session, fake_gaze, fake_time)
-    assert session.render_state()["hud"]["phase"] == "DRESS_FOREPERIOD"
+    assert session.render_state()["hud"]["phase"] == "DRESS_AWAITING_SPACE"
 
 
 def _run_dress_attempt(session, fake_gaze, fake_time, respond_correctly: bool) -> None:
+    session.on_space()  # *_AWAITING_SPACE -> *_FOREPERIOD
     fake_time(FOREPERIOD_MAX_MS / 1000 + 0.1)
     session.tick()  # foreperiod elapses -> reveals target, DRESS_ACTIVE
     assert session.render_state()["hud"]["phase"] == "DRESS_ACTIVE"
@@ -156,7 +160,7 @@ def test_quiz_streak_resets_on_a_miss_and_completes_at_the_target(fake_gaze):
     for _ in range(TUTORIAL_QUIZ_STREAK_TARGET):
         session.on_response_key(session._quiz_orientation)
     state = session.render_state()
-    assert state["hud"]["phase"] == "GAZE_PRACTICE_FOREPERIOD"
+    assert state["hud"]["phase"] == "GAZE_PRACTICE_AWAITING_SPACE"
     assert state["feedback_flash"]["color"] == "green"
 
 
@@ -164,13 +168,13 @@ def test_gaze_practice_runs_fixed_attempts_regardless_of_outcome(fake_gaze, fake
     session = _make_session(fake_gaze)
     _complete_calibration(session)
     _complete_demos_and_win_quiz(session)
-    assert session.render_state()["hud"]["phase"] == "GAZE_PRACTICE_FOREPERIOD"
+    assert session.render_state()["hud"]["phase"] == "GAZE_PRACTICE_AWAITING_SPACE"
 
     for attempt in range(TUTORIAL_GAZE_PRACTICE_ATTEMPTS):
         # Alternate landing successfully and timing out - the attempt count
         # should advance either way, since this stage isn't gated by success.
         _run_gaze_practice_attempt(session, fake_gaze, fake_time, land=(attempt % 2 == 0))
-        expected_phase = "RT_TEST_FOREPERIOD" if attempt == TUTORIAL_GAZE_PRACTICE_ATTEMPTS - 1 else "GAZE_PRACTICE_FOREPERIOD"
+        expected_phase = "RT_TEST_AWAITING_SPACE" if attempt == TUTORIAL_GAZE_PRACTICE_ATTEMPTS - 1 else "GAZE_PRACTICE_AWAITING_SPACE"
         assert session.render_state()["hud"]["phase"] == expected_phase
 
 
@@ -180,14 +184,14 @@ def test_rt_test_runs_fixed_attempts_then_enters_dress_rehearsal(fake_gaze, fake
     _complete_demos_and_win_quiz(session)
     for _ in range(TUTORIAL_GAZE_PRACTICE_ATTEMPTS):
         _run_gaze_practice_attempt(session, fake_gaze, fake_time, land=True)
-    assert session.render_state()["hud"]["phase"] == "RT_TEST_FOREPERIOD"
+    assert session.render_state()["hud"]["phase"] == "RT_TEST_AWAITING_SPACE"
 
     for attempt in range(TUTORIAL_RT_TEST_ATTEMPTS - 1):
         _run_one_rt_test_attempt(session, fake_gaze, fake_time)
-        assert session.render_state()["hud"]["phase"] == "RT_TEST_FOREPERIOD"
+        assert session.render_state()["hud"]["phase"] == "RT_TEST_AWAITING_SPACE"
 
     _run_one_rt_test_attempt(session, fake_gaze, fake_time)
-    assert session.render_state()["hud"]["phase"] == "DRESS_FOREPERIOD"
+    assert session.render_state()["hud"]["phase"] == "DRESS_AWAITING_SPACE"
 
 
 def test_rt_test_average_reflects_measured_reaction_times(fake_gaze, fake_time):
@@ -208,6 +212,7 @@ def test_rt_test_falls_back_to_default_when_every_attempt_times_out(fake_gaze, f
         _run_gaze_practice_attempt(session, fake_gaze, fake_time, land=True)
     fake_gaze.zone = GazeZone.LEFT  # matches DOT's source zone - never leaves it
     for _ in range(TUTORIAL_RT_TEST_ATTEMPTS):
+        session.on_space()  # *_AWAITING_SPACE -> *_FOREPERIOD
         fake_time(FOREPERIOD_MAX_MS / 1000 + 0.1)
         session.tick()
         fake_time(SACCADE_TIMEOUT_MS / 1000 + 0.1)
@@ -222,11 +227,11 @@ def test_dress_rehearsal_runs_fixed_attempts_and_resets_contrast_on_a_miss(fake_
     initial_contrast = session._dress_zest.next_contrast()
 
     _run_dress_attempt(session, fake_gaze, fake_time, respond_correctly=True)
-    assert session.render_state()["hud"]["phase"] == "DRESS_FOREPERIOD"
+    assert session.render_state()["hud"]["phase"] == "DRESS_AWAITING_SPACE"
     assert session._dress_zest.next_contrast() != initial_contrast  # a correct answer moves the staircase
 
     _run_dress_attempt(session, fake_gaze, fake_time, respond_correctly=False)  # miss -> reset
-    assert session.render_state()["hud"]["phase"] == "DRESS_FOREPERIOD"
+    assert session.render_state()["hud"]["phase"] == "DRESS_AWAITING_SPACE"
     assert session._dress_zest.next_contrast() == pytest.approx(initial_contrast)
     assert session.render_state()["feedback_flash"]["color"] == "red"
 
@@ -234,3 +239,20 @@ def test_dress_rehearsal_runs_fixed_attempts_and_resets_contrast_on_a_miss(fake_
         _run_dress_attempt(session, fake_gaze, fake_time, respond_correctly=True)
 
     assert session.render_state()["hud"]["phase"] == "COMPLETE"
+
+
+def test_tutorial_attempt_waits_for_space_then_swaps_500_to_1000_ms_later(fake_gaze, fake_time):
+    session = _make_session(fake_gaze)
+    _complete_calibration(session)
+    _complete_demos_and_win_quiz(session)
+    assert session.render_state()["hud"]["phase"] == "GAZE_PRACTICE_AWAITING_SPACE"
+    fake_time(60.0)
+    session.tick()
+    assert session.render_state()["hud"]["phase"] == "GAZE_PRACTICE_AWAITING_SPACE"  # never starts on its own
+
+    session.on_space()
+    assert session.render_state()["hud"]["phase"] == "GAZE_PRACTICE_FOREPERIOD"
+    assert FOREPERIOD_MIN_MS / 1000 <= session._foreperiod_duration <= FOREPERIOD_MAX_MS / 1000
+    fake_time(FOREPERIOD_MAX_MS / 1000 + 0.01)
+    session.tick()
+    assert session.render_state()["hud"]["phase"] == "GAZE_PRACTICE_ACTIVE"

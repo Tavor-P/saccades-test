@@ -7,7 +7,6 @@ from src.experiment.run_experiment import (
     _resolve_contrast_floor_percent,
     _resolve_record_video,
     _resolve_show_gaze_indicator,
-    _is_main_trial_label,
     _resolve_test_mode,
     _selected_first,
     _session_info_error,
@@ -119,13 +118,6 @@ def test_selected_first_restores_a_previous_pick_as_the_default():
     assert _selected_first(["Real", "Test"], "Test") == ["Test", "Real"]
     assert _selected_first(["Real", "Test"], None) == ["Real", "Test"]
     assert _selected_first(["Real", "Test"], "gone") == ["Real", "Test"]
-
-
-def test_only_main_block_trial_labels_count_as_main_trials():
-    assert _is_main_trial_label("trial 3 (valid: 2)") is True
-    assert _is_main_trial_label("practice 1/5") is False
-    assert _is_main_trial_label("RT test 2/8") is False
-    assert _is_main_trial_label("-") is False
 
 
 def test_phase_just_became_active_true_on_entry():

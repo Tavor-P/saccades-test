@@ -29,7 +29,8 @@ from src.experiment.zest import ZestStaircase
 
 class Phase(Enum):
     WAITING_TO_START = auto()
-    FOREPERIOD = auto()  # fixating center, waiting out the foreperiod before the flash-or-not moment
+    AWAITING_SPACE = auto()  # between trials: the participant presses SPACE when ready for the next one
+    FOREPERIOD = auto()  # 500-1000 ms after SPACE, fixating center, before the flash-or-not moment
     FLASH_WINDOW = auto()  # flash (or catch) has fired; response window open
     COMPLETE = auto()
 
@@ -104,8 +105,6 @@ class PresaccadeSession:
         self._gate: FixationGate | None = None
         self.gated_trials = 0  # trials whose flash was held back at least once
         self.gate_timeouts = 0  # of those, trials that fired anyway after FIXATION_GATE_TIMEOUT_S
-        self._stop_requested = False
-        self.stopped_early = False
         self._clock = clock
         num_trials = NUM_TRIALS_PER_PHASE_TEST if test_mode else NUM_TRIALS_PER_PHASE_REAL
         num_practice = NUM_PRACTICE_TRIALS_TEST if test_mode else NUM_PRACTICE_TRIALS_REAL
@@ -144,6 +143,9 @@ class PresaccadeSession:
     def on_space(self) -> None:
         if self._phase is Phase.WAITING_TO_START:
             self._begin_foreperiod()
+            self._start_foreperiod()  # this press is also the first trial's go-ahead
+        elif self._phase is Phase.AWAITING_SPACE:
+            self._start_foreperiod()
         # FOREPERIOD: nothing to respond to yet. FLASH_WINDOW: responses come
         # from arrow keys (see on_response_key), not SPACE. COMPLETE: the
         # runner is responsible for advancing past it.
@@ -165,25 +167,17 @@ class PresaccadeSession:
     # -- trial state machine ----------------------------------------------------
 
     def _begin_foreperiod(self) -> None:
+        """Between trials: wait for SPACE (the foreperiod itself starts on the press)."""
         self._clear_trial_state()
+        self._phase = Phase.AWAITING_SPACE
+
+    def _start_foreperiod(self) -> None:
         self._phase = Phase.FOREPERIOD
         self._gate = FixationGate(self._gaze) if self._gaze is not None else None
         self._foreperiod_start = self._clock.now()
         self._foreperiod_duration = random.uniform(FOREPERIOD_MIN_MS, FOREPERIOD_MAX_MS) / 1000
 
-    def request_stop(self) -> None:
-        """Ends the phase at the next safe point (immediately before a flash fires, else once the in-flight trial finishes) - used for the
-        session time cap. Completed trials keep their logged rows; nothing in flight is logged."""
-        self._stop_requested = True
-
-    def _stop_now(self) -> None:
-        self.stopped_early = True
-        self._phase = Phase.COMPLETE
-
     def tick(self) -> None:
-        if self._stop_requested and self._phase in (Phase.WAITING_TO_START, Phase.FOREPERIOD):
-            self._stop_now()
-            return
         if self._phase is Phase.FOREPERIOD:
             self._tick_foreperiod()
         elif self._phase is Phase.FLASH_WINDOW:
@@ -253,9 +247,7 @@ class PresaccadeSession:
             self._results.append(result)
 
         self._trial_index += 1
-        if self._stop_requested:
-            self._stop_now()
-        elif self._trial_index >= len(self._trials):
+        if self._trial_index >= len(self._trials):
             self._phase = Phase.COMPLETE
         else:
             self._begin_foreperiod()
@@ -264,18 +256,16 @@ class PresaccadeSession:
 
     def _instructions(self) -> str:
         if self._phase is Phase.COMPLETE:
-            if self.stopped_early:
-                return "Session time limit reached — thank you, press SPACE"
             return "Baseline done — starting the saccade test next"
         if self._phase is Phase.WAITING_TO_START:
             return "Fixate the center of the screen. Press SPACE to begin"
         prefix = "Practice (doesn't count) — " if self._current_trial().practice else ""
+        if self._phase is Phase.AWAITING_SPACE:
+            return f"{prefix}Fixate the center. Press SPACE when you are ready for the next trial"
         return f"{prefix}UP/DOWN if the grating is vertical, LEFT/RIGHT if horizontal — not sure? Guess"
 
     def _trial_label(self) -> str:
         real_total = len(self._trials) - self._num_practice
-        if self._phase is Phase.COMPLETE and self.stopped_early:
-            return f"{len(self._results)}/{real_total} (stopped)"
         if self._phase is Phase.COMPLETE:
             return f"{real_total}/{real_total}"
         trial = self._current_trial()

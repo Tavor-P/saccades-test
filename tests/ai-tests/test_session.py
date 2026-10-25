@@ -16,7 +16,6 @@ from include.experiment.constants import (
     NUM_RT_TEST_TRIALS_REAL,
     NUM_RT_TEST_TRIALS_TEST,
     PRACTICE_CONTRAST,
-    RECALIBRATION_ROUNDS,
     RESPONSE_WINDOW_MS,
     RT_AVERAGE_RECOMPUTE_EVERY,
     RT_AVERAGE_ROLLING_WINDOW,
@@ -59,7 +58,7 @@ def _make_session(fake_gaze, show_gaze_indicator: bool = False, skip_practice_tr
 
 
 def _complete_calibration(session) -> None:
-    """Runs calibration to completion - ends in RT_TEST_FOREPERIOD, not
+    """Runs calibration to completion - ends in RT_TEST_AWAITING_SPACE, not
     FOREPERIOD, since the reaction-time test always runs immediately after
     calibration now (see _complete_calibration_and_rt_test for the combined
     helper most tests actually want)."""
@@ -67,10 +66,11 @@ def _complete_calibration(session) -> None:
     for round_number in range(1, CALIBRATION_ROUNDS + 1):
         session.on_space()  # CALIBRATE_LEFT -> CALIBRATE_CENTER
         session.on_space()  # CALIBRATE_CENTER -> CALIBRATE_RIGHT
-        session.on_space()  # -> next round's CALIBRATE_LEFT, or RT_TEST_FOREPERIOD on the last round
+        session.on_space()  # -> next round's CALIBRATE_LEFT, or RT_TEST_AWAITING_SPACE on the last round
 
 
 def _run_one_rt_test_attempt(session, fake_gaze, fake_time, reaction_time_s: float = 0.2) -> None:
+    session.on_space()  # RT_TEST_AWAITING_SPACE -> RT_TEST_FOREPERIOD
     fake_time(FOREPERIOD_MAX_MS / 1000 + 0.1)
     session.tick()  # RT_TEST_FOREPERIOD -> RT_TEST_ACTIVE
     fake_time(reaction_time_s)
@@ -87,7 +87,7 @@ def _complete_rt_test(session, fake_gaze, fake_time, reaction_time_s: float = 0.
 
 
 def _complete_calibration_and_rt_test(session, fake_gaze, fake_time, reaction_time_s: float = 0.2) -> None:
-    """Ends at the first practice/main trial's FOREPERIOD, with
+    """Ends at the first practice/main trial's AWAITING_SPACE, with
     session._avg_reaction_time_ms == reaction_time_s * 1000 - override
     session._current_trial_spec afterward for tests that need a specific
     trial (source/target/grating_shown/orientation/practice)."""
@@ -96,6 +96,7 @@ def _complete_calibration_and_rt_test(session, fake_gaze, fake_time, reaction_ti
 
 
 def _enter_trial_active(session, fake_time) -> None:
+    session.on_space()  # AWAITING_SPACE -> FOREPERIOD
     fake_time(FOREPERIOD_MAX_MS / 1000 + 0.1)
     session.tick()
     assert session.render_state()["hud"]["phase"] == "TRIAL_ACTIVE"
@@ -159,7 +160,7 @@ def test_calibration_flow_calls_gaze_calibrate(fake_gaze):
     _complete_calibration(session)
     assert fake_gaze.calibrated == (0.5, 0.5, 0.5)  # FakeGazeSource always reports ratio 0.5
     assert session.calibration_ratios == (0.5, 0.5, 0.5)
-    assert session.render_state()["hud"]["phase"] == "RT_TEST_FOREPERIOD"
+    assert session.render_state()["hud"]["phase"] == "RT_TEST_AWAITING_SPACE"
 
 
 def test_calibration_starts_a_fresh_sample_window_for_each_target(fake_gaze):
@@ -187,13 +188,13 @@ def test_calibration_starts_a_fresh_sample_window_for_each_target(fake_gaze):
         expected += 1
         assert fake_gaze.calibration_samples_begun == expected  # fresh window before the cross
 
-        session.on_space()  # CALIBRATE_RIGHT -> next round's CALIBRATE_LEFT, or RT_TEST_FOREPERIOD on the last round
+        session.on_space()  # CALIBRATE_RIGHT -> next round's CALIBRATE_LEFT, or RT_TEST_AWAITING_SPACE on the last round
         if round_number < CALIBRATION_ROUNDS:
             expected += 1
             assert fake_gaze.calibration_samples_begun == expected  # fresh window before the next round's dot
         else:
             assert fake_gaze.calibration_samples_begun == expected  # no new target after the final round
-            assert session.render_state()["hud"]["phase"] == "RT_TEST_FOREPERIOD"
+            assert session.render_state()["hud"]["phase"] == "RT_TEST_AWAITING_SPACE"
 
 
 def test_self_calibration_discards_round_one_and_averages_rounds_two_and_three(fake_gaze):
@@ -225,8 +226,8 @@ def test_precomputed_calibration_skips_calibration_phases(fake_gaze):
     assert fake_gaze.calibrated == ratios  # calibrated immediately, in __init__
     assert session.calibration_ratios == ratios
 
-    session.on_space()  # WAITING_TO_START -> straight to RT_TEST_FOREPERIOD, no CALIBRATE_* phases
-    assert session.render_state()["hud"]["phase"] == "RT_TEST_FOREPERIOD"
+    session.on_space()  # WAITING_TO_START -> straight to the RT test, no CALIBRATE_* phases
+    assert session.render_state()["hud"]["phase"] == "RT_TEST_AWAITING_SPACE"
 
 
 def test_skip_practice_trials_produces_no_practice_trials(fake_gaze):
@@ -259,14 +260,14 @@ def test_test_mode_true_uses_the_smaller_test_constants(fake_gaze):
 def test_rt_test_runs_configured_attempt_count_then_enters_a_trial(fake_gaze, fake_time):
     session = _make_session(fake_gaze, test_mode=True)
     _complete_calibration(session)
-    assert session.render_state()["hud"]["phase"] == "RT_TEST_FOREPERIOD"
+    assert session.render_state()["hud"]["phase"] == "RT_TEST_AWAITING_SPACE"
 
     for attempt in range(session._rt_test_target_attempts - 1):
         _run_one_rt_test_attempt(session, fake_gaze, fake_time)
-        assert session.render_state()["hud"]["phase"] == "RT_TEST_FOREPERIOD"
+        assert session.render_state()["hud"]["phase"] == "RT_TEST_AWAITING_SPACE"
 
     _run_one_rt_test_attempt(session, fake_gaze, fake_time)
-    assert session.render_state()["hud"]["phase"] == "FOREPERIOD"  # first real trial begins
+    assert session.render_state()["hud"]["phase"] == "AWAITING_SPACE"  # first real trial waits for SPACE
 
 
 def test_rt_test_average_reflects_measured_reaction_times(fake_gaze, fake_time):
@@ -283,6 +284,7 @@ def test_rt_test_falls_back_to_default_when_every_attempt_times_out(fake_gaze, f
     _complete_calibration(session)
     fake_gaze.zone = GazeZone.LEFT  # matches DOT's source zone - never leaves it
     for _ in range(session._rt_test_target_attempts):
+        session.on_space()
         fake_time(FOREPERIOD_MAX_MS / 1000 + 0.1)
         session.tick()
         fake_time(SACCADE_TIMEOUT_MS / 1000 + 0.1)
@@ -703,93 +705,6 @@ def test_should_stop_main_block_false_when_credible_interval_is_wide(fake_gaze):
     assert session._should_stop_main_block() is False
 
 
-# -- pause / recalibration -------------------------------------------------------
-
-
-def test_resume_from_pause_discards_the_in_flight_trial(fake_gaze, fake_time):
-    session = _make_session(fake_gaze)
-    _complete_calibration_and_rt_test(session, fake_gaze, fake_time)
-    _set_single_trial(session)
-    _enter_trial_active(session, fake_time)
-    _trigger_onset_and_landing(session, fake_gaze, fake_time, GazeZone.RIGHT)  # onset+landing recorded, not finalized
-
-    session.resume_from_pause(recalibrate=False)
-
-    assert _saccade_results(session) == []  # nothing logged
-    assert session._valid_trial_count == 0
-    assert session._completed_main_trial_count == 0
-    assert session.render_state()["hud"]["phase"] == "FOREPERIOD"  # a fresh trial began in its place
-
-
-def test_resume_from_pause_without_recalibrate_keeps_the_current_calibration_and_average(fake_gaze, fake_time):
-    session = _make_session(fake_gaze)
-    _complete_calibration_and_rt_test(session, fake_gaze, fake_time, reaction_time_s=0.2)
-    calibration_before = session.calibration_ratios
-    average_before = session._avg_reaction_time_ms
-    _set_single_trial(session)
-    _enter_trial_active(session, fake_time)
-
-    session.resume_from_pause(recalibrate=False)
-
-    assert session.calibration_ratios == calibration_before
-    assert session._avg_reaction_time_ms == average_before
-
-
-def test_resume_from_pause_with_recalibrate_uses_two_rounds_and_averages_both(fake_gaze, fake_time):
-    round_ratios = [
-        (0.2, 0.5, 0.8),  # round 1
-        (0.4, 0.5, 0.6),  # round 2 - both rounds count, nothing discarded
-    ]
-    calls = iter(ratio for triple in round_ratios for ratio in triple)
-
-    session = _make_session(fake_gaze)
-    _complete_calibration_and_rt_test(session, fake_gaze, fake_time)
-    _set_single_trial(session)
-    _enter_trial_active(session, fake_time)
-
-    fake_gaze.average_recent_ratio = lambda: next(calls)
-    session.resume_from_pause(recalibrate=True)
-    assert session.render_state()["hud"]["phase"] == "CALIBRATE_LEFT"
-    assert session._calibration_round_target == RECALIBRATION_ROUNDS
-
-    for _ in range(RECALIBRATION_ROUNDS):
-        session.on_space()  # CALIBRATE_LEFT -> CALIBRATE_CENTER
-        session.on_space()  # CALIBRATE_CENTER -> CALIBRATE_RIGHT
-        session.on_space()  # -> next round, or RT_TEST_FOREPERIOD on the last one
-
-    expected = ((0.2 + 0.4) / 2, (0.5 + 0.5) / 2, (0.8 + 0.6) / 2)
-    assert session.calibration_ratios == pytest.approx(expected)
-    assert session.render_state()["hud"]["phase"] == "RT_TEST_FOREPERIOD"
-
-    _complete_rt_test(session, fake_gaze, fake_time, reaction_time_s=0.25)
-    assert session._avg_reaction_time_ms == pytest.approx(250.0)  # overwritten, not blended
-    assert session.render_state()["hud"]["phase"] == "FOREPERIOD"  # resumes the trial loop, doesn't restart it
-
-
-def test_resume_from_pause_recalibrate_does_not_reset_the_rolling_average_counter(fake_gaze, fake_time):
-    session = _make_session(fake_gaze, test_mode=True)
-    _complete_calibration_and_rt_test(session, fake_gaze, fake_time, reaction_time_s=0.2)
-    counter_before = session._completed_main_trial_count
-
-    _set_single_trial(session)
-    _enter_trial_active(session, fake_time)
-    session.resume_from_pause(recalibrate=True)
-    for _ in range(RECALIBRATION_ROUNDS):
-        session.on_space()
-        session.on_space()
-        session.on_space()
-    _complete_rt_test(session, fake_gaze, fake_time, reaction_time_s=0.3)
-
-    assert session._completed_main_trial_count == counter_before  # untouched by recalibration
-
-
-def test_resume_from_pause_is_a_no_op_during_calibration(fake_gaze):
-    session = _make_session(fake_gaze)
-    session.on_space()  # WAITING_TO_START -> CALIBRATE_LEFT
-    session.resume_from_pause(recalibrate=True)
-    assert session.render_state()["hud"]["phase"] == "CALIBRATE_LEFT"  # untouched
-
-
 # -- gaze indicator (unaffected by the timing redesign) --------------------------
 
 
@@ -866,3 +781,40 @@ def test_render_state_reports_the_main_trial_counter(fake_gaze, fake_time):
     session.tick()  # timeout - finalizes, advances to the next dynamically-generated trial
 
     assert session.render_state()["hud"]["trial_index"] == first_counter + 1
+
+
+# -- space-gated trials ----------------------------------------------------------
+
+
+def test_trial_waits_for_space_and_swaps_500_to_1000_ms_after_the_press(fake_gaze, fake_time):
+    from include.experiment.constants import FOREPERIOD_MIN_MS
+
+    session = _make_session(fake_gaze)
+    _complete_calibration_and_rt_test(session, fake_gaze, fake_time)
+    assert session.render_state()["hud"]["phase"] == "AWAITING_SPACE"
+    assert "SPACE" in session.render_state()["instructions"]
+
+    fake_time(60.0)
+    session.tick()
+    assert session.render_state()["hud"]["phase"] == "AWAITING_SPACE"  # a minute without a press: still waiting
+
+    session.on_space()
+    assert session.render_state()["hud"]["phase"] == "FOREPERIOD"
+    assert FOREPERIOD_MIN_MS / 1000 <= session._foreperiod_duration <= FOREPERIOD_MAX_MS / 1000
+    fake_time(FOREPERIOD_MIN_MS / 1000 - 0.01)
+    session.tick()
+    assert session.render_state()["hud"]["phase"] == "FOREPERIOD"  # never earlier than the minimum
+    fake_time(FOREPERIOD_MAX_MS / 1000 - FOREPERIOD_MIN_MS / 1000 + 0.02)
+    session.tick()
+    assert session.render_state()["hud"]["phase"] == "TRIAL_ACTIVE"
+
+
+def test_space_during_the_foreperiod_does_not_restart_it(fake_gaze, fake_time):
+    session = _make_session(fake_gaze)
+    _complete_calibration_and_rt_test(session, fake_gaze, fake_time)
+    session.on_space()
+    start, duration = session._foreperiod_start, session._foreperiod_duration
+    fake_time(0.2)
+    session.on_space()
+    assert session._foreperiod_start == start and session._foreperiod_duration == duration
+

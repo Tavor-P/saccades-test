@@ -65,15 +65,13 @@ screen, so you don't have to rely on catching it the first time it's said.
 
 | Key / action | Effect |
 |---|---|
-| **Space** | Start / calibrate / continue past results |
+| **Space** | Start / calibrate / continue past results — and **start each trial** (take as long a break as you like between trials; the dot/cross swaps 0.5–1 s after you press) |
 | **Up / Down** | "It looked vertical" |
 | **Left / Right** | "It looked horizontal" |
 | **Escape** | Quit immediately |
-| **Click anywhere (baseline phase)** | Pause (click again to resume — timing picks up exactly where it left off) |
-| **Click anywhere (saccade phase)** | Opens a pause menu with two buttons: **Return** (resume as-is) or **Return and Recalibrate** (redo eye-position calibration and the reaction-time test before resuming — worth using if you've moved, or if data looks off) |
 
-Pausing mid-trial in the saccade phase discards whatever that trial was
-doing — it doesn't count, so pause freely if you need to.
+Every trial waits for you to press Space, so the wait between trials is your
+break. There is no separate pause menu or scheduled rest break.
 
 ## Output
 
@@ -114,7 +112,7 @@ delete sessions you don't need.
 | Eye tracking seems inaccurate | Make sure you completed calibration (look steadily at each circle when prompted) and picked the right camera if more than one was listed |
 | HUD shows `face: no` | Run `"C:\Program Files\PsychoPy\python.exe" -m src.eye_tracking.diagnose_camera` — it saves a photo to `data/camera_diagnostic.png` so you can check whether the camera itself (focus, lighting) is the problem |
 | A session's `_video.mp4` is missing or empty | Video recording fails silently if your machine's OpenCV build can't open the video codec — check the terminal output from that run for a `WARNING: video recording failed to start` message. The rest of the session's data is unaffected either way |
-| Reaction times look implausibly fast (well under ~100ms) or trials rarely land during the saccade | The reaction-time test needs a clean, steady calibration to measure real saccade onsets rather than tracking noise — try "Return and Recalibrate" from the pause menu, or restart the session with a fresh calibration |
+| Reaction times look implausibly fast (well under ~100ms) or trials rarely land during the saccade | The reaction-time test needs a clean, steady calibration to measure real saccade onsets rather than tracking noise — restart the session with a fresh calibration |
 
 ## Project layout
 

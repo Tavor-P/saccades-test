@@ -4,6 +4,7 @@ import pytest
 
 from include.experiment.constants import (
     FOREPERIOD_MAX_MS,
+    FOREPERIOD_MIN_MS,
     NUM_PRACTICE_TRIALS_REAL,
     NUM_PRACTICE_TRIALS_TEST,
     NUM_TRIALS_PER_PHASE_REAL,
@@ -217,23 +218,36 @@ def test_ungated_session_ignores_gaze(fake_time):
     assert session.render_state()["hud"]["phase"] == "FLASH_WINDOW"
 
 
-def test_request_stop_before_the_flash_completes_without_logging(fake_time):
+def test_next_trial_waits_for_space_and_the_flash_comes_500_to_1000_ms_after_the_press(fake_time):
+    session = _make_session()
+    session._trials = [FlashTrialSpec(index=i, grating_shown=True, orientation=Orientation.VERTICAL) for i in range(2)]
+    _enter_flash_window(session, fake_time)
+    session.on_response_key(Orientation.VERTICAL)
+    fake_time(RESPONSE_WINDOW_MS / 1000 + 0.1)
+    session.tick()  # trial 0 finishes
+    assert session.render_state()["hud"]["phase"] == "AWAITING_SPACE"
+
+    fake_time(60.0)  # no press: the trial never starts by itself
+    session.tick()
+    assert session.render_state()["hud"]["phase"] == "AWAITING_SPACE"
+
+    session.on_space()
+    assert session.render_state()["hud"]["phase"] == "FOREPERIOD"
+    assert FOREPERIOD_MIN_MS / 1000 <= session._foreperiod_duration <= FOREPERIOD_MAX_MS / 1000
+    fake_time(FOREPERIOD_MIN_MS / 1000 - 0.01)
+    session.tick()
+    assert session.render_state()["hud"]["phase"] == "FOREPERIOD"  # not before the minimum
+    fake_time(FOREPERIOD_MAX_MS / 1000 - FOREPERIOD_MIN_MS / 1000 + 0.02)
+    session.tick()
+    assert session.render_state()["hud"]["phase"] == "FLASH_WINDOW"
+
+
+def test_space_is_ignored_during_the_foreperiod(fake_time):
     session = _make_session()
     session.on_space()
-    session.request_stop()
-    session.tick()
-    assert session.render_state()["hud"]["phase"] == "COMPLETE"
-    assert session.stopped_early and session.results == []
-
-
-def test_request_stop_during_a_flash_window_lets_that_trial_finish_then_ends(fake_time):
-    session = _make_session()
-    _enter_flash_window(session, fake_time)
-    session.request_stop()
-    fake_time(RESPONSE_WINDOW_MS / 1000 + 0.1)
-    session.tick()
-    assert session.render_state()["hud"]["phase"] == "COMPLETE"
-    assert session.stopped_early and len(session.results) <= 1
+    start = session._foreperiod_start
+    session.on_space()
+    assert session.render_state()["hud"]["phase"] == "FOREPERIOD" and session._foreperiod_start == start
 
 
 def test_hud_trial_index_counts_logged_trials(fake_time):

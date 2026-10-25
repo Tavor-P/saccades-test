@@ -44,7 +44,7 @@ def test_default_mode_is_gaze_triggered_and_skips_the_rt_test(fake_gaze):
     session = _make_session(fake_gaze)
     assert session._closed_loop
     _complete_calibration(session)
-    assert session.render_state()["hud"]["phase"] == "FOREPERIOD"
+    assert session.render_state()["hud"]["phase"] == "AWAITING_SPACE"
     assert not [r for r in session.results if r.phase == "rt_test"]
     assert session._avg_reaction_time_ms is None
 

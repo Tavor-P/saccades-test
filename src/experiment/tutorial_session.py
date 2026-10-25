@@ -42,13 +42,19 @@ class Phase(Enum):
     DEMO_VERTICAL = auto()
     DEMO_HORIZONTAL = auto()
     QUIZ = auto()
+    GAZE_PRACTICE_AWAITING_SPACE = auto()  # each attempt waits for SPACE; the foreperiod (500-1000 ms) starts on the press
     GAZE_PRACTICE_FOREPERIOD = auto()
     GAZE_PRACTICE_ACTIVE = auto()
+    RT_TEST_AWAITING_SPACE = auto()
     RT_TEST_FOREPERIOD = auto()
     RT_TEST_ACTIVE = auto()
+    DRESS_AWAITING_SPACE = auto()
     DRESS_FOREPERIOD = auto()
     DRESS_ACTIVE = auto()
     COMPLETE = auto()
+
+
+_AWAITING_PHASES = (Phase.GAZE_PRACTICE_AWAITING_SPACE, Phase.RT_TEST_AWAITING_SPACE, Phase.DRESS_AWAITING_SPACE)
 
 
 class TutorialSession:
@@ -201,8 +207,14 @@ class TutorialSession:
                     self._calibration_ratios = average_calibration_rounds(round2, round3)
                     self._gaze.calibrate(*self._calibration_ratios)
                     self._phase = Phase.DEMO_VERTICAL
+        elif self._phase is Phase.GAZE_PRACTICE_AWAITING_SPACE:
+            self._start_gaze_practice_foreperiod()
+        elif self._phase is Phase.RT_TEST_AWAITING_SPACE:
+            self._start_rt_test_foreperiod()
+        elif self._phase is Phase.DRESS_AWAITING_SPACE:
+            self._start_dress_foreperiod()
         # DEMO_*/QUIZ/DRESS_ACTIVE respond to on_response_key, not space.
-        # GAZE_PRACTICE_*/DRESS_FOREPERIOD advance automatically via tick().
+        # The *_FOREPERIOD phases advance automatically via tick().
         # COMPLETE: space does nothing here - the runner decides when to move on.
 
     def on_response_key(self, orientation: Orientation) -> None:
@@ -249,10 +261,13 @@ class TutorialSession:
         self._begin_gaze_practice_foreperiod()
 
     def _begin_gaze_practice_foreperiod(self) -> None:
+        self._phase = Phase.GAZE_PRACTICE_AWAITING_SPACE
+        self._target_landed_since = None
+
+    def _start_gaze_practice_foreperiod(self) -> None:
         self._phase = Phase.GAZE_PRACTICE_FOREPERIOD
         self._foreperiod_start = self._clock.now()
         self._foreperiod_duration = random.uniform(FOREPERIOD_MIN_MS, FOREPERIOD_MAX_MS) / 1000
-        self._target_landed_since = None
 
     def _tick_gaze_practice_foreperiod(self) -> None:
         if self._clock.now() - self._foreperiod_start >= self._foreperiod_duration:
@@ -299,12 +314,15 @@ class TutorialSession:
         self._begin_rt_test_foreperiod()
 
     def _begin_rt_test_foreperiod(self) -> None:
-        self._phase = Phase.RT_TEST_FOREPERIOD
-        self._foreperiod_start = self._clock.now()
-        self._foreperiod_duration = random.uniform(FOREPERIOD_MIN_MS, FOREPERIOD_MAX_MS) / 1000
+        self._phase = Phase.RT_TEST_AWAITING_SPACE
         self._rt_test_onset_detector = OnsetDetector(_zone_for(Target.DOT))
         self._dot_visible = True
         self._cross_visible = False
+
+    def _start_rt_test_foreperiod(self) -> None:
+        self._phase = Phase.RT_TEST_FOREPERIOD
+        self._foreperiod_start = self._clock.now()
+        self._foreperiod_duration = random.uniform(FOREPERIOD_MIN_MS, FOREPERIOD_MAX_MS) / 1000
 
     def _tick_rt_test_foreperiod(self) -> None:
         if self._clock.now() - self._foreperiod_start >= self._foreperiod_duration:
@@ -344,10 +362,13 @@ class TutorialSession:
         self._cross_visible = False
         self._begin_dress_foreperiod()
 
-    def _begin_dress_foreperiod(self) -> None:
+    def _start_dress_foreperiod(self) -> None:
         self._phase = Phase.DRESS_FOREPERIOD
         self._foreperiod_start = self._clock.now()
         self._foreperiod_duration = random.uniform(FOREPERIOD_MIN_MS, FOREPERIOD_MAX_MS) / 1000
+
+    def _begin_dress_foreperiod(self) -> None:
+        self._phase = Phase.DRESS_AWAITING_SPACE
         self._dress_target = Target.CROSS if self._dress_source is Target.DOT else Target.DOT
         self._dress_orientation = _random_orientation()
         self._onset_detector = OnsetDetector(_zone_for(self._dress_source))
@@ -485,6 +506,8 @@ class TutorialSession:
             return "This is a horizontal grating. Press LEFT or RIGHT."
         if self._phase is Phase.QUIZ:
             return "UP/DOWN if the grating is vertical, LEFT/RIGHT if horizontal. Get 5 in a row to continue."
+        if self._phase in _AWAITING_PHASES:
+            return "Press SPACE when you are ready"
         if self._phase in (Phase.GAZE_PRACTICE_FOREPERIOD, Phase.GAZE_PRACTICE_ACTIVE):
             return "Follow the dots on the screen"
         if self._phase in (Phase.RT_TEST_FOREPERIOD, Phase.RT_TEST_ACTIVE):
@@ -515,7 +538,7 @@ class TutorialSession:
             return False, False, True
         if self._phase is Phase.CALIBRATE_RIGHT:
             return False, True, False
-        if self._phase in (
+        if self._phase in _AWAITING_PHASES or self._phase in (
             Phase.GAZE_PRACTICE_FOREPERIOD,
             Phase.GAZE_PRACTICE_ACTIVE,
             Phase.RT_TEST_FOREPERIOD,
@@ -564,11 +587,11 @@ class TutorialSession:
     def _trial_label(self) -> str:
         if self._phase is Phase.QUIZ:
             return f"quiz streak {self._quiz_streak}/{TUTORIAL_QUIZ_STREAK_TARGET}"
-        if self._phase in (Phase.GAZE_PRACTICE_FOREPERIOD, Phase.GAZE_PRACTICE_ACTIVE):
+        if self._phase in (Phase.GAZE_PRACTICE_AWAITING_SPACE, Phase.GAZE_PRACTICE_FOREPERIOD, Phase.GAZE_PRACTICE_ACTIVE):
             return f"gaze practice {self._gaze_practice_attempt + 1}/{TUTORIAL_GAZE_PRACTICE_ATTEMPTS}"
-        if self._phase in (Phase.RT_TEST_FOREPERIOD, Phase.RT_TEST_ACTIVE):
+        if self._phase in (Phase.RT_TEST_AWAITING_SPACE, Phase.RT_TEST_FOREPERIOD, Phase.RT_TEST_ACTIVE):
             return f"RT test {self._rt_test_attempt + 1}/{TUTORIAL_RT_TEST_ATTEMPTS}"
-        if self._phase in (Phase.DRESS_FOREPERIOD, Phase.DRESS_ACTIVE):
+        if self._phase in (Phase.DRESS_AWAITING_SPACE, Phase.DRESS_FOREPERIOD, Phase.DRESS_ACTIVE):
             return f"dress rehearsal {self._dress_attempt + 1}/{TUTORIAL_DRESS_REHEARSAL_ATTEMPTS}"
         return "-"
 

@@ -251,6 +251,10 @@ class SimulatedParticipant:
                 self._fixate(x, t)
             # Hold the fixation long enough for the calibration window to fill.
             self._pending_space_at = t + self._rng.uniform(0.5, 0.8)
+        elif phase in ("RT_TEST_AWAITING_SPACE", "AWAITING_SPACE"):
+            if x is not None:
+                self._fixate(x, t)
+            self._pending_space_at = t + self._rng.uniform(0.3, 0.8)  # the participant presses SPACE when ready
         elif phase in ("RT_TEST_FOREPERIOD", "FOREPERIOD"):
             if x is not None:
                 self._fixate(x, t)

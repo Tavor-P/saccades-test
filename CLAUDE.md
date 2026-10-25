@@ -107,7 +107,7 @@ Paths in this section are checked by `tests/test_docs.py` - keep them real.
 | `src/experiment/scoring.py` | `score_outcome`, `is_valid_for_saccadic_analysis` (the validity gate) |
 | `src/experiment/trial_mechanics.py` | `OnsetDetector` (displacement rule), `ShuffledBag`, `zone_for`, `average_ms`, `robust_average_ms` (shared helpers; the robust one drops anticipations/outliers then takes the median) |
 | `src/experiment/calibration.py` | `average_calibration_rounds`, `validate_calibration` / `CalibrationCheck` / `fit_residual` (monotonic, span, noise, residual checks; not yet wired into `session.py`) |
-| `src/experiment/session_schedule.py` | `phase_order` (counterbalanced by participant ID), rest-break and wall-clock session-cap schedule (`SessionSchedule`) |
+| `src/experiment/session_schedule.py` | `phase_order` (counterbalanced by participant ID), `phase_order` only (rest breaks / session cap were removed) |
 | `src/timebase.py` | the ONE time source: `now()` = `time.perf_counter()`; wall-clock via an edge-synchronised anchor (`unix_now()`, `perf_to_unix`) |
 | `src/experiment/trial_factory.py` | builds trial sequences |
 | `src/experiment/zest.py` | adaptive contrast staircase |
@@ -216,7 +216,7 @@ threshold. Test mode (shortened trial counts, saccade phase first for smoke
 testing) is a runtime decision, not a constant: `run_experiment.py`'s
 `_resolve_test_mode()` reads the startup dialog's explicit Mode dropdown
 (Real/Test); a Real run requires a non-empty Participant ID. Real runs also get
-counterbalanced phase order, rest breaks and a session cap (`session_schedule.py`).
+counterbalanced phase order (`session_schedule.py`). Every trial (all three sessions) waits for the participant to press SPACE (`AWAITING_SPACE` phases) and the swap comes `FOREPERIOD_MIN_MS`-`FOREPERIOD_MAX_MS` (500-1000 ms) after the press; there is no pause menu, rest break, session cap or mid-session recalibration.
 `PresaccadeSession` still picks between fixed `_TEST`/`_REAL` trial-count
 constant pairs in `include/experiment/constants.py`; `ExperimentSession`'s
 real block is open-ended instead (see the open-loop-timing gotcha below) and
@@ -455,18 +455,10 @@ before an already-visible target. Same constant values, different meaning;
 don't assume its presence means the original paper's warning-tone
 methodology is back.
 
-**Pausing mid-trial discards that trial's data outright, not just its
-timers.** `PausableClock` protects in-flight timers across a pause, but
-`ExperimentSession.resume_from_pause()` still throws away whatever
-trial/RT-test attempt was active — no CSV row, no ZEST feed, no RT-average
-feed — because gaze during a pause is aimed at the pause menu, not a
-spontaneous task response. The saccade phase's pause menu
-(`PauseMenu` in `run_experiment.py`) offers a second option beyond plain
-resume: "Return and Recalibrate" re-runs both eye-position calibration (a
-faster `RECALIBRATION_ROUNDS=2`, averaging both rounds instead of
-discarding one — reuses `average_calibration_rounds()` unchanged) and the
-reaction-time test, overwriting `avg_reaction_time_ms` but *not* resetting
-the rolling-average's every-`RT_AVERAGE_RECOMPUTE_EVERY`-trials counter.
+**Trials are space-gated; there is no pausing.** Each trial sits in an `AWAITING_SPACE` phase (`RT_TEST_AWAITING_SPACE` /
+`GAZE_PRACTICE_...` / `DRESS_...` in the other sessions) until SPACE; the foreperiod timer (500-1000 ms) starts on the press, so
+the participant's own pace is the break. Pausing, the pause menu, "Return and Recalibrate", scheduled rest breaks and the session
+cap were all removed. `PausableClock` is kept only as the injected time source (its name is historical; it no longer pauses).
 
 **`cv2.VideoWriter` fails silently, not loudly.** `VideoRecorder`
 (`src/eye_tracking/video_recorder.py`, opt-in via the startup dialog's

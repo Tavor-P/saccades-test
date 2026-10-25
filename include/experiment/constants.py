@@ -143,11 +143,11 @@ HORIZONTAL_RESPONSE_KEYS = ("left", "right")
 
 RESPONSE_WINDOW_MS = 1000
 
-# Diamond, Ross & Morrone (2000, J Neurosci 20:3449-3455): each trial begins
-# with a 500ms warning tone, then a foreperiod randomized 800-1200ms during
-# which the observer fixates, before the target (go-cue) appears.
-FOREPERIOD_MIN_MS = 800
-FOREPERIOD_MAX_MS = 1200
+# Every trial waits for the participant to press SPACE (that wait is the built-in break); the
+# target (go-cue) then appears after a foreperiod randomized 500-1000ms from the press, during
+# which the observer fixates. (Diamond, Ross & Morrone 2000 used 800-1200ms after a warning tone.)
+FOREPERIOD_MIN_MS = 500
+FOREPERIOD_MAX_MS = 1000
 
 # Same paper's data-quality check: they report false-alarm rates <1/200 as
 # evidence the observer was reliably attentive, not guessing/spamming responses.
@@ -224,14 +224,6 @@ SACCADE_ONSET_STABILITY_MS = 10
 # tutorial still gets the same improved calibration.
 CALIBRATION_ROUNDS = 3
 
-# Pause-menu "Return and Recalibrate" (see ExperimentSession.resume_from_pause)
-# runs a faster 2-round recalibration instead of the full CALIBRATION_ROUNDS.
-# Unlike the initial calibration, there's no "first attempt is least
-# reliable" concern mid-session - the participant is already warmed up - so
-# average_calibration_rounds() is called on both rounds (its [-2:] indexing
-# already handles any round count, not just 3), with none discarded.
-RECALIBRATION_ROUNDS = 2
-
 # Reaction-time-based, open-loop saccade timing (replaces gaze-contingent
 # flash triggering): each participant's own saccadic reaction time is
 # measured up front (see the RT_TEST_* constants below), then each trial's
@@ -274,8 +266,7 @@ SACCADE_FIXED_TRIALS_REAL = 150
 
 # Upfront reaction-time test: repeated beep+target-appear -> saccade-onset
 # attempts (no grating, no response), averaged into the initial
-# avg_reaction_time_ms. Also re-run (this same attempt count) by "Return and
-# Recalibrate". Real saccadic reaction time is genuinely variable trial to
+# avg_reaction_time_ms. Real saccadic reaction time is genuinely variable trial to
 # trial, so a handful of samples is not enough to average out that noise -
 # 3 (the old NUM_RT_TEST_TRIALS_TEST) produced unreliable averages in
 # practice; 6 is a better floor even for a quick test/smoke run.
@@ -293,8 +284,7 @@ DEFAULT_REACTION_TIME_MS = 225.0
 # The rolling average of avg_reaction_time_ms recomputes from the most recent
 # RT_AVERAGE_ROLLING_WINDOW completed trials' actual detected reaction times,
 # every RT_AVERAGE_RECOMPUTE_EVERY completed trials - a continuously running
-# counter, never reset (including across a mid-session recalibration, which
-# only overwrites the average value itself - see resume_from_pause). Kept as
+# counter, never reset. Kept as
 # two separate names even though equal today, since "how many samples feed
 # the average" and "how often it's recomputed" are conceptually distinct
 # knobs a future tweak might decouple. Recomputed after EVERY completed trial

@@ -31,7 +31,6 @@ from include.experiment.constants import (
     NUM_RT_TEST_TRIALS_REAL,
     NUM_RT_TEST_TRIALS_TEST,
     PRACTICE_CONTRAST,
-    RECALIBRATION_ROUNDS,
     RESPONSE_WINDOW_MS,
     RT_AVERAGE_RECOMPUTE_EVERY,
     RT_AVERAGE_ROLLING_WINDOW,
@@ -65,11 +64,23 @@ class Phase(Enum):
     CALIBRATE_LEFT = auto()
     CALIBRATE_CENTER = auto()
     CALIBRATE_RIGHT = auto()
-    RT_TEST_FOREPERIOD = auto()  # upfront (and post-recalibration) reaction-time measurement
+    RT_TEST_AWAITING_SPACE = auto()  # upfront reaction-time measurement: waits for SPACE before each attempt
+    RT_TEST_FOREPERIOD = auto()
     RT_TEST_ACTIVE = auto()
-    FOREPERIOD = auto()  # only the current fixation symbol shown; next target not revealed yet
+    AWAITING_SPACE = auto()  # fixation symbol shown; the participant presses SPACE when ready for the next trial
+    FOREPERIOD = auto()  # 500-1000 ms after SPACE: only the current fixation symbol shown; target not revealed yet
     TRIAL_ACTIVE = auto()
     COMPLETE = auto()
+
+
+_TRIAL_PHASES = (
+    Phase.RT_TEST_AWAITING_SPACE,
+    Phase.RT_TEST_FOREPERIOD,
+    Phase.RT_TEST_ACTIVE,
+    Phase.AWAITING_SPACE,
+    Phase.FOREPERIOD,
+    Phase.TRIAL_ACTIVE,
+)
 
 
 class ExperimentSession:
@@ -318,18 +329,17 @@ class ExperimentSession:
                     self._gaze.begin_calibration_sample()  # fresh window before the next round's dot
                     self._phase = Phase.CALIBRATE_LEFT
                 else:
-                    # Round 1 is discarded when there are >=3 rounds (the
-                    # normal case); a 2-round recalibration (see
-                    # resume_from_pause) has no round to discard, so this
-                    # naturally averages both instead - indexed from the
-                    # end rather than unpacked as exactly 3 elements, so it
-                    # doesn't break either way.
+                    # Round 1 is discarded (first attempts are the least reliable).
                     round2, round3 = self._calibration_rounds_data[-2], self._calibration_rounds_data[-1]
                     final_ratios = average_calibration_rounds(round2, round3)
                     self._gaze.calibrate(*final_ratios)
                     self._calibration_ratios = final_ratios
                     self._begin_after_calibration()
-        # RT_TEST_*/TRIAL_ACTIVE: responses come from gaze/arrow keys, not
+        elif self._phase is Phase.RT_TEST_AWAITING_SPACE:
+            self._start_rt_test_foreperiod()
+        elif self._phase is Phase.AWAITING_SPACE:
+            self._start_foreperiod()
+        # RT_TEST_ACTIVE/TRIAL_ACTIVE: responses come from gaze/arrow keys, not
         # SPACE. COMPLETE: space does nothing here - the runner decides when
         # to move on.
 
@@ -347,48 +357,6 @@ class ExperimentSession:
             self._response_orientation = orientation
             self._response_time_ms = (now - self._grating_shown_at) * 1000 if self._grating_shown_at else None
 
-    # -- pause / recalibration ----------------------------------------------
-
-    def resume_from_pause(self, recalibrate: bool) -> None:
-        """Called by the runner when a paused participant clicks a pause-menu
-        button. Any trial (RT-test or main/practice) in flight at the moment
-        of pausing is discarded entirely - no CSV row, no ZEST feed, no
-        RT-average feed - because gaze during a pause is consciously aimed at
-        a UI button, not a spontaneous task response, so any onset/landing
-        timestamps straddling the pause would be contaminated regardless of
-        PausableClock's own timer protection. `recalibrate` triggers a fast
-        2-round eye-position recalibration followed by a fresh reaction-time
-        test (see RECALIBRATION_ROUNDS); either way, resuming during
-        calibration itself, WAITING_TO_START, or COMPLETE is a no-op beyond
-        the runner's own clock pause/resume - there's nothing in-flight to
-        discard or restart there."""
-        discardable = (Phase.FOREPERIOD, Phase.TRIAL_ACTIVE, Phase.RT_TEST_FOREPERIOD, Phase.RT_TEST_ACTIVE)
-        if self._phase not in discardable:
-            return
-        was_rt_test = self._phase in (Phase.RT_TEST_FOREPERIOD, Phase.RT_TEST_ACTIVE)
-        if recalibrate:
-            self._begin_recalibration()
-        elif was_rt_test:
-            self._begin_rt_test_foreperiod()  # retry the same (uncounted) attempt slot
-        else:
-            self._begin_next_trial_or_complete()  # fresh practice/main trial
-
-    def _begin_recalibration(self) -> None:
-        self._calibration_round = 1
-        self._calibration_round_target = RECALIBRATION_ROUNDS
-        self._calibration_rounds_data = []
-        self._pending_left_ratio = None
-        self._pending_center_ratio = None
-        # A fresh RT-test batch, same as the initial one - the whole point of
-        # recalibrating is that the current avg_reaction_time_ms is presumed
-        # stale, so it gets fully overwritten (not blended) once this
-        # completes. RT_AVERAGE_ROLLING_WINDOW/_completed_main_trial_count
-        # are untouched - only the average value itself is replaced.
-        self._rt_test_attempt = 0
-        self._rt_samples_ms = []
-        self._gaze.begin_calibration_sample()
-        self._phase = Phase.CALIBRATE_LEFT
-
     def _begin_after_calibration(self) -> None:
         """Scheduled mode measures the participant's reaction time first; the gaze-triggered
         mode needs no prediction, so it goes straight to the practice/main trials."""
@@ -400,14 +368,18 @@ class ExperimentSession:
     # -- reaction-time test ---------------------------------------------------
 
     def _begin_rt_test_foreperiod(self) -> None:
+        """Shows the dot and waits for SPACE; the foreperiod itself starts on the press."""
         self._clear_trial_state()
+        self._phase = Phase.RT_TEST_AWAITING_SPACE
+        self._rt_test_onset_detector = OnsetDetector(zone_for(Target.DOT))
+        self._dot_visible = True
+        self._cross_visible = False
+
+    def _start_rt_test_foreperiod(self) -> None:
         self._phase = Phase.RT_TEST_FOREPERIOD
         self._foreperiod_start = self._clock.now()
         self._foreperiod_duration = random.uniform(FOREPERIOD_MIN_MS, FOREPERIOD_MAX_MS) / 1000
-        self._rt_test_onset_detector = OnsetDetector(zone_for(Target.DOT))
         self._latency_s = self._timestamp_latency_s(self.gaze_latency_ms)
-        self._dot_visible = True
-        self._cross_visible = False
 
     def _tick_rt_test_foreperiod(self) -> None:
         if self._clock.now() - self._foreperiod_start >= self._foreperiod_duration:
@@ -468,9 +440,7 @@ class ExperimentSession:
     def _begin_next_trial_or_complete(self) -> None:
         """Selects and starts the next practice trial (fixed list), the next
         dynamically-generated real trial, or ends the session - called both
-        to advance normally (from _finish_trial) and to resume after a pause
-        or recalibration, where it naturally continues from wherever the
-        practice/main cursors already were rather than restarting."""
+        to advance normally (from _finish_trial)."""
         if self._practice_index < len(self._practice_trials):
             self._current_trial_spec = self._practice_trials[self._practice_index]
             self._practice_index += 1
@@ -545,19 +515,23 @@ class ExperimentSession:
         return log_width <= ZEST_CREDIBLE_INTERVAL_MAX_LOG_WIDTH
 
     def _begin_foreperiod(self) -> None:
+        """Shows the current fixation symbol and waits for the participant's SPACE; the
+        500-1000 ms foreperiod before the swap starts on the press (_start_foreperiod)."""
         self._clear_trial_state()
-        self._phase = Phase.FOREPERIOD
-        self._foreperiod_start = self._clock.now()
-        self._foreperiod_duration = random.uniform(FOREPERIOD_MIN_MS, FOREPERIOD_MAX_MS) / 1000
+        self._phase = Phase.AWAITING_SPACE
         # Explicit rather than relying on whatever _dot_visible/_cross_visible
         # was left showing by the previous phase - that's usually already
         # correct (a finishing trial's target becomes the next trial's
         # source, via _hide_source_symbol/_reveal_target_and_start_trial),
-        # but isn't when the previous phase was RT-test or recalibration,
-        # neither of which tracks a TrialSpec at all.
+        # but isn't when the previous phase was the RT test, which tracks no TrialSpec.
         trial = self._current_trial_spec
         self._dot_visible = trial.source is Target.DOT
         self._cross_visible = trial.source is Target.CROSS
+
+    def _start_foreperiod(self) -> None:
+        self._phase = Phase.FOREPERIOD
+        self._foreperiod_start = self._clock.now()
+        self._foreperiod_duration = random.uniform(FOREPERIOD_MIN_MS, FOREPERIOD_MAX_MS) / 1000
 
     def _reveal_target_and_start_trial(self) -> None:
         trial = self._current_trial_spec
@@ -871,6 +845,11 @@ class ExperimentSession:
         # FOREPERIOD and TRIAL_ACTIVE deliberately share one constant message -
         # switching text every trial would flicker in peripheral vision, which
         # is exactly the kind of onset we've been trying to avoid elsewhere.
+        if self._phase is Phase.AWAITING_SPACE:
+            prefix = "Practice (doesn't count) — " if self._current_trial_spec.practice else ""
+            return f"{prefix}Press SPACE when you are ready for the next trial"
+        if self._phase is Phase.RT_TEST_AWAITING_SPACE:
+            return "Measuring your reaction time — press SPACE when ready, then look at the cross as soon as it appears"
         if self._phase in (Phase.FOREPERIOD, Phase.TRIAL_ACTIVE):
             prefix = "Practice (doesn't count) — " if self._current_trial_spec.practice else ""
             return f"{prefix}UP/DOWN if the grating is vertical, LEFT/RIGHT if horizontal — not sure? Guess"
@@ -891,7 +870,7 @@ class ExperimentSession:
         }[self._phase]
 
     def _trial_label(self) -> str:
-        if self._phase in (Phase.RT_TEST_FOREPERIOD, Phase.RT_TEST_ACTIVE):
+        if self._phase in (Phase.RT_TEST_AWAITING_SPACE, Phase.RT_TEST_FOREPERIOD, Phase.RT_TEST_ACTIVE):
             return f"RT test {self._rt_test_attempt + 1}/{self._rt_test_target_attempts}"
         trial = self._current_trial_spec
         if trial.practice:
@@ -915,7 +894,7 @@ class ExperimentSession:
             return False, False, True
         if self._phase is Phase.CALIBRATE_RIGHT:
             return False, True, False
-        if self._phase in (Phase.FOREPERIOD, Phase.TRIAL_ACTIVE, Phase.RT_TEST_FOREPERIOD, Phase.RT_TEST_ACTIVE):
+        if self._phase in _TRIAL_PHASES:
             return self._dot_visible, self._cross_visible, False
         return False, False, False
 
@@ -933,7 +912,7 @@ class ExperimentSession:
         timing."""
         show = (
             self._show_gaze_indicator
-            and self._phase in (Phase.FOREPERIOD, Phase.TRIAL_ACTIVE)
+            and self._phase in (Phase.AWAITING_SPACE, Phase.FOREPERIOD, Phase.TRIAL_ACTIVE)
             and sample.face_found
             and sample.smoothed_position is not None
             and self._calibration_ratios is not None
@@ -950,7 +929,7 @@ class ExperimentSession:
     def render_state(self) -> dict:
         sample = self._gaze.latest_sample()
         dot_visible, cross_visible, calibration_center_visible = self._symbol_visibility()
-        trial = self._current_trial_spec if self._phase in (Phase.FOREPERIOD, Phase.TRIAL_ACTIVE) else None
+        trial = self._current_trial_spec if self._phase in (Phase.AWAITING_SPACE, Phase.FOREPERIOD, Phase.TRIAL_ACTIVE) else None
 
         return {
             "instructions": self._instructions(),
@@ -973,7 +952,7 @@ class ExperimentSession:
             # the go-cue has a definite onset - see SHARP_GO_CUE. Calibration
             # steps keep the fade (it signals "new step").
             "snap_symbols": SHARP_GO_CUE
-            and self._phase in (Phase.RT_TEST_FOREPERIOD, Phase.RT_TEST_ACTIVE, Phase.FOREPERIOD, Phase.TRIAL_ACTIVE),
+            and self._phase in _TRIAL_PHASES,
             "hud": {
                 "phase": self._phase.name,
                 "gaze_zone": sample.zone.value,
@@ -985,9 +964,4 @@ class ExperimentSession:
         }
 
     def _has_trial_label(self) -> bool:
-        return self._phase in (
-            Phase.FOREPERIOD,
-            Phase.TRIAL_ACTIVE,
-            Phase.RT_TEST_FOREPERIOD,
-            Phase.RT_TEST_ACTIVE,
-        )
+        return self._phase in _TRIAL_PHASES
