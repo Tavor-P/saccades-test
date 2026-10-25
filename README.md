@@ -1,143 +1,113 @@
 # saccades-test
 
-A vision-science experiment testing **saccadic suppression** — the fact that
-we're briefly "blind" to faint flashes during a rapid eye movement (a
-*saccade*). Built with [PsychoPy](https://psychopy.org), following Diamond,
-Ross & Morrone (2000, *J Neurosci* 20:3449-3455).
+A vision-science experiment testing **saccadic suppression**: we are briefly "blind" to faint flashes during a rapid eye
+movement (a *saccade*). Built with [PsychoPy](https://psychopy.org), following Diamond, Ross & Morrone (2000, *J Neurosci*
+20:3449-3455). Developer documentation (what is where and why) is in [CLAUDE.md](CLAUDE.md).
 
-**How it works:** first, a quick reaction-time test measures how long it
-takes you to move your eyes after a "go" beep. Then, in the real trials, you
-stare at a target and jump your gaze to a second one when it beeps. Timed to
-land around that eye movement — based on your own measured reaction time,
-not on watching your eyes in real time — a faint striped pattern flashes for
-a single frame, and you report which way it was oriented. A camera tracks
-your eyes throughout so the software can tell afterward whether each flash
-actually landed during the eye movement or not (trials where it didn't are
-excluded automatically). The same test also runs *without* eye movements (a
-baseline), so the two results can be compared to measure the suppression
-effect.
+**How it works:** the participant looks at a dot, then jumps their gaze to a second dot when it swaps. A faint striped
+pattern flashes for a single frame, timed from the participant's own measured reaction time to land around the eye movement,
+and they report its orientation. Gaze is recorded throughout so each flash can be placed against the real saccade onset
+afterwards (`src.experiment.analyze_session`). The same test also runs *without* eye movements (a baseline) so the two
+results can be compared.
+
+Gaze comes from **Pupil Labs Neon glasses** (default, still head / chin rest) or, as an alternative picked in the startup
+dialog, a FLIR Blackfly S camera + MediaPipe iris tracking.
 
 ## Quick start
 
-1. Install [PsychoPy Standalone](https://www.psychopy.org/download.html) — it bundles its own Python, so no separate install is needed.
-2. Install the FLIR Spinnaker SDK from [Teledyne FLIR's site](https://www.teledynevisionsolutions.com/products/spinnaker-sdk/) — this includes the camera driver (`PySpin`) matched to your Python version.
-3. Install the remaining dependencies into PsychoPy's Python:
+1. Install [PsychoPy Standalone](https://www.psychopy.org/download.html) (it bundles its own Python).
+2. Install the remaining dependencies into PsychoPy's Python (the Neon needs `pupil-labs-realtime-api`, included in
+   `requirements.txt`; the webcam backend additionally needs the FLIR Spinnaker SDK for `PySpin`):
    ```
-   "C:\Program Files\PsychoPy\python.exe" -m pip install -r requirements.txt
+   .\scripts\py.ps1 -m pip install -r requirements.txt
    ```
-4. From this project folder, run:
+3. Connect the Neon companion phone and this PC to the same Wi-Fi/hotspot and start the companion app. The Neon is
+   auto-discovered; `NEON_DEVICE_ADDRESS` in `include/eye_tracking/constants.py` pins it to an IP instead.
+4. From this project folder run the experiment:
    ```
-   "C:\Program Files\PsychoPy\python.exe" -m src.experiment.run_experiment
+   .\scripts\py.ps1 -m src.experiment.run_experiment
    ```
 
-A dialog asks for a participant ID, which camera to use, a contrast floor
-(the faintest flash the test will ever try), whether to show a live gaze
-indicator (a debug aid, leave off for real participants), whether to run the
-first-timer tutorial first, and whether to record a session video (on by
-default — see [Output](#output)). **Leave Participant ID blank for a quick
-test run** (shorter reaction-time test and practice block, a much smaller
-saccade-phase trial cap, saccade phase first) — entering an ID runs a full
-data-collection session. The baseline phase is always a fixed 25 trials,
-in either mode.
+`scripts/py.ps1` (PowerShell) / `scripts/py.sh` (Git Bash) find PsychoPy's Python and run from the project root.
 
-Each phase's flow:
-- **Baseline (no eye movement)**: a fixed 25 trials (after a few practice
-  trials), fixating the center the whole time.
-- **Saccade phase** (without the tutorial): calibration (look at each of 3 targets in turn), then a
-  short reaction-time test (a beep plays, look at the target that just
-  appeared, as fast as you can), then a few practice trials, then the real
-  trials. The real trials aren't a fixed count — the session keeps going
-  until it's collected enough reliable data for a good threshold estimate
-  (or hits a safety cap), so how long this phase takes varies session to
-  session.
+The startup dialog asks for: **Mode** (Real or Test), **Participant ID** (required for Real), **Gaze source**, the camera
+(webcam source only), **Saccade contrast min/max (%)** (the saccade phase flashes fixed contrasts spaced between them),
+a gaze indicator toggle (debug aid), **Run tutorial** (first-timer on-ramp) and **Record video** (webcam source only).
+Test mode shortens everything and runs the saccade phase first; Real mode counterbalances phase order by participant ID.
 
-If you ran the tutorial, it walks through calibration, how to answer with
-the arrow keys (3 correct in a row), and 8 practice trials that look exactly
-like the real ones (press SPACE, look at the dot, then the cross, answer the
-flash). The practice trials also measure your reaction time, so the saccade
-phase reuses that calibration and reaction time and starts the real trials
-right away, with no separate reaction-time test or extra practice.
+Each phase:
+- **Baseline (no eye movement)**: 25 trials (after a few practice trials), fixating the centre.
+- **Saccade phase**: calibration (look at each of 3 targets), a short reaction-time test and a few practice trials, then
+  the real trials (150 in Real mode, 30 in Test mode). If the tutorial ran, it replaces the reaction-time test and practice:
+  it walks through calibration, how to answer with the arrow keys (3 correct in a row) and 8 practice trials that measure
+  the reaction time.
 
-Both phases end in a graph comparing the baseline and saccade results.
-
-Every instruction is spoken aloud and also captioned at the bottom of the
-screen, so you don't have to rely on catching it the first time it's said.
-During the real measured trials (after practice) the caption is hidden and silent, and the small debug text at the top-left is shown in Test mode only.
+Both phases end in a graph comparing baseline and saccade results. Instructions are spoken aloud and captioned; during real
+(non-practice) trials the caption is hidden and silent, and the debug text at the top-left is shown in Test mode only.
 
 ## Controls
 
-| Key / action | Effect |
+| Key | Effect |
 |---|---|
-| **Space** | Start / calibrate / continue past results — and **start each trial** (take as long a break as you like between trials; the dot/cross swaps 0.5–1 s after you press). In calibration one press is enough even if the glasses are still gathering samples (it completes by itself a moment later); during the tutorial's spoken instructions a press is held until the voice finishes. A press during a trial's 0.5–1 s wait is ignored (it does not restart the wait); every ignored press is counted per phase on the console and in the session's `_meta.json` (`ignored_space_presses`) |
+| **Space** | Start / calibrate / continue, and **start each trial** (the wait between trials is the participant's break; the dot swaps 0.5-1 s after the press). A press during a trial's wait is ignored; every ignored press is counted per phase on the console and in `_meta.json` (`ignored_space_presses`) |
 | **Up / Down** | "It looked vertical" |
 | **Left / Right** | "It looked horizontal" |
 | **Escape** | Quit immediately |
 
-Every trial waits for you to press Space, so the wait between trials is your
-break. There is no separate pause menu or scheduled rest break.
-
 ## Output
 
-Each session writes to `data/`:
-- `results_<timestamp>.csv` — every trial (a `phase` column distinguishes baseline, saccade, and reaction-time-test rows; practice trials are excluded)
-- `results_<timestamp>_meta.json` — participant info, settings, and camera calibration
-- `accuracy_comparison.png` — the results graph
-- `results_<timestamp>_video.mp4` + `results_<timestamp>_video_timestamps.csv` — if "Record video" was left on (the default): the saccade phase's camera feed, plus a wall-clock timestamp for every frame, so a session can be replayed and lined up exactly against the trial data (each trial's flash also has its own wall-clock timestamp in the results CSV, for the same reason)
+Each session writes to `data/` (git-ignored):
+- `results_<timestamp>.csv`: every trial (a `phase` column separates baseline, saccade and reaction-time-test rows; practice trials are excluded)
+- `results_<timestamp>_meta.json`: participant info, settings, constants snapshot, gaze quality, per-phase summaries
+- `results_<timestamp>_gaze_trace.csv`: raw Neon gaze with phone capture times (input of `analyze_session`)
+- `accuracy_comparison.png`: the results graph
+- `results_<timestamp>_video.mp4` + `_video_timestamps.csv`: webcam source only, if "Record video" was on
+
+## Analysing a session
+
+```
+.\scripts\py.ps1 -m src.experiment.analyze_session [timestamp] [--data-dir DIR]
+```
+
+Accuracy vs flash time relative to saccade onset (newest session by default); writes a report, plot and per-flash CSV next to the results.
 
 ## Running the tests
 
 ```
-"C:\Program Files\PsychoPy\python.exe" -m pytest
+.\scripts\py.ps1 -m pytest -q
 ```
 
-This runs in a few seconds — no camera or PsychoPy window needed, since the
-tests use fake stand-ins for the camera and clock.
+About 480 tests in ~70 s; no camera, glasses or PsychoPy window needed (fakes for the gaze source and clock). A headless
+simulator runs whole sessions: see `tests/ai-tests/README.md`.
 
 ## Browsing past sessions
 
 ```
-"C:\Program Files\PsychoPy\python.exe" -m src.dashboard.app
+.\scripts\py.ps1 -m src.dashboard.app
 ```
 
-Open [http://localhost:5000](http://localhost:5000) for a local dashboard
-listing every past session. You can label sessions with a name/gender/age,
-filter the list, adjust the default contrast floor for future runs, and
-delete sessions you don't need.
+Open [http://localhost:5000](http://localhost:5000) for a local dashboard listing every past session: label sessions,
+filter them, adjust the default contrast floor for future runs, delete sessions.
 
 ## Troubleshooting
 
 | Problem | Fix |
 |---|---|
-| `No module named 'src'` | Run commands from inside this project folder |
-| `No module named 'mediapipe'`/`'flask'`/`'PySpin'` | The install in step 3 didn't take (often because `Program Files` wasn't writable) — rerun your terminal as Administrator and reinstall |
-| `_ARRAY_API not found` or `numpy.core.multiarray failed to import` | numpy/opencv drifted out of sync with `PySpin` — reinstall `requirements.txt`, which pins working versions |
-| Camera picker is empty | It only lists FLIR cameras via the Spinnaker SDK, not generic webcams — check the Blackfly S is plugged in |
-| Eye tracking seems inaccurate | Make sure you completed calibration (look steadily at each circle when prompted) and picked the right camera if more than one was listed |
-| HUD shows `face: no` | Run `"C:\Program Files\PsychoPy\python.exe" -m src.eye_tracking.diagnose_camera` — it saves a photo to `data/camera_diagnostic.png` so you can check whether the camera itself (focus, lighting) is the problem |
-| A session's `_video.mp4` is missing or empty | Video recording fails silently if your machine's OpenCV build can't open the video codec — check the terminal output from that run for a `WARNING: video recording failed to start` message. The rest of the session's data is unaffected either way |
-| Reaction times look implausibly fast (well under ~100ms) or trials rarely land during the saccade | The reaction-time test needs a clean, steady calibration to measure real saccade onsets rather than tracking noise — restart the session with a fresh calibration |
+| `No module named 'src'` | Run commands from inside this project folder (or through `scripts/py.ps1`) |
+| `No module named 'mediapipe'`/`'flask'`/`'PySpin'` | The install did not take (often `Program Files` was not writable): rerun the terminal as Administrator and reinstall. Neon-only machines do not need `PySpin`/`mediapipe` |
+| `_ARRAY_API not found` or `numpy.core.multiarray failed to import` | numpy/opencv drifted out of sync with `PySpin`: reinstall `requirements.txt`, which pins working versions |
+| Neon not found | Phone and PC must share a network and the companion app must be running; or set `NEON_DEVICE_ADDRESS` |
+| Camera picker is empty | Webcam backend only: it lists FLIR cameras via the Spinnaker SDK, not generic webcams |
+| Eye tracking seems inaccurate | Redo calibration (look steadily at each target); with the Neon the head must stay still (chin rest) after calibrating |
+| A webcam session's `_video.mp4` is missing or empty | OpenCV could not open the codec; look for `WARNING: video recording failed to start` in the console. The rest of the data is unaffected |
 
 ## Project layout
 
 ```
 include/          shared types, enums, constants (no logic)
 src/
-  eye_tracking/     camera capture (FLIR Blackfly S via PySpin), MediaPipe eye tracking,
-                    optional session video recording
-  experiment/       trial logic, staircase, scoring, logging, results graph, run_experiment.py
+  eye_tracking/     gaze sources (Neon default; FLIR Blackfly S + MediaPipe alternative), calibration mapping, traces
+  experiment/       session state machines, staircase, scoring, logging, analysis, run_experiment.py
   dashboard/        local Flask app for browsing past sessions
-tests/             pytest suite (doesn't need a camera or PsychoPy window)
+tests/             pytest suite (tests/ai-tests/ also holds the headless simulator tools)
 ```
-
-`src/eye_tracking/iohub_source.py` is an untested placeholder for switching
-to dedicated eye-tracking hardware (Tobii/EyeLink) later.
-
-## Pupil Labs Neon glasses (branch `feature/neon-glasses`)
-
-The startup dialog's **Gaze source** dropdown selects `Pupil Labs Neon (still head)` (default) or the original Blackfly S + MediaPipe webcam. The Neon uses the scene camera's gaze with no head compensation: no screen markers or AprilTags are drawn, so the participant's head must stay still (use a chin rest) from calibration to the end of the session.
-
-- `"C:\Users\<you>\AppData\Local\Programs\PsychoPy\python.exe" -m pip install pupil-labs-realtime-api`
-- Connect the Neon companion phone and this PC to the same Wi-Fi/hotspot, start the companion app, then launch the experiment. The Neon is auto-discovered; set `NEON_DEVICE_ADDRESS` in `include/eye_tracking/constants.py` to skip discovery.
-- Gaze x in the scene camera is used as the horizontal "ratio", so the 3-point calibration works unchanged. Keep the head still after calibrating (chin rest) - the scene camera moves with the head.
-- Neon has no Mono8 camera feed, so the debug camera preview and session video recording are skipped with this source.
-- `NeonGazeSource` has only been tested against a fake device, not real hardware.
