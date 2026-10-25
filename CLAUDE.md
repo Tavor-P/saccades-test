@@ -7,20 +7,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 A PsychoPy gaze-contingent saccade experiment (Diamond, Ross & Morrone 2000):
 detect a briefly-flashed grating's orientation, once during a saccade and
 once during fixation (baseline), to measure saccadic suppression. Gaze is
-tracked via Pupil Labs Neon glasses (default on branch
-`feature/neon-glasses`, via the Real-Time API) or, as an alternative backend
+tracked via Pupil Labs Neon glasses (default, via the Real-Time API) or, as an alternative backend
 picked in the startup dialog, a FLIR Blackfly S camera (Spinnaker SDK /
 `PySpin`) + MediaPipe iris landmarks. See [README.md](README.md) for the full participant-facing
 walkthrough (controls, output files, troubleshooting).
 
-## Line-stimulus branch (`claude/line-stimulus-ab4bdf`)
+## Line-stimulus branch (`sim-rt-variability-line`)
 
-An ALTERNATIVE to the grating on `feature/saccade-flash-analysis` (cut from it; that branch's grating behaviour is
-untouched). The flash is a thin horizontal line as in Braun, Schutz & Gegenfurtner 2021 (J Vis): full screen width,
-vertical Gaussian profile (`LINE_SD_DEG` 0.15), centred `LINE_OFFSET_DEG` (2 deg) above or below the saccade TARGET (the
-symbol the eye is moving to; in the baseline the screen centre), drawn `GRATING_DURATION_FRAMES` frame(s); the participant
-presses UP (above) or DOWN (below), LEFT/RIGHT are unused. Everything else (scheduled flashes, gates, analysis, SPACE
-gating) is unchanged.
+An ALTERNATIVE to the grating on `main` (the grating behaviour there is untouched). The flash is a thin horizontal line as in
+Braun, Schutz & Gegenfurtner 2021 (J Vis): full screen width, vertical Gaussian profile (`LINE_SD_DEG` 0.15), centred
+`LINE_OFFSET_DEG` (2 deg) above or below the saccade TARGET (the symbol the eye is moving to; in the baseline the screen
+centre), drawn `GRATING_DURATION_FRAMES` frame(s); the participant presses UP (above) or DOWN (below), LEFT/RIGHT are unused.
+Everything else (scheduled flashes, gates, analysis, SPACE gating, rolling reaction time) is as on `main`.
 - `Orientation` is replaced by `Side.ABOVE/BELOW` (`include/experiment/types.py`). The trial/result fields and the CSV
   columns are still called `orientation` / `response_orientation` (now holding 'above'/'below'); old CSVs with
   'vertical'/'horizontal' load via `data_access._LEGACY_SIDES` (vertical->above, horizontal->below, an arbitrary but
@@ -34,82 +32,47 @@ gating) is unchanged.
   run at 10/15/20 % was at ceiling (11/11 correct at fixation, 18/22 overall), the old foveal grating threshold was ~1.3 %, and
   the previous 2/4/6 % guess was judged too hard. Educated guess, not a measurement: re-pilot on glasses; adjust in the startup
   dialog. 4-8 % is ~5-10 grey steps at the line's peak on an 8-bit display (above `HARDWARE_CONTRAST_FLOOR`, 0.78 %), so levels are coarse.
-- **Live rolling reaction time**: `avg_reaction_time_ms` (schedules every flash) is a `RollingReactionTime` (`trial_mechanics.py`),
-  the robust average (`robust_average_ms`: drop < `RT_MIN_PLAUSIBLE_MS`, drop > median + 3 scaled MADs, median of the rest) of the
-  last `RT_AVERAGE_ROLLING_WINDOW` (12) latencies, updated at EVERY confirmed saccade onset (RT-test attempts, tutorial practice,
-  practice and main trials, valid or not, catch or flashed), so the NEXT trial's schedule uses it (a running trial's flash is not moved).
-  Fewer than `RT_MIN_SAMPLES_FOR_AVERAGE` (3) plausible samples -> the previous value (initially `DEFAULT_REACTION_TIME_MS`). The tutorial
-  and the saccade session use the same class (the session is seeded with `TutorialSession.rt_samples_ms`). `RT_AVERAGE_RECOMPUTE_EVERY`
-  was removed; the phase summary in `_meta.json` adds `rt_samples_total/_in_window/_dropped_in_window`. Not verified on glasses.
-- **Head compensation removed**: the screen-tracking backends (corner AprilTags, screen outline, hybrid; `neon_screen_source`,
-  `screen_markers`, `screen_outline_mapper`, `hybrid_screen_mapper`, `neon_gaze_view`, `real-time-screen-gaze`) were deleted.
-  Gaze is the plain Neon scene-camera backend ("Pupil Labs Neon (still head)", the default) or the webcam; the head must stay
-  still (chin rest). Old sessions recorded with the screen backends still analyse: their trace's `x_px` holds screen ratio x
-  `NEON_SCENE_WIDTH`.
+- **Rolling reaction time** here is `robust_average_ms` over the last `RT_AVERAGE_ROLLING_WINDOW` (12) latencies; fewer than
+  `RT_MIN_SAMPLES_FOR_AVERAGE` (3) plausible samples keep the previous value (initially `DEFAULT_REACTION_TIME_MS`). The phase
+  summary in `_meta.json` adds `rt_samples_total/_in_window/_dropped_in_window`.
 - **Untested on glasses / a real window**: the PsychoPy line rendering (profile, width, brightness, one-frame visibility,
   how it looks at 60 Hz), the quiz/captions, and every contrast level. Covered by the simulator and tests only.
 
-## Status and next steps (updated 2026-10-25 for the next session)
+## Status and next steps (updated 2026-10-25)
 
 **Goal.** A grant to test saccadic suppression in people with TBI vs without. Present what exists as a
 *feasibility pilot (n=1)*, not as a group result. The experiment flashes a brief grating around the participant's
 saccades (Neon glasses, 2AFC orientation) and measures detection vs flash time relative to saccade onset.
 
-**Where the work is.** Branch `feature/saccade-flash-analysis` (cut from `main` == the old `feature/neon-glasses`
-tip `befac0e`). Nothing pushed by us; sessions pushed `claude/clock-onset-05b6cf` and `claude/simplify-comments` to
-origin by themselves (ignore/delete). Defaults: scheduled flashes (avg RT + offset -80..+80 ms + random +/-10 ms),
-fixed saccade-phase contrasts 4/6/8 % (line branch; guess) (startup dialog "Saccade contrast min/max (%)"), sharp go-cue, dot/cross at
-15 %/85 % of the screen, plain Neon backend + still head recommended. Run the experiment, then
-`.\scripts\py.ps1 -m src.experiment.analyze_session` (newest session) for the report, plot and per-flash CSV.
+**Shipped setup (`FLASH_TRIGGER="scheduled"`).** Flashes (a line above/below the target, UP/DOWN) at average RT + offset (-80..+80 ms) + random +/-10 ms, fixed
+saccade-phase contrasts 4/6/8 % (line branch; a guess; startup dialog "Saccade contrast min/max (%)"), sharp go-cue, dot/cross at 15 %/85 % of
+the screen, plain Neon backend with a still head (chin rest). Onboarding is calibration -> how-to-answer quiz -> 8 practice
+trials that seed the reaction-time average. Every trial waits for SPACE. Control flashes (+400/+500 ms after the average
+RT) and pre-specified post-hoc gates (`flash_gates.py`) let `analyze_session` report a per-person suppression index. Run the
+experiment, then `.\scripts\py.ps1 -m src.experiment.analyze_session` (newest session) for the report, plot and per-flash CSV.
+None of this has been run in a real session on glasses since the last refactor: it is covered by the simulator and tests only.
 
-**Done since the first version of this section.**
-- Space-gated trials: every trial waits for SPACE and the swap comes 500-1000 ms after it; no pausing, rest breaks,
-  session cap or mid-session recalibration.
-- Control flashes (+400/+500 ms after the average RT, eye already landed) and pre-specified post-hoc gates
-  (`src/experiment/flash_gates.py`: each flash is `saccade`, `fixation` or `excluded`).
-- Per-person suppression index in `analyze_session` (psychometric fit with an accuracy fallback; uses the gates).
-- Simplified onboarding: calibration -> how-to-answer quiz -> 8 practice trials that seed the reaction-time average
-  (no separate RT test).
-- HUD only in Test mode; the bottom caption is hidden and silent during real trials.
-- SPACE presses are never silently dropped (`src/experiment/space_input.py`: calibration latch, tutorial narration
-  hold, per-phase ignored-press tally in the console and `_meta.json`).
-- Live rolling reaction-time average (`RollingReactionTime`, window 12, updated at every detected eye movement, so
-  the next flash already uses it). In the simulator it is statistically indistinguishable from the old
-  per-completed-trial rule on the share of flashes that land in the saccade; it only helps against a fixed 230 ms
-  schedule when the participant's RT drifts. Simulation only.
-- This is the line-stimulus version (flash = a thin line above/below the target dot, answer UP/DOWN); default saccade
-  contrasts are now 4/6/8 % (10/15/20 % was at ceiling for the line). Not yet run on glasses.
-- Screen tracking / AprilTag head compensation removed: plain Neon, still head (chin rest).
-- Captions say 'dot' (or 'other dot'), not 'cross': both symbols are dots.
-- Simulator realism: `ParticipantProfile` reaction-time fields (ex-Gaussian tail, drift, wave, AR(1), anticipations,
-  lapses, direction offset), the `realistic` scenario/preset, `run_sim.py --real`, and ground-truth latency per trial
-  (`SimulationResult.cues` / `trial_cues`, summary `avg_rt_*`); see `tests/ai-tests/README.md`.
-- None of the new behaviour above (onboarding, space-gating, SPACE latching, gates, suppression index) has been run
-  in a real session on glasses yet; it is covered by the simulator and ~480 tests only.
-
-**Pilot findings (one participant, test mode, before the changes above).** Foveal baseline threshold ~1.3 %. Saccades
-~75 ms / ~30 deg with the 15/85 layout. 3 %/6 % flashes were invisible when fixating the dot/cross (flash ~15 deg off
-to the side); 10-20 % are seen. Flashes within +-50 ms of saccade onset: 3/12 correct vs 12/13 for flashes 50-300 ms
-away (Fisher p=0.001; the earlier 20-80 % session pointed the same way, pooled p<1e-4), sharpest in the 50 ms
-*before* onset. Small n, the +-50 ms window was chosen after seeing session 1 (the gates are now pre-specified).
+**Pilot findings (one participant, test mode, earlier setup).** Foveal baseline threshold ~1.3 %. Saccades ~75 ms / ~30 deg
+with the 15/85 layout. 3 %/6 % flashes were invisible when fixating the dot/cross (flash ~15 deg off to the side); 10-20 %
+are seen. Flashes within +-50 ms of saccade onset: 3/12 correct vs 12/13 for flashes 50-300 ms away (Fisher p=0.001; the
+earlier 20-80 % session pointed the same way, pooled p<1e-4), sharpest in the 50 ms *before* onset. Small n, and the +-50 ms
+window was chosen after seeing session 1 (the gates are now pre-specified).
 
 **Known problems.**
-1. Gaze reaches the PC ~95 ms late at ~160 Hz in real sessions; see the open
-   problem in the Gotchas. `sys.setswitchinterval(0.0005)` did not fix it. Irrelevant to the post-hoc analysis
-   (phone capture times) but it makes the live `flash_during_saccade` flag useless and blocks `FLASH_TRIGGER="onset"`.
-2. Reaction time varies (SD ~60-80 ms), so only ~1/3 of flashes land near onset; TBI will likely be worse.
-3. The screen geometry constants (`VIEWING_DISTANCE_CM`, `SCREEN_HEIGHT_CM`) are
-   still the 24-inch defaults; the user's monitor is small (~12 in wide) and 60 Hz. Ask for real width/height (cm)
-   and viewing distance.
-4. The baseline (foveal) phase is not a like-for-like control for the saccade phase (different retinal location);
-   the fixation-control flashes inside the saccade phase address this.
+1. Gaze reaches the PC ~95 ms late at ~160 Hz in real sessions (see the open problem in the Gotchas). Irrelevant to the
+   post-hoc analysis (phone capture times) but it makes the live `flash_during_saccade` flag useless and blocks `FLASH_TRIGGER="onset"`.
+2. Reaction time varies (SD ~60-80 ms), so only ~1/3 of flashes land near onset; TBI will likely be worse. The live
+   rolling average (`RollingReactionTime`) only helps when the RT drifts (simulation only).
+3. The screen geometry constants (`VIEWING_DISTANCE_CM`, `SCREEN_HEIGHT_CM`) are still the 24-inch defaults; the user's monitor
+   is small (~12 in wide) and 60 Hz. Ask for real width/height (cm) and viewing distance.
+4. The baseline (foveal) phase is not a like-for-like control for the saccade phase (different retinal location); the
+   fixation-control flashes inside the saccade phase address this.
 
-**Next steps, in priority order.** (1) Check all the new behaviour on real glasses (a short Test-mode run, then a
-full 150-trial Real run with a participant ID, analysed with `analyze_session`). (2) Group-level analysis (per-person
-suppression index + group test, or a mixed model) for TBI vs controls. (3) A one-page grant figure + wording.
-(4) Clinical metadata fields (group, time since injury, severity, symptoms, medication; needs the IRB) in the
-dashboard. (5) Find the cause of the ~95 ms gaze delay (e.g. receive Neon in its own process). (6) Ask the user for
-the screen measurements and update the geometry constants.
+**Next steps, in priority order.** (1) Check the current behaviour on real glasses (a short Test-mode run, then a full
+150-trial Real run with a participant ID, analysed with `analyze_session`). (2) Group-level analysis (per-person suppression
+index + group test, or a mixed model) for TBI vs controls. (3) A one-page grant figure + wording. (4) Clinical metadata
+fields (group, time since injury, severity, symptoms, medication; needs the IRB) in the dashboard. (5) Find the cause of the
+~95 ms gaze delay (e.g. receive Neon in its own process). (6) Ask the user for the screen measurements and update the geometry constants.
 
 ## Start here (read this first)
 
@@ -119,8 +82,7 @@ the screen measurements and update the geometry constants.
 - **Never launch the experiment or dashboard yourself** (`run_experiment` opens a fullscreen
   PsychoPy window on the user's screen). To exercise experiment logic use the **headless simulator**
   (below) or the tests. Real-glasses runs are for the human.
-- **Branch `feature/neon-glasses`** is the Windows + Pupil Labs Neon port. Don't merge, push or
-  switch branches unless asked.
+- Don't merge, push or switch branches unless asked.
 - **Other AI sessions may be editing this same folder at the same time.** See "Working rules".
 - Before changing anything, find the file in the **Repo map**, and skim the **Gotchas** at the end.
 
@@ -130,13 +92,13 @@ All via the wrapper (PowerShell shown; from Git Bash use `scripts/py.sh` with th
 
 ```
 .\scripts\py.ps1 -m pip install -r requirements.txt            # install deps (into PsychoPy's Python)
-.\scripts\py.ps1 -m pytest -q                                   # full test suite (~40 s, no camera/window needed)
+.\scripts\py.ps1 -m pytest -q                                   # full test suite (~70 s, no camera/window needed)
 .\scripts\py.ps1 -m pytest tests/ai-tests/test_session.py::test_name -v  # one test
 .\scripts\py.ps1 -m src.experiment.simulation                   # HEADLESS simulated trial, event timeline (safe for AI)
 .\scripts\py.ps1 tests/ai-tests/run_sim.py --help               # headless simulation runner (scenarios, sweeps, JSON)
 .\scripts\py.ps1 -m src.experiment.run_experiment               # REAL experiment (opens a window - human only)
 .\scripts\py.ps1 -m src.dashboard.app                           # session dashboard at localhost:5000
-.\scripts\py.ps1 -m src.experiment.analyze_session [timestamp]  # accuracy vs flash time relative to saccade onset (newest session by default)
+.\scripts\py.ps1 -m src.experiment.analyze_session [timestamp] [--data-dir D]  # accuracy vs flash time relative to saccade onset (newest session by default)
 .\scripts\py.ps1 -m src.eye_tracking.neon_fixation_test [secs]  # Neon jitter check (glasses on; human)
 .\scripts\py.ps1 -m src.eye_tracking.latency_test               # Neon vs webcam latency recording (human)
 .\scripts\py.ps1 -m src.eye_tracking.record_gaze_trace out.csv 10   # record raw Neon gaze for replay (glasses on)
@@ -164,12 +126,14 @@ Paths in this section are checked by `tests/test_docs.py` - keep them real.
 | `src/experiment/presaccade_session.py` | `PresaccadeSession`: baseline (fixation) phase |
 | `src/experiment/tutorial_session.py` | `TutorialSession`: narrated first-timer on-ramp (calibration -> how-to-answer quiz -> 8 practice trials that yield the first reaction-time samples) |
 | `src/experiment/run_experiment.py` | entry point + PsychoPy rendering; the only PsychoPy-dependent module |
+| `src/experiment/pausable_clock.py` | `PausableClock`: the injected time source every session reads (name is historical; it no longer pauses) |
+| `src/experiment/settings.py` | dashboard-configured default contrast floor (`data/settings.json`) |
 | `src/experiment/scoring.py` | `score_outcome`, `is_valid_for_saccadic_analysis` (the validity gate) |
-| `src/experiment/trial_mechanics.py` | `OnsetDetector` (displacement rule), `ShuffledBag`, `zone_for`, `line_position` (line placement above/below a reference point), `average_ms`, `robust_average_ms` (shared helpers; the robust one drops anticipations/outliers then takes the median), `RollingReactionTime` (live rolling window + robust average, updated at every detected onset) |
+| `src/experiment/trial_mechanics.py` | `OnsetDetector` (displacement rule), `ShuffledBag`, `zone_for`, `line_position` (line placement above/below a reference point), `robust_average_ms` (shared helper; drops anticipations/outliers then takes the median), `RollingReactionTime` (live rolling window + robust average, updated at every detected onset) |
 | `src/experiment/calibration.py` | `average_calibration_rounds`, `validate_calibration` / `CalibrationCheck` / `fit_residual` (monotonic, span, noise, residual checks; not yet wired into `session.py`) |
 | `src/experiment/space_input.py` | SPACE bookkeeping with no PsychoPy: `CalibrationLatch` (a calibration press made before the gaze window is full is latched and completed in `tick()`), `NarrationKeyGate` (tutorial: a press during narration is delivered after it), `SpaceTally` (ignored presses per phase + reason), `deliver_space`, `leaves_complete_screen` |
 | `src/experiment/session_schedule.py` | `phase_order`: baseline/saccade order counterbalanced by participant ID |
-| `src/timebase.py` | the ONE time source: `now()` = `time.perf_counter()`; wall-clock via an edge-synchronised anchor (`unix_now()`, `perf_to_unix`) |
+| `src/timebase.py` | the ONE time source: `now()` = `time.perf_counter()`; wall-clock via an edge-synchronised anchor (`unix_now()`, `unix_ms()`) |
 | `src/experiment/trial_factory.py` | builds trial sequences |
 | `src/experiment/zest.py` | adaptive contrast staircase |
 | `src/experiment/logger.py` | `ResultLogger`: CSV + `_meta.json` (git SHA, constants snapshot, per-phase threshold summary) + side-file paths |
@@ -210,7 +174,7 @@ it from tests or simulations (the simulator uses an in-memory logger).
    measurement script and ask the human to run it; don't guess numbers.
 
 Report test results truthfully (what ran, what was skipped). The suite passes at the time of writing
-(~535 tests, ~70 s, 2 skipped when PySpin/mediapipe are absent).
+(~480 tests, ~70 s, 2 skipped when PySpin/mediapipe are absent).
 
 **Bug-hunting tests** (`tests/ai-tests/`): `find_bugs.py` fuzzes the real session with random/hostile
 participants and checks `invariants.py` (run `find_bugs.py --sessions 300` after changing session,
@@ -246,7 +210,7 @@ architecture rules in this file (`test_architecture_rules.py`: no PsychoPy in se
 - Don't change things outside your task (e.g. another session's files in `src/eye_tracking/neon_*`) -
   mention it to the user instead.
 - Windows/PowerShell environment: `&&` is unavailable in PowerShell 5.1; the Bash tool is Git Bash.
-  Files are LF in the working tree (git may warn about CRLF); keep line endings as they are.
+  Source files may be CRLF in the working tree; edit tolerantly and keep each file's line endings.
 - `.gitignore` contains `data/`, which also matches a `data` folder anywhere (e.g. under tests) - put test fixtures in `tests/fixtures/`.
 - **Whenever the user asks you to push and/or merge, update CLAUDE.md first** (the user's standing
   instruction). Review what the branch changed since CLAUDE.md was last touched (`git log` / `git diff`)
@@ -278,9 +242,8 @@ counterbalanced phase order (`session_schedule.py`). Every trial (all three sess
 
 **SPACE presses are never silently dropped** (`space_input.py`, tests `tests/ai-tests/test_space_input.py`). Calibration (saccade session and tutorial): one press is enough; if `average_recent_ratio()` is still `None` (window not full; slow at ~45 Hz) the press is latched, the window restarted, and `tick()` completes the step once it fills (`render_state()["hud"]["calibration_wait_s"]` shows in the Test-mode HUD, "TRACKING LOST?" after 3 s). Tutorial: `run_tutorial_phase` holds one SPACE pressed while the narrator speaks and delivers it afterwards. Trials: SPACE is accepted in the `AWAITING_SPACE` phases; during the foreperiod it is ignored (must not restart it or start the next trial); during a trial it is ignored until the participant has answered, then it is carried and starts the next trial the moment `AWAITING_SPACE` begins. Same-frame repeats collapse to one press; a press made before a phase's first screen (start-up, marker check) is discarded; a press in the frame COMPLETE first appears does not dismiss it. Every ignored press is counted in `session.space_tally` (per phase + reason), printed at the end of each phase and stored in `_meta.json` as `ignored_space_presses` (`ResultLogger.set_ignored_space_presses`).
 `PresaccadeSession` still picks between fixed `_TEST`/`_REAL` trial-count
-constant pairs in `include/experiment/constants.py`; `ExperimentSession`'s
-real block is open-ended instead (see the open-loop-timing gotcha below) and
-only its practice block and RT-test use `_TEST`/`_REAL`-paired counts.
+constant pairs in `include/experiment/constants.py`; `ExperimentSession` uses `SACCADE_FIXED_TRIALS_*` (constant stimuli), and
+its practice block and RT-test use `_TEST`/`_REAL`-paired counts.
 
 **Gaze tracking is behind an interface.** `include/eye_tracking/interfaces.py`
 defines `GazeSource`; `ExperimentSession` only ever talks to that interface.
@@ -327,8 +290,8 @@ RT-test and main trials, and `TutorialSession`'s practice trials
 (three call sites total). `is_valid_for_saccadic_analysis()`
 (`src/experiment/scoring.py`) is the single `flash_during_saccade`
 validity gate both the live ZEST update and `results_graph.py` apply.
-`average_ms()` (`trial_mechanics.py`) is the shared "mean, or a fallback if
-empty" used by both classes' reaction-time averaging. If you're about to
+`RollingReactionTime` (`trial_mechanics.py`) is the one reaction-time average and
+`CalibrationLatch` (`space_input.py`) the one calibration-press latch. If you're about to
 hand-roll any of these again in a new call site, use the existing one
 instead — that duplication is exactly what was cleaned up.
 
@@ -401,9 +364,9 @@ samples with their *capture* time (`device_unix_s + offset`, moved onto the
 `timebase.now()` perf_counter timeline; arrival time only as a fallback, strictly increasing, clamped
 to <=150 ms latency) and the session then must not subtract `gaze_latency_ms` again
 (`timestamps_are_capture_time`). The offset is re-estimated every 60 s in the background (unverified on
-hardware whether `estimate_time_offset` is safe while streaming). Latency was ~18 ms in standalone scripts but 90-100 ms in the full sessions of Oct 2026 - check `gaze_quality.latency_ms_median`. The scene
+hardware whether `estimate_time_offset` is safe while streaming). Standalone scripts measure ~18 ms but full sessions show 90-100 ms (open problem above) - check `gaze_quality.latency_ms_median`. The scene
 camera is head-mounted, so head movement shifts gaze x with no eye movement -
-calibration assumes a still head (chin rest); the AprilTag/screen-mapping head compensation was removed. The Neon source has
+calibration assumes a still head (chin rest). (Screen-marker / AprilTag head compensation was removed in Oct 2026.) The Neon source has
 no `latest_frame()`, so the debug camera preview and video recording are
 skipped for it (`has_frames = hasattr(gaze, "latest_frame")` in
 `run_saccade_phase`). `NEON_DEVICE_ADDRESS` in
@@ -456,7 +419,7 @@ simulator (latency 16 ms) gives ~94% valid flashes at 110 ms saccades but ~0% at
 0.08 -> 0.05 for the wider layout. The older mode, `"scheduled"` (below), is kept and tested via
 the `scheduled_flash_mode` fixture (`tests/ai-tests/conftest.py`). `SHARP_GO_CUE` shows the
 dot/cross instantly (no 0.4 s fade) in the trials.
-Shipped saccade-phase setup (branch `feature/saccade-flash-analysis`, built for judging flashes
+Shipped saccade-phase setup (built for judging flashes
 after the fact because the live check is useless at ~90 ms gaze latency): scheduled flashes at
 average RT + one of `TIMING_OFFSETS_MS` (-80..+80 ms) + a random `TIMING_JITTER_MS` (+/-10 ms)
 bounce (logged in `scheduled_delay_ms`), fixed probe contrasts `SACCADE_FIXED_CONTRASTS`
@@ -468,27 +431,15 @@ were seen, with a possible dip within +-50 ms of onset, n=28). `run_experiment.m
 first test of the receiver-starvation hypothesis above.
 
 **Saccade-phase flash timing is open-loop (the `"scheduled"` mode), not gaze-contingent, and
-`flash_during_saccade` is a post-hoc window check.** `ExperimentSession`
-first runs a reaction-time test (`Phase.RT_TEST_FOREPERIOD`/`RT_TEST_ACTIVE`)
-to measure the participant's own beep-to-saccade-onset latency, then
-schedules each trial's flash at a fixed delay — `avg_reaction_time_ms +` one
-of `TIMING_OFFSETS_MS` — from target onset, entirely independent of the
-real-time gaze classifier (which keeps running, but now only to measure
-`reaction_latency_ms` and to compute `flash_during_saccade` after the fact:
-whether the scheduled flash time fell inside `[_onset_detector.since,
-_target_landed_since]`). This trades real-time detection lag as a
-constraint on flash precision for a structurally common failure mode — the
-scheduled flash simply missing the actual saccade window — so
-`flash_during_saccade` is `True`/`False`/`None` (`None` when landing was
-never confirmed, not merely invalid), and both `session.py`'s live
-`ZestStaircase` update *and* `results_graph.py`'s analysis now require it to
-be exactly `True` (not just "not `False`") — the two intentionally stay in
-lockstep here, unlike a lot of live-vs-analysis distinctions elsewhere in
-this codebase. Total saccade-phase trial count is no longer fixed either:
-`_should_stop_main_block()` runs until `ZestStaircase.credible_interval`
-narrows enough (with a minimum valid-trial floor and a max-trial safety
-cap), so `NUM_TRIALS_PER_PHASE_TEST`/`_REAL` only apply to
-`PresaccadeSession` now, not `ExperimentSession`'s real block.
+`flash_during_saccade` is a post-hoc window check.** `ExperimentSession` schedules each trial's flash at a fixed delay
+(`avg_reaction_time_ms +` one of `TIMING_OFFSETS_MS`) from target onset, independent of the real-time gaze classifier. The
+classifier keeps running only to measure `reaction_latency_ms` and to compute `flash_during_saccade` after the fact (whether
+the scheduled flash time fell inside `[_onset_detector.since, _target_landed_since]`). The cost is a structurally common
+failure - the flash simply missing the saccade window - so `flash_during_saccade` is `True`/`False`/`None` (`None` when
+landing was never confirmed), and both the live `ZestStaircase` update *and* `results_graph.py` require exactly `True`
+(the two intentionally stay in lockstep). With the shipped constant stimuli the block ends by count
+(`SACCADE_FIXED_TRIALS_*`); with `SACCADE_FIXED_CONTRASTS = ()` (staircase) `_should_stop_main_block()` runs until the ZEST
+credible interval narrows (minimum valid-trial floor, `MAX_SACCADE_TRIALS_*` cap).
 
 **Saccade onset is a displacement rule, not a zone crossing.** `OnsetDetector` fires when
 `GazeSample.position` is more than `SACCADE_ONSET_DISPLACEMENT` (0.08, position units 0=dot..1=cross)
@@ -521,10 +472,8 @@ before an already-visible target. Same constant values, different meaning;
 don't assume its presence means the original paper's warning-tone
 methodology is back.
 
-**Trials are space-gated; there is no pausing.** Each trial sits in an `AWAITING_SPACE` phase (`RT_TEST_AWAITING_SPACE` /
-`PRACTICE_AWAITING_SPACE` in the other sessions) until SPACE; the foreperiod timer (500-1000 ms) starts on the press, so
-the participant's own pace is the break. Pausing, the pause menu, "Return and Recalibrate", scheduled rest breaks and the session
-cap were all removed. `PausableClock` is kept only as the injected time source (its name is historical; it no longer pauses).
+**`PausableClock` is just the injected time source** (`pausable_clock.py`; the name is historical: pausing, the pause menu,
+rest breaks, recalibration and the session cap were removed). Tests/simulation substitute a controlled clock.
 
 **`cv2.VideoWriter` fails silently, not loudly.** `VideoRecorder`
 (`src/eye_tracking/video_recorder.py`, opt-in via the startup dialog's
