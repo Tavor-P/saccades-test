@@ -1,4 +1,4 @@
-"""Small shared building blocks for session logic: zone_for, OnsetDetector (THE saccade-onset debounce - reuse it, don't hand-roll), ShuffledBag, average_ms."""
+"""Small shared building blocks for session logic: zone_for, OnsetDetector (THE saccade-onset debounce - reuse it, don't hand-roll), ShuffledBag, RollingReactionTime."""
 
 import random
 import statistics
@@ -44,17 +44,6 @@ def line_position(reference: tuple[float, float], side: Side) -> tuple[float, fl
     The renderer draws the line the full screen width; x only records which target it belongs to."""
     x, y = reference
     return x, y - LINE_OFFSET_HEIGHT_UNITS if side is Side.ABOVE else y + LINE_OFFSET_HEIGHT_UNITS
-
-
-def average_ms(samples: Sequence[float], default: float) -> float:
-    """Mean of `samples`, or `default` if empty - shared by the reaction-time
-    test's initial average (ExperimentSession and TutorialSession both fall
-    back to DEFAULT_REACTION_TIME_MS if every attempt timed out) and
-    ExperimentSession's in-session rolling-average recompute (falls back to
-    the current average unchanged if the whole window was timeouts), so
-    "empty means fall back to X" can't drift between call sites duplicating
-    it independently."""
-    return sum(samples) / len(samples) if samples else default
 
 
 def robust_kept_ms(samples: Sequence[float]) -> list[float]:

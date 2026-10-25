@@ -47,10 +47,8 @@ from src.experiment.settings import (
     DEFAULT_SACCADE_CONTRAST_MIN_PERCENT,
     load_contrast_floor_percent,
     resolve_saccade_contrasts,
-    validate_contrast_floor_percent,
 )
 from src.experiment.tutorial_session import TutorialSession
-from src import timebase
 
 FADE_DURATION_S = 0.4  # dot/cross opacity fade; softens onset so it doesn't trigger a reflexive saccade
 
@@ -685,17 +683,6 @@ def _camera_labels(camera_indices: list[int]) -> list[str]:
 def _resolve_camera_choice(camera_indices: list[int], camera_labels: list[str], selected_label: str) -> tuple[int, str]:
     position = camera_labels.index(selected_label)
     return camera_indices[position], camera_labels[position]
-
-
-def _resolve_contrast_floor_percent(raw: str, default_percent: float) -> float:
-    """Falls back to the dashboard-configured default if the dialog's field
-    was left blank/non-numeric, or set outside ZEST's own renderable range
-    (see settings.validate_contrast_floor_percent) - a typo in a text field
-    shouldn't be able to crash the whole session."""
-    try:
-        return validate_contrast_floor_percent(float(raw))
-    except (TypeError, ValueError):
-        return default_percent
 
 
 def _resolve_show_gaze_indicator(selected_label: str) -> bool:

@@ -31,7 +31,7 @@ def test_neon_video_recorder_writes_video_and_per_frame_metadata(tmp_path):
 def test_retime_makes_video_duration_match_real_time(tmp_path):
     import cv2
 
-    from src.eye_tracking.latency_test import _retime_video
+    from src.eye_tracking.latency_test import retime_video
 
     path = tmp_path / "v.mp4"
     writer = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*"mp4v"), 60.0, (64, 48))  # opened at a wrong fps
@@ -39,7 +39,7 @@ def test_retime_makes_video_duration_match_real_time(tmp_path):
         writer.write(np.full((48, 64, 3), i, np.uint8))
     writer.release()
 
-    _retime_video(path, 60, 2.0)  # 60 frames actually spanned 2 real seconds -> 30 fps
+    retime_video(path, 60, 2.0)  # 60 frames actually spanned 2 real seconds -> 30 fps
 
     capture = cv2.VideoCapture(str(path))
     assert capture.get(cv2.CAP_PROP_FPS) == 30.0

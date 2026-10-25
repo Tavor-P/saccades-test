@@ -167,12 +167,6 @@ class ResultLogger:
         }
         self._write_metadata()
 
-    def set_display_refresh_hz(self, refresh_hz: float | None) -> None:
-        """Measured monitor refresh rate (e.g. win.getActualFrameRate()), if the
-        runner has one - frame-counted flash durations depend on it."""
-        self._metadata["display_refresh_hz"] = refresh_hz
-        self._write_metadata()
-
     def set_phase_summary(self, phase: str, summary: dict) -> None:
         """Final numbers for one phase ("saccade" / "presaccade"): threshold
         estimate, credible interval, trial counts, whether the estimate sits at

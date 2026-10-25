@@ -292,14 +292,12 @@ def test_meta_has_provenance_and_constants_snapshot(tmp_path, monkeypatch):
     assert meta["display_refresh_hz"] is None
 
 
-def test_meta_records_refresh_rate_and_phase_summaries(tmp_path, monkeypatch):
+def test_meta_records_phase_summaries(tmp_path, monkeypatch):
     monkeypatch.setattr(logger_module, "DATA_DIR", tmp_path)
     log = ResultLogger("p1")
-    log.set_display_refresh_hz(59.9)
     log.set_phase_summary("saccade", {"threshold_estimate": 0.1})
     log.close()
     meta = json.loads(next(tmp_path.glob("results_*_meta.json")).read_text())
-    assert meta["display_refresh_hz"] == 59.9
     assert meta["phase_summaries"]["saccade"]["threshold_estimate"] == 0.1
 
 

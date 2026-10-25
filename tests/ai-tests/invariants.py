@@ -10,7 +10,6 @@ When an invariant fails, first decide whether the *invariant* is wrong or the
 import math
 
 from include.experiment.constants import (
-    GRATING_DURATION_FRAMES,
     MAX_SACCADE_TRIALS_TEST,
     RESPONSE_WINDOW_MS,
     SACCADE_ONSET_STABILITY_MS,

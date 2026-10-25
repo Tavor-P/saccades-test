@@ -46,20 +46,6 @@ def measure_anchor() -> Anchor:
 _anchor = measure_anchor()
 
 
-def reanchor() -> None:
-    """Re-pair the clocks (they drift apart by tens of ppm); for long-lived sessions."""
-    global _anchor
-    _anchor = measure_anchor()
-
-
-def perf_to_unix(perf_s: float) -> float:
-    return _anchor.to_unix(perf_s)
-
-
-def unix_to_perf(unix_s: float) -> float:
-    return _anchor.to_perf(unix_s)
-
-
 def unix_now() -> float:
     """Wall-clock seconds since the epoch, with now()'s resolution."""
     return _anchor.to_unix(_clock())

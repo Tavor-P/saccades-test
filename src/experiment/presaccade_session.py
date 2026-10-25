@@ -123,7 +123,6 @@ class PresaccadeSession:
     def _clear_trial_state(self) -> None:
         self._foreperiod_start = 0.0
         self._foreperiod_duration = 0.0
-        self._flash_triggered_at = 0.0
         self._grating_shown_at: float | None = None
         self._grating_visible = False
         self._grating_frames_remaining = 0
@@ -208,7 +207,6 @@ class PresaccadeSession:
                 self.gated_trials += 1
                 self.gate_timeouts += self._gate.timed_out
             trial = self._current_trial()
-            self._flash_triggered_at = now
             self._response_window_open = True
             self._response_deadline = now + RESPONSE_WINDOW_MS / 1000
             if trial.grating_shown:

@@ -41,8 +41,6 @@ from include.eye_tracking.constants import NEON_DEVICE_ADDRESS, NEON_DEVICE_PORT
 from src.eye_tracking.neon_video_recorder import SceneRecorderProcess, retime_video
 from src import timebase
 
-_retime_video = retime_video  # historical name
-
 JUMP_INTERVAL_S = (1.2, 2.0)
 DOT_X = 0.35  # fraction of window width from center
 
