@@ -348,7 +348,7 @@ class TutorialSession:
     # -- rendering -------------------------------------------------------------
 
     _QUIZ_TEXT = "Lines going up-and-down: press UP or DOWN. Side-to-side: press LEFT or RIGHT."
-    _PRACTICE_INTRO = "Press SPACE, look at the dot, then at the cross. Then press an arrow key."
+    _PRACTICE_INTRO = "Press SPACE, look at the dot, then the other dot. Then press an arrow key."
 
     def _instructions(self) -> str:
         if self._phase is Phase.WAITING_TO_START:
@@ -362,7 +362,7 @@ class TutorialSession:
             return {
                 Phase.CALIBRATE_LEFT: "Look at the dot, then press SPACE.",
                 Phase.CALIBRATE_CENTER: "Look at the middle, then press SPACE.",
-                Phase.CALIBRATE_RIGHT: "Look at the cross, then press SPACE.",
+                Phase.CALIBRATE_RIGHT: "Look at the other dot, then press SPACE.",
             }[self._phase]
         if self._phase is Phase.QUIZ:
             return self._QUIZ_TEXT
