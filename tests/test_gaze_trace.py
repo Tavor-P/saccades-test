@@ -146,48 +146,6 @@ def test_neon_source_can_record_a_trace_that_replays(tmp_path):
     source.stop()  # idempotent
 
 
-def test_screen_marker_backend_records_a_trace_that_replays_to_the_same_zones(tmp_path):
-    """Regression: build_gaze_source() used to pass trace_path only to the plain Neon source, so the
-    default screen-marker backend silently recorded no trace."""
-    from src.eye_tracking.gaze_factory import BACKEND_NEON_SCREEN, build_gaze_source
-    from src.eye_tracking.screen_gaze_mapper import ScreenGaze
-
-    path = tmp_path / "screen_trace.csv"
-    source = build_gaze_source(BACKEND_NEON_SCREEN, trace_path=path, screen_size=(1920, 1080))
-    source._device = SimpleNamespace(close=lambda: None)
-
-    class _Mapper:
-        result = None
-
-        def map_gaze(self, datum):
-            return self.result
-
-    source._screen_mapper = mapper = _Mapper()
-    live = []
-    for i, screen_x in enumerate([960.0, 960.0, 1500.0, None, 300.0]):  # centre, centre, right, lost, left
-        mapper.result = ScreenGaze(screen_x, 540.0, 0.01) if screen_x is not None else None
-        source._ingest_screen(SimpleNamespace(x=800.0, y=600.0, worn=True, timestamp_unix_seconds=1000.0 + i * 0.005))
-        live.append(source.latest_sample())
-    source.stop()
-
-    rows = load_trace(path)
-    assert len(rows) == 5
-    assert [r.x_px is None for r in rows] == [False, False, False, True, False]  # the lost sample has no x
-
-    # The 5 samples were ingested within one tick of the Windows clock (~15 ms), so they share an
-    # arrival time; space them out so the replay delivers them one per poll.
-    rows = [row._replace(t_s=i * 0.01) for i, row in enumerate(rows)]
-    clock = _Clock()
-    replay = ReplayGazeSource(rows, time_fn=clock)
-    replay.start()
-    replayed = []
-    for row in rows:
-        clock.t = 100.0 + row.t_s + 1e-6
-        replayed.append(replay.latest_sample())
-    assert [s.zone for s in replayed] == [s.zone for s in live]
-    assert [s.face_found for s in replayed] == [False if s.ratio is None else True for s in live]
-
-
 def test_replay_stamps_samples_with_smooth_capture_times_before_arrival():
     """The recorded trace's arrival stamps are quantised to 15.6 ms (many rows share one t_s); the replayed samples are
     stamped from the phone's device timestamps instead: ~5 ms apart, strictly increasing, never after their arrival."""

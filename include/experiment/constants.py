@@ -272,17 +272,17 @@ CONTROL_OFFSETS_MS = (400, 500)
 # the saccade phase: it only learns from flashes the live check says landed in the saccade, and
 # with the current gaze latency (~90 ms) almost none do, so it never adapts. Instead every flash
 # is judged afterwards from the raw gaze trace (accuracy vs flash time relative to saccade
-# onset). The first values (3% and 6%, picked from the ~1.3% FOVEAL baseline) were nearly
-# invisible in a real session: the flash is at screen centre, ~15 deg off to the side while the
-# eye sits on the dot/cross, so the participant reported seeing nothing (19 of 26 flashes unanswered,
-# only 5/15 correct even far from any saccade). 20/40/80% should be clearly visible when fixating;
-# lower them once a fixating control (flashes far from onset) shows where the peripheral threshold
-# is. () = back to the staircase.
+# onset). Line-stimulus defaults 2/4/6 %: an EDUCATED GUESS, not a measurement. The line sits next to the
+# saccade target and is much easier to see than the old off-centre grating: a Test-mode run at 10/15/20 % was
+# at ceiling (11/11 correct at fixation, 18/22 overall), leaving no headroom to see suppression, and the old
+# foveal grating threshold was ~1.3 %. Re-pilot on glasses and adjust in the startup dialog. The 8-bit
+# display renders ~2.5 / 5 / 7.6 grey steps at the line's peak for 2 / 4 / 6 %, so levels are coarse; the
+# hardware floor (HARDWARE_CONTRAST_FLOOR, 0.78 %) still allows them. () = back to the staircase.
 # The startup dialog's "Saccade contrast min/max (%)" fields (defaults: the ends of the tuple below)
 # rebuild it per session as SACCADE_CONTRAST_LEVELS evenly spaced values between them (see
 # src/experiment/settings.py); 1 level or min == max gives a single contrast.
 SACCADE_CONTRAST_LEVELS = 3
-SACCADE_FIXED_CONTRASTS = (0.10, 0.15, 0.20)
+SACCADE_FIXED_CONTRASTS = (0.02, 0.04, 0.06)
 # Number of main-block saccade trials in that mode (it stops by count, not by staircase width):
 # ~30 % of flashes should land near the saccade, so 150 trials give ~50 usable flashes.
 SACCADE_FIXED_TRIALS_TEST = 30

@@ -35,7 +35,7 @@ TRACE_FIELDS = ["t_s", "device_unix_s", "x_px", "worn"]
 class TraceRow(NamedTuple):
     t_s: float  # PC arrival time (timebase.now(), perf_counter), seconds
     device_unix_s: float | None  # the phone's capture timestamp, if known
-    x_px: float | None  # scene-camera gaze x in pixels; None/NaN when unusable
+    x_px: float | None  # scene-camera gaze x in pixels (old screen-mapped sessions: screen ratio x NEON_SCENE_WIDTH); None/NaN when unusable
     worn: bool
 
 
