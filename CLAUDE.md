@@ -77,6 +77,8 @@ fixed saccade-phase contrasts 4/6/8 % (line branch; guess) (startup dialog "Sacc
   the next flash already uses it). In the simulator it is statistically indistinguishable from the old
   per-completed-trial rule on the share of flashes that land in the saccade; it only helps against a fixed 230 ms
   schedule when the participant's RT drifts. Simulation only.
+- This is the line-stimulus version (flash = a thin line above/below the target dot, answer UP/DOWN); default saccade
+  contrasts are now 4/6/8 % (10/15/20 % was at ceiling for the line). Not yet run on glasses.
 - Screen tracking / AprilTag head compensation removed: plain Neon, still head (chin rest).
 - Captions say 'dot' (or 'other dot'), not 'cross': both symbols are dots.
 - Simulator realism: `ParticipantProfile` reaction-time fields (ex-Gaussian tail, drift, wave, AR(1), anticipations,
