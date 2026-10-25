@@ -24,6 +24,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from include.eye_tracking.constants import NEON_SCENE_WIDTH
+from src.experiment.flash_gates import (
+    EXCLUDED,
+    FIXATION,
+    FIXATION_EXCLUSION_MS,
+    SACCADE,
+    classify_flashes,
+    summarize_gates,
+)
 
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 
@@ -61,6 +69,7 @@ class Flash:
     contrast: float
     orientation: str
     outcome: str  # correct | incorrect | miss
+    go_cue: float | None = None  # PC unix seconds the trial's target appeared (flash time minus its scheduled delay)
 
     @property
     def correct(self) -> bool:
@@ -103,13 +112,16 @@ def load_flashes(path: Path) -> list[Flash]:
                 continue
             if not row.get("grating_shown_at_unix_ms") or not row.get("contrast"):
                 continue
+            shown = float(row["grating_shown_at_unix_ms"]) / 1000
+            delay = row.get("scheduled_delay_ms")
             flashes.append(
                 Flash(
                     trial=int(row["trial_index"]),
-                    time=float(row["grating_shown_at_unix_ms"]) / 1000,
+                    time=shown,
                     contrast=float(row["contrast"]),
                     orientation=row.get("orientation", ""),
                     outcome=row["outcome"],
+                    go_cue=shown - float(delay) / 1000 if delay else None,
                 )
             )
     return flashes
@@ -252,6 +264,15 @@ def format_report(summary: dict, label: str = "") -> str:
     return "\n".join(lines)
 
 
+def format_gate_report(gates: dict) -> str:
+    """The pre-specified gating (src/experiment/flash_gates.py): saccade vs fixation flashes and exclusions."""
+    lines = ["Gated analysis (pre-specified criteria, not tuned on the data):"]
+    lines.append(f"  saccade flashes (eye moving fast, valid latency and amplitude): {_pct(tuple(gates[SACCADE]))}")
+    lines.append(f"  fixation flashes (>= {FIXATION_EXCLUSION_MS:.0f} ms from any saccade, tracked throughout): {_pct(tuple(gates[FIXATION]))}")
+    lines.append(f"  excluded: {gates[EXCLUDED][1]}" + "".join(f"\n    {n} x {reason}" for reason, n in gates["reasons"].items()))
+    return "\n".join(lines)
+
+
 # -- plot ----------------------------------------------------------------------------------------
 
 
@@ -345,7 +366,9 @@ def analyze(
     flashes = load_flashes(Path(f"{base}.csv"))
     placed = place_flashes(flashes, saccades, flash_delay_ms)
     summary = summarize(placed, saccades)
-    report = format_report(summary, label=f"(session {stamp})")
+    gates = classify_flashes(placed, saccades, t, x, flash_delay_ms, [p.flash.go_cue for p in placed])
+    summary["gates"] = summarize_gates(placed, gates)
+    report = format_report(summary, label=f"(session {stamp})") + "\n" + format_gate_report(summary["gates"])
 
     out_dir = Path(out_dir) if out_dir is not None else data_dir
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -353,9 +376,9 @@ def analyze(
     csv_path = out_dir / f"analysis_{stamp}_flashes.csv"
     with csv_path.open("w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow(["trial", "contrast", "orientation", "outcome", "flash_rel_onset_ms", "inside_saccade"])
-        for p in placed:
-            writer.writerow([p.flash.trial, p.flash.contrast, p.flash.orientation, p.flash.outcome, "" if p.rel_ms is None else round(p.rel_ms, 1), p.inside])
+        writer.writerow(["trial", "contrast", "orientation", "outcome", "flash_rel_onset_ms", "inside_saccade", "condition", "gate_reason"])
+        for p, g in zip(placed, gates):
+            writer.writerow([p.flash.trial, p.flash.contrast, p.flash.orientation, p.flash.outcome, "" if p.rel_ms is None else round(p.rel_ms, 1), p.inside, g.condition, g.reason])
     return {"summary": summary, "report": report, "png": png, "csv": csv_path}
 
 

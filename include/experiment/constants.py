@@ -242,6 +242,14 @@ TIMING_OFFSETS_MS = (-80, -60, -40, -20, 0, 20, 40, 60, 80)
 # The jitter is part of the logged scheduled_delay_ms; timing_offset_ms stays the nominal draw.
 # 0 disables it.
 TIMING_JITTER_MS = 10
+# Fixation-control flashes (scheduled mode): extra offsets, drawn from the same shuffled bag as
+# TIMING_OFFSETS_MS, that fire this long AFTER the average reaction time - by then the eye has landed
+# (typical reaction ~250 ms + saccade ~75 ms, so +400 ms is well past it) and rests on the target.
+# The flash is at the same screen position, contrast and retinal location as the saccade-phase
+# flashes, so accuracy here is the like-for-like fixation baseline for the suppression index (the
+# separate foveal baseline phase is not). Two of eleven offsets are controls, ~18 % of trials.
+# () = no controls.
+CONTROL_OFFSETS_MS = (400, 500)
 
 # Fixed probe contrasts for the saccade phase (method of constant stimuli), drawn without
 # repeats like the timing offsets. With them the live ZEST staircase is NOT used or updated in
