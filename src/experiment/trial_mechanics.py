@@ -25,7 +25,7 @@ LEFT_POSITION, CENTER_POSITION, RIGHT_POSITION = 0.0, 0.5, 1.0
 def zone_for(target: Target) -> GazeZone:
     """Which GazeZone a fixation on `target` counts as - the dot is always
     the left-hand target, the cross always the right, in both the real
-    saccade trials and the tutorial's gaze-practice/dress-rehearsal stages."""
+    saccade trials and the tutorial's practice trials."""
     return GazeZone.LEFT if target is Target.DOT else GazeZone.RIGHT
 
 

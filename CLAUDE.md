@@ -102,7 +102,7 @@ Paths in this section are checked by `tests/test_docs.py` - keep them real.
 | `include/eye_tracking/types.py` | `GazeZone`, `GazeSample` |
 | `src/experiment/session.py` | `ExperimentSession`: the saccade phase state machine (the core logic) |
 | `src/experiment/presaccade_session.py` | `PresaccadeSession`: baseline (fixation) phase |
-| `src/experiment/tutorial_session.py` | `TutorialSession`: narrated first-timer on-ramp |
+| `src/experiment/tutorial_session.py` | `TutorialSession`: narrated first-timer on-ramp (calibration -> how-to-answer quiz -> 8 practice trials that yield the first reaction-time samples) |
 | `src/experiment/run_experiment.py` | entry point + PsychoPy rendering; the only PsychoPy-dependent module |
 | `src/experiment/scoring.py` | `score_outcome`, `is_valid_for_saccadic_analysis` (the validity gate) |
 | `src/experiment/trial_mechanics.py` | `OnsetDetector` (displacement rule), `ShuffledBag`, `zone_for`, `average_ms`, `robust_average_ms` (shared helpers; the robust one drops anticipations/outliers then takes the median) |
@@ -264,8 +264,8 @@ or IPC with the experiment, just shared files on disk.
 **Shared logic lives in `trial_mechanics.py`/`scoring.py`, not copy-pasted.**
 `OnsetDetector` (`src/experiment/trial_mechanics.py`) is the one saccade-
 onset debounce implementation used everywhere it's needed — `ExperimentSession`'s
-RT-test and main trials, and `TutorialSession`'s scoped-down mirrors of
-both (four call sites total). `is_valid_for_saccadic_analysis()`
+RT-test and main trials, and `TutorialSession`'s practice trials
+(three call sites total). `is_valid_for_saccadic_analysis()`
 (`src/experiment/scoring.py`) is the single `flash_during_saccade`
 validity gate both the live ZEST update and `results_graph.py` apply.
 `average_ms()` (`trial_mechanics.py`) is the shared "mean, or a fallback if
@@ -375,10 +375,16 @@ phases.** `run_tutorial_phase` in `run_experiment.py` withholds all
 key/tick forwarding while `narrator.is_speaking` is true, so a fast
 participant cannot skip ahead mid-narration — real saccade/baseline trials
 don't have this restriction. If the tutorial ran, its
-`precomputed_calibration_ratios`/`skip_practice_trials` are threaded into
-`run_saccade_phase` so the saccade phase skips re-calibrating and skips the
-practice/dress-rehearsal stage — this coupling isn't visible from
-`session.py` alone.
+`precomputed_calibration_ratios` and `precomputed_rt_samples_ms`
+(`TutorialSession.rt_samples_ms`: one saccade-onset latency per practice trial)
+are threaded into `run_saccade_phase`: the saccade phase skips calibrating,
+its own RT test and its own practice trials, seeds `_avg_reaction_time_ms` /
+`_recent_rt_ms` from those samples (`DEFAULT_REACTION_TIME_MS` if none were
+usable) and goes straight to the main trials. Without the tutorial the old
+path (calibration + RT test + practice) is the fallback. Narrated strings stay
+under ~15 words and are not repeated between screens (the narrator re-speaks
+on every text change), so the practice intro is spoken once and later trials
+have an empty caption.
 
 **Flash trigger modes (`FLASH_TRIGGER` in `include/experiment/constants.py`).** The shipped default
 is `"scheduled"` (see the grant-demo setup at the end of this paragraph); `"onset"` is gaze-triggered: no reaction-time test and no prediction - the flash fires the
@@ -459,7 +465,7 @@ don't assume its presence means the original paper's warning-tone
 methodology is back.
 
 **Trials are space-gated; there is no pausing.** Each trial sits in an `AWAITING_SPACE` phase (`RT_TEST_AWAITING_SPACE` /
-`GAZE_PRACTICE_...` / `DRESS_...` in the other sessions) until SPACE; the foreperiod timer (500-1000 ms) starts on the press, so
+`PRACTICE_AWAITING_SPACE` in the other sessions) until SPACE; the foreperiod timer (500-1000 ms) starts on the press, so
 the participant's own pace is the break. Pausing, the pause menu, "Return and Recalibrate", scheduled rest breaks and the session
 cap were all removed. `PausableClock` is kept only as the injected time source (its name is historical; it no longer pauses).
 

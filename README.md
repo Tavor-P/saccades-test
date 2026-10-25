@@ -43,7 +43,7 @@ in either mode.
 Each phase's flow:
 - **Baseline (no eye movement)**: a fixed 25 trials (after a few practice
   trials), fixating the center the whole time.
-- **Saccade phase**: calibration (look at each of 3 targets in turn), then a
+- **Saccade phase** (without the tutorial): calibration (look at each of 3 targets in turn), then a
   short reaction-time test (a beep plays, look at the target that just
   appeared, as fast as you can), then a few practice trials, then the real
   trials. The real trials aren't a fixed count — the session keeps going
@@ -51,10 +51,12 @@ Each phase's flow:
   (or hits a safety cap), so how long this phase takes varies session to
   session.
 
-If you ran the tutorial, it walks through calibration, the response-key
-mapping, gaze practice, its own short reaction-time test, and a dress
-rehearsal before the real session starts — the saccade phase then reuses
-that calibration instead of repeating it.
+If you ran the tutorial, it walks through calibration, how to answer with
+the arrow keys (3 correct in a row), and 8 practice trials that look exactly
+like the real ones (press SPACE, look at the dot, then the cross, answer the
+flash). The practice trials also measure your reaction time, so the saccade
+phase reuses that calibration and reaction time and starts the real trials
+right away, with no separate reaction-time test or extra practice.
 
 Both phases end in a graph comparing the baseline and saccade results.
 

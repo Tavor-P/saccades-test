@@ -837,3 +837,66 @@ def test_hide_caption_only_for_main_block_trials_not_calibration_rt_or_practice(
     assert session.render_state()["hide_caption"] is True
     session._phase = Phase.COMPLETE
     assert session.render_state()["hide_caption"] is False  # end-of-phase message stays visible
+
+
+# -- reaction times seeded by the tutorial's practice trials ------------------------
+
+
+def _seeded_session(fake_gaze, samples, **kwargs) -> ExperimentSession:
+    return ExperimentSession(
+        fake_gaze,
+        logger=_NullLogger(),
+        clock=PausableClock(),
+        test_mode=True,
+        precomputed_calibration_ratios=(0.3, 0.5, 0.7),
+        precomputed_rt_samples_ms=samples,
+        **kwargs,
+    )
+
+
+def test_seeded_session_skips_rt_test_and_practice_and_uses_the_seeded_average(fake_gaze):
+    samples = [170.0, 180.0, 190.0, 200.0]
+    session = _seeded_session(fake_gaze, samples)
+    assert session._practice_trials == []  # seeded implies no practice of its own
+
+    session.on_space()  # WAITING_TO_START -> straight to the first main trial
+    assert session.render_state()["hud"]["phase"] == "AWAITING_SPACE"
+    assert not session._current_trial_spec.practice
+    assert session._avg_reaction_time_ms == pytest.approx(185.0)
+    assert list(session._recent_rt_ms) == samples
+    assert session._rt_test_attempt == 0 and not any(r.phase == "rt_test" for r in session.results)
+
+
+def test_seeded_session_with_too_few_samples_falls_back_to_the_default(fake_gaze):
+    from include.experiment.constants import DEFAULT_REACTION_TIME_MS
+
+    session = _seeded_session(fake_gaze, [])  # the tutorial measured nothing usable
+    session.on_space()
+    assert session.render_state()["hud"]["phase"] == "AWAITING_SPACE"
+    assert session._avg_reaction_time_ms == pytest.approx(DEFAULT_REACTION_TIME_MS)
+
+    anticipations_only = _seeded_session(fake_gaze, [40.0, 60.0])  # below RT_MIN_PLAUSIBLE_MS
+    assert anticipations_only._avg_reaction_time_ms == pytest.approx(DEFAULT_REACTION_TIME_MS)
+
+
+def test_seeded_session_schedules_its_first_flash_from_the_seeded_average(fake_gaze, fake_time):
+    session = _seeded_session(fake_gaze, [200.0, 200.0, 200.0])
+    session.on_space()
+    session.on_space()  # AWAITING_SPACE -> FOREPERIOD
+    fake_time(FOREPERIOD_MAX_MS / 1000 + 0.1)
+    session.tick()
+    assert session.render_state()["hud"]["phase"] == "TRIAL_ACTIVE"
+    assert session._trial_avg_rt_ms == pytest.approx(200.0)
+
+
+def test_practice_trials_keep_a_spoken_caption_while_main_trials_hide_it(fake_gaze, fake_time):
+    # Combined behaviour of the onboarding wording and the hide_caption flag.
+    session = _make_session(fake_gaze)
+    _complete_calibration_and_rt_test(session, fake_gaze, fake_time)
+    for practice, hidden in ((True, False), (False, True)):
+        _set_single_trial(session, practice=practice)
+        for phase in (Phase.AWAITING_SPACE, Phase.FOREPERIOD, Phase.TRIAL_ACTIVE):
+            session._phase = phase
+            state = session.render_state()
+            assert state["hide_caption"] is hidden
+            assert state["instructions"]  # text exists; the runner shows/speaks it unless hidden

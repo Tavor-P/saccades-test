@@ -86,7 +86,7 @@ RESPONSE_KEYS = list(_RESPONSE_KEY_ORIENTATION)
 # whose entry is a target/cross appearing and should play the go-cue beep -
 # see phase_just_became_active/build_go_cue_tone.
 _GO_CUE_PHASES = frozenset({"TRIAL_ACTIVE", "RT_TEST_ACTIVE"})
-_TUTORIAL_GO_CUE_PHASES = frozenset({"DRESS_ACTIVE", "RT_TEST_ACTIVE"})
+_TUTORIAL_GO_CUE_PHASES = frozenset({"PRACTICE_ACTIVE"})
 
 
 def dispatch_response_keys(session, keys: list[str]) -> None:
@@ -210,7 +210,7 @@ def build_stimuli(win: visual.Window, show_hud: bool = False) -> dict:
         "start_flash": visual.Rect(
             win, width=aspect * 2 + 1, height=2, fillColor=START_FLASH_COLOR, lineColor=None, opacity=0
         ),
-        # Tutorial-only correctness feedback (quiz misses/pass, dress-rehearsal
+        # Tutorial-only correctness feedback (quiz misses/pass, practice
         # misses) - same full-screen-rect approach as start_flash, just with a
         # color chosen per-frame instead of fixed at construction.
         "feedback_flash": visual.Rect(win, width=aspect * 2 + 1, height=2, lineColor=None, opacity=0),
@@ -482,13 +482,15 @@ def run_saccade_phase(
     test_mode: bool = False,
     precomputed_calibration_ratios: tuple[float, float, float] | None = None,
     skip_practice_trials: bool = False,
+    precomputed_rt_samples_ms: list[float] | None = None,
     record_video: bool = False,
     saccade_contrasts: tuple[float, ...] | None = None,
 ) -> ExperimentSession | None:
     """Phase 2: the gaze-contingent saccade test. `precomputed_calibration_ratios`/
-    `skip_practice_trials` come from a completed TutorialSession (see main())
-    - when set, this phase reuses that calibration and its dress-rehearsal
-    stage instead of repeating both. `record_video` writes logger.video_path
+    `skip_practice_trials`/`precomputed_rt_samples_ms` come from a completed
+    TutorialSession (see main()) - when set, this phase reuses that calibration
+    and its practice reaction times instead of calibrating, running its own RT
+    test and practising again. `record_video` writes logger.video_path
     (+ a companion per-frame-timestamp CSV, see VideoRecorder) alongside the
     results CSV - only this phase, since it's the only one with a running
     camera and real (non-practice, non-tutorial) data to replay against.
@@ -513,6 +515,7 @@ def run_saccade_phase(
         test_mode=test_mode,
         precomputed_calibration_ratios=precomputed_calibration_ratios,
         skip_practice_trials=skip_practice_trials,
+        precomputed_rt_samples_ms=precomputed_rt_samples_ms,
         fixed_contrasts=saccade_contrasts,
     )
     go_cue_tone = build_go_cue_tone()
@@ -631,8 +634,8 @@ def run_tutorial_phase(
                 # At most one response key per frame - unlike the real
                 # trial phases (where a repeat is harmless: a response,
                 # once recorded, is ignored for the rest of that trial),
-                # the tutorial's demo/quiz stages advance immediately on
-                # any response key with no such guard, so an OS key-repeat
+                # the tutorial's quiz stage advances immediately on
+                # any correct key with no such guard, so an OS key-repeat
                 # event landing in the same frame as the original press
                 # could otherwise fire two stage transitions - or silently
                 # cost a quiz streak - off a single keypress.
@@ -862,6 +865,7 @@ def main() -> None:
 
     try:
         precomputed_calibration_ratios = None
+        precomputed_rt_samples_ms = None
         if run_tutorial:
             tutorial_session = run_tutorial_phase(
                 win, stimuli, narrator, camera_index=camera_index, gaze_backend=gaze_backend
@@ -869,6 +873,7 @@ def main() -> None:
             if tutorial_session is None:
                 return  # quit early
             precomputed_calibration_ratios = tutorial_session.calibration_ratios
+            precomputed_rt_samples_ms = tutorial_session.rt_samples_ms
 
         saccade_phase = partial(
             run_saccade_phase,
@@ -880,6 +885,7 @@ def main() -> None:
             test_mode=test_mode,
             precomputed_calibration_ratios=precomputed_calibration_ratios,
             skip_practice_trials=run_tutorial,
+            precomputed_rt_samples_ms=precomputed_rt_samples_ms,
             record_video=record_video,
             saccade_contrasts=saccade_contrasts,
         )
