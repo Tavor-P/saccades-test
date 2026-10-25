@@ -9,6 +9,7 @@ from enum import Enum, auto
 
 from include.eye_tracking.interfaces import GazeSource
 from include.experiment.constants import (
+    CONTROL_OFFSETS_MS,
     CALIBRATION_ROUNDS,
     CENTER_POSITION,
     CROSS_POSITION,
@@ -157,7 +158,7 @@ class ExperimentSession:
         self._fixed_contrast_bag: ShuffledBag[float] | None = ShuffledBag(contrasts) if contrasts else None
         self._fixed_trials = SACCADE_FIXED_TRIALS_TEST if test_mode else SACCADE_FIXED_TRIALS_REAL
         self._timing_offset_bag: ShuffledBag[int] = ShuffledBag(
-            FLASH_ONSET_DELAYS_MS if self._closed_loop else TIMING_OFFSETS_MS
+            FLASH_ONSET_DELAYS_MS if self._closed_loop else TIMING_OFFSETS_MS + CONTROL_OFFSETS_MS
         )
         self._current_trial_spec: TrialSpec | None = None
 

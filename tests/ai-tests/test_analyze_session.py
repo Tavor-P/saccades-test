@@ -238,7 +238,23 @@ def test_analyze_writes_the_index_to_report_and_json(tmp_path):
     result = an.analyze(stamp, tmp_path)
     assert "suppression index" in result["report"]
     saved = json.loads(result["suppression_json"].read_text())
-    assert saved["n_saccade"] == len(flashes) and "notes" in saved
+    rows = list(csv.DictReader(result["csv"].open()))
+    assert saved["conditions_from"] == "gates" and "notes" in saved
+    assert saved["n_saccade"] == sum(r["condition"] == "saccade" for r in rows)
+    assert saved["n_fixation"] == sum(r["condition"] == "fixation" for r in rows)
+    assert "conditions from the pre-specified gates" in result["report"]
+
+
+def test_gates_decide_the_conditions_and_excluded_flashes_are_left_out():
+    from src.experiment.flash_gates import EXCLUDED, FIXATION, SACCADE, GateResult
+
+    # rel_ms says "near onset" for everything, but the gates say otherwise: they win.
+    placed = _placed(0.0, 0.1, 5, 10) + _placed(0.0, 0.1, 10, 10) + _placed(0.0, 0.1, 1, 10)
+    gates = [GateResult(SACCADE, "")] * 10 + [GateResult(FIXATION, "")] * 10 + [GateResult(EXCLUDED, "x")] * 10
+    r = an.suppression_index(placed, gates=gates)
+    assert (r["n_saccade"], r["n_fixation"], r["conditions_from"]) == (10, 10, "gates")
+    assert r["index"] == pytest.approx(0.5)
+    assert an.suppression_index(placed)["conditions_from"] == "windows"
 
 
 def test_identical_conditions_give_a_finite_ci_or_none():

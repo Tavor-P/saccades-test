@@ -114,6 +114,7 @@ Paths in this section are checked by `tests/test_docs.py` - keep them real.
 | `src/experiment/logger.py` | `ResultLogger`: CSV + `_meta.json` (git SHA, constants snapshot, per-phase threshold summary) + side-file paths |
 | `src/experiment/results_graph.py` | end-of-run comparison figure |
 | `src/experiment/analyze_session.py` | post-hoc saccade analysis: finds saccades in a session's raw gaze trace (phone capture times), places each flash against the nearest onset, writes accuracy-vs-time report + plot + per-flash CSV |
+| `src/experiment/flash_gates.py` | pre-specified post-hoc gates (Braun et al. 2021): each flash is `saccade` (eye fast at the flash, latency 100-500 ms, amplitude within 0.5-1.5x median), `fixation` (>=100 ms from any saccade, no tracking gap) or `excluded`; control flashes come from `CONTROL_OFFSETS_MS` (+400/+500 ms after the average RT, eye already landed) |
 | `src/experiment/simulation.py` | headless simulator (simulated participant, clock, gaze) |
 | `src/eye_tracking/neon_source.py` | `NeonGazeSource` (default backend): Real-Time API stream + quality stats |
 | `src/eye_tracking/neon_screen_source.py` | Neon + screen-marker backend (head-compensated gaze) |

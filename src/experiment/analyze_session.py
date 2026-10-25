@@ -24,6 +24,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from include.eye_tracking.constants import NEON_SCENE_WIDTH
+from src.experiment.flash_gates import (
+    EXCLUDED,
+    FIXATION,
+    FIXATION_EXCLUSION_MS,
+    SACCADE,
+    classify_flashes,
+    summarize_gates,
+)
 
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 
@@ -61,6 +69,7 @@ class Flash:
     contrast: float
     orientation: str
     outcome: str  # correct | incorrect | miss
+    go_cue: float | None = None  # PC unix seconds the trial's target appeared (flash time minus its scheduled delay)
 
     @property
     def correct(self) -> bool:
@@ -103,13 +112,16 @@ def load_flashes(path: Path) -> list[Flash]:
                 continue
             if not row.get("grating_shown_at_unix_ms") or not row.get("contrast"):
                 continue
+            shown = float(row["grating_shown_at_unix_ms"]) / 1000
+            delay = row.get("scheduled_delay_ms")
             flashes.append(
                 Flash(
                     trial=int(row["trial_index"]),
-                    time=float(row["grating_shown_at_unix_ms"]) / 1000,
+                    time=shown,
                     contrast=float(row["contrast"]),
                     orientation=row.get("orientation", ""),
                     outcome=row["outcome"],
+                    go_cue=shown - float(delay) / 1000 if delay else None,
                 )
             )
     return flashes
@@ -309,6 +321,7 @@ def suppression_index(
     min_accuracy_trials: int = 5,
     n_boot: int = 1000,
     seed: int = 0,
+    gates: list | None = None,
 ) -> dict:
     """Per-person saccadic suppression index from the placed flashes (see the section comment above).
 
@@ -320,18 +333,25 @@ def suppression_index(
     computed, "method" is None and "notes" says why. Never raises on sparse data."""
     near_ms = NEAR_ONSET_MS if near_ms is None else near_ms
     far_ms = FAR_MS if far_ms is None else far_ms
-    timed = [p for p in placed if p.rel_ms is not None]
-    sac = [p for p in timed if abs(p.rel_ms) < near_ms]
-    fix = [p for p in timed if abs(p.rel_ms) >= far_ms]
+    if gates is not None:
+        # Pre-specified gates (flash_gates.py) decide the conditions; excluded flashes are left out.
+        sac = [p for p, g in zip(placed, gates) if g.condition == SACCADE]
+        fix = [p for p, g in zip(placed, gates) if g.condition == FIXATION]
+        source = "gates"
+    else:
+        timed = [p for p in placed if p.rel_ms is not None]
+        sac = [p for p in timed if abs(p.rel_ms) < near_ms]
+        fix = [p for p in timed if abs(p.rel_ms) >= far_ms]
+        source = "windows"
     out = {
-        "near_ms": near_ms, "far_ms": far_ms, "n_saccade": len(sac), "n_fixation": len(fix),
+        "conditions_from": source, "near_ms": near_ms, "far_ms": far_ms, "n_saccade": len(sac), "n_fixation": len(fix),
         "correct_saccade": sum(p.flash.correct for p in sac), "correct_fixation": sum(p.flash.correct for p in fix),
         "method": None, "index": None, "ci": None, "label": "", "threshold_saccade": None, "threshold_fixation": None,
         "notes": [],
     }
     notes = out["notes"]
     if not sac or not fix:
-        notes.append(f"cannot compute: {len(sac)} flashes within {near_ms:.0f} ms of an onset, {len(fix)} at least {far_ms:.0f} ms away")
+        notes.append(f"cannot compute: {len(sac)} saccade flashes, {len(fix)} fixation flashes")
         return out
 
     # Primary: psychometric fit.
@@ -386,7 +406,9 @@ def suppression_index(
 
 
 def format_suppression(s: dict) -> str:
-    lines = [f"  suppression index (saccade = within +-{s['near_ms']:.0f} ms of onset, fixation = >= {s['far_ms']:.0f} ms away):",
+    how = ("conditions from the pre-specified gates, excluded flashes left out" if s.get("conditions_from") == "gates"
+           else f"conditions from time windows: saccade = within +-{s['near_ms']:.0f} ms of onset, fixation = >= {s['far_ms']:.0f} ms away")
+    lines = [f"  suppression index ({how}):",
              f"    trials: saccade {s['correct_saccade']}/{s['n_saccade']} correct, fixation {s['correct_fixation']}/{s['n_fixation']} correct"]
     if s["index"] is None:
         lines.append("    index: cannot be computed")
@@ -396,6 +418,15 @@ def format_suppression(s: dict) -> str:
         if s["threshold_saccade"] is not None:
             lines.append(f"    thresholds: saccade {100 * s['threshold_saccade']:.1f}%, fixation {100 * s['threshold_fixation']:.1f}% contrast")
     lines += [f"    note: {n}" for n in s["notes"]]
+    return "\n".join(lines)
+
+
+def format_gate_report(gates: dict) -> str:
+    """The pre-specified gating (src/experiment/flash_gates.py): saccade vs fixation flashes and exclusions."""
+    lines = ["Gated analysis (pre-specified criteria, not tuned on the data):"]
+    lines.append(f"  saccade flashes (eye moving fast, valid latency and amplitude): {_pct(tuple(gates[SACCADE]))}")
+    lines.append(f"  fixation flashes (>= {FIXATION_EXCLUSION_MS:.0f} ms from any saccade, tracked throughout): {_pct(tuple(gates[FIXATION]))}")
+    lines.append(f"  excluded: {gates[EXCLUDED][1]}" + "".join(f"\n    {n} x {reason}" for reason, n in gates["reasons"].items()))
     return "\n".join(lines)
 
 
@@ -494,10 +525,11 @@ def analyze(
     flashes = load_flashes(Path(f"{base}.csv"))
     placed = place_flashes(flashes, saccades, flash_delay_ms)
     summary = summarize(placed, saccades)
-    report = format_report(summary, label=f"(session {stamp})")
-    suppression = suppression_index(placed, near_ms, far_ms)
+    gates = classify_flashes(placed, saccades, t, x, flash_delay_ms, [p.flash.go_cue for p in placed])
+    summary["gates"] = summarize_gates(placed, gates)
+    suppression = suppression_index(placed, near_ms, far_ms, gates=gates)
     summary["suppression"] = suppression
-    report += "\n" + format_suppression(suppression)
+    report = format_report(summary, label=f"(session {stamp})") + "\n" + format_gate_report(summary["gates"]) + "\n" + format_suppression(suppression)
 
     out_dir = Path(out_dir) if out_dir is not None else data_dir
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -505,9 +537,9 @@ def analyze(
     csv_path = out_dir / f"analysis_{stamp}_flashes.csv"
     with csv_path.open("w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow(["trial", "contrast", "orientation", "outcome", "flash_rel_onset_ms", "inside_saccade"])
-        for p in placed:
-            writer.writerow([p.flash.trial, p.flash.contrast, p.flash.orientation, p.flash.outcome, "" if p.rel_ms is None else round(p.rel_ms, 1), p.inside])
+        writer.writerow(["trial", "contrast", "orientation", "outcome", "flash_rel_onset_ms", "inside_saccade", "condition", "gate_reason"])
+        for p, g in zip(placed, gates):
+            writer.writerow([p.flash.trial, p.flash.contrast, p.flash.orientation, p.flash.outcome, "" if p.rel_ms is None else round(p.rel_ms, 1), p.inside, g.condition, g.reason])
     json_path = out_dir / f"analysis_{stamp}_suppression.json"
     json_path.write_text(json.dumps(suppression, indent=2))
     return {"summary": summary, "report": report, "png": png, "csv": csv_path, "suppression_json": json_path}

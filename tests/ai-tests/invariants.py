@@ -17,6 +17,7 @@ from include.experiment.constants import (
     FLASH_ONSET_DELAYS_MS,
     PRACTICE_CONTRAST,
     SACCADE_FIXED_CONTRASTS,
+    CONTROL_OFFSETS_MS,
     TIMING_OFFSETS_MS,
     ZEST_LOG_CONTRAST_MAX,
 )
@@ -95,7 +96,7 @@ def check_session(sim: SimulationResult, max_trials_cap: int = MAX_SACCADE_TRIAL
             v.append(f"{tag}: onset_detection_lag_ms {r.onset_detection_lag_ms:.1f} not within the debounce window")
         if r.saccade_duration_ms is not None and r.saccade_duration_ms < 0:
             v.append(f"{tag}: negative saccade_duration_ms")
-        allowed_offsets = FLASH_ONSET_DELAYS_MS if sim.session._closed_loop else TIMING_OFFSETS_MS
+        allowed_offsets = FLASH_ONSET_DELAYS_MS if sim.session._closed_loop else TIMING_OFFSETS_MS + CONTROL_OFFSETS_MS
         if r.timing_offset_ms is not None and r.timing_offset_ms not in allowed_offsets:
             v.append(f"{tag}: timing_offset_ms {r.timing_offset_ms} not one of {allowed_offsets}")
         for name in ("flash_during_saccade", "tracking_ok"):
