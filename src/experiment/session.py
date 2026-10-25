@@ -85,7 +85,7 @@ _TRIAL_PHASES = (
 )
 
 
-_ANSWER_TEXT = "Press UP if the line was above the dot or cross, DOWN if below."
+_ANSWER_TEXT = "Press UP if the line was above the dot, DOWN if below."
 
 
 class ExperimentSession:
@@ -905,11 +905,11 @@ class ExperimentSession:
             return _ANSWER_TEXT
         if self._phase in (Phase.RT_TEST_AWAITING_SPACE, Phase.RT_TEST_FOREPERIOD, Phase.RT_TEST_ACTIVE):
             # Said once, before the first attempt; silent afterwards (the narrator re-speaks on every text change).
-            return "Press SPACE, look at the dot, then look at the cross when it appears." if self._rt_test_attempt == 0 else ""
+            return "Press SPACE, look at the dot, then look at the other dot when it appears." if self._rt_test_attempt == 0 else ""
         calibration_targets = {
             Phase.CALIBRATE_LEFT: "Look at the dot, then press SPACE.",
             Phase.CALIBRATE_CENTER: "Look at the middle, then press SPACE.",
-            Phase.CALIBRATE_RIGHT: "Look at the cross, then press SPACE.",
+            Phase.CALIBRATE_RIGHT: "Look at the other dot, then press SPACE.",
         }
         if self._phase in calibration_targets:
             # Only narrate round 1 of CALIBRATION_ROUNDS - by round 2 the

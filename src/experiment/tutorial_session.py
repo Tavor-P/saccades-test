@@ -347,7 +347,7 @@ class TutorialSession:
     # -- rendering -------------------------------------------------------------
 
     _QUIZ_TEXT = "Press UP if the line is above the dot, DOWN if it is below."
-    _PRACTICE_INTRO = "Press SPACE. Look at the dot, then the cross. Answer UP or DOWN."
+    _PRACTICE_INTRO = "Press SPACE. Look at the dot, then the other dot. Answer UP or DOWN."
 
     def _instructions(self) -> str:
         if self._phase is Phase.WAITING_TO_START:
@@ -361,7 +361,7 @@ class TutorialSession:
             return {
                 Phase.CALIBRATE_LEFT: "Look at the dot, then press SPACE.",
                 Phase.CALIBRATE_CENTER: "Look at the middle, then press SPACE.",
-                Phase.CALIBRATE_RIGHT: "Look at the cross, then press SPACE.",
+                Phase.CALIBRATE_RIGHT: "Look at the other dot, then press SPACE.",
             }[self._phase]
         if self._phase is Phase.QUIZ:
             return self._QUIZ_TEXT
