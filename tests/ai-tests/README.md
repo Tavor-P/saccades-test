@@ -26,6 +26,7 @@ $py = "$env:LOCALAPPDATA\Programs\PsychoPy\python.exe"
 | Change an experiment constant | `--set SACCADE_ONSET_STABILITY_MS=10` (any constant in `include/` or `src/`; a typo is an error) |
 | Compare values of a constant | `--sweep SACCADE_ONSET_STABILITY_MS=10,20,40 --seeds 5` |
 | Compare values of a participant field | `--sweep-profile tracker_latency_ms=0,16,50 --seeds 5` |
+| Realistic reaction times | `--scenario realistic` (= `ParticipantProfile.realistic()`; see below) and `--real` for full-length sessions (150 trials; Test mode stops at 30) |
 | Reproduce a run | same `--seed` (runs are deterministic) |
 
 From Python: `from sim_tools import run, sweep` (add `tests/ai-tests/` to `sys.path`), or
@@ -44,14 +45,44 @@ Constants are overridden temporarily (restored afterwards).
   This runs *later* than the true saccade onset (the eye must cross the whole source zone first,
   plus tracker latency); `--timeline` shows both.
 - `mean_onset_detection_lag_ms` - first sample outside the source zone to the debounced onset.
+- `true_rt_mean_ms`, `avg_rt_used_mean_ms`, `avg_rt_bias_ms`, `avg_rt_abs_err_ms`, `avg_rt_abs_err_vs_trial_ms` - **reaction-time ground truth**
+  (flash trials only). `true_rt_mean_ms` is the simulated participant's real mean latency at each trial (mean + drift
+  + wave + direction offset); `avg_rt_used_ms` is what the session actually scheduled the flash from. Bias = used minus
+  true mean (signed, e.g. negative when the average lags a rising drift), `abs_err` = |used - true mean| (how well the
+  average tracks the mean), `abs_err_vs_trial` = |used - this trial's actual latency| (what decides whether the flash lands;
+  dominated by the trial-to-trial SD, which no average can remove). In Python: `sim.cues` (every go-cue incl. RT test and
+  practice, as `CueRecord(t, phase, cue_index, latency_ms, true_mean_ms, kind)`; kind is normal/anticipation/lapse) and
+  `sim.trial_cues[(phase, index)]` for each logged saccade-phase row, next to `sim.flash_truth`.
 - `tracking_not_ok`, `timeouts`, `false_alarm_rate`, `zest_threshold_estimate`, `outcomes`.
+
+## Reaction-time realism
+
+By default the latency is a plain Gaussian (`reaction_ms_mean/sd`) with no memory. Each of these `ParticipantProfile`
+fields adds one real-world effect, is off at its default (default runs and seeds are bit-for-bit unchanged) and can be
+swept alone (`--sweep-profile reaction_drift_ms_per_trial=0,0.4,0.8`). A "trial" below is one go-cue (RT test, practice or
+main trial), counted from 0.
+
+| Field (default) | Effect |
+|---|---|
+| `reaction_ms_tau` (0) | exponential tail added to the Gaussian (ex-Gaussian, right-skewed). `reaction_ms_mean` stays the *mean* (Gaussian part is centred on mean - tau); total SD = sqrt(sd^2 + tau^2) |
+| `reaction_drift_ms_per_trial` (0) | linear drift of the true mean (0.4 = +40 ms over 100 trials) |
+| `reaction_wave_ms` (0), `reaction_wave_period_trials` (60) | sinusoidal fatigue/vigilance wave on the true mean |
+| `reaction_autocorr` (0) | AR(1) correlation of the deviation from the true mean between consecutive trials (variance kept) |
+| `anticipation_rate` (0), `anticipation_ms_min/max` (80/130) | per-trial chance of a premature saccade, latency uniform in that range, ignoring the mean |
+| `lapse_rate` (0), `lapse_extra_ms_min/max` (300/600) | per-trial chance of a lapse: this much extra latency on top of the normal one |
+| `reaction_dir_offset_ms` (0) | dot->cross saccades this much slower than cross->dot (split +-half, overall mean unchanged) |
+
+Preset `realistic` (scenario, or `ParticipantProfile.realistic(**overrides)`): mean 220, SD 55, tau 50 (total SD ~74),
+drift 0.4 ms/trial, autocorr 0.3, anticipation 3 %, lapse 2 %. Plausible values, not fitted to data. Draws use only the
+participant's own seeded rng, so a seed still reproduces a run. Caveat: a rolling-average window below
+`RT_AVERAGE_MIN_USABLE` (3) never leaves the default 230 ms - it is a fixed-schedule baseline, not a "last latency" rule.
 
 ## What the simulation is (and is not)
 
 The participant is a deliberately simple model (`ParticipantProfile` in
 `src/experiment/simulation.py`): smooth-step saccades, a logistic psychometric function with a
 higher threshold during the saccade, Gaussian tracker noise, fixed tracker latency, random
-dropouts. It exercises the experiment's **plumbing and timing logic**; its absolute numbers (e.g.
+dropouts, plus the optional reaction-time effects above. It exercises the experiment's **plumbing and timing logic**; its absolute numbers (e.g.
 the threshold estimate) say nothing about real people. Trust *relative* comparisons (this
 setting vs that one) more than absolute values, and confirm anything important with the real
 glasses (`tests/fixtures/neon_trace_sample.csv` + `src/eye_tracking/gaze_trace.py` replay real

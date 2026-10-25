@@ -14,7 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # project root, so `src`/`include` import
 
 from src.experiment.scoring import is_valid_for_saccadic_analysis  # noqa: E402
-from src.experiment.simulation import ParticipantProfile, SimulationResult, simulate_session  # noqa: E402
+from src.experiment.simulation import REALISTIC_RT, ParticipantProfile, SimulationResult, simulate_session  # noqa: E402
 
 # Named participant/tracker situations. Values are ParticipantProfile overrides.
 SCENARIOS: dict[str, dict] = {
@@ -25,6 +25,7 @@ SCENARIOS: dict[str, dict] = {
     "noisy_tracker": {"gaze_noise_ratio": 0.01},
     "high_latency": {"tracker_latency_ms": 100.0},
     "dropouts": {"dropout_rate_per_s": 1.0},
+    "realistic": dict(REALISTIC_RT),  # ex-Gaussian RT with drift, autocorrelation, anticipations and lapses
     "no_suppression": {"suppressed_threshold_contrast": 0.05},  # control: flash is equally visible in the saccade
 }
 
@@ -114,6 +115,9 @@ def summarize(sim: SimulationResult) -> dict:
     valid_indices = {r.index for r in valid}
     truly_in = [r for r in flashes if sim.flash_truth.get((r.phase, r.index)) is True]
     truly_in_indices = {r.index for r in truly_in}
+    # Reaction-time ground truth: how well the session's avg_rt_used_ms (what scheduled each
+    # flash) tracks the participant's true mean at that trial, and the true latency of that trial.
+    used = [(r.avg_rt_used_ms, sim.trial_cues[(r.phase, r.index)]) for r in flashes if r.avg_rt_used_ms is not None and (r.phase, r.index) in sim.trial_cues]
     return {
         "trials": len(rows),
         "session_completed": sim.session.render_state()["hud"]["phase"] == "COMPLETE",
@@ -139,28 +143,34 @@ def summarize(sim: SimulationResult) -> dict:
         "valid_precision": round(sum(r.index in truly_in_indices for r in valid) / len(valid), 3) if valid else None,
         "valid_recall": round(sum(r.index in valid_indices for r in truly_in) / len(truly_in), 3) if truly_in else None,
         "flashes_truly_in_saccade": len(truly_in),
+        "true_rt_mean_ms": _mean([c.true_mean_ms for _, c in used]),
+        "avg_rt_used_mean_ms": _mean([a for a, _ in used]),
+        "avg_rt_bias_ms": _mean([a - c.true_mean_ms for a, c in used]),  # used average minus true mean
+        "avg_rt_abs_err_ms": _mean([abs(a - c.true_mean_ms) for a, c in used]),
+        "avg_rt_abs_err_vs_trial_ms": _mean([abs(a - c.latency_ms) for a, c in used]),  # vs this trial's actual latency
     }
 
 
-def simulate(scenario: str = "default", trials: int = 30, seed: int = 0, profile: dict | None = None, constants: dict | None = None) -> SimulationResult:
+def simulate(scenario: str = "default", trials: int = 30, seed: int = 0, profile: dict | None = None, constants: dict | None = None, test_mode: bool = True) -> SimulationResult:
     """Run one simulated session (no summary) with an optional temporary constant override."""
     with override_constants(constants or {}):
-        return simulate_session(max_trials=trials, profile=make_profile(scenario, **(profile or {})), seed=seed)
+        return simulate_session(max_trials=trials, profile=make_profile(scenario, **(profile or {})), seed=seed, test_mode=test_mode)
 
 
-def run(scenario: str = "default", trials: int = 30, seed: int = 0, profile: dict | None = None, constants: dict | None = None):
+def run(scenario: str = "default", trials: int = 30, seed: int = 0, profile: dict | None = None, constants: dict | None = None, test_mode: bool = True):
     """Run one simulated session -> (SimulationResult, summary dict)."""
-    sim = simulate(scenario, trials, seed, profile, constants)
+    sim = simulate(scenario, trials, seed, profile, constants, test_mode)
     return sim, summarize(sim)
 
 
 SWEEP_METRICS = (
     "valid_flash_rate", "valid_precision", "valid_recall", "mean_reaction_latency_ms",
     "mean_onset_detection_lag_ms", "false_alarm_rate", "zest_threshold_estimate", "tracking_not_ok", "timeouts",
+    "avg_rt_bias_ms", "avg_rt_abs_err_ms", "avg_rt_abs_err_vs_trial_ms",
 )
 
 
-def sweep(name: str, values: list, scenario: str = "default", trials: int = 30, seeds: int = 5, profile: dict | None = None, constants: dict | None = None, target: str = "constant") -> list[dict]:
+def sweep(name: str, values: list, scenario: str = "default", trials: int = 30, seeds: int = 5, profile: dict | None = None, constants: dict | None = None, target: str = "constant", test_mode: bool = True) -> list[dict]:
     """Vary one constant (target='constant') or profile field (target='profile')
     over `values`, `seeds` seeds each; returns one averaged row per value."""
     rows = []
@@ -169,6 +179,6 @@ def sweep(name: str, values: list, scenario: str = "default", trials: int = 30, 
         for seed in range(seeds):
             c, p = dict(constants or {}), dict(profile or {})
             (c if target == "constant" else p)[name] = value
-            per_seed.append(run(scenario, trials, seed, p, c)[1])
+            per_seed.append(run(scenario, trials, seed, p, c, test_mode)[1])
         rows.append({name: value, "seeds": seeds, **{k: _mean([s[k] for s in per_seed], 3) for k in SWEEP_METRICS}})
     return rows

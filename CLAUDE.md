@@ -73,6 +73,15 @@ fixed saccade-phase contrasts 4/6/8 % (line branch; guess) (startup dialog "Sacc
 - HUD only in Test mode; the bottom caption is hidden and silent during real trials.
 - SPACE presses are never silently dropped (`src/experiment/space_input.py`: calibration latch, tutorial narration
   hold, per-phase ignored-press tally in the console and `_meta.json`).
+- Live rolling reaction-time average (`RollingReactionTime`, window 12, updated at every detected eye movement, so
+  the next flash already uses it). In the simulator it is statistically indistinguishable from the old
+  per-completed-trial rule on the share of flashes that land in the saccade; it only helps against a fixed 230 ms
+  schedule when the participant's RT drifts. Simulation only.
+- Screen tracking / AprilTag head compensation removed: plain Neon, still head (chin rest).
+- Captions say 'dot' (or 'other dot'), not 'cross': both symbols are dots.
+- Simulator realism: `ParticipantProfile` reaction-time fields (ex-Gaussian tail, drift, wave, AR(1), anticipations,
+  lapses, direction offset), the `realistic` scenario/preset, `run_sim.py --real`, and ground-truth latency per trial
+  (`SimulationResult.cues` / `trial_cues`, summary `avg_rt_*`); see `tests/ai-tests/README.md`.
 - None of the new behaviour above (onboarding, space-gating, SPACE latching, gates, suppression index) has been run
   in a real session on glasses yet; it is covered by the simulator and ~480 tests only.
 
