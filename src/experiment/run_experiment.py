@@ -96,16 +96,38 @@ def dispatch_response_keys(session, keys: list[str]) -> None:
             session.on_response_key(orientation)
 
 
-def narrate_if_changed(narrator: Narrator, text: str, last_spoken: str | None) -> str:
+def narrate_if_changed(narrator: Narrator, text: str, last_spoken: str | None) -> str | None:
     """Speaks `text` only if it differs from what was last spoken, returning
     the new last-spoken value for the caller to hold onto. Instructions text
     stays constant across many consecutive ticks/trials by design (see
     Session._instructions()), so speaking unconditionally every frame would
     queue the same phrase over and over - callers should call this once per
-    frame and let it decide whether anything actually needs saying."""
+    frame and let it decide whether anything actually needs saying.
+    Blank text is never spoken and does not count as "spoken" (the caption
+    keeps showing the previous text, which was already read out)."""
+    if not text:
+        return last_spoken
     if text != last_spoken:
         narrator.speak(text)
     return text
+
+
+def update_caption(
+    narrator: Narrator, caption_stim, state: dict, last_spoken: str | None, last_caption: str
+) -> tuple[str | None, str]:
+    """Per-frame caption handling shared by the three phase loops: shows the
+    caption and speaks it, in lockstep (everything drawn is also read out).
+    While state["hide_caption"] is set (the real measured trials) the caption
+    is hidden and silent, and both memories reset so the next caption that
+    appears (e.g. the end-of-phase message) is shown and spoken even if it
+    repeats an earlier string. Returns (last_spoken, last_caption)."""
+    if state.get("hide_caption"):
+        caption_stim.text = ""
+        caption_stim.opacity = 0.0
+        return None, ""
+    last_spoken = narrate_if_changed(narrator, state["instructions"], last_spoken)
+    last_caption = render_caption(caption_stim, state["instructions"], last_caption)
+    return last_spoken, last_caption
 
 
 def render_caption(caption_stim, text: str, last_caption: str) -> str:
@@ -179,10 +201,12 @@ def build_window(fullscreen: bool = True) -> visual.Window:
     return visual.Window(**kwargs)
 
 
-def build_stimuli(win: visual.Window) -> dict:
+def build_stimuli(win: visual.Window, show_hud: bool = False) -> dict:
+    """`show_hud`: draw the top-left debug text (Test mode only; apply_render_state honours it)."""
     aspect = win.size[0] / win.size[1]
     return {
         "aspect": aspect,
+        "show_hud": show_hud,
         "start_flash": visual.Rect(
             win, width=aspect * 2 + 1, height=2, fillColor=START_FLASH_COLOR, lineColor=None, opacity=0
         ),
@@ -291,11 +315,16 @@ def apply_render_state(state: dict, stimuli: dict, fade_opacities: dict, dt: flo
         if orientation is not None:
             grating.ori = _ORIENTATION_DEGREES[orientation]
 
-    hud = state["hud"]
-    stimuli["hud"].text = (
-        f"phase: {hud['phase']} | trial: {hud['trial']} | gaze: {hud['gaze_zone']} | "
-        f"face: {'yes' if hud['face_found'] else 'no'} | source: {'ok' if hud['source_available'] else 'unavailable'}"
-    )
+    # Debug text: Test mode only (stimuli["show_hud"], set in build_stimuli); never drawn in a real run.
+    if stimuli.get("show_hud"):
+        hud = state["hud"]
+        stimuli["hud"].text = (
+            f"phase: {hud['phase']} | trial: {hud['trial']} | gaze: {hud['gaze_zone']} | "
+            f"face: {'yes' if hud['face_found'] else 'no'} | source: {'ok' if hud['source_available'] else 'unavailable'}"
+        )
+        stimuli["hud"].opacity = 1.0
+    else:
+        stimuli["hud"].opacity = 0.0
 
     # Tutorial-only - absent from the other two sessions' render_state(), so
     # this stays hidden for them.
@@ -428,8 +457,9 @@ def _run_presaccade_loop(win, stimuli, logger, narrator, contrast_floor, test_mo
         if state["hud"]["phase"] == "COMPLETE" and "space" in keys:
             return session  # a space press on the results screen moves on
 
-        last_spoken_instructions = narrate_if_changed(narrator, state["instructions"], last_spoken_instructions)
-        last_caption = render_caption(stimuli["caption"], state["instructions"], last_caption)
+        last_spoken_instructions, last_caption = update_caption(
+            narrator, stimuli["caption"], state, last_spoken_instructions, last_caption
+        )
 
         dt = frame_clock.getTime()
         frame_clock.reset()
@@ -531,8 +561,9 @@ def run_saccade_phase(
                 go_cue_tone.play()
             last_phase = phase
 
-            last_spoken_instructions = narrate_if_changed(narrator, state["instructions"], last_spoken_instructions)
-            last_caption = render_caption(stimuli["caption"], state["instructions"], last_caption)
+            last_spoken_instructions, last_caption = update_caption(
+                narrator, stimuli["caption"], state, last_spoken_instructions, last_caption
+            )
 
             dt = frame_clock.getTime()
             frame_clock.reset()
@@ -622,8 +653,9 @@ def run_tutorial_phase(
                 go_cue_tone.play()
             last_phase = phase
 
-            last_spoken_instructions = narrate_if_changed(narrator, state["instructions"], last_spoken_instructions)
-            last_caption = render_caption(stimuli["caption"], state["instructions"], last_caption)
+            last_spoken_instructions, last_caption = update_caption(
+                narrator, stimuli["caption"], state, last_spoken_instructions, last_caption
+            )
 
             feedback_token = state["feedback_flash"]["token"]
             if feedback_token != last_feedback_token:
@@ -823,7 +855,7 @@ def main() -> None:
     )
     logger.set_saccade_contrasts(saccade_contrasts)
     win = build_window(fullscreen=True)
-    stimuli = build_stimuli(win)
+    stimuli = build_stimuli(win, show_hud=test_mode)
     if gaze_backend in (BACKEND_NEON_SCREEN, BACKEND_NEON_HYBRID):
         stimuli["screen_markers"] = build_marker_stims(win)
     narrator = Narrator()

@@ -60,6 +60,7 @@ Both phases end in a graph comparing the baseline and saccade results.
 
 Every instruction is spoken aloud and also captioned at the bottom of the
 screen, so you don't have to rely on catching it the first time it's said.
+During the real measured trials (after practice) the caption is hidden and silent, and the small debug text at the top-left is shown in Test mode only.
 
 ## Controls
 

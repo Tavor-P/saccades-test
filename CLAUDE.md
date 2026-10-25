@@ -368,6 +368,8 @@ render loop. `speak()` does not interrupt in-flight/queued speech, so
 callers must gate on the text actually changing (`narrate_if_changed`) or
 utterances silently queue up and drift behind what's on screen.
 
+**Caption, speech and HUD (run_experiment.py).** `update_caption()` shows the bottom caption and speaks it in lockstep (`narrate_if_changed` never speaks blank text). Sessions' `render_state()["hide_caption"]` is True during real (non-practice) main trials, in both the saccade and baseline phases: the caption is then neither drawn nor spoken. The top-left `hud` text is drawn only in Test mode (`build_stimuli(win, show_hud=test_mode)` -> `stimuli["show_hud"]`).
+
 **The first-timer tutorial blocks input while narrating, unlike real
 phases.** `run_tutorial_phase` in `run_experiment.py` withholds all
 key/tick forwarding while `narrator.is_speaking` is true, so a fast

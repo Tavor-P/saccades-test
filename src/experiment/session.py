@@ -934,6 +934,7 @@ class ExperimentSession:
 
         return {
             "instructions": self._instructions(),
+            "hide_caption": self._hide_caption(),
             "dot": {"visible": dot_visible, "x": DOT_POSITION[0], "y": DOT_POSITION[1]},
             "cross": {"visible": cross_visible, "x": CROSS_POSITION[0], "y": CROSS_POSITION[1]},
             "calibration_center": {
@@ -963,6 +964,10 @@ class ExperimentSession:
                 "trial_index": self._main_trial_counter,
             },
         }
+
+    def _hide_caption(self) -> bool:
+        """True during the real (non-practice) main-block trials: the runner then neither draws nor speaks the bottom caption."""
+        return self._phase in (Phase.AWAITING_SPACE, Phase.FOREPERIOD, Phase.TRIAL_ACTIVE) and not self._current_trial_spec.practice
 
     def _has_trial_label(self) -> bool:
         return self._phase in _TRIAL_PHASES

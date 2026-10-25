@@ -818,3 +818,22 @@ def test_space_during_the_foreperiod_does_not_restart_it(fake_gaze, fake_time):
     session.on_space()
     assert session._foreperiod_start == start and session._foreperiod_duration == duration
 
+
+
+def test_hide_caption_only_for_main_block_trials_not_calibration_rt_or_practice(fake_gaze, fake_time):
+    session = _make_session(fake_gaze)
+    assert session.render_state()["hide_caption"] is False  # WAITING_TO_START
+    _complete_calibration_and_rt_test(session, fake_gaze, fake_time)
+    _set_single_trial(session, practice=True)
+    assert session.render_state()["hide_caption"] is False  # practice FOREPERIOD
+    _enter_trial_active(session, fake_time)
+    assert session.render_state()["hide_caption"] is False  # practice TRIAL_ACTIVE
+
+    _set_single_trial(session, practice=False)
+    assert session.render_state()["hide_caption"] is True  # main FOREPERIOD
+    _enter_trial_active(session, fake_time)
+    assert session.render_state()["hide_caption"] is True  # main TRIAL_ACTIVE
+    session._phase = Phase.AWAITING_SPACE
+    assert session.render_state()["hide_caption"] is True
+    session._phase = Phase.COMPLETE
+    assert session.render_state()["hide_caption"] is False  # end-of-phase message stays visible

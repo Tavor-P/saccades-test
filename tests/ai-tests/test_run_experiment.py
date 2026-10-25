@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, Mock, patch
+﻿from unittest.mock import MagicMock, Mock, patch
 
 from include.eye_tracking.constants import CAMERA_INDEX
 from src.experiment.run_experiment import (
@@ -15,6 +15,7 @@ from src.experiment.run_experiment import (
     narrate_if_changed,
     phase_just_became_active,
     render_caption,
+    update_caption,
 )
 
 
@@ -205,3 +206,44 @@ def test_apply_render_state_still_fades_when_not_snapping():
     fades = {"dot": 0.0, "cross": 0.0, "calibration_center": 0.0}
     apply_render_state(_render_state_for_fade_test(snap=False, dot_visible=True), stimuli, fades, dt=0.016)
     assert fades["dot"] == __import__("pytest").approx(0.016 / FADE_DURATION_S)
+
+
+def test_narrate_if_changed_never_speaks_blank_text_and_keeps_last_spoken():
+    narrator = Mock()
+    assert narrate_if_changed(narrator, "", last_spoken="look at the dot") == "look at the dot"
+    assert narrate_if_changed(narrator, "", last_spoken=None) is None
+    narrator.speak.assert_not_called()
+
+
+def test_update_caption_shows_and_speaks_together():
+    narrator, stim = Mock(), Mock()
+    state = {"instructions": "Press SPACE to begin"}
+    spoken, caption = update_caption(narrator, stim, state, None, "")
+    narrator.speak.assert_called_once_with("Press SPACE to begin")
+    assert (spoken, caption, stim.text, stim.opacity) == ("Press SPACE to begin", "Press SPACE to begin", "Press SPACE to begin", 1.0)
+
+
+def test_update_caption_hidden_is_silent_and_resets_so_a_repeat_is_spoken_again():
+    narrator, stim = Mock(), Mock()
+    state = {"instructions": "Press SPACE when you are ready", "hide_caption": True}
+    spoken, caption = update_caption(narrator, stim, state, "Press SPACE when you are ready", "Press SPACE when you are ready")
+    narrator.speak.assert_not_called()
+    assert (spoken, caption, stim.opacity) == (None, "", 0.0)
+    state = {"instructions": "Press SPACE when you are ready"}
+    update_caption(narrator, stim, state, spoken, caption)
+    narrator.speak.assert_called_once_with("Press SPACE when you are ready")
+
+
+def test_apply_render_state_draws_the_hud_only_when_show_hud_is_set():
+    from src.experiment.run_experiment import apply_render_state
+
+    for show, opacity in ((True, 1.0), (False, 0.0)):
+        stimuli = {name: MagicMock() for name in ("dot", "cross", "calibration_center", "gaze_indicator", "grating", "hud", "tutorial_text")}
+        stimuli["aspect"] = 1.78
+        stimuli["show_hud"] = show
+        fades = {"dot": 0.0, "cross": 0.0, "calibration_center": 0.0}
+        apply_render_state(_render_state_for_fade_test(snap=False, dot_visible=False), stimuli, fades, dt=0.016)
+        assert stimuli["hud"].opacity == opacity
+    stimuli.pop("show_hud")  # absent flag (default) = hidden
+    apply_render_state(_render_state_for_fade_test(snap=False, dot_visible=False), stimuli, fades, dt=0.016)
+    assert stimuli["hud"].opacity == 0.0

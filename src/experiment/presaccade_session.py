@@ -283,6 +283,9 @@ class PresaccadeSession:
         trial = self._current_trial() if self._phase is not Phase.COMPLETE and self._trials else None
         return {
             "instructions": self._instructions(),
+            "hide_caption": trial is not None
+            and self._phase is not Phase.WAITING_TO_START
+            and not trial.practice,
             "dot": {"visible": False, "x": CENTER_POSITION[0], "y": CENTER_POSITION[1]},
             "cross": {"visible": False, "x": CENTER_POSITION[0], "y": CENTER_POSITION[1]},
             "grating": {

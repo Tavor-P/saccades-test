@@ -15,7 +15,7 @@ from include.experiment.constants import (
 )
 from include.experiment.types import FlashTrialSpec, Orientation
 from src.experiment.pausable_clock import PausableClock
-from src.experiment.presaccade_session import PresaccadeSession
+from src.experiment.presaccade_session import Phase, PresaccadeSession
 
 
 class _NullLogger:
@@ -253,3 +253,21 @@ def test_space_is_ignored_during_the_foreperiod(fake_time):
 def test_hud_trial_index_counts_logged_trials(fake_time):
     session = _make_session()
     assert session.render_state()["hud"]["trial_index"] == 0
+
+
+def test_hide_caption_only_for_real_trials_not_practice_or_start_or_results():
+    session = _make_session()
+    session._trials = [
+        FlashTrialSpec(index=0, grating_shown=True, orientation=Orientation.VERTICAL, practice=True),
+        FlashTrialSpec(index=1, grating_shown=True, orientation=Orientation.VERTICAL),
+    ]
+    assert session.render_state()["hide_caption"] is False  # WAITING_TO_START
+    session.on_space()
+    assert session.render_state()["hide_caption"] is False  # practice FOREPERIOD
+    session._trial_index = 1
+    session._phase = Phase.AWAITING_SPACE
+    assert session.render_state()["hide_caption"] is True
+    session._phase = Phase.FLASH_WINDOW
+    assert session.render_state()["hide_caption"] is True
+    session._phase = Phase.COMPLETE
+    assert session.render_state()["hide_caption"] is False
