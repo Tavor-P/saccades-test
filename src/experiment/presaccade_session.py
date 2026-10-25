@@ -23,6 +23,7 @@ from include.eye_tracking.types import GazeZone
 from src.experiment.logger import ResultLogger
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.scoring import score_outcome
+from src.experiment.space_input import SpaceTally
 from src.experiment.trial_factory import build_presaccade_sequence
 from src.experiment.zest import ZestStaircase
 
@@ -106,6 +107,8 @@ class PresaccadeSession:
         self.gated_trials = 0  # trials whose flash was held back at least once
         self.gate_timeouts = 0  # of those, trials that fired anyway after FIXATION_GATE_TIMEOUT_S
         self._clock = clock
+        self._space_ahead = False  # SPACE pressed after answering, before the next trial is ready
+        self.space_tally = SpaceTally(lambda: self._phase.name)
         num_trials = NUM_TRIALS_PER_PHASE_TEST if test_mode else NUM_TRIALS_PER_PHASE_REAL
         num_practice = NUM_PRACTICE_TRIALS_TEST if test_mode else NUM_PRACTICE_TRIALS_REAL
         self._trials = build_presaccade_sequence(num_trials=num_trials, num_practice=num_practice)
@@ -146,9 +149,22 @@ class PresaccadeSession:
             self._start_foreperiod()  # this press is also the first trial's go-ahead
         elif self._phase is Phase.AWAITING_SPACE:
             self._start_foreperiod()
-        # FOREPERIOD: nothing to respond to yet. FLASH_WINDOW: responses come
-        # from arrow keys (see on_response_key), not SPACE. COMPLETE: the
-        # runner is responsible for advancing past it.
+        elif self._phase is Phase.FLASH_WINDOW and self._responded:
+            # Answered already: this press starts the next trial the moment it is ready (see _deliver_space_ahead).
+            self._space_ahead = True
+        elif self._phase is not Phase.COMPLETE:
+            # FOREPERIOD: must not restart it or start the next trial. FLASH_WINDOW: responses come from arrow keys
+            # (see on_response_key). COMPLETE: the runner is responsible for advancing past it.
+            self.space_tally.record("during foreperiod" if self._phase is Phase.FOREPERIOD else "during trial")
+
+    def _deliver_space_ahead(self) -> None:
+        if not self._space_ahead or self._phase is Phase.FLASH_WINDOW:
+            return
+        self._space_ahead = False
+        if self._phase is Phase.AWAITING_SPACE:
+            self.on_space()
+        else:
+            self.space_tally.record("early press, no trial left to start")
 
     def on_response_key(self, orientation: Orientation) -> None:
         """Called when an arrow key is pressed during the flash window:
@@ -182,6 +198,7 @@ class PresaccadeSession:
             self._tick_foreperiod()
         elif self._phase is Phase.FLASH_WINDOW:
             self._tick_flash_window()
+        self._deliver_space_ahead()
 
     def _tick_foreperiod(self) -> None:
         now = self._clock.now()

@@ -43,6 +43,7 @@ from src.experiment.presaccade_session import PresaccadeSession
 from src.experiment.results_graph import build_comparison_graph
 from src.experiment.session import ExperimentSession
 from src.experiment.session_schedule import PHASE_BASELINE, PHASE_SACCADE, phase_order
+from src.experiment.space_input import NarrationKeyGate, deliver_space, leaves_complete_screen
 from src.experiment.settings import (
     DEFAULT_SACCADE_CONTRAST_MAX_PERCENT,
     DEFAULT_SACCADE_CONTRAST_MIN_PERCENT,
@@ -321,6 +322,7 @@ def apply_render_state(state: dict, stimuli: dict, fade_opacities: dict, dt: flo
         stimuli["hud"].text = (
             f"phase: {hud['phase']} | trial: {hud['trial']} | gaze: {hud['gaze_zone']} | "
             f"face: {'yes' if hud['face_found'] else 'no'} | source: {'ok' if hud['source_available'] else 'unavailable'}"
+            f"{_calibration_wait_text(hud.get('calibration_wait_s'))}"
         )
         stimuli["hud"].opacity = 1.0
     else:
@@ -336,6 +338,25 @@ def apply_render_state(state: dict, stimuli: dict, fade_opacities: dict, dt: flo
         tutorial_text_stim.opacity = 1.0
     else:
         tutorial_text_stim.opacity = 0.0
+
+
+def _calibration_wait_text(waited_s: float | None) -> str:
+    """HUD suffix while a calibration SPACE press is latched, waiting for the gaze window to fill."""
+    if waited_s is None:
+        return ""
+    return f" | SPACE pressed, waiting for gaze samples {waited_s:.1f}s" + (" - TRACKING LOST?" if waited_s > 3.0 else "")
+
+
+def drain_stale_space(session) -> None:
+    """Space pressed before the phase's first screen existed (during start-up or the marker check) answers nothing on screen:
+    discard it, but count it so it is visible in the console and the meta file."""
+    session.space_tally.record("pressed before the phase started", len(event.getKeys(keyList=["space"])), phase="(start-up)")
+
+
+def report_space_presses(session, label: str, logger: ResultLogger | None = None) -> None:
+    print(session.space_tally.summary(label))
+    if logger is not None and session.space_tally.total:
+        logger.set_ignored_space_presses(label, session.space_tally.as_dict())
 
 
 def wait_for_screen_markers(win: visual.Window, stimuli: dict, gaze) -> bool:
@@ -441,21 +462,34 @@ def _run_presaccade_loop(win, stimuli, logger, narrator, contrast_floor, test_mo
     frame_clock = core.Clock()
     last_spoken_instructions: str | None = None
     last_caption = ""
+    last_phase: str | None = None
 
+    try:
+        return _presaccade_frames(
+            win, stimuli, narrator, session, fade_opacities, frame_clock, last_spoken_instructions, last_caption, last_phase
+        )
+    finally:
+        report_space_presses(session, "baseline", logger)
+
+
+def _presaccade_frames(
+    win, stimuli, narrator, session, fade_opacities, frame_clock, last_spoken_instructions, last_caption, last_phase
+) -> PresaccadeSession | None:
+    drain_stale_space(session)
     while True:
         keys = event.getKeys(keyList=["space", "escape", *RESPONSE_KEYS])
         if "escape" in keys:
             return None
 
-        for _ in range(keys.count("space")):  # no-op if already COMPLETE
-            session.on_space()
+        space_delivered = deliver_space(session, keys.count("space"))  # no-op if already COMPLETE
         dispatch_response_keys(session, keys)
 
         session.tick()
         state = session.render_state()
 
-        if state["hud"]["phase"] == "COMPLETE" and "space" in keys:
+        if leaves_complete_screen(last_phase, space_delivered):
             return session  # a space press on the results screen moves on
+        last_phase = state["hud"]["phase"]
 
         last_spoken_instructions, last_caption = update_caption(
             narrator, stimuli["caption"], state, last_spoken_instructions, last_caption
@@ -541,20 +575,20 @@ def run_saccade_phase(
     try:
         if not wait_for_screen_markers(win, stimuli, gaze):
             return None
+        drain_stale_space(session)
         while True:
             keys = event.getKeys(keyList=["space", "escape", *RESPONSE_KEYS])
             if "escape" in keys:
                 return None
 
-            for _ in range(keys.count("space")):  # no-op if already COMPLETE
-                session.on_space()
+            space_delivered = deliver_space(session, keys.count("space"))  # no-op if already COMPLETE
             dispatch_response_keys(session, keys)
 
             session.tick()
             state = session.render_state()
             phase = state["hud"]["phase"]
 
-            if phase == "COMPLETE" and "space" in keys:
+            if leaves_complete_screen(last_phase, space_delivered):
                 return session  # a space press on the results screen moves on
 
             if phase_just_became_active(phase, last_phase, {"FOREPERIOD"}) and not start_flash_shown:
@@ -583,6 +617,7 @@ def run_saccade_phase(
                 camera_preview.draw()
             win.flip()
     finally:
+        report_space_presses(session, "saccade", logger)
         if hasattr(gaze, "quality_summary"):
             logger.set_gaze_quality(gaze.quality_summary())
         if video_recorder is not None:
@@ -622,14 +657,19 @@ def run_tutorial_phase(
     try:
         if not wait_for_screen_markers(win, stimuli, gaze):
             return None
+        drain_stale_space(session)
+        key_gate = NarrationKeyGate()
         while True:
             keys = event.getKeys(keyList=["space", "escape", *RESPONSE_KEYS])
             if "escape" in keys:
                 return None
 
             speaking = narrator.is_speaking
+            # A SPACE pressed during narration is held and delivered when speech ends, never discarded.
+            space_delivered, response_keys, duplicates = key_gate.route(keys, speaking)
+            session.space_tally.record("duplicate press (same frame or while narrating)", duplicates)
             if not speaking:
-                for _ in range(keys.count("space")):
+                if space_delivered:
                     session.on_space()
                 # At most one response key per frame - unlike the real
                 # trial phases (where a repeat is harmless: a response,
@@ -639,7 +679,7 @@ def run_tutorial_phase(
                 # event landing in the same frame as the original press
                 # could otherwise fire two stage transitions - or silently
                 # cost a quiz streak - off a single keypress.
-                for key in keys:
+                for key in response_keys:
                     orientation = _RESPONSE_KEY_ORIENTATION.get(key)
                     if orientation is not None:
                         session.on_response_key(orientation)
@@ -649,7 +689,7 @@ def run_tutorial_phase(
             state = session.render_state()
             phase = state["hud"]["phase"]
 
-            if phase == "COMPLETE" and "space" in keys and not speaking:
+            if leaves_complete_screen(last_phase, space_delivered):
                 return session
 
             if phase_just_became_active(phase, last_phase, _TUTORIAL_GO_CUE_PHASES):

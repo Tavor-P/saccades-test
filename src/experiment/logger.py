@@ -188,6 +188,11 @@ class ResultLogger:
         self._metadata["gaze_quality"] = summary
         self._write_metadata()
 
+    def set_ignored_space_presses(self, label: str, counts: dict) -> None:
+        """SPACE presses that did nothing in one phase run, keyed "PHASE: reason" (see space_input.SpaceTally)."""
+        self._metadata.setdefault("ignored_space_presses", {})[label] = dict(counts)
+        self._write_metadata()
+
     def log(self, result: TrialResult) -> None:
         self._writer.writerow(
             {

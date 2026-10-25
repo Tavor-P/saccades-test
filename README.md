@@ -68,7 +68,7 @@ During the real measured trials (after practice) the caption is hidden and silen
 
 | Key / action | Effect |
 |---|---|
-| **Space** | Start / calibrate / continue past results — and **start each trial** (take as long a break as you like between trials; the dot/cross swaps 0.5–1 s after you press) |
+| **Space** | Start / calibrate / continue past results — and **start each trial** (take as long a break as you like between trials; the dot/cross swaps 0.5–1 s after you press). In calibration one press is enough even if the glasses are still gathering samples (it completes by itself a moment later); during the tutorial's spoken instructions a press is held until the voice finishes. A press during a trial's 0.5–1 s wait is ignored (it does not restart the wait); every ignored press is counted per phase on the console and in the session's `_meta.json` (`ignored_space_presses`) |
 | **Up / Down** | "It looked vertical" |
 | **Left / Right** | "It looked horizontal" |
 | **Escape** | Quit immediately |

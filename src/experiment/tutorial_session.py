@@ -27,6 +27,7 @@ from include.experiment.types import Orientation, Target
 from src.experiment.calibration import average_calibration_rounds
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.scoring import score_outcome
+from src.experiment.space_input import CalibrationLatch, SpaceTally
 from src.experiment.trial_mechanics import OnsetDetector, robust_average_ms
 from src.experiment.trial_mechanics import random_orientation as _random_orientation
 from src.experiment.trial_mechanics import zone_for as _zone_for
@@ -82,6 +83,8 @@ class TutorialSession:
         self._calibration_round = 1
         self._calibration_rounds_data: list[tuple[float, float, float]] = []
         self._pending_left_ratio: float | None = None
+        self._calibration_latch = CalibrationLatch()  # a press made before the gaze window filled
+        self.space_tally = SpaceTally(lambda: self._phase.name)
         self._pending_center_ratio: float | None = None
         self._calibration_ratios: tuple[float, float, float] | None = None
 
@@ -138,39 +141,50 @@ class TutorialSession:
             self._calibration_round = 1
             self._calibration_rounds_data = []
             self._phase = Phase.CALIBRATE_LEFT
-        elif self._phase is Phase.CALIBRATE_LEFT:
-            ratio = self._gaze.average_recent_ratio()
-            if ratio is not None:
-                self._pending_left_ratio = ratio
-                self._gaze.begin_calibration_sample()
-                self._phase = Phase.CALIBRATE_CENTER
-        elif self._phase is Phase.CALIBRATE_CENTER:
-            ratio = self._gaze.average_recent_ratio()
-            if ratio is not None:
-                self._pending_center_ratio = ratio
-                self._gaze.begin_calibration_sample()
-                self._phase = Phase.CALIBRATE_RIGHT
-        elif self._phase is Phase.CALIBRATE_RIGHT:
-            ratio = self._gaze.average_recent_ratio()
-            if ratio is not None and self._pending_left_ratio is not None and self._pending_center_ratio is not None:
-                self._calibration_rounds_data.append((self._pending_left_ratio, self._pending_center_ratio, ratio))
-                if self._calibration_round < CALIBRATION_ROUNDS:
-                    self._calibration_round += 1
-                    self._gaze.begin_calibration_sample()
-                    self._phase = Phase.CALIBRATE_LEFT
-                else:
-                    # Indexed from the end (not unpacked as exactly 3
-                    # elements) so this doesn't break if CALIBRATION_ROUNDS
-                    # is ever changed to something other than 3.
-                    round2, round3 = self._calibration_rounds_data[-2], self._calibration_rounds_data[-1]
-                    self._calibration_ratios = average_calibration_rounds(round2, round3)
-                    self._gaze.calibrate(*self._calibration_ratios)
-                    self._enter_quiz()
+        elif self._phase in (Phase.CALIBRATE_LEFT, Phase.CALIBRATE_CENTER, Phase.CALIBRATE_RIGHT):
+            self._press_calibration()
         elif self._phase is Phase.PRACTICE_AWAITING_SPACE:
             self._start_foreperiod()
-        # QUIZ/PRACTICE_ACTIVE respond to on_response_key, not space.
-        # PRACTICE_FOREPERIOD advances automatically via tick().
-        # COMPLETE: space does nothing here - the runner decides when to move on.
+        elif self._phase is not Phase.COMPLETE:
+            # QUIZ/PRACTICE_ACTIVE respond to on_response_key, not space; PRACTICE_FOREPERIOD advances via tick().
+            # COMPLETE: the runner decides when to move on.
+            self.space_tally.record("not accepted in this phase")
+
+    def _press_calibration(self) -> None:
+        """One press is enough: if the gaze window is not full yet the press is latched and tick() completes it."""
+        if self._calibration_latch.pending:
+            self.space_tally.record("already waiting for gaze samples")
+            return
+        ratio = self._calibration_latch.press(self._gaze, self._clock.now())
+        if ratio is not None:
+            self._advance_calibration(ratio)
+
+    def _advance_calibration(self, ratio: float) -> None:
+        self._calibration_latch.clear()
+        if self._phase is Phase.CALIBRATE_LEFT:
+            self._pending_left_ratio = ratio
+            self._gaze.begin_calibration_sample()
+            self._phase = Phase.CALIBRATE_CENTER
+        elif self._phase is Phase.CALIBRATE_CENTER:
+            self._pending_center_ratio = ratio
+            self._gaze.begin_calibration_sample()
+            self._phase = Phase.CALIBRATE_RIGHT
+        elif self._phase is Phase.CALIBRATE_RIGHT:
+            if self._pending_left_ratio is None or self._pending_center_ratio is None:
+                return
+            self._calibration_rounds_data.append((self._pending_left_ratio, self._pending_center_ratio, ratio))
+            if self._calibration_round < CALIBRATION_ROUNDS:
+                self._calibration_round += 1
+                self._gaze.begin_calibration_sample()
+                self._phase = Phase.CALIBRATE_LEFT
+            else:
+                # Indexed from the end (not unpacked as exactly 3
+                # elements) so this doesn't break if CALIBRATION_ROUNDS
+                # is ever changed to something other than 3.
+                round2, round3 = self._calibration_rounds_data[-2], self._calibration_rounds_data[-1]
+                self._calibration_ratios = average_calibration_rounds(round2, round3)
+                self._gaze.calibrate(*self._calibration_ratios)
+                self._enter_quiz()
 
     def on_response_key(self, orientation: Orientation) -> None:
         if self._phase is Phase.QUIZ:
@@ -323,6 +337,9 @@ class TutorialSession:
     # -- tick ----------------------------------------------------------------
 
     def tick(self) -> None:
+        ratio = self._calibration_latch.poll(self._gaze)
+        if ratio is not None:
+            self._advance_calibration(ratio)
         if self._phase is Phase.PRACTICE_FOREPERIOD:
             self._tick_foreperiod()
         elif self._phase is Phase.PRACTICE_ACTIVE:
@@ -423,5 +440,6 @@ class TutorialSession:
                 "source_available": self._gaze.is_available,
                 "trial": self._trial_label(),
                 "trial_index": 0,
+                "calibration_wait_s": self._calibration_latch.waiting_s(self._clock.now()),
             },
         }

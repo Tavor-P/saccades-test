@@ -20,6 +20,7 @@ class FakeGazeSource(GazeSource):
         self._available = True
         self.calibrated: tuple[float, float, float] | None = None
         self.calibration_samples_begun = 0
+        self.calibration_window_full = True  # tests set False to model a still-filling window
 
     @property
     def position(self) -> float | None:
@@ -57,7 +58,7 @@ class FakeGazeSource(GazeSource):
         self.calibrated = (left_ratio, center_ratio, right_ratio)
 
     def average_recent_ratio(self) -> float | None:
-        return 0.5
+        return 0.5 if self.calibration_window_full else None
 
     def begin_calibration_sample(self) -> None:
         self.calibration_samples_begun += 1

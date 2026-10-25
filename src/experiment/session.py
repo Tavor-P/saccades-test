@@ -55,6 +55,7 @@ from src.experiment.calibration import average_calibration_rounds
 from src.experiment.logger import ResultLogger
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.scoring import is_valid_for_saccadic_analysis, score_outcome
+from src.experiment.space_input import CalibrationLatch, SpaceTally
 from src.experiment.trial_factory import build_saccade_sequence, generate_next_saccade_trial
 from src.experiment.trial_mechanics import OnsetDetector, ShuffledBag, robust_average_ms, zone_for
 from src.experiment.zest import ZestStaircase
@@ -74,6 +75,7 @@ class Phase(Enum):
     COMPLETE = auto()
 
 
+_FOREPERIOD_PHASES = (Phase.RT_TEST_FOREPERIOD, Phase.FOREPERIOD)
 _TRIAL_PHASES = (
     Phase.RT_TEST_AWAITING_SPACE,
     Phase.RT_TEST_FOREPERIOD,
@@ -189,6 +191,9 @@ class ExperimentSession:
         self._dot_visible = False
         self._cross_visible = False
         self._pending_left_ratio: float | None = None
+        self._calibration_latch = CalibrationLatch()  # a press made before the gaze window filled
+        self._space_ahead = False  # SPACE pressed after answering, before the next trial is ready
+        self.space_tally = SpaceTally(lambda: self._phase.name)
         self._pending_center_ratio: float | None = None
         self._calibration_round = 1
         self._calibration_round_target = CALIBRATION_ROUNDS
@@ -318,42 +323,65 @@ class ExperimentSession:
             else:
                 self._gaze.begin_calibration_sample()  # fresh window before the dot appears
                 self._phase = Phase.CALIBRATE_LEFT
-        elif self._phase is Phase.CALIBRATE_LEFT:
-            ratio = self._gaze.average_recent_ratio()
-            if ratio is not None:
-                self._pending_left_ratio = ratio
-                self._gaze.begin_calibration_sample()  # fresh window before the center target appears
-                self._phase = Phase.CALIBRATE_CENTER
-        elif self._phase is Phase.CALIBRATE_CENTER:
-            ratio = self._gaze.average_recent_ratio()
-            if ratio is not None:
-                self._pending_center_ratio = ratio
-                self._gaze.begin_calibration_sample()  # fresh window before the cross appears
-                self._phase = Phase.CALIBRATE_RIGHT
-        elif self._phase is Phase.CALIBRATE_RIGHT:
-            ratio = self._gaze.average_recent_ratio()
-            if ratio is not None and self._pending_left_ratio is not None and self._pending_center_ratio is not None:
-                self._calibration_rounds_data.append((self._pending_left_ratio, self._pending_center_ratio, ratio))
-                if self._calibration_round < self._calibration_round_target:
-                    # First attempts tend to be the least reliable - run
-                    # another round rather than trusting this one alone.
-                    self._calibration_round += 1
-                    self._gaze.begin_calibration_sample()  # fresh window before the next round's dot
-                    self._phase = Phase.CALIBRATE_LEFT
-                else:
-                    # Round 1 is discarded (first attempts are the least reliable).
-                    round2, round3 = self._calibration_rounds_data[-2], self._calibration_rounds_data[-1]
-                    final_ratios = average_calibration_rounds(round2, round3)
-                    self._gaze.calibrate(*final_ratios)
-                    self._calibration_ratios = final_ratios
-                    self._begin_after_calibration()
+        elif self._phase in (Phase.CALIBRATE_LEFT, Phase.CALIBRATE_CENTER, Phase.CALIBRATE_RIGHT):
+            self._press_calibration()
         elif self._phase is Phase.RT_TEST_AWAITING_SPACE:
             self._start_rt_test_foreperiod()
         elif self._phase is Phase.AWAITING_SPACE:
             self._start_foreperiod()
-        # RT_TEST_ACTIVE/TRIAL_ACTIVE: responses come from gaze/arrow keys, not
-        # SPACE. COMPLETE: space does nothing here - the runner decides when
-        # to move on.
+        elif self._phase is Phase.TRIAL_ACTIVE and self._responded:
+            # Answered already: this press starts the next trial the moment it is ready (see _deliver_space_ahead).
+            self._space_ahead = True
+        elif self._phase is not Phase.COMPLETE:
+            # Foreperiod: must not restart it or start the next trial. Active phases: responses come from
+            # gaze/arrow keys. COMPLETE: the runner decides when to move on.
+            self.space_tally.record("during foreperiod" if self._phase in _FOREPERIOD_PHASES else "during trial")
+
+    def _press_calibration(self) -> None:
+        """One press is enough: if the gaze window is not full yet the press is latched and tick() completes it."""
+        if self._calibration_latch.pending:
+            self.space_tally.record("already waiting for gaze samples")
+            return
+        ratio = self._calibration_latch.press(self._gaze, self._clock.now())
+        if ratio is not None:
+            self._advance_calibration(ratio)
+
+    def _advance_calibration(self, ratio: float) -> None:
+        self._calibration_latch.clear()
+        if self._phase is Phase.CALIBRATE_LEFT:
+            self._pending_left_ratio = ratio
+            self._gaze.begin_calibration_sample()  # fresh window before the center target appears
+            self._phase = Phase.CALIBRATE_CENTER
+        elif self._phase is Phase.CALIBRATE_CENTER:
+            self._pending_center_ratio = ratio
+            self._gaze.begin_calibration_sample()  # fresh window before the cross appears
+            self._phase = Phase.CALIBRATE_RIGHT
+        elif self._phase is Phase.CALIBRATE_RIGHT:
+            if self._pending_left_ratio is None or self._pending_center_ratio is None:
+                return
+            self._calibration_rounds_data.append((self._pending_left_ratio, self._pending_center_ratio, ratio))
+            if self._calibration_round < self._calibration_round_target:
+                # First attempts tend to be the least reliable - run
+                # another round rather than trusting this one alone.
+                self._calibration_round += 1
+                self._gaze.begin_calibration_sample()  # fresh window before the next round's dot
+                self._phase = Phase.CALIBRATE_LEFT
+            else:
+                # Round 1 is discarded (first attempts are the least reliable).
+                round2, round3 = self._calibration_rounds_data[-2], self._calibration_rounds_data[-1]
+                final_ratios = average_calibration_rounds(round2, round3)
+                self._gaze.calibrate(*final_ratios)
+                self._calibration_ratios = final_ratios
+                self._begin_after_calibration()
+
+    def _deliver_space_ahead(self) -> None:
+        if not self._space_ahead or self._phase is Phase.TRIAL_ACTIVE:
+            return
+        self._space_ahead = False
+        if self._phase in (Phase.AWAITING_SPACE, Phase.RT_TEST_AWAITING_SPACE):
+            self.on_space()
+        else:
+            self.space_tally.record("early press, no trial left to start")
 
     def on_response_key(self, orientation: Orientation) -> None:
         """Called when an arrow key is pressed during a trial: up/down report
@@ -589,6 +617,9 @@ class ExperimentSession:
             self._flash_scheduled_at = self._trial_start_time + self._trial_scheduled_delay_ms / 1000
 
     def tick(self) -> None:
+        ratio = self._calibration_latch.poll(self._gaze)
+        if ratio is not None:
+            self._advance_calibration(ratio)
         if self._phase is Phase.RT_TEST_FOREPERIOD:
             self._tick_rt_test_foreperiod()
         elif self._phase is Phase.RT_TEST_ACTIVE:
@@ -597,6 +628,7 @@ class ExperimentSession:
             self._tick_foreperiod()
         elif self._phase is Phase.TRIAL_ACTIVE:
             self._tick_trial_active()
+        self._deliver_space_ahead()
 
     def _tick_foreperiod(self) -> None:
         if self._clock.now() - self._foreperiod_start >= self._foreperiod_duration:
@@ -970,6 +1002,7 @@ class ExperimentSession:
                 "source_available": self._gaze.is_available,
                 "trial": self._trial_label() if self._has_trial_label() else "-",
                 "trial_index": self._main_trial_counter,
+                "calibration_wait_s": self._calibration_latch.waiting_s(self._clock.now()),
             },
         }
 
