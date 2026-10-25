@@ -370,29 +370,21 @@ MAX_SACCADE_TRIALS_REAL = 200
 WARNING_TONE_HZ = 880
 WARNING_TONE_DURATION_S = 0.5
 
-# Tutorial's own scoped-down RT-test stage (see TutorialSession), before its
-# dress rehearsal. Fixed, not a _TEST/_REAL pair - the whole tutorial is
-# already a fixed-size demo regardless of test/real session mode.
-TUTORIAL_RT_TEST_ATTEMPTS = 3
-
 # First-timer tutorial (see src/experiment/tutorial_session.py), offered as a
-# yes/no dialog toggle before a real saccade-phase session. Runs once, ahead
-# of both phases, and hands its calibration to the saccade phase so it isn't
-# repeated.
+# yes/no dialog toggle before a real saccade-phase session: calibration ->
+# "how to answer" quiz -> practice trials that look exactly like real ones.
+# Runs once, ahead of both phases; hands its calibration and its practice
+# reaction times to the saccade phase so neither is repeated.
 
-# "Highest" contrast for the two single-orientation key-mapping demo screens
-# - these are teaching which key means which orientation, not measuring a
-# threshold, so there's no reason to make the grating hard to see.
-TUTORIAL_DEMO_CONTRAST = 1.0
-# Fixed (not staircased) contrast for the mixed-orientation quiz - comfortably
+# Contrast of the fixed gratings in the "how to answer" quiz - comfortably
 # above threshold so a participant who understands the key mapping can
 # reliably clear the streak.
 TUTORIAL_QUIZ_CONTRAST = 0.5
-TUTORIAL_QUIZ_STREAK_TARGET = 5  # consecutive correct needed to pass the quiz; a miss resets the streak
-TUTORIAL_GAZE_PRACTICE_ATTEMPTS = 5  # fixed count, not gated by success - tracking accuracy is noisy this early
-TUTORIAL_DRESS_REHEARSAL_ATTEMPTS = 5  # fixed count; a miss resets contrast back to the top of the staircase's range
+TUTORIAL_QUIZ_STREAK_TARGET = 3  # consecutive correct needed to pass the quiz; a miss resets the streak
+TUTORIAL_PRACTICE_ATTEMPTS = 8  # fixed count, not gated by success; also the source of the saccade phase's first reaction-time average
+TUTORIAL_PRACTICE_CONTRAST = 0.5  # a clearly visible flash: the practice teaches the loop, it does not measure a threshold
 
-# Correctness-feedback flash for the tutorial's quiz/dress-rehearsal stages -
+# Correctness-feedback flash for the tutorial's quiz/practice stages -
 # same style as START_FLASH_COLOR above, just red/green instead of the
 # trial-start green.
 FEEDBACK_FLASH_RED = [1, -1, -1]

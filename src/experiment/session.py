@@ -84,6 +84,9 @@ _TRIAL_PHASES = (
 )
 
 
+_ANSWER_TEXT = "Lines going up-and-down: press UP or DOWN. Side-to-side: LEFT or RIGHT."
+
+
 class ExperimentSession:
     """Gaze-contingent saccade experiment: calibration, an alternating dot/cross
     trial loop, perisaccadic grating flashes, response scoring, and CSV logging.
@@ -128,6 +131,7 @@ class ExperimentSession:
         test_mode: bool = False,
         precomputed_calibration_ratios: tuple[float, float, float] | None = None,
         skip_practice_trials: bool = False,
+        precomputed_rt_samples_ms: list[float] | None = None,
         gaze_latency_ms: float | None = None,
         fixed_contrasts: tuple[float, ...] | None = None,
     ) -> None:
@@ -142,7 +146,10 @@ class ExperimentSession:
         self._phase = Phase.WAITING_TO_START
 
         # -- practice (fixed list) then dynamically-generated real trials --
-        num_practice = 0 if skip_practice_trials else (NUM_PRACTICE_TRIALS_TEST if test_mode else NUM_PRACTICE_TRIALS_REAL)
+        # Reaction times already measured (the tutorial's practice trials) replace both the RT test and this
+        # session's own practice trials; [] means "measured, but nothing usable" (-> DEFAULT_REACTION_TIME_MS).
+        self._rt_seeded = precomputed_rt_samples_ms is not None
+        num_practice = 0 if (skip_practice_trials or self._rt_seeded) else (NUM_PRACTICE_TRIALS_TEST if test_mode else NUM_PRACTICE_TRIALS_REAL)
         self._practice_trials = build_saccade_sequence(num_practice=num_practice)
         self._num_practice = len(self._practice_trials)
         self._practice_index = 0
@@ -170,6 +177,10 @@ class ExperimentSession:
         self._rt_test_start_time = 0.0
         self._avg_reaction_time_ms: float | None = None
         self._recent_rt_ms: deque[float] = deque(maxlen=RT_AVERAGE_ROLLING_WINDOW)
+        if precomputed_rt_samples_ms is not None:
+            self._rt_samples_ms = list(precomputed_rt_samples_ms)
+            self._avg_reaction_time_ms = robust_average_ms(self._rt_samples_ms, default=DEFAULT_REACTION_TIME_MS)
+            self._recent_rt_ms.extend(self._rt_samples_ms)
 
         # -- stopping criterion for the real block (see constants.py) --
         self._min_valid_trials = ZEST_MIN_VALID_TRIALS_TEST if test_mode else ZEST_MIN_VALID_TRIALS_REAL
@@ -359,9 +370,9 @@ class ExperimentSession:
             self._response_time_ms = (now - self._grating_shown_at) * 1000 if self._grating_shown_at else None
 
     def _begin_after_calibration(self) -> None:
-        """Scheduled mode measures the participant's reaction time first; the gaze-triggered
-        mode needs no prediction, so it goes straight to the practice/main trials."""
-        if self._closed_loop:
+        """Scheduled mode measures the participant's reaction time first, unless the tutorial already did
+        (seeded samples); the gaze-triggered mode needs no prediction. Both go straight to the trials."""
+        if self._closed_loop or self._rt_seeded:
             self._begin_next_trial_or_complete()
         else:
             self._begin_rt_test_foreperiod()
@@ -843,23 +854,20 @@ class ExperimentSession:
     def _instructions(self) -> str:
         if self._phase is Phase.COMPLETE:
             return f"Saccade test complete! {self._summary()} — Press SPACE to see your results"
-        # FOREPERIOD and TRIAL_ACTIVE deliberately share one constant message -
-        # switching text every trial would flicker in peripheral vision, which
-        # is exactly the kind of onset we've been trying to avoid elsewhere.
+        # The answer text is shared by AWAITING_SPACE (after the first trial), FOREPERIOD and TRIAL_ACTIVE
+        # so it is spoken once and never flickers or repeats from trial to trial.
         if self._phase is Phase.AWAITING_SPACE:
-            prefix = "Practice (doesn't count) — " if self._current_trial_spec.practice else ""
-            return f"{prefix}Press SPACE when you are ready for the next trial"
-        if self._phase is Phase.RT_TEST_AWAITING_SPACE:
-            return "Measuring your reaction time — press SPACE when ready, then look at the cross as soon as it appears"
+            first_trial = self._practice_index + self._main_trial_counter <= 1
+            return "Press SPACE when you are ready." if first_trial else _ANSWER_TEXT
         if self._phase in (Phase.FOREPERIOD, Phase.TRIAL_ACTIVE):
-            prefix = "Practice (doesn't count) — " if self._current_trial_spec.practice else ""
-            return f"{prefix}UP/DOWN if the grating is vertical, LEFT/RIGHT if horizontal — not sure? Guess"
-        if self._phase in (Phase.RT_TEST_FOREPERIOD, Phase.RT_TEST_ACTIVE):
-            return "Measuring your reaction time — look at the dot, then look at the cross as soon as it appears"
+            return _ANSWER_TEXT
+        if self._phase in (Phase.RT_TEST_AWAITING_SPACE, Phase.RT_TEST_FOREPERIOD, Phase.RT_TEST_ACTIVE):
+            # Said once, before the first attempt; silent afterwards (the narrator re-speaks on every text change).
+            return "Press SPACE, look at the dot, then look at the cross when it appears." if self._rt_test_attempt == 0 else ""
         calibration_targets = {
-            Phase.CALIBRATE_LEFT: "Look at the dot, then press SPACE",
-            Phase.CALIBRATE_CENTER: "Now look at the center, then press SPACE",
-            Phase.CALIBRATE_RIGHT: "Now look at the other circle, then press SPACE",
+            Phase.CALIBRATE_LEFT: "Look at the dot, then press SPACE.",
+            Phase.CALIBRATE_CENTER: "Look at the middle, then press SPACE.",
+            Phase.CALIBRATE_RIGHT: "Look at the cross, then press SPACE.",
         }
         if self._phase in calibration_targets:
             # Only narrate round 1 of CALIBRATION_ROUNDS - by round 2 the
@@ -867,7 +875,7 @@ class ExperimentSession:
             # round just slows calibration down for no benefit.
             return calibration_targets[self._phase] if self._calibration_round == 1 else ""
         return {
-            Phase.WAITING_TO_START: "Press SPACE to begin calibration",
+            Phase.WAITING_TO_START: "Press SPACE to begin" if self._precomputed_calibration else "Press SPACE to begin calibration",
         }[self._phase]
 
     def _trial_label(self) -> str:
