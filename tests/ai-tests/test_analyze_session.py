@@ -144,8 +144,9 @@ def test_invalid_contrast_ranges_are_rejected_or_fall_back():
         with pytest.raises(ValueError):
             validate_saccade_contrast_range(*bad)
     assert resolve_saccade_contrasts("5", "30") == pytest.approx((0.05, 0.175, 0.30))
-    assert resolve_saccade_contrasts("", "abc") == pytest.approx((0.02, 0.04, 0.06))  # the defaults
-    assert resolve_saccade_contrasts("30", "5") == pytest.approx((0.02, 0.04, 0.06))
+    assert resolve_saccade_contrasts("", "abc") == pytest.approx((0.04, 0.06, 0.08))  # the defaults
+    assert resolve_saccade_contrasts("30", "5") == pytest.approx((0.04, 0.06, 0.08))
+    assert resolve_saccade_contrasts("4", "8") == pytest.approx((0.04, 0.06, 0.08))
     assert resolve_saccade_contrasts("2", "6") == pytest.approx((0.02, 0.04, 0.06))  # 2 % is above the hardware floor
 
 

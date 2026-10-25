@@ -17,7 +17,7 @@ from src.experiment import logger as logger_module
 from src.experiment.logger import ResultLogger
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.session import ExperimentSession
-from src.experiment.trial_mechanics import robust_average_ms
+from src.experiment.trial_mechanics import RollingReactionTime, robust_average_ms
 from test_session import (
     _complete_calibration,
     _complete_calibration_and_rt_test,
@@ -77,10 +77,53 @@ def test_robust_average_one_outlier_barely_moves_it():
 def test_rt_test_average_ignores_anticipations_and_slow_outliers(fake_gaze):
     session = _make_session(fake_gaze, test_mode=True)
     _complete_calibration(session)
-    session._rt_samples_ms = [60.0, 210.0, 220.0, 230.0, 900.0]
+    for sample in (60.0, 210.0, 220.0, 230.0, 900.0):
+        session._record_reaction_time(sample)
     session._rt_test_attempt = session._rt_test_target_attempts - 1
     session._finish_rt_test_attempt(None)
     assert session._avg_reaction_time_ms == pytest.approx(220.0)
+
+
+# -- rolling reaction time -------------------------------------------------------------
+
+
+def test_rolling_rt_falls_back_to_the_default_until_three_plausible_samples():
+    rt = RollingReactionTime(default=225.0)
+    assert rt.average == 225.0
+    assert rt.add(180.0) == 225.0 and rt.add(190.0) == 225.0 and rt.add(50.0) == 225.0  # 50 ms is an anticipation
+    assert rt.add(200.0) == 190.0  # third plausible sample: median of 180, 190, 200
+
+
+def test_rolling_rt_updates_after_every_sample():
+    rt = RollingReactionTime(default=225.0)
+    averages = [rt.add(s) for s in (200.0, 200.0, 200.0, 300.0, 300.0, 300.0, 300.0)]
+    assert averages == [225.0, 225.0, 200.0, 200.0, 200.0, 250.0, 300.0]
+
+
+def test_rolling_rt_window_rolls():
+    rt = RollingReactionTime(default=225.0, window=5)
+    for s in (400.0, 400.0, 400.0, 400.0, 400.0):
+        rt.add(s)
+    assert rt.average == 400.0
+    for s in (200.0, 200.0, 200.0):
+        rt.add(s)
+    assert rt.samples == [400.0, 400.0, 200.0, 200.0, 200.0] and rt.average == 200.0
+    assert rt.total_added == 8
+
+
+def test_rolling_rt_drops_outliers_and_counts_them():
+    rt = RollingReactionTime(default=225.0)
+    for s in (210.0, 220.0, 230.0, 60.0, 1400.0):
+        rt.add(s)
+    assert rt.average == 220.0 and rt.n_dropped == 2
+    assert RollingReactionTime(default=1.0, seed=[200.0, 210.0, 220.0]).average == 210.0
+
+
+def test_rolling_rt_keeps_the_last_average_when_the_window_turns_implausible():
+    rt = RollingReactionTime(default=225.0, window=3, seed=[200.0, 210.0, 220.0])
+    for s in (40.0, 50.0, 60.0):
+        rt.add(s)
+    assert rt.average == 210.0  # nothing usable now: unchanged, not reset
 
 
 # -- sample-timestamp timing ----------------------------------------------------------

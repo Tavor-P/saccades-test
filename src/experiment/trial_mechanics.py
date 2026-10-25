@@ -10,7 +10,9 @@ from include.experiment.constants import (
     LINE_OFFSET_HEIGHT_UNITS,
     ONSET_BASELINE_NEAR_SOURCE,
     ONSET_BASELINE_WINDOW_MS,
+    RT_AVERAGE_ROLLING_WINDOW,
     RT_MIN_PLAUSIBLE_MS,
+    RT_MIN_SAMPLES_FOR_AVERAGE,
     RT_OUTLIER_MAD_FLOOR_MS,
     RT_OUTLIER_MAD_K,
     SACCADE_ONSET_DISPLACEMENT,
@@ -55,20 +57,62 @@ def average_ms(samples: Sequence[float], default: float) -> float:
     return sum(samples) / len(samples) if samples else default
 
 
-def robust_average_ms(samples: Sequence[float], default: float) -> float:
-    """Reaction-time average that one bad measurement can't move: drops
-    anticipations (< RT_MIN_PLAUSIBLE_MS), then slow outliers (more than
-    RT_OUTLIER_MAD_K scaled MADs above the median, MAD floored at
-    RT_OUTLIER_MAD_FLOOR_MS), and returns the median of the rest - or `default`
-    if nothing plausible is left. Used for avg_reaction_time_ms, which
-    schedules every flash."""
+def robust_kept_ms(samples: Sequence[float]) -> list[float]:
+    """The samples a reaction-time average keeps: anticipations (< RT_MIN_PLAUSIBLE_MS) are dropped,
+    then slow outliers (more than RT_OUTLIER_MAD_K scaled MADs above the median, MAD floored at
+    RT_OUTLIER_MAD_FLOOR_MS)."""
     plausible = [s for s in samples if s >= RT_MIN_PLAUSIBLE_MS]
     if not plausible:
-        return default
+        return []
     median = statistics.median(plausible)
     mad = statistics.median(abs(s - median) for s in plausible) * 1.4826
     limit = median + RT_OUTLIER_MAD_K * max(mad, RT_OUTLIER_MAD_FLOOR_MS)
-    return statistics.median(s for s in plausible if s <= limit)
+    return [s for s in plausible if s <= limit]
+
+
+def robust_average_ms(samples: Sequence[float], default: float) -> float:
+    """Reaction-time average that one bad measurement can't move: the median of `robust_kept_ms`,
+    or `default` if nothing plausible is left."""
+    kept = robust_kept_ms(samples)
+    return statistics.median(kept) if kept else default
+
+
+class RollingReactionTime:
+    """The live reaction-time average that schedules every flash: the robust average
+    (`robust_average_ms`) of the last RT_AVERAGE_ROLLING_WINDOW saccade-onset latencies, recomputed on
+    every `add`. One instance serves the tutorial's practice trials and the saccade phase (seed the
+    latter with the former's `samples`), so the average carries over seamlessly. With fewer than
+    RT_MIN_SAMPLES_FOR_AVERAGE plausible (>= RT_MIN_PLAUSIBLE_MS) samples in the window the average
+    keeps its previous value (initially `default`), so one or two latencies never decide the schedule."""
+
+    def __init__(self, default: float, seed: Sequence[float] = (), window: int = RT_AVERAGE_ROLLING_WINDOW) -> None:
+        self._window: deque[float] = deque(maxlen=window)
+        self._average = default
+        self.total_added = 0
+        for sample in seed:
+            self.add(sample)
+
+    def add(self, sample_ms: float) -> float:
+        """Adds one detected latency and returns the updated average."""
+        self._window.append(sample_ms)
+        self.total_added += 1
+        if sum(1 for s in self._window if s >= RT_MIN_PLAUSIBLE_MS) >= RT_MIN_SAMPLES_FOR_AVERAGE:
+            self._average = robust_average_ms(self._window, default=self._average)
+        return self._average
+
+    @property
+    def average(self) -> float:
+        return self._average
+
+    @property
+    def samples(self) -> list[float]:
+        """The latencies currently in the window (oldest first)."""
+        return list(self._window)
+
+    @property
+    def n_dropped(self) -> int:
+        """How many samples in the window the robust rule currently leaves out of the average."""
+        return len(self._window) - len(robust_kept_ms(self._window))
 
 
 class OnsetDetector:

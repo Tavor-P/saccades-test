@@ -30,10 +30,17 @@ gating) is unchanged.
   places the line. Rendering (`run_experiment.build_stimuli`): a `GratingStim` with `tex=None` and the `'gauss'` mask,
   sized (`LINE_WIDTH_SCREENS` x screen width, 6 SD tall); `contrast` scales the white field, so a light line.
 - Tutorial quiz = a line above/below a dot (UP/DOWN, 3 in a row); trial captions say "UP if the line was above ...".
-- **Contrasts are a GUESS**: defaults 2/4/6 % (`SACCADE_FIXED_CONTRASTS`, startup dialog min 2 / max 6, 3 levels). A Test-mode
-  run at 10/15/20 % was at ceiling (11/11 correct at fixation, 18/22 overall), and the old foveal grating threshold was ~1.3 %.
-  Educated guess, not a measurement: re-pilot on glasses; adjust in the startup dialog. 2 % is above `HARDWARE_CONTRAST_FLOOR`
-  (0.78 %) but only ~2.5 grey steps at the line's peak on an 8-bit display, so levels are coarse.
+- **Contrasts are a GUESS**: defaults 4/6/8 % (`SACCADE_FIXED_CONTRASTS`, startup dialog min 4 / max 8, 3 levels). A Test-mode
+  run at 10/15/20 % was at ceiling (11/11 correct at fixation, 18/22 overall), the old foveal grating threshold was ~1.3 %, and
+  the previous 2/4/6 % guess was judged too hard. Educated guess, not a measurement: re-pilot on glasses; adjust in the startup
+  dialog. 4-8 % is ~5-10 grey steps at the line's peak on an 8-bit display (above `HARDWARE_CONTRAST_FLOOR`, 0.78 %), so levels are coarse.
+- **Live rolling reaction time**: `avg_reaction_time_ms` (schedules every flash) is a `RollingReactionTime` (`trial_mechanics.py`),
+  the robust average (`robust_average_ms`: drop < `RT_MIN_PLAUSIBLE_MS`, drop > median + 3 scaled MADs, median of the rest) of the
+  last `RT_AVERAGE_ROLLING_WINDOW` (12) latencies, updated at EVERY confirmed saccade onset (RT-test attempts, tutorial practice,
+  practice and main trials, valid or not, catch or flashed), so the NEXT trial's schedule uses it (a running trial's flash is not moved).
+  Fewer than `RT_MIN_SAMPLES_FOR_AVERAGE` (3) plausible samples -> the previous value (initially `DEFAULT_REACTION_TIME_MS`). The tutorial
+  and the saccade session use the same class (the session is seeded with `TutorialSession.rt_samples_ms`). `RT_AVERAGE_RECOMPUTE_EVERY`
+  was removed; the phase summary in `_meta.json` adds `rt_samples_total/_in_window/_dropped_in_window`. Not verified on glasses.
 - **Head compensation removed**: the screen-tracking backends (corner AprilTags, screen outline, hybrid; `neon_screen_source`,
   `screen_markers`, `screen_outline_mapper`, `hybrid_screen_mapper`, `neon_gaze_view`, `real-time-screen-gaze`) were deleted.
   Gaze is the plain Neon scene-camera backend ("Pupil Labs Neon (still head)", the default) or the webcam; the head must stay
@@ -51,7 +58,7 @@ saccades (Neon glasses, 2AFC orientation) and measures detection vs flash time r
 **Where the work is.** Branch `feature/saccade-flash-analysis` (cut from `main` == the old `feature/neon-glasses`
 tip `befac0e`). Nothing pushed by us; sessions pushed `claude/clock-onset-05b6cf` and `claude/simplify-comments` to
 origin by themselves (ignore/delete). Defaults: scheduled flashes (avg RT + offset -80..+80 ms + random +/-10 ms),
-fixed saccade-phase contrasts 2/4/6 % (line branch; guess) (startup dialog "Saccade contrast min/max (%)"), sharp go-cue, dot/cross at
+fixed saccade-phase contrasts 4/6/8 % (line branch; guess) (startup dialog "Saccade contrast min/max (%)"), sharp go-cue, dot/cross at
 15 %/85 % of the screen, plain Neon backend + still head recommended. Run the experiment, then
 `.\scripts\py.ps1 -m src.experiment.analyze_session` (newest session) for the report, plot and per-flash CSV.
 
@@ -147,7 +154,7 @@ Paths in this section are checked by `tests/test_docs.py` - keep them real.
 | `src/experiment/tutorial_session.py` | `TutorialSession`: narrated first-timer on-ramp (calibration -> how-to-answer quiz -> 8 practice trials that yield the first reaction-time samples) |
 | `src/experiment/run_experiment.py` | entry point + PsychoPy rendering; the only PsychoPy-dependent module |
 | `src/experiment/scoring.py` | `score_outcome`, `is_valid_for_saccadic_analysis` (the validity gate) |
-| `src/experiment/trial_mechanics.py` | `OnsetDetector` (displacement rule), `ShuffledBag`, `zone_for`, `line_position` (line placement above/below a reference point), `average_ms`, `robust_average_ms` (shared helpers; the robust one drops anticipations/outliers then takes the median) |
+| `src/experiment/trial_mechanics.py` | `OnsetDetector` (displacement rule), `ShuffledBag`, `zone_for`, `line_position` (line placement above/below a reference point), `average_ms`, `robust_average_ms` (shared helpers; the robust one drops anticipations/outliers then takes the median), `RollingReactionTime` (live rolling window + robust average, updated at every detected onset) |
 | `src/experiment/calibration.py` | `average_calibration_rounds`, `validate_calibration` / `CalibrationCheck` / `fit_residual` (monotonic, span, noise, residual checks; not yet wired into `session.py`) |
 | `src/experiment/space_input.py` | SPACE bookkeeping with no PsychoPy: `CalibrationLatch` (a calibration press made before the gaze window is full is latched and completed in `tick()`), `NarrationKeyGate` (tutorial: a press during narration is delivered after it), `SpaceTally` (ignored presses per phase + reason), `deliver_space`, `leaves_complete_screen` |
 | `src/experiment/session_schedule.py` | `phase_order`: baseline/saccade order counterbalanced by participant ID |
@@ -417,8 +424,8 @@ don't have this restriction. If the tutorial ran, its
 `precomputed_calibration_ratios` and `precomputed_rt_samples_ms`
 (`TutorialSession.rt_samples_ms`: one saccade-onset latency per practice trial)
 are threaded into `run_saccade_phase`: the saccade phase skips calibrating,
-its own RT test and its own practice trials, seeds `_avg_reaction_time_ms` /
-`_recent_rt_ms` from those samples (`DEFAULT_REACTION_TIME_MS` if none were
+its own RT test and its own practice trials, seeds its `RollingReactionTime`
+(`_rt`, `_avg_reaction_time_ms`) from those samples (`DEFAULT_REACTION_TIME_MS` if fewer than 3 were
 usable) and goes straight to the main trials. Without the tutorial the old
 path (calibration + RT test + practice) is the fallback. Narrated strings stay
 under ~15 words and are not repeated between screens (the narrator re-speaks
@@ -442,7 +449,7 @@ Shipped saccade-phase setup (branch `feature/saccade-flash-analysis`, built for 
 after the fact because the live check is useless at ~90 ms gaze latency): scheduled flashes at
 average RT + one of `TIMING_OFFSETS_MS` (-80..+80 ms) + a random `TIMING_JITTER_MS` (+/-10 ms)
 bounce (logged in `scheduled_delay_ms`), fixed probe contrasts `SACCADE_FIXED_CONTRASTS`
-(2/4/6 % on the line branch, was 10/15/20 %: evenly spaced between the startup dialog's "Saccade contrast min/max (%)" fields, logged as `saccade_contrasts` in the meta file; method of constant stimuli: no live ZEST in the saccade phase) and a fixed count
+(4/6/8 % on the line branch, was 10/15/20 %: evenly spaced between the startup dialog's "Saccade contrast min/max (%)" fields, logged as `saccade_contrasts` in the meta file; method of constant stimuli: no live ZEST in the saccade phase) and a fixed count
 `SACCADE_FIXED_TRIALS_*`. Set `SACCADE_FIXED_CONTRASTS = ()` to return to the staircase. The
 analysis is `src.experiment.analyze_session` (accuracy vs flash time relative to saccade onset, from the
 raw trace's phone capture times; first real data: 3 %/6 % were invisible 15 deg off to the side, 20-80 %

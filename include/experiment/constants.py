@@ -272,17 +272,17 @@ CONTROL_OFFSETS_MS = (400, 500)
 # the saccade phase: it only learns from flashes the live check says landed in the saccade, and
 # with the current gaze latency (~90 ms) almost none do, so it never adapts. Instead every flash
 # is judged afterwards from the raw gaze trace (accuracy vs flash time relative to saccade
-# onset). Line-stimulus defaults 2/4/6 %: an EDUCATED GUESS, not a measurement. The line sits next to the
+# onset). Line-stimulus defaults 4/6/8 %: an EDUCATED GUESS, not a measurement. The line sits next to the
 # saccade target and is much easier to see than the old off-centre grating: a Test-mode run at 10/15/20 % was
 # at ceiling (11/11 correct at fixation, 18/22 overall), leaving no headroom to see suppression, and the old
-# foveal grating threshold was ~1.3 %. Re-pilot on glasses and adjust in the startup dialog. The 8-bit
-# display renders ~2.5 / 5 / 7.6 grey steps at the line's peak for 2 / 4 / 6 %, so levels are coarse; the
-# hardware floor (HARDWARE_CONTRAST_FLOOR, 0.78 %) still allows them. () = back to the staircase.
+# foveal grating threshold was ~1.3 %; the earlier 2/4/6 % guess was judged too hard. Re-pilot on glasses and
+# adjust in the startup dialog. The 8-bit display renders ~5 / 7.6 / 10 grey steps at the line's peak for
+# 4 / 6 / 8 %, so levels are coarse; the hardware floor (HARDWARE_CONTRAST_FLOOR, 0.78 %) still allows them. () = back to the staircase.
 # The startup dialog's "Saccade contrast min/max (%)" fields (defaults: the ends of the tuple below)
 # rebuild it per session as SACCADE_CONTRAST_LEVELS evenly spaced values between them (see
 # src/experiment/settings.py); 1 level or min == max gives a single contrast.
 SACCADE_CONTRAST_LEVELS = 3
-SACCADE_FIXED_CONTRASTS = (0.02, 0.04, 0.06)
+SACCADE_FIXED_CONTRASTS = (0.04, 0.06, 0.08)
 # Number of main-block saccade trials in that mode (it stops by count, not by staircase width):
 # ~30 % of flashes should land near the saccade, so 150 trials give ~50 usable flashes.
 SACCADE_FIXED_TRIALS_TEST = 30
@@ -305,20 +305,18 @@ NUM_RT_TEST_TRIALS_REAL = 10
 # broken and needs investigating, not this number tuned.
 DEFAULT_REACTION_TIME_MS = 225.0
 
-# The rolling average of avg_reaction_time_ms recomputes from the most recent
-# RT_AVERAGE_ROLLING_WINDOW completed trials' actual detected reaction times,
-# every RT_AVERAGE_RECOMPUTE_EVERY completed trials - a continuously running
-# counter, never reset. Kept as
-# two separate names even though equal today, since "how many samples feed
-# the average" and "how often it's recomputed" are conceptually distinct
-# knobs a future tweak might decouple. Recomputed after EVERY completed trial
-# (was every 5) so the flash schedule tracks fatigue/practice drift as it
-# happens; the window is 10 and is seeded with the upfront RT-test samples
-# (see ExperimentSession._finish_rt_test_attempt), so a single early trial
-# can't swing the median. The average is robust (trial_mechanics.robust_average_ms:
-# drops anticipations/outliers, then the median), so a wide window is safe.
-RT_AVERAGE_ROLLING_WINDOW = 10
-RT_AVERAGE_RECOMPUTE_EVERY = 1
+# Live rolling reaction-time average (trial_mechanics.RollingReactionTime): avg_reaction_time_ms is the
+# robust average of the last RT_AVERAGE_ROLLING_WINDOW detected saccade-onset latencies, recomputed at
+# EVERY detected eye movement - RT-test attempts, tutorial practice trials, practice and main trials,
+# whether or not the trial later turns out valid, flashed or a catch trial. So the next trial's scheduled
+# flash already uses the newest sample (a flash already scheduled in the running trial is not moved). The
+# same object carries from the tutorial's practice trials into the saccade phase. Window 12: wide enough
+# that 2-3 stray latencies cannot move the median (the robust rule drops them anyway), narrow enough that a
+# drift (fatigue, practice) is followed within ~6 trials; it equals about the RT test's 10 attempts, so
+# those fill it. With fewer than RT_MIN_SAMPLES_FOR_AVERAGE plausible samples the average stays at its
+# previous value (initially DEFAULT_REACTION_TIME_MS) instead of trusting one or two latencies.
+RT_AVERAGE_ROLLING_WINDOW = 12
+RT_MIN_SAMPLES_FOR_AVERAGE = 3
 
 # Sharp go-cue: when True the dot/cross appear and disappear instantly during
 # the reaction-time test and the trials (calibration steps and the tutorial

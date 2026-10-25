@@ -17,7 +17,6 @@ from include.experiment.constants import (
     NUM_RT_TEST_TRIALS_TEST,
     PRACTICE_CONTRAST,
     RESPONSE_WINDOW_MS,
-    RT_AVERAGE_RECOMPUTE_EVERY,
     RT_AVERAGE_ROLLING_WINDOW,
     SACCADE_ONSET_STABILITY_MS,
     SACCADE_TIMEOUT_MS,
@@ -589,29 +588,57 @@ def _run_catch_trial_with_reaction_time(session, fake_gaze, fake_time, index: in
     session.tick()  # window closes, no response given -> finalizes as correct_rejection
 
 
-def test_rolling_average_recomputes_every_n_completed_trials(fake_gaze, fake_time):
+def test_rt_test_attempts_feed_the_rolling_window(fake_gaze, fake_time):
     session = _make_session(fake_gaze, test_mode=True)
     _complete_calibration_and_rt_test(session, fake_gaze, fake_time, reaction_time_s=0.2)
-    initial_average = session._avg_reaction_time_ms
-    assert initial_average == pytest.approx(200.0)
+    assert session._rt.total_added == NUM_RT_TEST_TRIALS_TEST
+    assert session._rt.samples == pytest.approx([200.0] * NUM_RT_TEST_TRIALS_TEST)
+    assert session._avg_reaction_time_ms == pytest.approx(200.0)
 
-    for i in range(RT_AVERAGE_RECOMPUTE_EVERY - 1):
+
+def test_average_updates_at_every_detected_eye_movement_and_the_next_trial_uses_it(fake_gaze, fake_time):
+    session = _make_session(fake_gaze, test_mode=True)
+    _complete_calibration_and_rt_test(session, fake_gaze, fake_time, reaction_time_s=0.2)
+    averages = []
+    for i in range(NUM_RT_TEST_TRIALS_TEST + 2):  # the participant slows down to 300 ms
+        before = session._avg_reaction_time_ms
+        total_before = session._rt.total_added
         _run_catch_trial_with_reaction_time(session, fake_gaze, fake_time, i, reaction_time_s=0.3)
-        assert session._avg_reaction_time_ms == initial_average  # not yet recomputed
+        row = _saccade_results(session)[-1]
+        assert session._rt.total_added == total_before + 1  # even though a catch trial is never a valid flash
+        assert row.flash_during_saccade is not True
+        assert row.avg_rt_used_ms == pytest.approx(before)  # the running trial kept the schedule it started with
+        assert row.reaction_latency_ms == pytest.approx(300.0)
+        averages.append(session._avg_reaction_time_ms)
+    assert averages == sorted(averages) and averages[0] >= 200.0
+    assert 200.0 < averages[NUM_RT_TEST_TRIALS_TEST - 1] < 300.0  # moves before the window is full of slow trials
+    assert averages[-1] == pytest.approx(300.0)
 
-    # The Nth completed trial triggers the recompute. The window is seeded
-    # with the RT-test samples, so it blends them with the new trials.
-    _run_catch_trial_with_reaction_time(session, fake_gaze, fake_time, RT_AVERAGE_RECOMPUTE_EVERY, reaction_time_s=0.3)
-    assert initial_average <= session._avg_reaction_time_ms <= 300.0
+    _set_single_trial(session, index=99, grating_shown=False, orientation=None)
+    _enter_trial_active(session, fake_time)
+    assert session._trial_avg_rt_ms == pytest.approx(averages[-1])  # the next trial is scheduled from the new average
 
-    # Once the window is full of 300 ms trials the average is exactly 300.
+
+def test_a_trial_without_a_detected_saccade_adds_no_sample(fake_gaze, fake_time):
+    session = _make_session(fake_gaze, test_mode=True)
+    _complete_calibration_and_rt_test(session, fake_gaze, fake_time, reaction_time_s=0.2)
+    total = session._rt.total_added
+    _set_single_trial(session, index=0, grating_shown=False, orientation=None)
+    _enter_trial_active(session, fake_time)
+    fake_time(SACCADE_TIMEOUT_MS / 1000 + 0.5)
+    session.tick()
+    assert session._rt.total_added == total
+
+
+def test_the_window_rolls_and_a_stray_latency_does_not_move_the_average(fake_gaze, fake_time):
+    session = _make_session(fake_gaze, test_mode=True)
+    _complete_calibration_and_rt_test(session, fake_gaze, fake_time, reaction_time_s=0.2)
+    _run_catch_trial_with_reaction_time(session, fake_gaze, fake_time, 0, reaction_time_s=0.9)  # a lapse
+    assert session._avg_reaction_time_ms == pytest.approx(200.0)
     for i in range(RT_AVERAGE_ROLLING_WINDOW):
-        _run_catch_trial_with_reaction_time(session, fake_gaze, fake_time, 10 + i, reaction_time_s=0.3)
-    assert session._avg_reaction_time_ms == pytest.approx(300.0)
-
-
-def test_rt_average_is_recomputed_after_every_trial():
-    assert RT_AVERAGE_RECOMPUTE_EVERY == 1
+        _run_catch_trial_with_reaction_time(session, fake_gaze, fake_time, 1 + i, reaction_time_s=0.25)
+    assert len(session._rt.samples) == RT_AVERAGE_ROLLING_WINDOW  # old samples rolled out
+    assert session._avg_reaction_time_ms == pytest.approx(250.0)
 
 
 def test_render_state_snaps_symbols_during_rt_test_and_trials_but_not_calibration(fake_gaze, fake_time):
@@ -863,7 +890,7 @@ def test_seeded_session_skips_rt_test_and_practice_and_uses_the_seeded_average(f
     assert session.render_state()["hud"]["phase"] == "AWAITING_SPACE"
     assert not session._current_trial_spec.practice
     assert session._avg_reaction_time_ms == pytest.approx(185.0)
-    assert list(session._recent_rt_ms) == samples
+    assert session._rt.samples == samples
     assert session._rt_test_attempt == 0 and not any(r.phase == "rt_test" for r in session.results)
 
 

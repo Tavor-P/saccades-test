@@ -4,7 +4,6 @@ runs of this class: src/experiment/simulation.py."""
 
 import math
 import random
-from collections import deque
 from enum import Enum, auto
 
 from include.eye_tracking.interfaces import GazeSource
@@ -32,8 +31,6 @@ from include.experiment.constants import (
     NUM_RT_TEST_TRIALS_TEST,
     PRACTICE_CONTRAST,
     RESPONSE_WINDOW_MS,
-    RT_AVERAGE_RECOMPUTE_EVERY,
-    RT_AVERAGE_ROLLING_WINDOW,
     SACCADE_FIXED_CONTRASTS,
     SACCADE_FIXED_TRIALS_REAL,
     SACCADE_FIXED_TRIALS_TEST,
@@ -56,7 +53,7 @@ from src.experiment.pausable_clock import PausableClock
 from src.experiment.scoring import is_valid_for_saccadic_analysis, score_outcome
 from src.experiment.space_input import CalibrationLatch, SpaceTally
 from src.experiment.trial_factory import build_saccade_sequence, generate_next_saccade_trial
-from src.experiment.trial_mechanics import OnsetDetector, ShuffledBag, line_position, robust_average_ms, zone_for
+from src.experiment.trial_mechanics import OnsetDetector, RollingReactionTime, ShuffledBag, line_position, zone_for
 from src.experiment.zest import ZestStaircase
 
 
@@ -173,15 +170,14 @@ class ExperimentSession:
         # -- reaction-time test + rolling average (see constants.py) --
         self._rt_test_target_attempts = NUM_RT_TEST_TRIALS_TEST if test_mode else NUM_RT_TEST_TRIALS_REAL
         self._rt_test_attempt = 0
-        self._rt_samples_ms: list[float] = []
         self._rt_test_onset_detector: OnsetDetector = OnsetDetector(zone_for(Target.DOT))
         self._rt_test_start_time = 0.0
         self._avg_reaction_time_ms: float | None = None
-        self._recent_rt_ms: deque[float] = deque(maxlen=RT_AVERAGE_ROLLING_WINDOW)
+        # One rolling window for the RT test, practice and main trials (and the tutorial's practice samples): every
+        # detected eye movement is added and _avg_reaction_time_ms follows at once (see _record_reaction_time).
+        self._rt = RollingReactionTime(DEFAULT_REACTION_TIME_MS, seed=precomputed_rt_samples_ms or ())
         if precomputed_rt_samples_ms is not None:
-            self._rt_samples_ms = list(precomputed_rt_samples_ms)
-            self._avg_reaction_time_ms = robust_average_ms(self._rt_samples_ms, default=DEFAULT_REACTION_TIME_MS)
-            self._recent_rt_ms.extend(self._rt_samples_ms)
+            self._avg_reaction_time_ms = self._rt.average
 
         # -- stopping criterion for the real block (see constants.py) --
         self._min_valid_trials = ZEST_MIN_VALID_TRIALS_TEST if test_mode else ZEST_MIN_VALID_TRIALS_REAL
@@ -439,6 +435,14 @@ class ExperimentSession:
             self._rt_test_start_time = self._clock.now()
             self._last_sample_ts = getattr(self._gaze.latest_sample(), "timestamp", None)
 
+    def _record_reaction_time(self, reaction_ms: float) -> None:
+        """A saccade onset was just confirmed (RT test, practice or main trial, valid or not): add its latency
+        to the rolling window and refresh the average at once. The running trial's flash is already scheduled
+        and stays put; the next trial's schedule uses the new average. Not used in gaze-triggered mode."""
+        if self._closed_loop:
+            return
+        self._avg_reaction_time_ms = self._rt.add(reaction_ms)
+
     def _tick_rt_test_active(self) -> None:
         now = self._clock.now()
         for sample, sample_t in self._new_samples(self._gaze.latest_sample()):
@@ -470,17 +474,13 @@ class ExperimentSession:
         self._logger.log(result)
         self._results.append(result)
         if reaction_time_ms is not None:
-            self._rt_samples_ms.append(reaction_time_ms)
+            self._record_reaction_time(reaction_time_ms)
 
         self._rt_test_attempt += 1
         if self._rt_test_attempt >= self._rt_test_target_attempts:
-            self._avg_reaction_time_ms = robust_average_ms(self._rt_samples_ms, default=DEFAULT_REACTION_TIME_MS)
-            # Seed the rolling window with these samples (the cue is the same
-            # sharp onset as in the trials), so re-estimating after every
-            # trial blends the RT test with the first trials instead of
-            # jumping to a single trial's latency.
-            self._recent_rt_ms.clear()
-            self._recent_rt_ms.extend(self._rt_samples_ms)
+            # The window already holds these attempts (the cue is the same sharp onset as in the trials), so the
+            # first trials blend with them instead of jumping to a single trial's latency.
+            self._avg_reaction_time_ms = self._rt.average  # DEFAULT_REACTION_TIME_MS if too few were usable
             self._begin_next_trial_or_complete()
         else:
             self._begin_rt_test_foreperiod()
@@ -543,6 +543,9 @@ class ExperimentSession:
                 "zest_grid_log10_range": [log_lo, log_hi],
                 "threshold_at_grid_bound": "lower" if at_lower else "upper" if at_upper else None,
                 "final_avg_reaction_time_ms": self._avg_reaction_time_ms,
+                "rt_samples_total": self._rt.total_added,
+                "rt_samples_in_window": len(self._rt.samples),
+                "rt_samples_dropped_in_window": self._rt.n_dropped,
                 "gaze_latency_ms_used": self.gaze_latency_ms,
             },
         )
@@ -661,6 +664,7 @@ class ExperimentSession:
                 continue  # captured before the go-cue (it just arrived after it): cannot be a reaction to it
             if not self._onset_detector.confirmed and self._onset_detector.update(s, s_t):
                 self._reaction_latency_ms = (self._onset_detector.since - self._trial_start_time) * 1000
+                self._record_reaction_time(self._reaction_latency_ms)
                 self._onset_detection_lag_ms = (s_t - self._onset_detector.since) * 1000
                 if self._closed_loop:
                     self._onset_flash_due_at = self._onset_detector.since + self._trial_scheduled_delay_ms / 1000
@@ -766,16 +770,6 @@ class ExperimentSession:
             return None
         return self._onset_detector.since <= self._flash_scheduled_at <= self._target_landed_since
 
-    def _update_rt_tracking(self) -> None:
-        if self._closed_loop:
-            return  # no reaction-time prediction in gaze-triggered mode (reaction_latency_ms is still logged)
-        if self._reaction_latency_ms is not None:
-            self._recent_rt_ms.append(self._reaction_latency_ms)
-        if self._completed_main_trial_count % RT_AVERAGE_RECOMPUTE_EVERY == 0:
-            # default=current average: a window that's entirely timeouts
-            # shouldn't zero it out, just leave it unchanged.
-            self._avg_reaction_time_ms = robust_average_ms(self._recent_rt_ms, default=self._avg_reaction_time_ms)
-
     def _finish_trial(self, landed: bool) -> None:
         trial = self._current_trial_spec
         now = self._clock.now()
@@ -853,7 +847,6 @@ class ExperimentSession:
             )
             self._logger.log(result)
             self._results.append(result)
-            self._update_rt_tracking()
 
         self._grating_visible = False
         self._begin_next_trial_or_complete()

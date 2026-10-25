@@ -188,6 +188,41 @@ def test_practice_flash_follows_the_measured_reaction_time(fake_gaze, fake_time)
     assert session._flash_scheduled_at - session._trial_start == pytest.approx(0.16)
 
 
+def test_practice_average_updates_after_each_trial_and_carries_into_the_saccade_session(fake_gaze, fake_time):
+    from include.experiment.constants import DEFAULT_REACTION_TIME_MS
+    from src.experiment.session import ExperimentSession
+
+    session = _make_session(fake_gaze)
+    _reach_practice(session)
+    scheduled = []
+    real_tick_active = session._tick_active
+
+    def spy():
+        if not scheduled:
+            scheduled.append((session._flash_scheduled_at - session._trial_start) * 1000)
+        real_tick_active()
+
+    session._tick_active = spy
+    expected = []
+    for reaction_s in (0.30, 0.30, 0.30, 0.20, 0.20, 0.20):
+        expected.append(session._rt.average)
+        scheduled.clear()
+        _run_attempt(session, fake_gaze, fake_time, reaction_time_s=reaction_s)
+        assert scheduled[0] == pytest.approx(expected[-1])  # each trial is scheduled from the average so far
+    assert expected[:4] == pytest.approx([DEFAULT_REACTION_TIME_MS] * 3 + [300.0])  # default until 3 samples, then the median
+    assert session._rt.average == pytest.approx(250.0)
+
+    class _L:
+        def log(self, result):
+            pass
+
+    seeded = ExperimentSession(
+        fake_gaze, logger=_L(), clock=session._clock, test_mode=True,
+        precomputed_calibration_ratios=(0.3, 0.5, 0.7), precomputed_rt_samples_ms=session.rt_samples_ms,
+    )
+    assert seeded._avg_reaction_time_ms == pytest.approx(session._rt.average)
+
+
 def test_practice_flash_is_clearly_visible_and_oriented(fake_gaze, fake_time):
     session = _make_session(fake_gaze)
     _reach_practice(session)

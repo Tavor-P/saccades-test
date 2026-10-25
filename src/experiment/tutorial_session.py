@@ -27,7 +27,7 @@ from src.experiment.calibration import average_calibration_rounds
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.scoring import score_outcome
 from src.experiment.space_input import CalibrationLatch, SpaceTally
-from src.experiment.trial_mechanics import OnsetDetector, line_position, robust_average_ms
+from src.experiment.trial_mechanics import OnsetDetector, RollingReactionTime, line_position
 from src.experiment.trial_mechanics import random_orientation as _random_orientation
 from src.experiment.trial_mechanics import zone_for as _zone_for
 
@@ -60,9 +60,10 @@ class TutorialSession:
        real saccade trials (SPACE -> dot -> cross -> clearly visible flash ->
        arrow key -> colour feedback), fixed count regardless of outcome. The
        flash fires at a scheduled delay (running robust average of this
-       stage's own reaction times, DEFAULT_REACTION_TIME_MS until there is
-       one). Each trial's saccade-onset latency is kept in `rt_samples_ms`
-       and handed to ExperimentSession, which seeds its reaction-time average
+       stage's own reaction times, a RollingReactionTime updated at every
+       detected eye movement; DEFAULT_REACTION_TIME_MS until there are 3).
+       Each trial's saccade-onset latency is kept in `rt_samples_ms` and
+       handed to ExperimentSession, which seeds its reaction-time average
        from them instead of running a separate RT test.
 
     Framework-agnostic like ExperimentSession/PresaccadeSession:
@@ -106,7 +107,7 @@ class TutorialSession:
 
         # -- practice trials --
         self._attempt = 0
-        self._rt_samples_ms: list[float] = []
+        self._rt = RollingReactionTime(DEFAULT_REACTION_TIME_MS)
         self._source = Target.DOT
         self._target = Target.CROSS
         self._orientation: Side | None = None
@@ -130,7 +131,7 @@ class TutorialSession:
     @property
     def rt_samples_ms(self) -> list[float]:
         """Saccade-onset latency (target appears -> eye leaves the source) of every practice trial that had one."""
-        return list(self._rt_samples_ms)
+        return self._rt.samples
 
     # -- key handling ------------------------------------------------------
 
@@ -219,7 +220,7 @@ class TutorialSession:
 
     def _enter_practice(self) -> None:
         self._attempt = 0
-        self._rt_samples_ms = []
+        self._rt = RollingReactionTime(DEFAULT_REACTION_TIME_MS)
         self._source = Target.DOT
         self._dot_visible = True
         self._cross_visible = False
@@ -253,10 +254,9 @@ class TutorialSession:
             self._cross_visible = self._target is Target.CROSS
             self._phase = Phase.PRACTICE_ACTIVE
             self._trial_start = self._clock.now()
-            # Open-loop, like the real saccade phase: scheduled off the
-            # reaction times measured so far (default until there are any).
-            avg_ms = robust_average_ms(self._rt_samples_ms, default=DEFAULT_REACTION_TIME_MS)
-            self._flash_scheduled_at = self._trial_start + avg_ms / 1000
+            # Open-loop, like the real saccade phase: scheduled off the rolling average of the reaction
+            # times measured so far (updated at every detected eye movement; the default until there are 3).
+            self._flash_scheduled_at = self._trial_start + self._rt.average / 1000
 
     def _sample_time(self, sample, now: float) -> float:
         """When the eye was actually where `sample` says, on the session clock
@@ -282,7 +282,7 @@ class TutorialSession:
 
         if not self._onset_detector.confirmed and sample_t >= self._trial_start:
             if self._onset_detector.update(sample, sample_t):
-                self._rt_samples_ms.append((self._onset_detector.since - self._trial_start) * 1000)
+                self._rt.add((self._onset_detector.since - self._trial_start) * 1000)
 
         flash_fired_this_tick = False
         if not self._flash_decided and now >= self._flash_scheduled_at:
