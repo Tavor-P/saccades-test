@@ -17,7 +17,7 @@ from src.experiment import logger as logger_module
 from src.experiment.logger import ResultLogger
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.session import ExperimentSession
-from src.experiment.trial_mechanics import robust_average_ms
+from src.experiment.trial_mechanics import RollingReactionTime, robust_average_ms
 from test_session import (
     _complete_calibration,
     _complete_calibration_and_rt_test,
@@ -77,10 +77,38 @@ def test_robust_average_one_outlier_barely_moves_it():
 def test_rt_test_average_ignores_anticipations_and_slow_outliers(fake_gaze):
     session = _make_session(fake_gaze, test_mode=True)
     _complete_calibration(session)
-    session._rt_samples_ms = [60.0, 210.0, 220.0, 230.0, 900.0]
+    for sample in (60.0, 210.0, 220.0, 230.0, 900.0):
+        session._rolling_rt.add(sample)
     session._rt_test_attempt = session._rt_test_target_attempts - 1
     session._finish_rt_test_attempt(None)
+    session._avg_reaction_time_ms = session._rolling_rt.average_ms
     assert session._avg_reaction_time_ms == pytest.approx(220.0)
+
+
+# -- rolling reaction-time estimate -----------------------------------------------------
+
+
+def test_rolling_rt_window_rolls_and_updates_after_every_sample():
+    rt = RollingReactionTime(window=4, default=225.0, min_usable=3)
+    seen = [rt.add(x) for x in (200.0, 210.0, 220.0, 230.0)]
+    assert seen[0] == 225.0 and seen[1] == 225.0  # < 3 usable: the default
+    assert seen[2] == 210.0 and seen[3] == 215.0  # median updates with each sample
+    for x in (300.0, 300.0, 300.0, 300.0):
+        rt.add(x)
+    assert rt.samples == [300.0] * 4 and rt.average_ms == 300.0  # old samples rolled out
+    assert rt.total_added == 8
+
+
+def test_rolling_rt_drops_outliers_and_counts_them():
+    rt = RollingReactionTime(window=10, default=225.0, min_usable=3, seed=[40.0, 200.0, 210.0, 220.0, 230.0, 1400.0])
+    assert rt.average_ms == 215.0
+    assert rt.dropped_count == 2 and rt.kept_count == 4
+
+
+def test_rolling_rt_falls_back_to_default_with_too_few_usable_samples():
+    rt = RollingReactionTime(window=10, default=225.0, min_usable=3, seed=[40.0, 60.0, 200.0, 210.0])
+    assert rt.average_ms == 225.0
+    assert RollingReactionTime(10, 225.0, 3).average_ms == 225.0
 
 
 # -- sample-timestamp timing ----------------------------------------------------------

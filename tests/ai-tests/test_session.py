@@ -17,7 +17,6 @@ from include.experiment.constants import (
     NUM_RT_TEST_TRIALS_TEST,
     PRACTICE_CONTRAST,
     RESPONSE_WINDOW_MS,
-    RT_AVERAGE_RECOMPUTE_EVERY,
     RT_AVERAGE_ROLLING_WINDOW,
     SACCADE_ONSET_STABILITY_MS,
     SACCADE_TIMEOUT_MS,
@@ -589,20 +588,15 @@ def _run_catch_trial_with_reaction_time(session, fake_gaze, fake_time, index: in
     session.tick()  # window closes, no response given -> finalizes as correct_rejection
 
 
-def test_rolling_average_recomputes_every_n_completed_trials(fake_gaze, fake_time):
+def test_rolling_average_updates_at_every_detected_onset(fake_gaze, fake_time):
     session = _make_session(fake_gaze, test_mode=True)
     _complete_calibration_and_rt_test(session, fake_gaze, fake_time, reaction_time_s=0.2)
-    initial_average = session._avg_reaction_time_ms
-    assert initial_average == pytest.approx(200.0)
+    assert session._avg_reaction_time_ms == pytest.approx(200.0)
+    n_rt = session._rolling_rt.total_added
 
-    for i in range(RT_AVERAGE_RECOMPUTE_EVERY - 1):
-        _run_catch_trial_with_reaction_time(session, fake_gaze, fake_time, i, reaction_time_s=0.3)
-        assert session._avg_reaction_time_ms == initial_average  # not yet recomputed
-
-    # The Nth completed trial triggers the recompute. The window is seeded
-    # with the RT-test samples, so it blends them with the new trials.
-    _run_catch_trial_with_reaction_time(session, fake_gaze, fake_time, RT_AVERAGE_RECOMPUTE_EVERY, reaction_time_s=0.3)
-    assert initial_average <= session._avg_reaction_time_ms <= 300.0
+    _run_catch_trial_with_reaction_time(session, fake_gaze, fake_time, 0, reaction_time_s=0.3)
+    assert session._rolling_rt.total_added == n_rt + 1
+    assert session._avg_reaction_time_ms == session._rolling_rt.average_ms
 
     # Once the window is full of 300 ms trials the average is exactly 300.
     for i in range(RT_AVERAGE_ROLLING_WINDOW):
@@ -610,8 +604,63 @@ def test_rolling_average_recomputes_every_n_completed_trials(fake_gaze, fake_tim
     assert session._avg_reaction_time_ms == pytest.approx(300.0)
 
 
-def test_rt_average_is_recomputed_after_every_trial():
-    assert RT_AVERAGE_RECOMPUTE_EVERY == 1
+def test_onset_updates_the_average_immediately_and_does_not_move_the_scheduled_flash(fake_gaze, fake_time):
+    session = _make_session(fake_gaze, test_mode=True)
+    _complete_calibration_and_rt_test(session, fake_gaze, fake_time, reaction_time_s=0.2)
+    _set_single_trial(session, index=0, grating_shown=False, orientation=None)
+    _enter_trial_active(session, fake_time)
+    scheduled = session._flash_scheduled_at
+    fake_time(0.35)
+    fake_gaze.zone = GazeZone.CENTER
+    session.tick()
+    fake_time(SACCADE_ONSET_STABILITY_MS / 1000 + 0.01)
+    session.tick()  # onset confirmed at ~350 ms: the trial is still running
+    assert session.render_state()["hud"]["phase"] == "TRIAL_ACTIVE"
+    assert session._rolling_rt.samples[-1] == pytest.approx(350.0, abs=15)  # already in the window
+    assert session._avg_reaction_time_ms == session._rolling_rt.average_ms
+    assert session._flash_scheduled_at == scheduled  # this trial's flash did not move
+
+
+def test_next_trial_is_scheduled_from_the_freshly_updated_average(fake_gaze, fake_time):
+    session = _make_session(fake_gaze, test_mode=True)
+    _complete_calibration_and_rt_test(session, fake_gaze, fake_time, reaction_time_s=0.2)
+    for i in range(RT_AVERAGE_ROLLING_WINDOW):
+        _run_catch_trial_with_reaction_time(session, fake_gaze, fake_time, i, reaction_time_s=0.3)
+    updated = session._avg_reaction_time_ms
+    assert updated == pytest.approx(300.0)
+    _set_single_trial(session, index=99, grating_shown=False, orientation=None)
+    _enter_trial_active(session, fake_time)
+    assert session._trial_avg_rt_ms == pytest.approx(updated)
+
+
+def test_rt_test_attempts_feed_the_same_window(fake_gaze, fake_time):
+    session = _make_session(fake_gaze, test_mode=True)
+    _complete_calibration(session)
+    _run_one_rt_test_attempt(session, fake_gaze, fake_time, reaction_time_s=0.2)
+    assert session._rolling_rt.total_added == 1
+    _complete_rt_test_rest = session._rt_test_target_attempts - 1
+    for _ in range(_complete_rt_test_rest):
+        _run_one_rt_test_attempt(session, fake_gaze, fake_time, reaction_time_s=0.2)
+    assert session._rolling_rt.total_added == session._rt_test_target_attempts
+    assert session._avg_reaction_time_ms == pytest.approx(200.0)
+
+
+def test_samples_from_invalid_trials_still_count(fake_gaze, fake_time):
+    session = _make_session(fake_gaze, test_mode=True)
+    _complete_calibration_and_rt_test(session, fake_gaze, fake_time, reaction_time_s=0.2)
+    n = session._rolling_rt.total_added
+    # A trial that never lands (timeout -> not valid for analysis) but whose eye did leave the source.
+    _set_single_trial(session, index=0, grating_shown=False, orientation=None)
+    _enter_trial_active(session, fake_time)
+    fake_time(0.3)
+    fake_gaze.zone = GazeZone.CENTER
+    session.tick()
+    fake_time(SACCADE_ONSET_STABILITY_MS / 1000 + 0.01)
+    session.tick()
+    assert session._rolling_rt.total_added == n + 1
+    fake_time(SACCADE_TIMEOUT_MS / 1000 + 0.1)
+    session.tick()
+    assert session._rolling_rt.total_added == n + 1  # finishing the trial adds nothing more
 
 
 def test_render_state_snaps_symbols_during_rt_test_and_trials_but_not_calibration(fake_gaze, fake_time):
@@ -863,7 +912,7 @@ def test_seeded_session_skips_rt_test_and_practice_and_uses_the_seeded_average(f
     assert session.render_state()["hud"]["phase"] == "AWAITING_SPACE"
     assert not session._current_trial_spec.practice
     assert session._avg_reaction_time_ms == pytest.approx(185.0)
-    assert list(session._recent_rt_ms) == samples
+    assert session._rolling_rt.samples == samples
     assert session._rt_test_attempt == 0 and not any(r.phase == "rt_test" for r in session.results)
 
 

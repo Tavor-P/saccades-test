@@ -289,20 +289,21 @@ NUM_RT_TEST_TRIALS_REAL = 10
 # broken and needs investigating, not this number tuned.
 DEFAULT_REACTION_TIME_MS = 225.0
 
-# The rolling average of avg_reaction_time_ms recomputes from the most recent
-# RT_AVERAGE_ROLLING_WINDOW completed trials' actual detected reaction times,
-# every RT_AVERAGE_RECOMPUTE_EVERY completed trials - a continuously running
-# counter, never reset. Kept as
-# two separate names even though equal today, since "how many samples feed
-# the average" and "how often it's recomputed" are conceptually distinct
-# knobs a future tweak might decouple. Recomputed after EVERY completed trial
-# (was every 5) so the flash schedule tracks fatigue/practice drift as it
-# happens; the window is 10 and is seeded with the upfront RT-test samples
-# (see ExperimentSession._finish_rt_test_attempt), so a single early trial
-# can't swing the median. The average is robust (trial_mechanics.robust_average_ms:
-# drops anticipations/outliers, then the median), so a wide window is safe.
-RT_AVERAGE_ROLLING_WINDOW = 10
-RT_AVERAGE_RECOMPUTE_EVERY = 1
+# avg_reaction_time_ms (which schedules every flash) is a live rolling average
+# (trial_mechanics.RollingReactionTime): every detected eye movement - RT-test
+# attempt, tutorial practice trial, practice or main trial, valid or not -
+# adds its go-cue-to-onset latency and the average is recomputed at once, so
+# the NEXT trial's flash already uses it (a flash already scheduled never
+# moves). It is the robust average (robust_average_ms: drops anticipations and
+# outliers, then the median) of the last RT_AVERAGE_ROLLING_WINDOW samples.
+# 12: trial-to-trial SD is ~60-80 ms, so the median of 12 has a standard error
+# of ~25 ms (a window of 6 would be ~35 ms) while still following a drift
+# (fatigue, practice) within ~12 trials; the tutorial's 8 practice samples seed
+# it, so the very first real trial already sees a half-full window. With fewer
+# than RT_AVERAGE_MIN_USABLE samples surviving the outlier filter the average
+# is DEFAULT_REACTION_TIME_MS.
+RT_AVERAGE_ROLLING_WINDOW = 12
+RT_AVERAGE_MIN_USABLE = 3
 
 # Sharp go-cue: when True the dot/cross appear and disappear instantly during
 # the reaction-time test and the trials (calibration steps and the tutorial

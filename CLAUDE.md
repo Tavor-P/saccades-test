@@ -118,7 +118,7 @@ Paths in this section are checked by `tests/test_docs.py` - keep them real.
 | `src/experiment/tutorial_session.py` | `TutorialSession`: narrated first-timer on-ramp (calibration -> how-to-answer quiz -> 8 practice trials that yield the first reaction-time samples) |
 | `src/experiment/run_experiment.py` | entry point + PsychoPy rendering; the only PsychoPy-dependent module |
 | `src/experiment/scoring.py` | `score_outcome`, `is_valid_for_saccadic_analysis` (the validity gate) |
-| `src/experiment/trial_mechanics.py` | `OnsetDetector` (displacement rule), `ShuffledBag`, `zone_for`, `average_ms`, `robust_average_ms` (shared helpers; the robust one drops anticipations/outliers then takes the median) |
+| `src/experiment/trial_mechanics.py` | `OnsetDetector` (displacement rule), `ShuffledBag`, `zone_for`, `average_ms`, `robust_average_ms`, `RollingReactionTime` (shared helpers; the robust average drops anticipations/outliers then takes the median; `RollingReactionTime` is the live RT estimate: last `RT_AVERAGE_ROLLING_WINDOW`=12 latencies, updated at EVERY confirmed eye movement - RT test, tutorial practice, practice and main trials, valid or not - so the next trial's flash uses it; <`RT_AVERAGE_MIN_USABLE`=3 usable samples -> `DEFAULT_REACTION_TIME_MS`; shared by `TutorialSession` and `ExperimentSession`) |
 | `src/experiment/calibration.py` | `average_calibration_rounds`, `validate_calibration` / `CalibrationCheck` / `fit_residual` (monotonic, span, noise, residual checks; not yet wired into `session.py`) |
 | `src/experiment/space_input.py` | SPACE bookkeeping with no PsychoPy: `CalibrationLatch` (a calibration press made before the gaze window is full is latched and completed in `tick()`), `NarrationKeyGate` (tutorial: a press during narration is delivered after it), `SpaceTally` (ignored presses per phase + reason), `deliver_space`, `leaves_complete_screen` |
 | `src/experiment/session_schedule.py` | `phase_order`: baseline/saccade order counterbalanced by participant ID |
@@ -389,8 +389,8 @@ don't have this restriction. If the tutorial ran, its
 `precomputed_calibration_ratios` and `precomputed_rt_samples_ms`
 (`TutorialSession.rt_samples_ms`: one saccade-onset latency per practice trial)
 are threaded into `run_saccade_phase`: the saccade phase skips calibrating,
-its own RT test and its own practice trials, seeds `_avg_reaction_time_ms` /
-`_recent_rt_ms` from those samples (`DEFAULT_REACTION_TIME_MS` if none were
+its own RT test and its own practice trials, seeds `_rolling_rt` (a `RollingReactionTime`)
+and `_avg_reaction_time_ms` from those samples (`DEFAULT_REACTION_TIME_MS` if none were
 usable) and goes straight to the main trials. Without the tutorial the old
 path (calibration + RT test + practice) is the fallback. Narrated strings stay
 under ~15 words and are not repeated between screens (the narrator re-speaks

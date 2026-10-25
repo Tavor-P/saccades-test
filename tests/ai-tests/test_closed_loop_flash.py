@@ -116,6 +116,6 @@ def test_flash_during_the_saccade_is_valid_and_logged_without_rt_prediction(fake
 def test_the_rolling_reaction_time_average_is_not_used_in_gaze_triggered_mode(fake_gaze, fake_time):
     session = _trial_after_calibration(fake_gaze, fake_time)
     _gaze_leaves_source(session, fake_gaze, fake_time)
-    session._update_rt_tracking()
+    session._record_reaction_latency(session._reaction_latency_ms or 200.0)
     assert session._avg_reaction_time_ms is None
-    assert not session._recent_rt_ms
+    assert session._rolling_rt.total_added == 0

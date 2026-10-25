@@ -44,20 +44,65 @@ def average_ms(samples: Sequence[float], default: float) -> float:
     return sum(samples) / len(samples) if samples else default
 
 
-def robust_average_ms(samples: Sequence[float], default: float) -> float:
-    """Reaction-time average that one bad measurement can't move: drops
-    anticipations (< RT_MIN_PLAUSIBLE_MS), then slow outliers (more than
-    RT_OUTLIER_MAD_K scaled MADs above the median, MAD floored at
-    RT_OUTLIER_MAD_FLOOR_MS), and returns the median of the rest - or `default`
-    if nothing plausible is left. Used for avg_reaction_time_ms, which
-    schedules every flash."""
+def robust_filter_ms(samples: Sequence[float]) -> list[float]:
+    """The samples robust_average_ms keeps: anticipations (< RT_MIN_PLAUSIBLE_MS)
+    and slow outliers (more than RT_OUTLIER_MAD_K scaled MADs above the median,
+    MAD floored at RT_OUTLIER_MAD_FLOOR_MS) removed."""
     plausible = [s for s in samples if s >= RT_MIN_PLAUSIBLE_MS]
     if not plausible:
-        return default
+        return []
     median = statistics.median(plausible)
     mad = statistics.median(abs(s - median) for s in plausible) * 1.4826
     limit = median + RT_OUTLIER_MAD_K * max(mad, RT_OUTLIER_MAD_FLOOR_MS)
-    return statistics.median(s for s in plausible if s <= limit)
+    return [s for s in plausible if s <= limit]
+
+
+def robust_average_ms(samples: Sequence[float], default: float) -> float:
+    """Reaction-time average that one bad measurement can't move: the median of
+    robust_filter_ms(samples), or `default` if nothing plausible is left. Used
+    for avg_reaction_time_ms, which schedules every flash."""
+    kept = robust_filter_ms(samples)
+    return statistics.median(kept) if kept else default
+
+
+class RollingReactionTime:
+    """The running reaction-time (go-cue -> saccade onset) estimate that schedules
+    the flashes, shared by TutorialSession's practice trials and ExperimentSession
+    (RT test, practice and main trials) so the average carries over seamlessly.
+
+    `add()` takes one latency per detected eye movement - valid trial or not - and
+    the average is recomputed on the spot, so the next scheduled flash already uses
+    it. It is the robust average (robust_filter_ms) of the last `window` samples;
+    with fewer than `min_usable` samples surviving the filter it is `default`."""
+
+    def __init__(self, window: int, default: float, min_usable: int, seed: Sequence[float] = ()) -> None:
+        self._default = default
+        self._min_usable = min_usable
+        self._window: deque[float] = deque(seed, maxlen=window)
+        self.total_added = len(self._window)
+        self._recompute()
+
+    def _recompute(self) -> None:
+        kept = robust_filter_ms(self._window)
+        self.kept_count = len(kept)
+        self.average_ms = statistics.median(kept) if len(kept) >= self._min_usable else self._default
+
+    def add(self, latency_ms: float) -> float:
+        """Add one measured latency; returns the updated average."""
+        self._window.append(latency_ms)
+        self.total_added += 1
+        self._recompute()
+        return self.average_ms
+
+    @property
+    def samples(self) -> list[float]:
+        """The samples currently in the window, oldest first."""
+        return list(self._window)
+
+    @property
+    def dropped_count(self) -> int:
+        """Window samples currently excluded as anticipations/outliers."""
+        return len(self._window) - self.kept_count
 
 
 class OnsetDetector:

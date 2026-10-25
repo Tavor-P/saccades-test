@@ -9,6 +9,8 @@ from include.experiment.constants import (
     CENTER_POSITION,
     CROSS_POSITION,
     DEFAULT_REACTION_TIME_MS,
+    RT_AVERAGE_MIN_USABLE,
+    RT_AVERAGE_ROLLING_WINDOW,
     DOT_POSITION,
     FOREPERIOD_MAX_MS,
     FOREPERIOD_MIN_MS,
@@ -28,7 +30,7 @@ from src.experiment.calibration import average_calibration_rounds
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.scoring import score_outcome
 from src.experiment.space_input import CalibrationLatch, SpaceTally
-from src.experiment.trial_mechanics import OnsetDetector, robust_average_ms
+from src.experiment.trial_mechanics import OnsetDetector, RollingReactionTime
 from src.experiment.trial_mechanics import random_orientation as _random_orientation
 from src.experiment.trial_mechanics import zone_for as _zone_for
 
@@ -60,9 +62,9 @@ class TutorialSession:
     3. PRACTICE - TUTORIAL_PRACTICE_ATTEMPTS trials that look exactly like
        real saccade trials (SPACE -> dot -> cross -> clearly visible flash ->
        arrow key -> colour feedback), fixed count regardless of outcome. The
-       flash fires at a scheduled delay (running robust average of this
-       stage's own reaction times, DEFAULT_REACTION_TIME_MS until there is
-       one). Each trial's saccade-onset latency is kept in `rt_samples_ms`
+       flash fires at a scheduled delay (the shared RollingReactionTime
+       average, updated at every detected onset; DEFAULT_REACTION_TIME_MS
+       until RT_AVERAGE_MIN_USABLE usable samples exist). Each trial's saccade-onset latency is kept in `rt_samples_ms`
        and handed to ExperimentSession, which seeds its reaction-time average
        from them instead of running a separate RT test.
 
@@ -107,7 +109,7 @@ class TutorialSession:
 
         # -- practice trials --
         self._attempt = 0
-        self._rt_samples_ms: list[float] = []
+        self._rolling_rt = self._new_rolling_rt()
         self._source = Target.DOT
         self._target = Target.CROSS
         self._orientation: Orientation | None = None
@@ -131,7 +133,7 @@ class TutorialSession:
     @property
     def rt_samples_ms(self) -> list[float]:
         """Saccade-onset latency (target appears -> eye leaves the source) of every practice trial that had one."""
-        return list(self._rt_samples_ms)
+        return self._rolling_rt.samples
 
     # -- key handling ------------------------------------------------------
 
@@ -220,11 +222,15 @@ class TutorialSession:
 
     def _enter_practice(self) -> None:
         self._attempt = 0
-        self._rt_samples_ms = []
+        self._rolling_rt = self._new_rolling_rt()
         self._source = Target.DOT
         self._dot_visible = True
         self._cross_visible = False
         self._begin_attempt()
+
+    @staticmethod
+    def _new_rolling_rt() -> RollingReactionTime:
+        return RollingReactionTime(RT_AVERAGE_ROLLING_WINDOW, DEFAULT_REACTION_TIME_MS, RT_AVERAGE_MIN_USABLE)
 
     def _begin_attempt(self) -> None:
         self._phase = Phase.PRACTICE_AWAITING_SPACE
@@ -256,8 +262,7 @@ class TutorialSession:
             self._trial_start = self._clock.now()
             # Open-loop, like the real saccade phase: scheduled off the
             # reaction times measured so far (default until there are any).
-            avg_ms = robust_average_ms(self._rt_samples_ms, default=DEFAULT_REACTION_TIME_MS)
-            self._flash_scheduled_at = self._trial_start + avg_ms / 1000
+            self._flash_scheduled_at = self._trial_start + self._rolling_rt.average_ms / 1000
 
     def _sample_time(self, sample, now: float) -> float:
         """When the eye was actually where `sample` says, on the session clock
@@ -283,7 +288,7 @@ class TutorialSession:
 
         if not self._onset_detector.confirmed and sample_t >= self._trial_start:
             if self._onset_detector.update(sample, sample_t):
-                self._rt_samples_ms.append((self._onset_detector.since - self._trial_start) * 1000)
+                self._rolling_rt.add((self._onset_detector.since - self._trial_start) * 1000)
 
         flash_fired_this_tick = False
         if not self._flash_decided and now >= self._flash_scheduled_at:

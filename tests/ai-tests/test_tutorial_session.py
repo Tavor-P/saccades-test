@@ -247,3 +247,17 @@ def test_complete_state_asks_for_space_to_continue(fake_gaze, fake_time):
         _run_timeout_attempt(session, fake_gaze, fake_time)
     assert "SPACE" in session.render_state()["instructions"]
     assert not session.render_state()["dot"]["visible"]
+
+
+def test_practice_average_updates_after_every_onset_and_the_next_trial_uses_it(fake_gaze, fake_time):
+    from include.experiment.constants import DEFAULT_REACTION_TIME_MS
+
+    session = _make_session(fake_gaze)
+    _reach_practice(session)
+    _run_attempt(session, fake_gaze, fake_time, reaction_time_s=0.16)
+    _run_attempt(session, fake_gaze, fake_time, reaction_time_s=0.16)
+    _start_attempt(session, fake_time)  # only 2 samples: default
+    assert session._flash_scheduled_at - session._trial_start == pytest.approx(DEFAULT_REACTION_TIME_MS / 1000)
+    session.tick()
+    fake_time(0.0)
+    assert session._rolling_rt.average_ms == pytest.approx(DEFAULT_REACTION_TIME_MS)
