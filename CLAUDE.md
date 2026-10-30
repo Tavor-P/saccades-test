@@ -12,7 +12,7 @@ picked in the startup dialog, a FLIR Blackfly S camera (Spinnaker SDK /
 `PySpin`) + MediaPipe iris landmarks. See [README.md](README.md) for the full participant-facing
 walkthrough (controls, output files, troubleshooting).
 
-## Line-stimulus branch (`sim-rt-variability-line`)
+## Line-stimulus branch (`line-stimulus`)
 
 An ALTERNATIVE to the grating on `main` (the grating behaviour there is untouched). The flash is a thin horizontal line as in
 Braun, Schutz & Gegenfurtner 2021 (J Vis): full screen width, vertical Gaussian profile (`LINE_SD_DEG` 0.15), centred
@@ -420,7 +420,7 @@ have an empty caption.
 by the main sequence - unverified on this setup: check `saccade_duration_ms` in the next real session; the
 simulator's `ParticipantProfile.saccade_ms_*` scale with the same geometry). `SACCADE_ONSET_DISPLACEMENT` is a
 fraction of the dot-cross span (an angle), so it was rescaled 0.08 -> 0.05 for the wider layout. `SHARP_GO_CUE` shows the
-dot/cross instantly (no 0.4 s fade) in the trials. (A gaze-triggered "onset" flash mode existed once and was removed in the trim-onset cleanup;
+dot/cross instantly (no 0.4 s fade) in the trials. (A gaze-triggered "onset" flash mode existed once and was removed;
 see git history.)
 Saccade-phase setup (built for judging flashes
 after the fact because the live check is useless at ~90 ms gaze latency): scheduled flashes at
