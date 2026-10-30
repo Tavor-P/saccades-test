@@ -1,6 +1,8 @@
 """Trials whose gaze tracking dropped out around the flash are flagged
 tracking_ok=False and excluded from ZEST and analysis (scoring.py)."""
 
+import json
+
 import pytest
 from unittest.mock import Mock
 
@@ -112,10 +114,10 @@ def test_logger_writes_and_dashboard_reads_tracking_ok(tmp_path, monkeypatch):
         )
     )
     log.close()
-    csv_path = next(tmp_path.glob("results_*.csv"))
+    csv_path = next(tmp_path.glob("*/*/trials.csv"))
     assert "tracking_ok" in csv_path.read_text().splitlines()[0]
     monkeypatch.setattr(data_access, "DATA_DIR", tmp_path)
-    timestamp = csv_path.stem.removeprefix("results_")
+    timestamp = str(json.loads(csv_path.with_name("session.json").read_text())["run"]["unix_timestamp"])
     assert data_access.load_session_trials(timestamp)[0].tracking_ok is False
 
     # A CSV logged before this column existed loads as "unknown", not a failure.

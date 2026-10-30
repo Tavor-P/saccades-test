@@ -1,50 +1,32 @@
-"""Reads/writes the experiment's files under data/ (results CSV, _meta.json sidecar, settings.json) for the dashboard. Parsers use row.get(...) so
-CSVs written before a column existed still load (missing column -> None)."""
+"""Reads/writes the experiment's files under data/ for the dashboard: per-participant run folders (trials.csv + session.json)
+and the old loose results_<ts>.csv / _meta.json files, plus settings.json. A session is addressed by its unix start time
+in both layouts. Parsers use .get(...) so files written before a column existed still load (missing column -> None)."""
 
-import csv
 import json
-import re
+import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from include.experiment.types import Orientation, Target, TrialResult
+from include.experiment.types import TrialResult
+from src.experiment import session_files
+from src.experiment.logger import read_trials
 
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 GRAPH_CACHE_DIR = DATA_DIR / "dashboard_cache"
 
-_SESSION_CSV_RE = re.compile(r"^results_(\d+)\.csv$")
 
-
-def _parse_optional_float(value: str) -> float | None:
-    return float(value) if value else None
-
-
-def _parse_optional_int(value: str) -> int | None:
-    return int(value) if value else None
-
-
-def _parse_bool(value: str) -> bool:
-    return value == "True"
-
-
-def _parse_optional_bool(value: str) -> bool | None:
-    return _parse_bool(value) if value else None
-
-
-def _parse_target(value: str) -> Target | None:
-    return Target(value) if value else None
-
-
-def _parse_orientation(value: str) -> Orientation | None:
-    return Orientation(value) if value else None
+def _ref(timestamp: str) -> session_files.SessionRef:
+    """The session with this key; a not-found one resolves to its old-layout paths (which don't exist), so callers'
+    `.exists()` checks keep working."""
+    return session_files.find_session(DATA_DIR, timestamp) or session_files._legacy_ref(DATA_DIR, timestamp)
 
 
 def csv_path_for(timestamp: str) -> Path:
-    return DATA_DIR / f"results_{timestamp}.csv"
+    return _ref(timestamp).trials_path
 
 
 def meta_path_for(timestamp: str) -> Path:
-    return DATA_DIR / f"results_{timestamp}_meta.json"
+    return _ref(timestamp).meta_path
 
 
 def graph_cache_path_for(timestamp: str) -> Path:
@@ -54,58 +36,35 @@ def graph_cache_path_for(timestamp: str) -> Path:
 def load_session_trials(timestamp: str) -> list[TrialResult]:
     """Reparses a session's logged CSV back into TrialResult objects, so it
     can be fed straight into results_graph.build_comparison_graph - the exact
-    same graph the experiment itself shows at the end of a run."""
-    trials = []
-    with csv_path_for(timestamp).open(newline="") as f:
-        for row in csv.DictReader(f):
-            trials.append(
-                TrialResult(
-                    index=int(row["trial_index"]),
-                    phase=row["phase"],
-                    source=_parse_target(row["source"]),
-                    target=_parse_target(row["target"]),
-                    saccade_duration_ms=_parse_optional_float(row["saccade_duration_ms"]),
-                    grating_shown=_parse_bool(row["grating_shown"]),
-                    contrast=_parse_optional_float(row["contrast"]),
-                    # .get(): sessions logged before orientation discrimination existed have no
-                    # orientation/response_orientation columns at all - treat that as "unknown".
-                    orientation=_parse_orientation(row.get("orientation", "")),
-                    responded=_parse_bool(row["responded"]),
-                    response_orientation=_parse_orientation(row.get("response_orientation", "")),
-                    response_time_ms=_parse_optional_float(row["response_time_ms"]),
-                    outcome=row["outcome"],
-                    # .get(): sessions logged before onset-latency instrumentation existed
-                    # have no reaction_latency_ms/onset_detection_lag_ms columns at all.
-                    reaction_latency_ms=_parse_optional_float(row.get("reaction_latency_ms", "")),
-                    onset_detection_lag_ms=_parse_optional_float(row.get("onset_detection_lag_ms", "")),
-                    # .get(): sessions logged before this existed have no flash_during_saccade
-                    # column at all - treated the same as "unknown" (None), same as a fresh
-                    # row where no flash occurred.
-                    flash_during_saccade=_parse_optional_bool(row.get("flash_during_saccade", "")),
-                    # .get(): sessions logged before open-loop scheduling existed have no
-                    # timing_offset_ms column at all.
-                    timing_offset_ms=_parse_optional_int(row.get("timing_offset_ms", "")),
-                    # .get(): sessions logged before this existed have no
-                    # grating_shown_at_unix_ms column at all.
-                    grating_shown_at_unix_ms=_parse_optional_float(row.get("grating_shown_at_unix_ms", "")),
-                    # .get(): sessions logged before tracking-quality gating have no tracking_ok column.
-                    tracking_ok=_parse_optional_bool(row.get("tracking_ok", "")),
-                    # .get(): sessions logged before these per-trial timing fields existed lack the columns.
-                    flash_relative_to_onset_ms=_parse_optional_float(row.get("flash_relative_to_onset_ms", "")),
-                    avg_rt_used_ms=_parse_optional_float(row.get("avg_rt_used_ms", "")),
-                    scheduled_delay_ms=_parse_optional_float(row.get("scheduled_delay_ms", "")),
-                    gaze_latency_ms=_parse_optional_float(row.get("gaze_latency_ms", "")),
-                )
-            )
-    return trials
+    same graph the experiment itself shows at the end of a run. Reads both file layouts."""
+    return read_trials(csv_path_for(timestamp))
+
+
+def _flatten(raw: dict) -> dict:
+    """The dashboard's flat view (participant_id, started_at, test_mode, calibration, name, gender, age) of either an old
+    _meta.json (already flat) or a new session.json (sectioned)."""
+    if "run" not in raw and "participant" not in raw:
+        return dict(raw)
+    participant, run, settings = raw.get("participant") or {}, raw.get("run") or {}, raw.get("settings") or {}
+    mode = run.get("mode")
+    return {
+        **raw,
+        "participant_id": participant.get("id"),
+        "name": participant.get("name"),
+        "gender": participant.get("gender"),
+        "age": participant.get("age"),
+        "started_at": run.get("started_at"),
+        "test_mode": None if mode is None else mode == "test",
+        "calibration": settings.get("calibration"),
+    }
 
 
 def load_metadata(timestamp: str) -> dict:
-    """Sessions logged before the metadata sidecar existed have no meta.json
+    """Sessions logged before the metadata sidecar existed have no meta file
     at all - treat that the same as one with every field blank, rather than
     excluding those older runs from the dashboard."""
     path = meta_path_for(timestamp)
-    meta = json.loads(path.read_text()) if path.exists() else {}
+    meta = _flatten(json.loads(path.read_text())) if path.exists() else {}
     meta.setdefault("participant_id", None)
     meta.setdefault("started_at", None)
     meta.setdefault("test_mode", None)
@@ -117,19 +76,31 @@ def load_metadata(timestamp: str) -> dict:
 
 
 def save_participant_info(timestamp: str, name: str, gender: str, age: str) -> None:
-    meta = load_metadata(timestamp)
-    meta["name"] = name.strip() or None
-    meta["gender"] = gender.strip() or None
-    meta["age"] = int(age) if age.strip() else None
-    meta_path_for(timestamp).write_text(json.dumps(meta, indent=2))
+    ref = _ref(timestamp)
+    name, gender = name.strip() or None, gender.strip() or None
+    age_value = int(age) if age.strip() else None
+    raw = json.loads(ref.meta_path.read_text()) if ref.meta_path.exists() else {}
+    if ref.is_legacy:
+        raw.update(name=name, gender=gender, age=age_value)
+    else:
+        raw.setdefault("participant", {}).update(name=name, gender=gender, age=age_value)
+    ref.meta_path.write_text(json.dumps(raw, indent=2))
 
 
 def delete_session(timestamp: str) -> None:
-    """Removes a session's CSV, metadata sidecar, and cached graph, if they
-    exist. Permanent - there's no trash/undo, same as deleting the files by
-    hand would be."""
-    csv_path_for(timestamp).unlink(missing_ok=True)
-    meta_path_for(timestamp).unlink(missing_ok=True)
+    """Removes a session permanently (no trash/undo): an old session's CSV and metadata sidecar; a
+    new-layout session's WHOLE run folder (trials, session.json, gaze trace, analysis and the glasses video), and its
+    participant folder if that is now empty. Also the cached graph."""
+    ref = _ref(timestamp)
+    if ref.is_legacy:
+        ref.trials_path.unlink(missing_ok=True)
+        ref.meta_path.unlink(missing_ok=True)
+    else:
+        shutil.rmtree(ref.folder, ignore_errors=True)
+        try:
+            ref.folder.parent.rmdir()  # only succeeds when empty
+        except OSError:
+            pass
     graph_cache_path_for(timestamp).unlink(missing_ok=True)
 
 
@@ -141,22 +112,11 @@ class SessionSummary:
 
 
 def discover_sessions() -> list[SessionSummary]:
-    """All logged sessions, newest first."""
-    if not DATA_DIR.exists():
-        return []
-
+    """All logged sessions (both layouts), newest first."""
     sessions = []
-    for csv_file in DATA_DIR.glob("results_*.csv"):
-        match = _SESSION_CSV_RE.match(csv_file.name)
-        if not match:
-            continue
-        timestamp = match.group(1)
-
+    for ref in session_files.list_sessions(DATA_DIR):
         trial_counts: dict[str, int] = {}
-        for trial in load_session_trials(timestamp):
+        for trial in read_trials(ref.trials_path):
             trial_counts[trial.phase] = trial_counts.get(trial.phase, 0) + 1
-
-        sessions.append(SessionSummary(timestamp=timestamp, metadata=load_metadata(timestamp), trial_counts=trial_counts))
-
-    sessions.sort(key=lambda s: s.timestamp, reverse=True)
+        sessions.append(SessionSummary(timestamp=ref.key, metadata=load_metadata(ref.key), trial_counts=trial_counts))
     return sessions

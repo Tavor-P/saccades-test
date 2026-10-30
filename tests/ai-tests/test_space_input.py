@@ -300,5 +300,5 @@ def test_logger_stores_ignored_space_presses(tmp_path, monkeypatch):
     monkeypatch.setattr(logger_module, "DATA_DIR", tmp_path, raising=False)
     log = logger_module.ResultLogger("p1")
     log.set_ignored_space_presses("saccade", {"FOREPERIOD: during foreperiod": 2})
-    meta = json.loads(next(tmp_path.glob("results_*_meta.json")).read_text())
+    meta = json.loads(next(tmp_path.glob("*/*/session.json")).read_text())
     assert meta["ignored_space_presses"]["saccade"] == {"FOREPERIOD: during foreperiod": 2}
