@@ -829,8 +829,7 @@ class ExperimentSession:
         # The answer text is shared by AWAITING_SPACE (after the first trial), FOREPERIOD and TRIAL_ACTIVE
         # so it is spoken once and never flickers or repeats from trial to trial.
         if self._phase is Phase.AWAITING_SPACE:
-            first_trial = self._practice_index + self._main_trial_counter <= 1
-            return "Press SPACE when you are ready." if first_trial else _ANSWER_TEXT
+            return "Press SPACE when you are ready." if self._is_first_trial() else _ANSWER_TEXT
         if self._phase in (Phase.FOREPERIOD, Phase.TRIAL_ACTIVE):
             return _ANSWER_TEXT
         if self._phase in (Phase.RT_TEST_AWAITING_SPACE, Phase.RT_TEST_FOREPERIOD, Phase.RT_TEST_ACTIVE):
@@ -946,8 +945,14 @@ class ExperimentSession:
             },
         }
 
+    def _is_first_trial(self) -> bool:
+        return self._practice_index + self._main_trial_counter <= 1
+
     def _hide_caption(self) -> bool:
-        """True during the real (non-practice) main-block trials: the runner then neither draws nor speaks the bottom caption."""
+        """True during the real (non-practice) main-block trials: the runner then neither draws nor speaks the bottom caption.
+        Not on the very first screen of the block (after the tutorial there are no practice trials), which must say to press SPACE."""
+        if self._phase is Phase.AWAITING_SPACE and self._is_first_trial():
+            return False
         return self._phase in (Phase.AWAITING_SPACE, Phase.FOREPERIOD, Phase.TRIAL_ACTIVE) and not self._current_trial_spec.practice
 
     def _has_trial_label(self) -> bool:
