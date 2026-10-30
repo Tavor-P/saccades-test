@@ -81,15 +81,6 @@ def test_tracking_loss_far_from_the_flash_is_ignored(fake_gaze, fake_time):
     assert session._tracking_lost_near_flash is False
 
 
-def test_catch_trial_has_no_tracking_flag(fake_gaze, fake_time):
-    session = _session_in_first_trial(fake_gaze, fake_time, grating_shown=False, orientation=None)
-    _trigger_onset_and_landing(session, fake_gaze, fake_time, GazeZone.RIGHT)
-    fake_time(2.0)  # response window closes
-    session.tick()
-    result = [r for r in session.results if r.phase == "saccade"][0]
-    assert result.tracking_ok is None
-
-
 def test_validity_gate_combines_both_checks():
     assert is_valid_for_saccadic_analysis(True, True)
     assert is_valid_for_saccadic_analysis(True, None)  # older data: unknown doesn't invalidate

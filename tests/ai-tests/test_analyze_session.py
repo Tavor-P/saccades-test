@@ -47,7 +47,7 @@ def _write_session(tmp_path, onsets, flashes, stamp="1700000000"):
         w.writeheader()
         for i, (rel_ms, outcome, contrast) in enumerate(flashes):
             w.writerow({"trial_index": i, "phase": "saccade", "grating_shown": True, "contrast": contrast, "orientation": "vertical", "outcome": outcome, "grating_shown_at_unix_ms": (onsets[i] + rel_ms / 1000) * 1000})
-        w.writerow({"trial_index": 99, "phase": "saccade", "grating_shown": False, "outcome": "correct_rejection"})  # catch trial: ignored
+        w.writerow({"trial_index": 99, "phase": "saccade", "grating_shown": False, "outcome": "correct_rejection"})  # legacy catch row from an old session: ignored
         w.writerow({"trial_index": 100, "phase": "presaccade", "grating_shown": True, "contrast": 0.01, "outcome": "correct", "grating_shown_at_unix_ms": 1})  # other phase: ignored
     return stamp
 
@@ -104,7 +104,7 @@ def test_full_analysis_reproduces_a_planted_suppression_dip(tmp_path):
     stamp = _write_session(tmp_path, ONSETS, plan)
     result = an.analyze(stamp, data_dir=tmp_path, out_dir=tmp_path / "out")
     s = result["summary"]
-    assert s["flashes"] == 8 and s["saccades"] == len(ONSETS)  # catch + presaccade rows excluded
+    assert s["flashes"] == 8 and s["saccades"] == len(ONSETS)  # legacy catch + presaccade rows excluded
     assert s["near_onset"] == (1, 5)  # -30, -10, 5, 20, 45 ms: only the 45 ms flash was seen
     assert s["beyond"] == (2, 2) and s["far"] == (1, 1)  # -120 and +110 ms; and the +350 ms flash is the fixation control
     assert s["misses"] == 3

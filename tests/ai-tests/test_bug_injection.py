@@ -28,11 +28,6 @@ def test_catches_a_staircase_that_returns_impossible_contrast(monkeypatch, sched
     assert any("contrast out of range" in v for v in _violations())
 
 
-def test_catches_flash_validity_being_recorded_for_catch_trials(monkeypatch):
-    monkeypatch.setattr(session_module.ExperimentSession, "_compute_flash_during_saccade", lambda self: True)
-    assert any("no grating shown but flash_during_saccade" in v for v in _violations(trials=20))
-
-
 def test_catches_a_response_time_measured_from_the_wrong_origin(monkeypatch):
     original = session_module.ExperimentSession.on_response_key
 

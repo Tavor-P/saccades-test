@@ -114,7 +114,7 @@ Paths in this section are checked by `tests/test_docs.py` - keep them real.
 | `src/experiment/space_input.py` | SPACE bookkeeping with no PsychoPy: `CalibrationLatch` (a calibration press made before the gaze window is full is latched and completed in `tick()`), `NarrationKeyGate` (tutorial: a press during narration is delivered after it), `SpaceTally` (ignored presses per phase + reason), `deliver_space`, `leaves_complete_screen` |
 | `src/experiment/session_schedule.py` | `phase_order`: baseline/saccade order counterbalanced by participant ID |
 | `src/timebase.py` | the ONE time source: `now()` = `time.perf_counter()`; wall-clock via an edge-synchronised anchor (`unix_now()`, `unix_ms()`) |
-| `src/experiment/trial_factory.py` | builds trial sequences |
+| `src/experiment/trial_factory.py` | builds trial sequences; every trial flashes (catch trials / false alarms were removed - old sessions may still contain them, their `false_alarm`/`correct_rejection` outcome words stay readable) |
 | `src/experiment/zest.py` | adaptive contrast staircase |
 | `src/experiment/logger.py` | `ResultLogger` writes one run folder: `trials.csv` (schema = `TRIAL_COLUMNS`, plain names; `DROPPED_FROM_CSV` lists the `TrialResult` fields left out and why, e.g. `source`/`target`: direction = trial parity, `timing_offset_ms`: the delay is in `flash_ms_after_go_cue`; column order = contrast, yes/no group, outcome, stimulus/answer pair, ms block (`flash_ms_after_go_cue`, `reaction_ms`, `answer_ms`, `flash_unix_ms`), `tracking_ok`), `session.json` (sections participant/run/settings/hardware/results/gaze_quality/ignored_space_presses/glasses_video), side-file paths; `read_trial_rows`/`read_trials` read BOTH the new and the old layout |
 | `src/experiment/session_files.py` | run-folder naming (`sanitize_participant_id`, `create_session_folder`), `SessionRef`, `list_sessions`/`find_session`/`newest_session` over the new and the old loose-file layout (a session's key is its unix start time) |
@@ -156,7 +156,7 @@ it from tests or simulations (the simulator uses an in-memory logger).
    measurement script and ask the human to run it; don't guess numbers.
 
 Report test results truthfully (what ran, what was skipped). The suite passes at the time of writing
-(~520 tests, ~60 s, 2 skipped when PySpin/mediapipe are absent).
+(~520 tests, ~75 s, 2 skipped when PySpin/mediapipe are absent).
 
 **Bug-hunting tests** (`tests/ai-tests/`): `find_bugs.py` fuzzes the real session with random/hostile
 participants and checks `invariants.py` (run `find_bugs.py --sessions 300` after changing session,
@@ -357,7 +357,7 @@ skipped for it (`has_frames = hasattr(gaze, "latest_frame")` in
 to auto-discover). `SACCADE_ONSET_STABILITY_MS` was lowered 40 -> 10 for Neon
 on the strength of latency alone; confirm with `neon_fixation_test` (the
 "drift-free jitter" section, with the head still) and watch the
-false-alarm rate. `NeonGazeSource` has only been tested against fake devices
+onset timing. `NeonGazeSource` has only been tested against fake devices
 plus these hand-run scripts, not in a full session.
 
 **TTS narrator (`src/experiment/narrator.py`) is Windows-only SAPI via COM.**
