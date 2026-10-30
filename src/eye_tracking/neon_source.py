@@ -65,6 +65,7 @@ class NeonGazeSource(GazeSource):
         self._anchor = timebase.measure_anchor()  # pairs with _clock_offset_ms; refreshed together (phone/PC clocks drift)
         self._offset_stop = threading.Event()
         self._offset_thread: threading.Thread | None = None
+        self._recording_id: str | None = None  # the phone-side recording started by start_recording()
         self._clock_offset_std_ms: float | None = None
         self._roundtrip_ms: float | None = None
         self._latencies_ms: deque[float] = deque(maxlen=_MAX_LATENCY_SAMPLES)
@@ -321,7 +322,46 @@ class NeonGazeSource(GazeSource):
     def begin_calibration_sample(self) -> None:
         self._mapper.reset_ratio_history()
 
+    # -- the phone's own recording of the glasses (scene video) -------------------------------------
+    # Best effort by design: a failure here must never cost the participant their session, so none of these raise.
+
+    def start_recording(self) -> dict:
+        """Starts a recording on the phone (Real-Time API `Device.recording_start()`). Returns the fields for session.json's
+        glasses_video section: recording = "started" (+ id and PC start time) or "failed (reason)"."""
+        try:
+            recording_id = self._device.recording_start()
+        except Exception as exc:  # noqa: BLE001 - DeviceError (low battery, already recording, no wearer selected...) or a network error
+            reason = f"{type(exc).__name__}: {exc}"
+            print(f"WARNING: could not start the phone recording ({reason}); the session runs without glasses video.", file=sys.stderr)
+            return {"recording": f"failed ({reason})"}
+        self._recording_id = recording_id
+        return {"recording": "started", "recording_id": str(recording_id), "recording_started_pc_unix_ms": round(timebase.unix_ms(), 1)}
+
+    def stop_recording(self) -> dict:
+        """Stops and saves the phone recording (`Device.recording_stop_and_save()`); a no-op if none was started."""
+        if self._recording_id is None:
+            return {}
+        recording_id, self._recording_id = self._recording_id, None
+        try:
+            self._device.recording_stop_and_save()
+        except Exception as exc:  # noqa: BLE001
+            reason = f"{type(exc).__name__}: {exc}"
+            print(f"WARNING: could not stop/save the phone recording ({reason}); check the Companion app.", file=sys.stderr)
+            return {"recording": f"failed to stop/save ({reason})", "recording_id": str(recording_id)}
+        return {"recording": "saved", "recording_id": str(recording_id), "recording_stopped_pc_unix_ms": round(timebase.unix_ms(), 1)}
+
+    def send_event(self, name: str) -> bool:
+        """Marks `name` in the phone's recording (`Device.send_event`; stamped with the phone's clock on arrival). True if sent."""
+        try:
+            self._device.send_event(name)
+            return True
+        except Exception as exc:  # noqa: BLE001
+            self._record_error("send_event", exc)
+            return False
+
     def stop(self) -> None:
+        if self._recording_id is not None:  # safety net: an aborted session must not leave the phone recording
+            self.stop_recording()
         self._running = False
         self._offset_stop.set()
         if self._offset_thread is not None:

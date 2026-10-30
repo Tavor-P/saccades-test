@@ -34,6 +34,8 @@ from src.eye_tracking.gaze_factory import (
     list_cameras,
 )
 from src.eye_tracking.video_recorder import VideoRecorder
+from src import timebase
+from src.experiment.glasses_video import END_FLASH_COUNT, SYNC_FLASH_COUNT, sync_flash_frames
 from src.experiment.logger import ResultLogger
 from src.experiment.narrator import Narrator
 from src.experiment.pausable_clock import PausableClock
@@ -52,10 +54,10 @@ from src.experiment.tutorial_session import TutorialSession
 
 FADE_DURATION_S = 0.4  # dot/cross opacity fade; softens onset so it doesn't trigger a reflexive saccade
 
-# Trial-start cue: a big peripheral green flash instead of text, since reading
-# text means shifting gaze off the fixation target and ruining the trial.
+# Full-screen pure-green rectangle: the glasses-video sync flash (run_sync_flashes) - never shown during trials.
 START_FLASH_COLOR = [-1, 1, -1]  # pure green
-START_FLASH_DURATION_FRAMES = 8
+SYNC_FLASH_ANNOUNCEMENT = "A green flash will show."  # the only spoken line of the sync step (the flashes themselves are silent)
+SYNC_LEAD_IN_FRAMES = 30  # dark frames after the announcement / before the first flash, so the phone is certainly recording
 
 # Debug camera preview (top-left corner) showing the raw feed the tracker is
 # seeing, for calibration/testing - not shown to real participants mid-run.
@@ -350,6 +352,44 @@ def report_space_presses(session, label: str, logger: ResultLogger | None = None
         logger.set_ignored_space_presses(label, session.space_tally.as_dict())
 
 
+def measure_refresh_hz(win: visual.Window) -> float | None:
+    """The display's real refresh rate (None if PsychoPy cannot measure it): flash lengths are counted in frames from this."""
+    try:
+        return float(win.getActualFrameRate())
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def run_sync_flashes(win: visual.Window, stimuli: dict, logger: ResultLogger, narrator: Narrator, count: int, label: str, announce: bool = True) -> None:
+    """A short step of its own, outside any trial: `count` full-screen green flashes (150 ms on, 300 ms dark, counted in
+    frames) that the glasses' scene camera sees, so the phone's video can be lined up with the PC clock afterwards (see
+    glasses_video.py). The PC wall-clock time of each flash's first frame is logged right after the flip that shows it.
+    Silent except for one optional announcement line."""
+    flash = stimuli["start_flash"]
+    on_frames, gap_frames = sync_flash_frames(logger.display_refresh_hz)
+
+    def blank_frames(n: int) -> None:
+        flash.opacity = 0.0
+        for _ in range(n):
+            win.flip()
+
+    if announce:
+        narrator.speak(SYNC_FLASH_ANNOUNCEMENT)
+        waited = core.Clock()
+        while narrator.is_speaking and waited.getTime() < 5.0:
+            win.flip()
+    blank_frames(SYNC_LEAD_IN_FRAMES)
+    for i in range(count):
+        flash.opacity = 1.0
+        for frame in range(on_frames):
+            flash.draw()
+            win.flip()
+            if frame == 0:
+                logger.add_sync_flash(f"{label} {i + 1}", timebase.unix_ms())
+        blank_frames(gap_frames)
+    flash.opacity = 0.0
+
+
 def draw_all(stimuli: dict) -> None:
     # start_flash/feedback_flash first so they sit behind the fixation
     # stimuli, which stay visible/fixatable on top of them during a flash.
@@ -491,6 +531,14 @@ def run_saccade_phase(
     # Raw gaze is recorded alongside the results CSV (Neon only) so the session can be replayed offline.
     gaze = build_gaze_source(gaze_backend, camera_index, trace_path=logger.gaze_trace_path)
     gaze.start()
+    # The phone records the glasses' video itself; the green sync flashes (before any trial) let it be lined up with the PC clock.
+    recording_started = False
+    if hasattr(gaze, "start_recording"):
+        status = gaze.start_recording()
+        logger.update_glasses_video(**status)
+        recording_started = status.get("recording") == "started"
+    else:
+        logger.update_glasses_video(recording="not available (webcam backend)")
     # Neon has no latest_frame() (gaze only, no Mono8 camera feed), so video + preview are webcam-only.
     has_frames = hasattr(gaze, "latest_frame")
     video_recorder = (
@@ -528,10 +576,11 @@ def run_saccade_phase(
     last_phase = None
     last_spoken_instructions: str | None = None
     last_caption = ""
-    flash_frames_remaining = 0
-    start_flash_shown = False
 
     try:
+        if recording_started:  # its own short step before the first screen/trial; SPACE pressed meanwhile is discarded (and counted) below
+            run_sync_flashes(win, stimuli, logger, narrator, SYNC_FLASH_COUNT, "start")
+            gaze.send_event("pc_sync_flashes_done")
         drain_stale_space(session)
         while True:
             keys = event.getKeys(keyList=["space", "escape", *RESPONSE_KEYS])
@@ -548,9 +597,6 @@ def run_saccade_phase(
             if leaves_complete_screen(last_phase, space_delivered):
                 return session  # a space press on the results screen moves on
 
-            if phase_just_became_active(phase, last_phase, {"FOREPERIOD"}) and not start_flash_shown:
-                flash_frames_remaining = START_FLASH_DURATION_FRAMES
-                start_flash_shown = True
             if phase_just_became_active(phase, last_phase, _GO_CUE_PHASES):
                 go_cue_tone.play()
             last_phase = phase
@@ -563,8 +609,7 @@ def run_saccade_phase(
             frame_clock.reset()
             apply_render_state(state, stimuli, fade_opacities, dt)
 
-            stimuli["start_flash"].opacity = 1.0 if flash_frames_remaining > 0 else 0.0
-            flash_frames_remaining = max(0, flash_frames_remaining - 1)
+            stimuli["start_flash"].opacity = 0.0  # only the sync step (run_sync_flashes) shows it, never a trial
 
             draw_all(stimuli)
             if has_frames and camera_preview_enabled(state["hud"]["trial_index"]):
@@ -579,6 +624,13 @@ def run_saccade_phase(
             logger.set_gaze_quality(gaze.quality_summary())
         if video_recorder is not None:
             video_recorder.stop()
+        if recording_started:
+            try:  # one more flash at the very end (also after Escape) pins down clock drift; then stop and save the phone recording
+                run_sync_flashes(win, stimuli, logger, narrator, END_FLASH_COUNT, "end", announce=False)
+                gaze.send_event("saccade_phase_end")
+            except Exception as exc:  # noqa: BLE001 - the end flash is a refinement; never let it block saving the recording
+                print(f"WARNING: end sync flash failed ({exc!r})", file=sys.stderr)
+            logger.update_glasses_video(**gaze.stop_recording())
         gaze.stop()
 
 
@@ -799,8 +851,8 @@ def prompt_session_info() -> tuple[str, str, int, str, float, bool, bool, bool, 
     )
 
 
-def show_results_graph(win: visual.Window, results: list) -> None:
-    png_path = build_comparison_graph(results)
+def show_results_graph(win: visual.Window, results: list, output_path=None) -> None:
+    png_path = build_comparison_graph(results) if output_path is None else build_comparison_graph(results, output_path=output_path)
     # The graph is now a 2x2 panel figure (aspect ~1.2, not the old 2-panel
     # 2:1) - sized/positioned to match so it isn't stretched.
     image = visual.ImageStim(win, image=str(png_path), size=(1.02, 0.85), pos=(0, 0.02))
@@ -842,7 +894,9 @@ def main() -> None:
     )
     logger.set_saccade_contrasts(saccade_contrasts)
     win = build_window(fullscreen=True)
+    logger.set_display_refresh_hz(measure_refresh_hz(win))
     stimuli = build_stimuli(win, show_hud=test_mode)
+    print(f"Session folder: {logger.folder}")
     narrator = Narrator()
 
     try:
@@ -907,7 +961,7 @@ def main() -> None:
 
         all_results = [r for name in (PHASE_BASELINE, PHASE_SACCADE) if name in sessions for r in sessions[name].results]
         if all_results:
-            show_results_graph(win, all_results)
+            show_results_graph(win, all_results, logger.graph_path)
     finally:
         narrator.stop()
         logger.close()
