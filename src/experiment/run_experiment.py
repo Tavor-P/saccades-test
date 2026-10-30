@@ -67,9 +67,7 @@ CAMERA_PREVIEW_FRAME_ASPECT = FRAME_WIDTH / FRAME_HEIGHT
 
 
 def camera_preview_enabled(trial_index: int) -> bool:
-    """Single toggle point for the debug camera preview: on for trial 0 only
-    right now. Change this condition (e.g. `return True` for every trial) to
-    adjust when it's shown during future testing."""
+    """Single toggle point for the debug camera preview (on for trial 0 only)."""
     return trial_index == 0
 
 
@@ -92,14 +90,9 @@ def dispatch_response_keys(session, keys: list[str]) -> None:
 
 
 def narrate_if_changed(narrator: Narrator, text: str, last_spoken: str | None) -> str | None:
-    """Speaks `text` only if it differs from what was last spoken, returning
-    the new last-spoken value for the caller to hold onto. Instructions text
-    stays constant across many consecutive ticks/trials by design (see
-    Session._instructions()), so speaking unconditionally every frame would
-    queue the same phrase over and over - callers should call this once per
-    frame and let it decide whether anything actually needs saying.
-    Blank text is never spoken and does not count as "spoken" (the caption
-    keeps showing the previous text, which was already read out)."""
+    """Speaks `text` only if it differs from what was last spoken and returns the new last-spoken value. Instructions stay
+    constant across many frames, so speaking unconditionally would queue the same phrase over and over. Blank text is never
+    spoken and does not count as spoken (the caption keeps showing the previous, already-read text)."""
     if not text:
         return last_spoken
     if text != last_spoken:
@@ -110,12 +103,9 @@ def narrate_if_changed(narrator: Narrator, text: str, last_spoken: str | None) -
 def update_caption(
     narrator: Narrator, caption_stim, state: dict, last_spoken: str | None, last_caption: str
 ) -> tuple[str | None, str]:
-    """Per-frame caption handling shared by the three phase loops: shows the
-    caption and speaks it, in lockstep (everything drawn is also read out).
-    While state["hide_caption"] is set (the real measured trials) the caption
-    is hidden and silent, and both memories reset so the next caption that
-    appears (e.g. the end-of-phase message) is shown and spoken even if it
-    repeats an earlier string. Returns (last_spoken, last_caption)."""
+    """Per-frame caption: shown and spoken in lockstep. While state["hide_caption"] is set (the real measured trials) it is
+    hidden and silent, and both memories reset so the next caption (e.g. the end-of-phase message) is shown and spoken even
+    if it repeats an earlier string. Returns (last_spoken, last_caption)."""
     if state.get("hide_caption"):
         caption_stim.text = ""
         caption_stim.opacity = 0.0
@@ -126,15 +116,8 @@ def update_caption(
 
 
 def render_caption(caption_stim, text: str, last_caption: str) -> str:
-    """Keeps the on-screen caption showing the last non-blank instructions
-    text, returning the new value for the caller to hold onto - mirrors
-    narrate_if_changed's calling convention, but for display instead of
-    speech. state["instructions"] returns "" specifically to tell
-    narrate_if_changed not to re-announce something unchanged (e.g. after
-    calibration round 1 - see Session._instructions()), not to signal
-    "nothing to show" - blanking the caption on that same signal would hide
-    still-relevant instructions the participant may not have finished
-    reading yet."""
+    """Shows the last non-blank instructions text and returns it. state["instructions"] is "" to stop the narrator
+    re-announcing something unchanged, not to say "nothing to show", so a blank keeps the previous caption on screen."""
     caption = text if text else last_caption
     caption_stim.text = caption
     caption_stim.opacity = 1.0 if caption else 0.0
@@ -142,19 +125,12 @@ def render_caption(caption_stim, text: str, last_caption: str) -> str:
 
 
 def build_go_cue_tone() -> sound.Sound:
-    """The go-cue beep, played the instant the target/cross appears (see
-    _phase_just_became_active below) - anchors the reaction-time measurement
-    itself, not a "get ready" warning before an already-visible target (see
-    WARNING_TONE_HZ's docstring in constants.py for why this reuses that old,
-    since-reverted tone with new semantics)."""
+    """The go-cue beep, played the instant the target/cross appears: it anchors the reaction-time measurement (see WARNING_TONE_HZ)."""
     return sound.Sound(value=WARNING_TONE_HZ, secs=WARNING_TONE_DURATION_S)
 
 
 def phase_just_became_active(phase: str, last_phase: str | None, active_phases: frozenset[str]) -> bool:
-    """True on the exact frame `phase` transitions into one of `active_phases`
-    - the instant a target/cross appears, whether that's a real trial, a
-    practice trial, or a reaction-time-test attempt. Used both to fire the
-    go-cue beep and (in run_saccade_phase) the peripheral start flash."""
+    """True on the frame `phase` enters `active_phases` (a target/cross appearing): fires the go-cue beep."""
     return phase in active_phases and last_phase not in active_phases
 
 
@@ -205,28 +181,12 @@ def build_stimuli(win: visual.Window, show_hud: bool = False) -> dict:
         "start_flash": visual.Rect(
             win, width=aspect * 2 + 1, height=2, fillColor=START_FLASH_COLOR, lineColor=None, opacity=0
         ),
-        # Tutorial-only correctness feedback (quiz misses/pass, practice
-        # misses) - same full-screen-rect approach as start_flash, just with a
-        # color chosen per-frame instead of fixed at construction.
+        # Tutorial-only correctness feedback: a full-screen rect whose colour is set per frame.
         "feedback_flash": visual.Rect(win, width=aspect * 2 + 1, height=2, lineColor=None, opacity=0),
-        # Tutorial-only on-screen instruction text (see TutorialSession -
-        # every other session is speech-only by design, see narrator.py).
-        # `pos` is overwritten per-frame based on render_state()'s requested
-        # "center"/"bottom" position.
+        # Tutorial-only larger instruction text; `pos` is set per frame from render_state()'s "center"/"bottom".
         "tutorial_text": visual.TextStim(win, text="", pos=(0, -0.4), color="white", height=0.04, opacity=0),
-        # Same text the narrator speaks (state["instructions"]), shown on
-        # every phase now - not just the tutorial - so participants aren't
-        # relying on a single spoken pass to catch instructions (see
-        # render_caption: keeps showing the last non-blank instructions text
-        # rather than blanking out when narrate_if_changed's own "don't
-        # re-announce this" signal comes through as "").
-        # anchorVert="bottom": the longest instructions text (the COMPLETE
-        # phase's accuracy/threshold summary) wraps to multiple
-        # lines under wrapWidth - center-anchoring a multi-line block at a
-        # point this close to the bottom edge would push the lower lines
-        # past it and off-screen. Bottom-anchoring grows the block upward
-        # instead, so it can never go past its anchor point regardless of
-        # how many lines it wraps to.
+        # The narrated text (state["instructions"]), shown in every phase. Bottom-anchored so the longest (multi-line)
+        # results summary grows upward instead of off-screen.
         "caption": visual.TextStim(
             win, text="", pos=(0, -0.46), color="white", height=0.028, wrapWidth=1.6, opacity=0, anchorVert="bottom"
         ),
@@ -238,12 +198,9 @@ def build_stimuli(win: visual.Window, show_hud: bool = False) -> dict:
         "gaze_indicator": visual.Circle(
             win, radius=GAZE_INDICATOR_RADIUS_RATIO, fillColor="white", lineColor=None, opacity=0
         ),
-        # Braun, Schutz & Gegenfurtner (2021)'s probe: a thin horizontal line with a vertical Gaussian
-        # profile. A GratingStim with no texture (a flat white field) under PsychoPy's 'gauss' mask, sized
-        # (very wide, 6 SDs tall): the mask's SD is size/6, so it is LINE_SD_DEG tall and, being
-        # LINE_WIDTH_SCREENS screen widths wide, flat across the visible screen. Its `contrast` scales the
-        # white field around the mid-grey background, so the peak luminance step is contrast/2 of the
-        # 0-1 luminance range (a light line), the same convention as the old grating's contrast.
+        # Braun, Schutz & Gegenfurtner (2021)'s probe: a thin horizontal line with a vertical Gaussian profile, a texture-less
+        # GratingStim under the 'gauss' mask sized (very wide, 6 SDs tall). `contrast` scales the white field around the
+        # mid-grey background, so the peak luminance step is contrast/2 (a light line).
         "grating": visual.GratingStim(
             win,
             tex=None,
@@ -275,8 +232,7 @@ def apply_render_state(state: dict, stimuli: dict, fade_opacities: dict, dt: flo
     aspect = stimuli["aspect"]
     fade_step = dt / FADE_DURATION_S
 
-    # calibration_center is only present in the saccade phase's render_state()
-    # (the presaccade phase has no gaze calibration) - default it to hidden.
+    # calibration_center is only in the saccade phase's render_state(); default it to hidden.
     for name in ("dot", "cross", "calibration_center"):
         symbol_state = state.get(name, {"visible": False, "x": 0.0, "y": 0.0})
         target_opacity = 1.0 if symbol_state["visible"] else 0.0
@@ -288,9 +244,7 @@ def apply_render_state(state: dict, stimuli: dict, fade_opacities: dict, dt: flo
         stim.opacity = fade_opacities[name]
         stim.pos = ratio_to_pos(symbol_state["x"], symbol_state["y"], aspect)
 
-    # Only the saccade phase's render_state() includes this - presaccade has
-    # no gaze tracking at all. Snaps straight to its target (no fade): it's a
-    # live cursor, so smoothing it would just make it lag behind real gaze.
+    # Saccade phase only. Snaps (no fade): it is a live cursor, smoothing would make it lag.
     gaze_indicator = stimuli["gaze_indicator"]
     indicator_state = state.get("gaze_indicator")
     if indicator_state and indicator_state["visible"]:
@@ -304,9 +258,7 @@ def apply_render_state(state: dict, stimuli: dict, fade_opacities: dict, dt: flo
     if state["grating"]["visible"]:
         # Full screen width, so only the vertical position matters (x is just the target the line belongs to).
         grating.pos = (0.0, ratio_to_pos(state["grating"]["x"], state["grating"]["y"], aspect)[1])
-        # Window background is mid-grey at rgb 0 (see luminance_to_color), so the
-        # line's own contrast parameter is its peak contrast around that
-        # background - no extra luminance math needed.
+        # The window background is mid-grey, so the line's contrast is its peak contrast around it.
         grating.contrast = state["grating"]["contrast"]
 
     # Debug text: Test mode only (stimuli["show_hud"], set in build_stimuli); never drawn in a real run.
@@ -321,8 +273,7 @@ def apply_render_state(state: dict, stimuli: dict, fade_opacities: dict, dt: flo
     else:
         stimuli["hud"].opacity = 0.0
 
-    # Tutorial-only - absent from the other two sessions' render_state(), so
-    # this stays hidden for them.
+    # Tutorial only (absent from the other sessions' render_state()).
     tutorial_text = state.get("tutorial_text")
     tutorial_text_stim = stimuli["tutorial_text"]
     if tutorial_text and tutorial_text["visible"]:
@@ -766,24 +717,10 @@ def _resolve_record_video(selected_label: str) -> bool:
 
 
 def prompt_session_info() -> tuple[str, str, int, str, float, bool, bool, bool, bool, tuple[float, ...]] | None:
-    """Standard PsychoPy participant-info dialog, shown before the window
-    opens - also offers a camera picker (a dropdown of every camera index
-    that actually opens) so switching between multiple connected cameras
-    doesn't require hand-editing CAMERA_INDEX, and the saccade phase's
-    probe-contrast range (min/max fields, see SACCADE_FIXED_CONTRASTS; the baseline
-    staircase floor is the dashboard-configured default in src/experiment/settings.py,
-    not a dialog field). Also offers a "Show gaze
-    indicator" toggle (default No) for the saccade phase's debug gaze dot -
-    off by default since it's not something a real participant should see -
-    a "Run tutorial" toggle (default No) for the first-timer on-ramp (see
-    TutorialSession), independent of test/real mode so it can be exercised
-    from either, and a "Record video" toggle (default Yes, see VideoRecorder)
-    for a full session video + per-frame-timestamp CSV alongside the results
-    CSV, so a session can be replayed later by default - opt out per session
-    (e.g. low disk space) rather than opting in. Whether this is a test run
-    (see _resolve_test_mode) is an explicit Mode dropdown (default Real); a
-    real run with a blank Participant ID re-shows the dialog with the problem
-    in its title. Returns None if the dialog was cancelled."""
+    """The startup dialog: Mode (Test/Real), Participant ID, gaze source, webcam picker, the saccade phase's contrast range
+    (min/max, see SACCADE_FIXED_CONTRASTS; the baseline staircase floor comes from src/experiment/settings.py), and the
+    Show gaze indicator / Run tutorial / Record video toggles. A real run with a blank Participant ID re-shows the dialog
+    with the problem in its title. Returns None if the dialog was cancelled."""
     try:
         camera_indices = list_cameras() or [CAMERA_INDEX]
     except ImportError:  # PySpin not installed (Neon-only machine)
