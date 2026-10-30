@@ -135,8 +135,8 @@ Paths in this section are checked by `tests/test_docs.py` - keep them real.
 | `src/experiment/pausable_clock.py` | `PausableClock`: the injected time source every session reads (name is historical; it no longer pauses) |
 | `src/experiment/settings.py` | dashboard-configured default contrast floor (`data/settings.json`) |
 | `src/experiment/scoring.py` | `score_outcome`, `is_valid_for_saccadic_analysis` (the validity gate) |
-| `src/experiment/trial_mechanics.py` | `OnsetDetector` (displacement rule), `ShuffledBag`, `zone_for`, `line_position` (line placement above/below a reference point), `robust_average_ms` (shared helper; drops anticipations/outliers then takes the median), `RollingReactionTime` (live rolling window + robust average, updated at every detected onset) |
-| `src/experiment/calibration.py` | `average_calibration_rounds` (rounds 2 and 3 of the 3-round calibration) |
+| `src/experiment/trial_mechanics.py` | `OnsetDetector` (displacement rule), `ShuffledBag`, `zone_for`, `line_position` (line placement above/below a reference point), `robust_average_ms` (shared helper; drops anticipations/outliers then takes the median), `sample_capture_time` (gaze-sample capture time on the session clock, shared by both sessions), `RollingReactionTime` (live rolling window + robust average, updated at every detected onset) |
+| `src/experiment/calibration.py` | `CalibrationRounds` (the 3-point x 3-round calibration state machine shared by `ExperimentSession` and `TutorialSession`) and `average_calibration_rounds` (rounds 2 and 3) |
 | `src/experiment/space_input.py` | SPACE bookkeeping with no PsychoPy: `CalibrationLatch` (a calibration press made before the gaze window is full is latched and completed in `tick()`), `NarrationKeyGate` (tutorial: a press during narration is delivered after it), `SpaceTally` (ignored presses per phase + reason), `deliver_space`, `leaves_complete_screen` |
 | `src/experiment/session_schedule.py` | `phase_order`: baseline/saccade order counterbalanced by participant ID |
 | `src/timebase.py` | the ONE time source: `now()` = `time.perf_counter()`; wall-clock via an edge-synchronised anchor (`unix_now()`, `unix_ms()`) |
@@ -157,6 +157,7 @@ Paths in this section are checked by `tests/test_docs.py` - keep them real.
 | `src/eye_tracking/webcam_source.py` | Blackfly S + MediaPipe backend (alternative) |
 | `src/dashboard/app.py` | Flask dashboard (separate process, reads `data/`) |
 | `tests/conftest.py` | `FakeGazeSource`, `fake_time` fixture |
+| `tests/helpers.py` | `NullLogger`, shared by the session test files |
 | `tests/ai-tests/test_line_stimulus.py` | line-stimulus branch: placement above/below the target (both directions) and the baseline centre, UP/DOWN keys only, quiz, old-CSV loading |
 | `tests/ai-tests/README.md` | headless-simulation guide for AI agents |
 | `tests/ai-tests/run_sim.py` | simulation CLI (`--set`, `--sweep`, `--timeline`, `--json`) |
@@ -239,7 +240,7 @@ goes here. `src/` mirrors that split (`src/experiment/`, `src/eye_tracking/`,
 **Framework-agnostic session state machines.** `PresaccadeSession` (baseline
 phase) and `ExperimentSession` (saccade phase) each expose
 `on_space()`/`on_response_key()`/`tick()`/`render_state()` and know nothing
-about PsychoPy — `run_experiment.py`'s frame loop calls `tick()` +
+about PsychoPy — `run_experiment.py`'s frame loops (sharing `FramePresenter` for caption/fades/frame clock and `deliver_keys`) call `tick()` +
 `render_state()` once per rendered frame and applies the returned plain dict
 to PsychoPy stimuli (`apply_render_state()`/`draw_all()`). Both phases share
 one `ResultLogger` (one CSV, distinguished by a `phase` column) but run
