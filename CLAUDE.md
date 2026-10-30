@@ -25,6 +25,11 @@ trials that seed the reaction-time average. Every trial waits for SPACE. Control
 RT) and pre-specified post-hoc gates (`flash_gates.py`) let `analyze_session` report a per-person suppression index. Run the
 experiment, then `.\scripts\py.ps1 -m src.experiment.analyze_session` (newest session) for the report, plot and per-flash CSV.
 None of this has been run in a real session on glasses since the last refactor: it is covered by the simulator and tests only.
+**Results layout and glasses video (new, untested on glasses).** A run writes `data/<participant>/<YYYY-MM-DD_HH-MM-SS>[_test]/` (trials.csv with plain
+column names, session.json, gaze_trace.csv, analysis/, glasses/); old loose `results_<ts>.*` files are still read. The phone records the glasses' scene
+video itself (`NeonGazeSource.start_recording/stop_recording`, Real-Time API `recording_start`/`recording_stop_and_save`); a green sync-flash step before
+the first trial and one at the end lets `import_glasses_video` line the exported video up with the PC clock. The recording, the flashes and the
+detector on real footage have only been run against fake devices and synthetic frames.
 
 **Pilot findings (one participant, test mode, earlier setup).** Foveal baseline threshold ~1.3 %. Saccades ~75 ms / ~30 deg
 with the 15/85 layout. 3 %/6 % flashes were invisible when fixating the dot/cross (flash ~15 deg off to the side); 10-20 %
@@ -72,7 +77,8 @@ All via the wrapper (PowerShell shown; from Git Bash use `scripts/py.sh` with th
 .\scripts\py.ps1 tests/ai-tests/run_sim.py --help               # headless simulation runner (scenarios, sweeps, JSON)
 .\scripts\py.ps1 -m src.experiment.run_experiment               # REAL experiment (opens a window - human only)
 .\scripts\py.ps1 -m src.dashboard.app                           # session dashboard at localhost:5000
-.\scripts\py.ps1 -m src.experiment.analyze_session [timestamp] [--data-dir D]  # accuracy vs flash time relative to saccade onset (newest session by default)
+.\scripts\py.ps1 -m src.experiment.analyze_session [session] [--data-dir D]  # accuracy vs flash time relative to saccade onset (newest session by default; a unix ts, run folder name or path; writes <run>/analysis/)
+.\scripts\py.ps1 -m src.experiment.import_glasses_video <run-folder> <exported.mp4>  # attach + sync the phone's glasses video
 .\scripts\py.ps1 -m src.eye_tracking.neon_fixation_test [secs]  # Neon jitter check (glasses on; human)
 .\scripts\py.ps1 -m src.eye_tracking.latency_test               # Neon vs webcam latency recording (human)
 .\scripts\py.ps1 -m src.eye_tracking.record_gaze_trace out.csv 10   # record raw Neon gaze for replay (glasses on)
@@ -110,7 +116,10 @@ Paths in this section are checked by `tests/test_docs.py` - keep them real.
 | `src/timebase.py` | the ONE time source: `now()` = `time.perf_counter()`; wall-clock via an edge-synchronised anchor (`unix_now()`, `unix_ms()`) |
 | `src/experiment/trial_factory.py` | builds trial sequences |
 | `src/experiment/zest.py` | adaptive contrast staircase |
-| `src/experiment/logger.py` | `ResultLogger`: CSV + `_meta.json` (git SHA, constants snapshot, per-phase threshold summary) + side-file paths |
+| `src/experiment/logger.py` | `ResultLogger` writes one run folder: `trials.csv` (schema = `TRIAL_COLUMNS`, plain names; `DROPPED_FROM_CSV` lists the `TrialResult` fields left out and why), `session.json` (sections participant/run/settings/hardware/results/gaze_quality/ignored_space_presses/glasses_video), side-file paths; `read_trial_rows`/`read_trials` read BOTH the new and the old layout |
+| `src/experiment/session_files.py` | run-folder naming (`sanitize_participant_id`, `create_session_folder`), `SessionRef`, `list_sessions`/`find_session`/`newest_session` over the new and the old loose-file layout (a session's key is its unix start time) |
+| `src/experiment/glasses_video.py` | no PsychoPy: sync-flash frame counts, `find_sync_flashes` (green frames in a video), `compute_offset` (video time vs logged PC flash times, residual + ok/check manually) |
+| `src/experiment/import_glasses_video.py` | CLI: copies the phone's exported video into `<run>/glasses/`, writes `video_sync.json` + `flash_video_times.csv` |
 | `src/experiment/results_graph.py` | end-of-run comparison figure |
 | `src/experiment/analyze_session.py` | post-hoc saccade analysis: finds saccades in a session's raw gaze trace (phone capture times), places each flash against the nearest onset, writes accuracy-vs-time report + plot + per-flash CSV |
 | `src/experiment/flash_gates.py` | pre-specified post-hoc gates (Braun et al. 2021): each flash is `saccade` (eye fast at the flash, latency 100-500 ms, amplitude within 0.5-1.5x median), `fixation` (>=100 ms from any saccade, no tracking gap) or `excluded`; control flashes come from `CONTROL_OFFSETS_MS` (+400/+500 ms after the average RT, eye already landed) |
@@ -130,7 +139,7 @@ Paths in this section are checked by `tests/test_docs.py` - keep them real.
 | `tests/ai-tests/analyze_onset_threshold.py` | offline onset-rule study on recorded traces (lead/delay/false triggers per threshold) |
 | `scripts/py.ps1` | interpreter wrapper (see Start here) |
 
-`data/` (results, traces, graphs) is git-ignored runtime output: never commit it, and don't write to
+`data/` (per-participant run folders, old loose results, traces, graphs) is git-ignored runtime output: never commit it, and don't write to
 it from tests or simulations (the simulator uses an in-memory logger).
 
 ## How to verify a change (cheapest check first)
@@ -147,7 +156,7 @@ it from tests or simulations (the simulator uses an in-memory logger).
    measurement script and ask the human to run it; don't guess numbers.
 
 Report test results truthfully (what ran, what was skipped). The suite passes at the time of writing
-(~480 tests, ~70 s, 2 skipped when PySpin/mediapipe are absent).
+(~520 tests, ~60 s, 2 skipped when PySpin/mediapipe are absent).
 
 **Bug-hunting tests** (`tests/ai-tests/`): `find_bugs.py` fuzzes the real session with random/hostile
 participants and checks `invariants.py` (run `find_bugs.py --sessions 300` after changing session,
@@ -160,10 +169,11 @@ architecture rules in this file (`test_architecture_rules.py`: no PsychoPy in se
 
 ## Recipes
 
-- **Add a column to the results CSV / a field to `TrialResult`**: field in `include/experiment/types.py`
-  (default `None`) -> `FIELDNAMES` + `ResultLogger.log` in `src/experiment/logger.py` -> parse with
-  `row.get(...)` in `src/dashboard/data_access.py` (old CSVs must still load) -> set it where the
-  `TrialResult` is built in `session.py` -> test (see `tests/ai-tests/test_tracking_quality.py`).
+- **Add a column to trials.csv / a field to `TrialResult`**: field in `include/experiment/types.py`
+  (default `None`) -> ONE `Column(...)` in `TRIAL_COLUMNS` in `src/experiment/logger.py` (plain name, writer, and the
+  converter back to the old CSV's text) or, to keep it out of the CSV, an entry with a reason in `DROPPED_FROM_CSV`
+  (`test_schema_sync.py` fails until every field is one or the other) -> `trial_from_row` in the same file -> set it where the
+  `TrialResult` is built in `session.py` -> test (see `tests/ai-tests/test_tracking_quality.py`). Old CSVs must still load.
 - **Change a tuning constant**: edit it in `include/**/constants.py` (read its comment first - several
   encode hard-won trade-offs), then run a `--sweep` in the simulator and `pytest`.
 - **Add a gaze backend**: implement `GazeSource` (`include/eye_tracking/interfaces.py`), register it in
@@ -213,7 +223,7 @@ testing) is a runtime decision, not a constant: `run_experiment.py`'s
 (Real/Test); a Real run requires a non-empty Participant ID. Real runs also get
 counterbalanced phase order (`session_schedule.py`). Every trial (all three sessions) waits for the participant to press SPACE (`AWAITING_SPACE` phases) and the swap comes `FOREPERIOD_MIN_MS`-`FOREPERIOD_MAX_MS` (500-1000 ms) after the press; there is no pause menu, rest break, session cap or mid-session recalibration.
 
-**SPACE presses are never silently dropped** (`space_input.py`, tests `tests/ai-tests/test_space_input.py`). Calibration (saccade session and tutorial): one press is enough; if `average_recent_ratio()` is still `None` (window not full; slow at ~45 Hz) the press is latched, the window restarted, and `tick()` completes the step once it fills (`render_state()["hud"]["calibration_wait_s"]` shows in the Test-mode HUD, "TRACKING LOST?" after 3 s). Tutorial: `run_tutorial_phase` holds one SPACE pressed while the narrator speaks and delivers it afterwards. Trials: SPACE is accepted in the `AWAITING_SPACE` phases; during the foreperiod it is ignored (must not restart it or start the next trial); during a trial it is ignored until the participant has answered, then it is carried and starts the next trial the moment `AWAITING_SPACE` begins. Same-frame repeats collapse to one press; a press made before a phase's first screen (start-up, marker check) is discarded; a press in the frame COMPLETE first appears does not dismiss it. Every ignored press is counted in `session.space_tally` (per phase + reason), printed at the end of each phase and stored in `_meta.json` as `ignored_space_presses` (`ResultLogger.set_ignored_space_presses`).
+**SPACE presses are never silently dropped** (`space_input.py`, tests `tests/ai-tests/test_space_input.py`). Calibration (saccade session and tutorial): one press is enough; if `average_recent_ratio()` is still `None` (window not full; slow at ~45 Hz) the press is latched, the window restarted, and `tick()` completes the step once it fills (`render_state()["hud"]["calibration_wait_s"]` shows in the Test-mode HUD, "TRACKING LOST?" after 3 s). Tutorial: `run_tutorial_phase` holds one SPACE pressed while the narrator speaks and delivers it afterwards. Trials: SPACE is accepted in the `AWAITING_SPACE` phases; during the foreperiod it is ignored (must not restart it or start the next trial); during a trial it is ignored until the participant has answered, then it is carried and starts the next trial the moment `AWAITING_SPACE` begins. Same-frame repeats collapse to one press; a press made before a phase's first screen (start-up, marker check) is discarded; a press in the frame COMPLETE first appears does not dismiss it. Every ignored press is counted in `session.space_tally` (per phase + reason), printed at the end of each phase and stored in `session.json` as `ignored_space_presses` (`ResultLogger.set_ignored_space_presses`).
 `PresaccadeSession` still picks between fixed `_TEST`/`_REAL` trial-count
 constant pairs in `include/experiment/constants.py`; `ExperimentSession` uses `SACCADE_FIXED_TRIALS_*` (constant stimuli), and
 its practice block and RT-test use `_TEST`/`_REAL`-paired counts.
@@ -252,8 +262,8 @@ before touching this code:
   matching opencv versions for this reason — don't casually bump either.
 
 **Dashboard is a separate process reading the same files.** `src/dashboard/`
-is an independent Flask app (`data_access.py` reads/writes the CSV,
-`_meta.json`, and `settings.json` files under `data/`) — no shared process
+is an independent Flask app (`data_access.py` reads/writes the trials/`session.json` of run folders and the old CSV/`_meta.json` files, and `settings.json`, under `data/`;
+deleting a new-layout session removes its whole run folder, glasses video included) — no shared process
 or IPC with the experiment, just shared files on disk.
 
 **Shared logic lives in `trial_mechanics.py`/`scoring.py`, not copy-pasted.**
@@ -302,7 +312,7 @@ fixture `tests/fixtures/neon_trace_sample.csv`).
 gaze tracking dropped out within `TRACKING_LOSS_WINDOW_MS` of the flash - see
 `scoring.is_valid_for_saccadic_analysis(flash, tracking_ok)`. A saccade-phase
 session also writes `gaze_quality` (rate, gaps, latency, clock offset) into
-`_meta.json` and a raw `results_<ts>_gaze_trace.csv` (plain Neon). Traces of old sessions recorded with the removed screen-mapped backends hold screen-ratio x
+`session.json` and a raw `gaze_trace.csv` (plain Neon). Traces of old sessions recorded with the removed screen-mapped backends hold screen-ratio x
 `NEON_SCENE_WIDTH` in `x_px`; `analyze_session` and replay still read them (kept `NEON_SCENE_WIDTH` for that).
 
 **Simulator finding (fixed in simulation, unverified on glasses).** Onset/landing used to be
