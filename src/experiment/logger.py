@@ -44,7 +44,6 @@ def _enum_value(value) -> str:
 
 
 PHASE_WORDS = {"presaccade": "baseline"}  # trials.csv says "baseline" for the fixation phase
-SIDE_WORDS = {Target.DOT.value: "left", Target.CROSS.value: "right"}  # the two symbols are the left and right dot
 OUTCOME_WORDS = {"incorrect": "wrong", "miss": "no_answer"}
 _INVERSE = lambda table: {v: k for k, v in table.items()}  # noqa: E731
 
@@ -81,31 +80,32 @@ class Column:
 
 _CANONICAL_NAMES = {"index": "trial_index"}  # TrialResult field -> its column name in the old results_<ts>.csv
 
-# Left to right: who/what, stimulus, timing, response, result, quality flags.
+# Left to right: who/what, stimulus contrast, the yes/no group (flash seen? answered? correct?), outcome, stimulus/answer pair,
+# the millisecond columns (then the wall-clock flash time), quality.
 TRIAL_COLUMNS: list[Column] = [
     Column("phase", "phase", lambda r: PHASE_WORDS.get(r.phase, r.phase), _word_to_canonical(PHASE_WORDS)),
     Column("trial", "index", lambda r: str(r.index)),
-    Column("from", "source", lambda r: SIDE_WORDS.get(_enum_value(r.source), _enum_value(r.source)), _word_to_canonical(SIDE_WORDS)),
-    Column("to", "target", lambda r: SIDE_WORDS.get(_enum_value(r.target), _enum_value(r.target)), _word_to_canonical(SIDE_WORDS)),
-    Column("flash_shown", "grating_shown", lambda r: _yes_no(r.grating_shown), _yes_no_to_canonical),
     Column("contrast_pct", "contrast", lambda r: _num(None if r.contrast is None else r.contrast * 100, 4), _pct_to_fraction),
+    Column("flash_shown", "grating_shown", lambda r: _yes_no(r.grating_shown), _yes_no_to_canonical),
+    Column("flash_during_saccade", "flash_during_saccade", lambda r: _yes_no(r.flash_during_saccade), _yes_no_to_canonical),
+    Column("answered", "responded", lambda r: _yes_no(r.responded), _yes_no_to_canonical),
+    Column("correct", None, _is_correct),
+    Column("outcome", "outcome", lambda r: OUTCOME_WORDS.get(r.outcome, r.outcome), _word_to_canonical(OUTCOME_WORDS)),
     Column("grating_orientation", "orientation", lambda r: _enum_value(r.orientation)),
-    Column("planned_offset_ms", "timing_offset_ms", lambda r: "" if r.timing_offset_ms is None else str(int(r.timing_offset_ms))),
+    Column("answer_orientation", "response_orientation", lambda r: _enum_value(r.response_orientation)),
     Column("flash_ms_after_go_cue", "scheduled_delay_ms", lambda r: _num(r.scheduled_delay_ms)),
     Column("reaction_ms", "reaction_latency_ms", lambda r: _num(r.reaction_latency_ms)),
-    Column("flash_unix_ms", "grating_shown_at_unix_ms", lambda r: _num(r.grating_shown_at_unix_ms)),
-    Column("answered", "responded", lambda r: _yes_no(r.responded), _yes_no_to_canonical),
-    Column("answer_orientation", "response_orientation", lambda r: _enum_value(r.response_orientation)),
     Column("answer_ms", "response_time_ms", lambda r: _num(r.response_time_ms)),
-    Column("outcome", "outcome", lambda r: OUTCOME_WORDS.get(r.outcome, r.outcome), _word_to_canonical(OUTCOME_WORDS)),
-    Column("correct", None, _is_correct),
+    Column("flash_unix_ms", "grating_shown_at_unix_ms", lambda r: _num(r.grating_shown_at_unix_ms)),
     Column("tracking_ok", "tracking_ok", lambda r: _yes_no(r.tracking_ok), _yes_no_to_canonical),
-    Column("flash_during_saccade", "flash_during_saccade", lambda r: _yes_no(r.flash_during_saccade), _yes_no_to_canonical),
 ]
 FIELDNAMES = [c.name for c in TRIAL_COLUMNS]
 
 # TrialResult fields that are NOT in trials.csv, with why. Per-phase medians of the first two go to session.json.
 DROPPED_FROM_CSV = {
+    "timing_offset_ms": "the actual delay is in flash_ms_after_go_cue and analyze_session recomputes timing (and the control flashes) from the gaze trace",
+    "source": "the two symbols are the left and right dot and trials alternate strictly, so the direction is the trial parity within a phase",
+    "target": "same as source: the opposite symbol, i.e. the direction of the eye movement follows from the trial parity",
     "saccade_duration_ms": "live-detected duration from a ~95 ms late gaze stream; analyze_session measures saccades from the raw trace (median kept in session.json)",
     "onset_detection_lag_ms": "diagnostic of the live onset detector (median kept in session.json)",
     "flash_relative_to_onset_ms": "live estimate from the late gaze stream; analyze_session recomputes it post hoc from the trace",

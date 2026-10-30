@@ -71,11 +71,27 @@ data/
       glasses/                       the phone's video + video_sync.json (see "Glasses video" below)
 ```
 
-`trials.csv` columns, left to right: **who/what** `phase` (baseline / saccade / rt_test), `trial`; **stimulus** `from`, `to` (`left`/`right`: the two
-symbols of the screen are the left and right dot), `flash_shown`, `contrast_pct`, `grating_orientation`; **timing** `planned_offset_ms` (the
-flash's offset around the average reaction time), `flash_ms_after_go_cue`, `reaction_ms`, `flash_unix_ms` (PC wall clock of the flash, used by
-`analyze_session`); **response** `answered`, `answer_orientation`, `answer_ms`; **result** `outcome` (correct / wrong / no_answer / false_alarm /
-correct_rejection / detected), `correct`; **quality** `tracking_ok`, `flash_during_saccade`. Booleans are `yes`/`no`. Practice trials are not written.
+`trials.csv` columns, left to right (booleans are `yes`/`no`; practice trials are not written):
+
+- `phase`: baseline / saccade / rt_test
+- `trial`: the trial number within the phase
+- `contrast_pct`: the flash's contrast in percent (blank when no flash)
+- `flash_shown`: was a flash shown (no on catch trials)
+- `flash_during_saccade`: did the scheduled flash fall inside the eye movement, as the live detector judged it (late gaze; `analyze_session` re-judges it from the trace)
+- `answered`: did the participant answer in time
+- `correct`: was the answer right (a catch trial with no answer counts as right; blank for rt_test)
+- `outcome`: correct / wrong / no_answer / false_alarm / correct_rejection / detected
+- `grating_orientation`: the orientation of the flashed grating (vertical / horizontal)
+- `answer_orientation`: the orientation the participant answered
+- `flash_ms_after_go_cue`: delay from the go cue to the flash, with the random jitter
+- `reaction_ms`: time from the go cue to the detected eye movement
+- `answer_ms`: time from the flash to the answer
+- `flash_unix_ms`: PC wall-clock time of the flash (used by `analyze_session`)
+- `tracking_ok`: gaze tracking did not drop out around the flash
+
+There is no planned-offset column (the actual delay is `flash_ms_after_go_cue`; `analyze_session` recomputes timing and picks the control flashes from the gaze trace).
+There are no `from`/`to` columns: the two symbols are the left and right dot and trials alternate strictly, so the direction of the eye movement
+is the trial's parity within its phase (old `results_<ts>.csv` files still have `source`/`target`).
 The code-side schema is `TRIAL_COLUMNS` in `src/experiment/logger.py`.
 
 Sessions recorded before this layout (loose `data/results_<timestamp>.csv`, `_meta.json`, `_gaze_trace.csv`, with `dot`/`cross` values) are never
