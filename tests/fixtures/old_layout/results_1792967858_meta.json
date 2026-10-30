@@ -1,0 +1,218 @@
+{
+  "participant_id": "anonymous",
+  "started_at": "2026-10-25T16:37:38",
+  "test_mode": true,
+  "camera": "Pupil Labs Neon (still head)",
+  "viewing_distance_cm": 50.0,
+  "screen_height_cm": 26.0,
+  "grating_spatial_frequency_cpd": 0.12,
+  "grating_envelope_sigma_deg": 4.8,
+  "line_offset_deg": 2.0,
+  "line_sd_deg": 0.15,
+  "contrast_floor_percent": 0.8800144739623236,
+  "calibration": null,
+  "git": {
+    "sha": "0a1f486b9f50e260d330f7b2028e3a4890b12d3b",
+    "dirty": false
+  },
+  "python_version": "3.10.11",
+  "platform": "Windows-10-10.0.26200-SP0",
+  "psychopy_version": "2026.2.4",
+  "display_refresh_hz": null,
+  "constants": {
+    "DOT_POSITION": [
+      0.15,
+      0.5
+    ],
+    "CROSS_POSITION": [
+      0.85,
+      0.5
+    ],
+    "CENTER_POSITION": [
+      0.5,
+      0.5
+    ],
+    "GRATING_POSITION": [
+      0.5,
+      0.5
+    ],
+    "CIRCLE_RADIUS_RATIO": 0.03,
+    "BACKGROUND_LUMINANCE": 0.5,
+    "VIEWING_DISTANCE_CM": 50.0,
+    "SCREEN_HEIGHT_CM": 26.0,
+    "SCREEN_HEIGHT_DEG": 29.148432396077478,
+    "LINE_OFFSET_DEG": 2.0,
+    "LINE_SD_DEG": 0.15,
+    "LINE_WIDTH_SCREENS": 24.0,
+    "GRATING_SPATIAL_FREQUENCY_CPD": 0.12,
+    "GRATING_ENVELOPE_SIGMA_DEG": 4.8,
+    "GRATING_DURATION_FRAMES": 1,
+    "GRATING_SF_CYCLES_PER_HEIGHT_UNIT": 3.497811887529297,
+    "GRATING_ENVELOPE_SIGMA_HEIGHT_UNITS": 0.16467437887486322,
+    "GRATING_SIZE_HEIGHT_UNITS": 0.9880462732491793,
+    "LINE_OFFSET_HEIGHT_UNITS": 0.06861432453119301,
+    "LINE_SD_HEIGHT_UNITS": 0.005146074339839476,
+    "LINE_HEIGHT_HEIGHT_UNITS": 0.030876446039036852,
+    "NUM_TRIALS_PER_PHASE_TEST": 25,
+    "NUM_TRIALS_PER_PHASE_REAL": 25,
+    "CATCH_TRIAL_FRACTION": 0.2,
+    "NUM_PRACTICE_TRIALS_TEST": 2,
+    "NUM_PRACTICE_TRIALS_REAL": 5,
+    "PRACTICE_CONTRAST": 0.25,
+    "GAZE_INDICATOR_RADIUS_RATIO": 0.018,
+    "GAZE_INDICATOR_OPACITY": 0.35,
+    "HARDWARE_CONTRAST_FLOOR": 0.00784313725490196,
+    "ZEST_LOG_CONTRAST_MIN": -2.0555101847699744,
+    "ZEST_LOG_CONTRAST_MAX": -0.3010299956639812,
+    "ZEST_GRID_SIZE": 120,
+    "ZEST_BETA": 3.5,
+    "ZEST_GUESS_RATE": 0.5,
+    "ZEST_LAPSE_RATE": 0.02,
+    "ABOVE_RESPONSE_KEYS": [
+      "up"
+    ],
+    "BELOW_RESPONSE_KEYS": [
+      "down"
+    ],
+    "RESPONSE_WINDOW_MS": 1000,
+    "FOREPERIOD_MIN_MS": 500,
+    "FOREPERIOD_MAX_MS": 1000,
+    "FALSE_ALARM_RATE_THRESHOLD": 0.005,
+    "MIN_CATCH_TRIALS_FOR_RELIABILITY": 8,
+    "SACCADE_TIMEOUT_MS": 15000,
+    "TRACKING_LOSS_WINDOW_MS": 150,
+    "GAZE_LANDING_STABILITY_MS": 150,
+    "SACCADE_ONSET_DISPLACEMENT": 0.05,
+    "FLASH_TRIGGER": "scheduled",
+    "FLASH_ONSET_DELAYS_MS": [
+      0
+    ],
+    "ONSET_BASELINE_WINDOW_MS": 150,
+    "ONSET_BASELINE_NEAR_SOURCE": 0.25,
+    "SACCADE_ONSET_STABILITY_MS": 10,
+    "CALIBRATION_ROUNDS": 3,
+    "TIMING_OFFSETS_MS": [
+      -80,
+      -60,
+      -40,
+      -20,
+      0,
+      20,
+      40,
+      60,
+      80
+    ],
+    "TIMING_JITTER_MS": 10,
+    "CONTROL_OFFSETS_MS": [
+      400,
+      500
+    ],
+    "SACCADE_CONTRAST_LEVELS": 3,
+    "SACCADE_FIXED_CONTRASTS": [
+      0.02,
+      0.04,
+      0.06
+    ],
+    "SACCADE_FIXED_TRIALS_TEST": 30,
+    "SACCADE_FIXED_TRIALS_REAL": 150,
+    "NUM_RT_TEST_TRIALS_TEST": 6,
+    "NUM_RT_TEST_TRIALS_REAL": 10,
+    "DEFAULT_REACTION_TIME_MS": 225.0,
+    "RT_AVERAGE_ROLLING_WINDOW": 10,
+    "RT_AVERAGE_RECOMPUTE_EVERY": 1,
+    "SHARP_GO_CUE": true,
+    "RT_MIN_PLAUSIBLE_MS": 100.0,
+    "RT_OUTLIER_MAD_K": 3.0,
+    "RT_OUTLIER_MAD_FLOOR_MS": 25.0,
+    "GAZE_LATENCY_MAX_MS": 150.0,
+    "ZEST_GRID_BOUND_MARGIN_LOG": 0.05,
+    "ZEST_CREDIBLE_INTERVAL_MAX_LOG_WIDTH": 0.1,
+    "ZEST_MIN_VALID_TRIALS_TEST": 6,
+    "ZEST_MIN_VALID_TRIALS_REAL": 25,
+    "MAX_SACCADE_TRIALS_TEST": 30,
+    "MAX_SACCADE_TRIALS_REAL": 200,
+    "WARNING_TONE_HZ": 880,
+    "WARNING_TONE_DURATION_S": 0.5,
+    "TUTORIAL_QUIZ_CONTRAST": 0.5,
+    "TUTORIAL_QUIZ_STREAK_TARGET": 3,
+    "TUTORIAL_PRACTICE_ATTEMPTS": 8,
+    "TUTORIAL_PRACTICE_CONTRAST": 0.5,
+    "FEEDBACK_FLASH_RED": [
+      1,
+      -1,
+      -1
+    ],
+    "FEEDBACK_FLASH_GREEN": [
+      -1,
+      1,
+      -1
+    ],
+    "FEEDBACK_FLASH_DURATION_FRAMES": 8,
+    "CAMERA_INDEX": 0,
+    "CAMERA_PROBE_LIMIT": 5,
+    "FRAME_WIDTH": 1196,
+    "FRAME_HEIGHT": 874,
+    "FRAME_OFFSET_X": 132,
+    "FRAME_OFFSET_Y": 112,
+    "CAMERA_EXPOSURE_TIME_US": 3000.0,
+    "CAMERA_GAIN_DB": 6.0,
+    "CAMERA_FRAME_RATE": 200.0,
+    "VIDEO_RECORDING_FPS": 30.0,
+    "TRACKING_FRAME_WIDTH": 640,
+    "MODEL_PATH": "models/face_landmarker.task",
+    "MODEL_URL": "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+    "RIGHT_IRIS_CENTER": 468,
+    "LEFT_IRIS_CENTER": 473,
+    "RIGHT_EYE_CORNERS": [
+      33,
+      133
+    ],
+    "LEFT_EYE_CORNERS": [
+      362,
+      263
+    ],
+    "CALIBRATION_SAMPLE_WINDOW": 30,
+    "GAZE_DEAD_ZONE": 0.1,
+    "POSITION_MEDIAN_WINDOW": 5,
+    "POSITION_SMOOTHING": 0.35,
+    "NEON_DEVICE_ADDRESS": "192.168.0.60",
+    "NEON_DEVICE_PORT": 8080,
+    "NEON_DISCOVERY_TIMEOUT_S": 10.0,
+    "NEON_SCENE_WIDTH": 1600,
+    "NEON_SCENE_HEIGHT": 1200,
+    "NEON_GAP_THRESHOLD_MS": 30.0,
+    "NEON_STALE_TIMEOUT_S": 0.5,
+    "NEON_MAX_PLAUSIBLE_LATENCY_MS": 150.0,
+    "NEON_HISTORY_SAMPLES": 400,
+    "NEON_LATENCY_WINDOW_SAMPLES": 200,
+    "NEON_CLOCK_REESTIMATE_S": 60.0,
+    "NEON_CLOCK_REESTIMATE_MAX_STD_MS": 10.0,
+    "NEON_REPLAY_LATENCY_MS": 16.0
+  },
+  "phase_summaries": {},
+  "saccade_contrasts": [
+    0.02
+  ],
+  "ignored_space_presses": {
+    "saccade": {
+      "TRIAL_ACTIVE: during trial": 1
+    }
+  },
+  "gaze_quality": {
+    "source": "pupil_labs_neon",
+    "samples": 9755,
+    "lost_samples": 0,
+    "sample_rate_hz": 199.8,
+    "gaps_over_threshold": 0,
+    "gap_threshold_ms": 30.0,
+    "longest_gap_ms": 21.0,
+    "clock_offset_ms": 297.2,
+    "clock_offset_std_ms": 1.0917505172516255,
+    "clock_roundtrip_ms": 4.7,
+    "latency_ms_median": 16.9,
+    "latency_ms_p95": 21.3,
+    "latency_ms_max": 35.2,
+    "receive_errors": 0,
+    "last_receive_error": null
+  }
+}

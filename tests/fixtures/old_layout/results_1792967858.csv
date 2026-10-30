@@ -1,0 +1,11 @@
+trial_index,phase,source,target,saccade_duration_ms,grating_shown,contrast,orientation,responded,response_orientation,response_time_ms,outcome,reaction_latency_ms,onset_detection_lag_ms,flash_during_saccade,timing_offset_ms,grating_shown_at_unix_ms,tracking_ok,flash_relative_to_onset_ms,avg_rt_used_ms,scheduled_delay_ms,gaze_latency_ms
+0,rt_test,dot,cross,,False,,,False,,,detected,241.97902489686385,,,,,,,,,
+1,rt_test,dot,cross,,False,,,False,,,detected,44.59995427168906,,,,,,,,,
+2,rt_test,dot,cross,,False,,,False,,,detected,73.33751692203805,,,,,,,,,
+3,rt_test,dot,cross,,False,,,False,,,detected,2.874781552236527,,,,,,,,,
+4,rt_test,dot,cross,,False,,,False,,,detected,461.0509922495112,,,,,,,,,
+5,rt_test,dot,cross,,False,,,False,,,detected,164.08618295099586,,,,,,,,,
+0,saccade,dot,cross,170.1223850250244,True,0.02,above,False,,,miss,2.940440142992884,10.000228881835938,False,20,1792967906827.9944,True,254.95938170934096,241.97902489686385,257.8998218263184,16.99638762511313
+1,saccade,cross,dot,,True,0.02,below,False,,,miss,3.5449369461275637,15.000104904174805,False,40,1792967909228.0845,True,271.62566111655906,241.97902489686385,275.17059808697934,17.00638810871169
+2,saccade,dot,cross,245.2554702758789,False,,,False,,,correct_rejection,1.8348630983382463,15.000104904174805,,-40,,,,241.97902489686385,206.8744776045508,16.976452723611146
+3,saccade,cross,dot,,True,0.02,above,False,,,miss,4.009938216768205,14.999866485595703,False,60,1792967913844.6064,True,303.4192511695437,241.97902489686385,307.4291893773689,17.344011110253632

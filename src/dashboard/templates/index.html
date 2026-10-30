@@ -154,7 +154,7 @@ document.querySelectorAll("tr[data-timestamp]").forEach((row) => {
 
   const deleteButton = row.querySelector(".delete-session");
   deleteButton.addEventListener("click", async () => {
-    if (!confirm("Delete this session permanently? This cannot be undone.")) return;
+    if (!confirm("Delete this session permanently (for a new-style run this removes its whole folder, including the glasses video)? This cannot be undone.")) return;
     deleteButton.disabled = true;
     const ok = await deleteSessionByTimestamp(timestamp);
     if (ok) {

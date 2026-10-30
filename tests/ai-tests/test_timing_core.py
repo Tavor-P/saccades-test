@@ -280,16 +280,16 @@ def test_catch_trial_has_no_flash_relative_to_onset(fake_gaze, fake_time):
 # -- _meta.json ---------------------------------------------------------------------
 
 
-def test_meta_has_provenance_and_constants_snapshot(tmp_path, monkeypatch):
+def test_meta_has_provenance_and_the_science_relevant_constants(tmp_path, monkeypatch):
     monkeypatch.setattr(logger_module, "DATA_DIR", tmp_path)
     log = ResultLogger("p1")
     log.close()
-    meta = json.loads(next(tmp_path.glob("results_*_meta.json")).read_text())
-    assert set(meta["git"]) == {"sha", "dirty"}
-    assert meta["python_version"]
-    assert "psychopy_version" in meta
-    assert meta["constants"]["SACCADE_ONSET_STABILITY_MS"] == 10
-    assert meta["display_refresh_hz"] is None
+    meta = json.loads(next(tmp_path.glob("*/*/session.json")).read_text())
+    assert set(meta["run"]["git"]) == {"sha", "dirty"}
+    assert meta["run"]["python_version"]
+    assert "psychopy_version" in meta["run"]
+    assert meta["settings"]["saccade_onset_stability_ms"] == 10
+    assert meta["hardware"]["display_refresh_hz"] is None
 
 
 def test_meta_records_phase_summaries(tmp_path, monkeypatch):
@@ -297,8 +297,8 @@ def test_meta_records_phase_summaries(tmp_path, monkeypatch):
     log = ResultLogger("p1")
     log.set_phase_summary("saccade", {"threshold_estimate": 0.1})
     log.close()
-    meta = json.loads(next(tmp_path.glob("results_*_meta.json")).read_text())
-    assert meta["phase_summaries"]["saccade"]["threshold_estimate"] == 0.1
+    meta = json.loads(next(tmp_path.glob("*/*/session.json")).read_text())
+    assert meta["results"]["saccade_phase_summary"]["threshold_estimate"] == 0.1
 
 
 def _finished_session(fake_gaze, logger):
