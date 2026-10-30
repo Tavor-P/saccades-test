@@ -14,7 +14,7 @@ class Orientation(str, Enum):
     """The grating's stripe orientation on a given trial - reported back via
     up/down (vertical) or left/right (horizontal) arrow keys, turning
     detection into a 2-alternative forced-choice discrimination task. None
-    on catch trials, where no grating (and so no orientation) is shown."""
+    in the rt_test rows of the log, where no grating is shown."""
 
     VERTICAL = "vertical"
     HORIZONTAL = "horizontal"
@@ -28,8 +28,7 @@ class FlashTrialSpec:
     practice trials, which also skip the staircase update and logging)."""
 
     index: int
-    grating_shown: bool
-    orientation: Orientation | None = None
+    orientation: Orientation
     practice: bool = False
 
 
@@ -38,8 +37,7 @@ class TrialSpec:
     index: int
     source: Target
     target: Target
-    grating_shown: bool
-    orientation: Orientation | None = None
+    orientation: Orientation
     practice: bool = False
     # Which of TIMING_OFFSETS_MS this trial's flash is scheduled at, relative
     # to the avg_reaction_time_ms in effect when the trial started - None for
@@ -61,7 +59,7 @@ class TrialResult:
     responded: bool
     response_orientation: Orientation | None
     response_time_ms: float | None
-    outcome: str  # "correct" | "incorrect" | "miss" | "false_alarm" | "correct_rejection" | "timeout"
+    outcome: str  # "correct" | "incorrect" | "miss" | "timeout"  (old sessions also: "false_alarm" | "correct_rejection")
     # Saccade phase only (None in presaccade rows, which have no saccade to
     # time): go-cue to the gaze classifier's first sample outside the source
     # zone, and that sample to the debounced onset that actually fired the
@@ -71,7 +69,7 @@ class TrialResult:
     reaction_latency_ms: float | None = None
     onset_detection_lag_ms: float | None = None
     # Saccade phase, flash-shown trials only (None otherwise - presaccade
-    # rows, catch trials, or rt_test rows, none of which ever flash): whether
+    # rows or rt_test rows, which never flash): whether
     # this trial's scheduled flash time actually fell within
     # [onset, landing] - the real-time-detected saccade window. False if
     # onset was never detected (no saccade evidence at flash time at all);
@@ -88,8 +86,8 @@ class TrialResult:
     # field here, which is relative to PausableClock's monotonic clock and
     # only meaningful within one trial/session. This is what lets the flash
     # be located in absolute time against something recorded independently
-    # (e.g. a synced video/frame log). None for catch trials, presaccade
-    # rows, and rt_test rows, none of which ever flash.
+    # (e.g. a synced video/frame log). None for presaccade
+    # rows and rt_test rows, which never flash.
     grating_shown_at_unix_ms: float | None = None
     # Saccade phase, flash-shown trials only (None otherwise, and for CSVs
     # logged before this existed): False if the gaze source lost tracking

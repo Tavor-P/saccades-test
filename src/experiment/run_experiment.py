@@ -225,7 +225,7 @@ def build_stimuli(win: visual.Window, show_hud: bool = False) -> dict:
         # rather than blanking out when narrate_if_changed's own "don't
         # re-announce this" signal comes through as "").
         # anchorVert="bottom": the longest instructions text (the COMPLETE
-        # phase's accuracy/false-alarm/threshold summary) wraps to multiple
+        # phase's accuracy/threshold summary) wraps to multiple
         # lines under wrapWidth - center-anchoring a multi-line block at a
         # point this close to the bottom edge would push the lower lines
         # past it and off-screen. Bottom-anchoring grows the block upward

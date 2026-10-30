@@ -23,7 +23,7 @@ from include.experiment.constants import (
 from src.experiment.simulation import FRAME_HZ, SimulationResult
 
 FRAME_MS = 1000 / FRAME_HZ
-SACCADE_OUTCOMES = {"correct", "incorrect", "miss", "false_alarm", "correct_rejection", "timeout"}
+SACCADE_OUTCOMES = {"correct", "incorrect", "miss", "timeout"}
 RT_OUTCOMES = {"detected", "timeout"}
 
 
@@ -62,14 +62,12 @@ def check_session(sim: SimulationResult, max_trials_cap: int = MAX_SACCADE_TRIAL
                 v.append(f"{tag}: grating shown but no orientation logged")
             if r.grating_shown_at_unix_ms is None:
                 v.append(f"{tag}: grating shown but no grating_shown_at_unix_ms")
-            if r.outcome in ("false_alarm", "correct_rejection"):
-                v.append(f"{tag}: catch-trial outcome {r.outcome!r} on a flashed trial")
         else:
             for name in ("contrast", "orientation", "grating_shown_at_unix_ms", "flash_during_saccade", "tracking_ok"):
                 if getattr(r, name) is not None:
                     v.append(f"{tag}: no grating shown but {name}={getattr(r, name)!r}")
-            if r.outcome in ("correct", "incorrect", "miss"):
-                v.append(f"{tag}: flash-trial outcome {r.outcome!r} on a trial with no grating")
+            if r.outcome != "timeout":
+                v.append(f"{tag}: no grating shown but outcome {r.outcome!r} (every trial flashes; only a timeout can end without one)")
 
         if r.responded:
             if r.grating_shown and r.response_time_ms is None:
@@ -79,7 +77,7 @@ def check_session(sim: SimulationResult, max_trials_cap: int = MAX_SACCADE_TRIAL
         else:
             if r.response_time_ms is not None or r.response_orientation is not None:
                 v.append(f"{tag}: not responded but response data present")
-            if r.outcome in ("correct", "incorrect", "false_alarm"):
+            if r.outcome in ("correct", "incorrect"):
                 v.append(f"{tag}: outcome {r.outcome!r} requires a response")
 
         if r.outcome == "correct" and r.response_orientation != r.orientation:

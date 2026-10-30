@@ -6,7 +6,9 @@ movement (a *saccade*). Built with [PsychoPy](https://psychopy.org), following D
 
 **How it works:** the participant looks at a dot, then jumps their gaze to a second dot when it swaps. A faint striped
 pattern flashes for a single frame, timed from the participant's own measured reaction time to land around the eye movement,
-and they report its orientation. Gaze is recorded throughout so each flash can be placed against the real saccade onset
+and they report its orientation. **Every trial shows a flash** (there are no catch trials where nothing
+flashes, so there is nothing to withhold an answer on; if the flash was too faint to see, the participant still guesses an orientation or lets the
+answer window pass). Old sessions may still contain catch trials. Gaze is recorded throughout so each flash can be placed against the real saccade onset
 afterwards (`src.experiment.analyze_session`). The same test also runs *without* eye movements (a baseline) so the two
 results can be compared.
 
@@ -74,8 +76,8 @@ data/
 `trials.csv` columns, left to right: **who/what** `phase` (baseline / saccade / rt_test), `trial`; **stimulus** `from`, `to` (`left`/`right`: the two
 symbols of the screen are the left and right dot), `flash_shown`, `contrast_pct`, `grating_orientation`; **timing** `planned_offset_ms` (the
 flash's offset around the average reaction time), `flash_ms_after_go_cue`, `reaction_ms`, `flash_unix_ms` (PC wall clock of the flash, used by
-`analyze_session`); **response** `answered`, `answer_orientation`, `answer_ms`; **result** `outcome` (correct / wrong / no_answer / false_alarm /
-correct_rejection / detected), `correct`; **quality** `tracking_ok`, `flash_during_saccade`. Booleans are `yes`/`no`. Practice trials are not written.
+`analyze_session`); **response** `answered`, `answer_orientation`, `answer_ms`; **result** `outcome` (correct / wrong / no_answer / detected; old sessions
+also false_alarm / correct_rejection from the removed catch trials), `correct`; **quality** `tracking_ok`, `flash_during_saccade`. Booleans are `yes`/`no`. Practice trials are not written.
 The code-side schema is `TRIAL_COLUMNS` in `src/experiment/logger.py`.
 
 Sessions recorded before this layout (loose `data/results_<timestamp>.csv`, `_meta.json`, `_gaze_trace.csv`, with `dot`/`cross` values) are never

@@ -78,13 +78,6 @@ def test_flash_waits_for_the_configured_delay_after_onset(fake_gaze, fake_time):
     assert session.render_state()["grating"]["visible"]
 
 
-def test_catch_trial_opens_the_response_window_at_onset_without_a_grating(fake_gaze, fake_time):
-    session = _trial_after_calibration(fake_gaze, fake_time, grating_shown=False, orientation=None)
-    _gaze_leaves_source(session, fake_gaze, fake_time)
-    assert session._flash_decided and session._response_window_open
-    assert not session.render_state()["grating"]["visible"]
-
-
 def test_trial_times_out_without_a_flash_if_gaze_never_leaves(fake_gaze, fake_time):
     session = _trial_after_calibration(fake_gaze, fake_time)
     fake_time(SACCADE_TIMEOUT_MS / 1000 + 0.1)

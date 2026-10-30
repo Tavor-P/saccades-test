@@ -22,7 +22,7 @@ def _trial(
     )
 
 
-def test_replay_zest_ignores_other_phases_and_catch_trials():
+def test_replay_zest_ignores_other_phases_and_legacy_catch_rows():
     results = [
         _trial("presaccade", 0, 0.05, True),
         _trial("saccade", 1, 0.2, True),
@@ -45,7 +45,7 @@ def test_exclude_flashes_not_during_saccade_keeps_only_explicit_true():
         _trial("saccade", 1, 0.1, True, flash_during_saccade=False),  # flash landed after arrival - dropped
         _trial("saccade", 2, 0.1, True, flash_during_saccade=None),  # landing never confirmed - dropped too now
         _trial("presaccade", 3, 0.05, True, flash_during_saccade=None),  # no saccade concept at all - kept
-        _trial("saccade", 4, None, False, grating_shown=False),  # catch trial, no flash at all - kept
+        _trial("saccade", 4, None, False, grating_shown=False),  # legacy catch row (old session), no flash at all - kept
     ]
     kept = _exclude_flashes_not_during_saccade(results)
     assert [r.index for r in kept] == [0, 3, 4]
@@ -103,10 +103,9 @@ def _false_alarm_trial(phase, index):
     )
 
 
-def test_build_comparison_graph_handles_false_alarms(tmp_path):
-    # Regression test: false alarms have no real contrast (grating_shown=False,
-    # contrast=None), so they need their own display path rather than being
-    # scattered on the log-scaled contrast axis alongside real correct/miss trials.
+def test_build_comparison_graph_ignores_legacy_false_alarm_rows(tmp_path):
+    # Old sessions hold false-alarm rows (grating_shown=False, contrast=None); the graph no
+    # longer plots them but must still render from a run that contains them.
     results = [_trial("presaccade", i, 0.05, i % 2 == 0) for i in range(10)]
     results.append(_false_alarm_trial("presaccade", 10))
     out = tmp_path / "false_alarms.png"

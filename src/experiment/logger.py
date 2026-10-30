@@ -273,8 +273,6 @@ def _results_summary(rows: list[TrialResult]) -> dict:
             "flashes_shown": len(flashes),
             "flashes_correct": correct,
             "accuracy_on_flashes": round(correct / len(flashes), 3) if flashes else None,
-            "catch_trials": sum(not r.grating_shown for r in mine),
-            "false_alarms": sum(r.outcome == "false_alarm" for r in mine),
             "tracking_lost_near_flash": sum(r.tracking_ok is False for r in flashes),
             "median_reaction_ms": _median([r.reaction_latency_ms for r in mine if r.reaction_latency_ms is not None]),
             "median_saccade_duration_ms_live": _median([r.saccade_duration_ms for r in mine if r.saccade_duration_ms is not None]),
