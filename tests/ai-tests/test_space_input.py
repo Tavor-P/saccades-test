@@ -17,7 +17,7 @@ from src.experiment.space_input import (
 )
 from src.experiment.tutorial_session import TutorialSession
 
-pytestmark = pytest.mark.usefixtures("scheduled_flash_mode")
+pytestmark = pytest.mark.usefixtures("staircase_no_jitter")
 
 
 class _NullLogger:

@@ -203,7 +203,6 @@ def _git_state() -> dict:
 # The tuning constants that matter for the science (the rest of the constants modules is in the git SHA).
 _SETTINGS_CONSTANTS = {
     "include.experiment.constants": (
-        "FLASH_TRIGGER",
         "TIMING_OFFSETS_MS",
         "TIMING_JITTER_MS",
         "DEFAULT_REACTION_TIME_MS",

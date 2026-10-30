@@ -24,7 +24,7 @@ from include.experiment.types import Orientation, Target, TrialResult
 from src.experiment.scoring import is_valid_for_saccadic_analysis
 
 
-pytestmark = pytest.mark.usefixtures("scheduled_flash_mode")
+pytestmark = pytest.mark.usefixtures("staircase_no_jitter")
 
 
 def _session_in_first_trial(fake_gaze, fake_time, **trial_spec):

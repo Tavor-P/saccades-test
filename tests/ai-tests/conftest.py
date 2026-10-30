@@ -15,18 +15,9 @@ import pytest  # noqa: E402
 
 
 @pytest.fixture
-def scheduled_flash_mode(monkeypatch):
-    """The older open-loop mode (reaction-time test, flash at average RT + offset). The default is
-    now the gaze-triggered "onset" mode (FLASH_TRIGGER); tests of the scheduled behaviour opt in."""
-    monkeypatch.setattr("src.experiment.session.FLASH_TRIGGER", "scheduled")
-    # ...with the plain legacy details: no random bounce on the offsets and the live staircase
-    # (not the fixed probe contrasts).
+def staircase_no_jitter(monkeypatch):
+    """The plain legacy details of the scheduled flashes: no random bounce on the offsets and the
+    live staircase (not the fixed probe contrasts). Tests that drive the staircase or need exact
+    flash times opt in."""
     monkeypatch.setattr("src.experiment.session.TIMING_JITTER_MS", 0)
-    monkeypatch.setattr("src.experiment.session.SACCADE_FIXED_CONTRASTS", ())
-
-
-@pytest.fixture
-def onset_flash_mode(monkeypatch):
-    """The gaze-triggered mode (flash fires when the onset detector confirms a saccade)."""
-    monkeypatch.setattr("src.experiment.session.FLASH_TRIGGER", "onset")
     monkeypatch.setattr("src.experiment.session.SACCADE_FIXED_CONTRASTS", ())

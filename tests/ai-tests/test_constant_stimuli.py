@@ -1,8 +1,6 @@
 """Scheduled mode with its default saccade-phase setup: fixed probe contrasts (no live staircase),
 a random +/-TIMING_JITTER_MS bounce on every trial's flash time, and a fixed trial count."""
 
-import pytest
-
 from include.experiment.constants import (
     SACCADE_FIXED_CONTRASTS,
     SACCADE_FIXED_TRIALS_REAL,
@@ -16,12 +14,6 @@ from test_session import (
     _make_session,
     _set_single_trial,
 )
-
-
-@pytest.fixture(autouse=True)
-def _scheduled_defaults(monkeypatch):
-    # The shipped defaults: scheduled flashes, fixed contrasts, jitter on (not the legacy fixture).
-    monkeypatch.setattr("src.experiment.session.FLASH_TRIGGER", "scheduled")
 
 
 def test_the_shipped_defaults_use_fixed_contrasts_and_jitter():

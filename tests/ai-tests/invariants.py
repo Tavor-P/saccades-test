@@ -13,7 +13,6 @@ from include.experiment.constants import (
     MAX_SACCADE_TRIALS_TEST,
     RESPONSE_WINDOW_MS,
     SACCADE_ONSET_STABILITY_MS,
-    FLASH_ONSET_DELAYS_MS,
     PRACTICE_CONTRAST,
     SACCADE_FIXED_CONTRASTS,
     CONTROL_OFFSETS_MS,
@@ -93,7 +92,7 @@ def check_session(sim: SimulationResult, max_trials_cap: int = MAX_SACCADE_TRIAL
             v.append(f"{tag}: onset_detection_lag_ms {r.onset_detection_lag_ms:.1f} not within the debounce window")
         if r.saccade_duration_ms is not None and r.saccade_duration_ms < 0:
             v.append(f"{tag}: negative saccade_duration_ms")
-        allowed_offsets = FLASH_ONSET_DELAYS_MS if sim.session._closed_loop else TIMING_OFFSETS_MS + CONTROL_OFFSETS_MS
+        allowed_offsets = TIMING_OFFSETS_MS + CONTROL_OFFSETS_MS
         if r.timing_offset_ms is not None and r.timing_offset_ms not in allowed_offsets:
             v.append(f"{tag}: timing_offset_ms {r.timing_offset_ms} not one of {allowed_offsets}")
         for name in ("flash_during_saccade", "tracking_ok"):
@@ -114,7 +113,7 @@ def check_session(sim: SimulationResult, max_trials_cap: int = MAX_SACCADE_TRIAL
 
     phase = sim.session.render_state()["hud"]["phase"]
     if phase == "COMPLETE":
-        expected_rt_rows = 0 if sim.session._closed_loop else sim.session._rt_test_target_attempts  # gaze-triggered: no RT test
+        expected_rt_rows = sim.session._rt_test_target_attempts
         if len(rt_rows) != expected_rt_rows:
             v.append(f"RT test ran {len(rt_rows)} attempts, expected {expected_rt_rows}")
     return v
