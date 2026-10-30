@@ -231,3 +231,18 @@ def test_discover_sessions_survives_a_damaged_meta_file_and_a_damaged_trials_row
     assert set(sessions) == {"1700000100", "1700000200"}
     assert sessions["1700000200"].metadata["participant_id"] is None
     assert sessions["1700000200"].trial_counts == {}
+
+
+@pytest.mark.parametrize("key", ["..", ".", "../outside", r"..\outside", "alice/..", "{outside}", "alice"])
+def test_a_path_is_never_a_session_key(tmp_path, monkeypatch, key):
+    data = tmp_path / "data"
+    outside = tmp_path / "outside"
+    for folder in (data / "alice" / "2026-10-25_10-00-00", outside):
+        folder.mkdir(parents=True)
+        (folder / "trials.csv").write_text("phase,trial\n")
+    monkeypatch.setattr(data_access, "DATA_DIR", data)
+    monkeypatch.setattr(data_access, "GRAPH_CACHE_DIR", data / "dashboard_cache")
+    key = key.replace("{outside}", str(outside))
+    assert not data_access.csv_path_for(key).exists()
+    data_access.delete_session(key)
+    assert (outside / "trials.csv").exists() and (data / "alice" / "2026-10-25_10-00-00" / "trials.csv").exists()
