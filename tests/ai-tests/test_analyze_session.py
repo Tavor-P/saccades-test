@@ -294,3 +294,21 @@ def test_plot_report_handles_all_correct_all_wrong_and_single_flash_bins(tmp_pat
     summary = an.summarize(placed, [])
     png = an.plot_report(placed, [], summary, tmp_path / "plot.png")
     assert png.exists()
+
+
+def test_a_timeout_row_whose_line_was_shown_and_answered_is_scored_from_the_answer(tmp_path):
+    """The live session labels a trial 'timeout' when no eye movement was detected, even if the flash fired and was answered."""
+    path = tmp_path / "results_1700000000.csv"
+    fields = ["trial_index", "phase", "grating_shown", "contrast", "orientation", "responded", "response_orientation", "outcome", "grating_shown_at_unix_ms"]
+    rows = [
+        (0, "True", "above", "timeout"),  # answered correctly
+        (1, "True", "below", "timeout"),  # answered wrongly
+        (2, "False", "", "timeout"),  # never answered
+        (3, "True", "above", "correct"),  # not a timeout: untouched
+    ]
+    with path.open("w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=fields)
+        w.writeheader()
+        for i, responded, answer, outcome in rows:
+            w.writerow({"trial_index": i, "phase": "saccade", "grating_shown": "True", "contrast": 0.06, "orientation": "above", "responded": responded, "response_orientation": answer, "outcome": outcome, "grating_shown_at_unix_ms": 1_000_000 + i})
+    assert [f.outcome for f in an.load_flashes(path)] == ["correct", "incorrect", "miss", "correct"]
