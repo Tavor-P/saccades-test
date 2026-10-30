@@ -167,3 +167,11 @@ def test_old_catch_trial_outcome_words_still_load(tmp_path, monkeypatch):
     rows = logger_module.read_trials(run)
     assert [r.outcome for r in rows] == ["false_alarm", "correct_rejection"]
     assert not any(r.grating_shown for r in rows)
+
+
+def test_a_timeout_row_has_no_correct_value(tmp_path, monkeypatch):
+    log = _make_logger(tmp_path, monkeypatch)
+    log.log(_trial(grating_shown=False, contrast=None, orientation=None, responded=False, response_orientation=None, outcome="timeout"))
+    log.close()
+    (row,) = _rows(tmp_path)
+    assert row["outcome"] == "timeout" and row["correct"] == ""

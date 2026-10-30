@@ -62,8 +62,8 @@ def _pct_to_fraction(text: str) -> str:
 
 
 def _is_correct(result: TrialResult) -> str:
-    """yes/no for scored trials; blank for rt_test rows (nothing to score: they only time an eye movement)."""
-    return "" if result.phase == "rt_test" else _yes_no(result.outcome in ("correct", "correct_rejection"))
+    """yes/no for scored trials; blank for rt_test rows (they only time an eye movement) and for timeouts (no eye movement, nothing scored)."""
+    return "" if result.phase == "rt_test" or result.outcome == "timeout" else _yes_no(result.outcome in ("correct", "correct_rejection"))
 
 
 @dataclass(frozen=True)
