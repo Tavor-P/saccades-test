@@ -206,3 +206,15 @@ class ShuffledBag(Generic[_T]):
             random.shuffle(shuffled)
             self._remaining = deque(shuffled)
         return self._remaining.popleft()
+
+
+def sample_capture_time(sample, now: float, latency_s: float, from_perf_counter) -> float:
+    """When the eye was where `sample` says, on the session clock: the sample's own timestamp (converted by
+    `from_perf_counter`) minus the gaze latency. Falls back to the tick time `now` for a missing/non-positive timestamp or a
+    stale one (>1 s, or in the future)."""
+    if sample.timestamp is None or sample.timestamp <= 0:
+        return now - latency_s
+    t = from_perf_counter(sample.timestamp)
+    if t > now or now - t > 1.0:
+        t = now
+    return t - latency_s

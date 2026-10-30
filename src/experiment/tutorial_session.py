@@ -5,7 +5,6 @@ from enum import Enum, auto
 
 from include.eye_tracking.interfaces import GazeSource
 from include.experiment.constants import (
-    CALIBRATION_ROUNDS,
     CENTER_POSITION,
     CROSS_POSITION,
     DEFAULT_REACTION_TIME_MS,
@@ -23,11 +22,11 @@ from include.experiment.constants import (
     TUTORIAL_QUIZ_STREAK_TARGET,
 )
 from include.experiment.types import Side, Target
-from src.experiment.calibration import average_calibration_rounds
+from src.experiment.calibration import CalibrationRounds
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.scoring import score_outcome
-from src.experiment.space_input import CalibrationLatch, SpaceTally
-from src.experiment.trial_mechanics import OnsetDetector, RollingReactionTime, line_position
+from src.experiment.space_input import SpaceTally
+from src.experiment.trial_mechanics import OnsetDetector, RollingReactionTime, line_position, sample_capture_time
 from src.experiment.trial_mechanics import random_orientation as _random_orientation
 from src.experiment.trial_mechanics import zone_for as _zone_for
 
@@ -44,34 +43,22 @@ class Phase(Enum):
     COMPLETE = auto()
 
 
+_CALIBRATION_PHASES = (Phase.CALIBRATE_LEFT, Phase.CALIBRATE_CENTER, Phase.CALIBRATE_RIGHT)
+
+
 class TutorialSession:
-    """A one-time, narrated on-ramp for first-time participants, run before
-    both real phases (see run_experiment.py's main()). Three stages:
+    """A one-time, narrated on-ramp for first-time participants, run before both real phases. Stages:
 
-    1. Calibration - identical 3-round discard-first/average procedure as
-       ExperimentSession's own self-calibration (see CALIBRATION_ROUNDS),
-       so a participant who takes the tutorial gets the exact same quality
-       calibration as one who doesn't. The result is exposed via
-       `calibration_ratios` for the real saccade phase to reuse.
-    2. QUIZ ("how to answer") - a fixed-contrast line shown above or below a
-       dot, UP / DOWN to answer, streak-gated: TUTORIAL_QUIZ_STREAK_TARGET correct in a row, a miss
-       resets the streak. The only stage gated by success.
-    3. PRACTICE - TUTORIAL_PRACTICE_ATTEMPTS trials that look exactly like
-       real saccade trials (SPACE -> dot -> cross -> clearly visible flash ->
-       arrow key -> colour feedback), fixed count regardless of outcome. The
-       flash fires at a scheduled delay (running robust average of this
-       stage's own reaction times, a RollingReactionTime updated at every
-       detected eye movement; DEFAULT_REACTION_TIME_MS until there are 3).
-       Each trial's saccade-onset latency is kept in `rt_samples_ms` and
-       handed to ExperimentSession, which seeds its reaction-time average
-       from them instead of running a separate RT test.
+    1. Calibration - the same 3-round discard-first/average procedure as ExperimentSession (CalibrationRounds); the result
+       is exposed as `calibration_ratios` for the saccade phase to reuse.
+    2. QUIZ ("how to answer") - a line above or below a dot, UP/DOWN to answer, TUTORIAL_QUIZ_STREAK_TARGET correct in a row
+       (a miss resets the streak).
+    3. PRACTICE - TUTORIAL_PRACTICE_ATTEMPTS trials that look like real saccade trials (SPACE -> dot -> cross -> visible flash
+       -> key -> colour feedback). The flash fires at the rolling robust average of this stage's own reaction times
+       (DEFAULT_REACTION_TIME_MS until there are 3); each trial's onset latency is kept in `rt_samples_ms` to seed
+       ExperimentSession's average instead of a separate RT test.
 
-    Framework-agnostic like ExperimentSession/PresaccadeSession:
-    `on_space()`/`on_response_key()`/`tick()` are called by the PsychoPy
-    frame loop, `render_state()` returns a plain dict the runner applies to
-    its stimuli. Never logs to the results CSV - none of this counts as
-    data (matches the existing convention that practice trials aren't
-    logged either).
+    Framework-agnostic like the other sessions; never logs to the results CSV (none of this counts as data).
     """
 
     def __init__(self, gaze_source: GazeSource, clock: PausableClock) -> None:
@@ -80,12 +67,8 @@ class TutorialSession:
         self._phase = Phase.WAITING_TO_START
 
         # -- calibration --
-        self._calibration_round = 1
-        self._calibration_rounds_data: list[tuple[float, float, float]] = []
-        self._pending_left_ratio: float | None = None
-        self._calibration_latch = CalibrationLatch()  # a press made before the gaze window filled
+        self._calibration = CalibrationRounds(gaze_source)
         self.space_tally = SpaceTally(lambda: self._phase.name)
-        self._pending_center_ratio: float | None = None
         self._calibration_ratios: tuple[float, float, float] | None = None
 
         self._dot_visible = False
@@ -98,10 +81,7 @@ class TutorialSession:
         self._quiz_streak = 0
         self._quiz_orientation: Side | None = None
 
-        # -- feedback flash: color + a token that increments on every new
-        # event, so the renderer can edge-detect "a new flash just happened"
-        # the same way run_experiment.py already edge-detects FOREPERIOD
-        # entry for the trial-start flash. --
+        # -- feedback flash: color + a token that increments per event, so the renderer can edge-detect a new flash --
         self._feedback_color: str | None = None
         self._feedback_token = 0
 
@@ -137,12 +117,10 @@ class TutorialSession:
 
     def on_space(self) -> None:
         if self._phase is Phase.WAITING_TO_START:
-            self._gaze.begin_calibration_sample()
-            self._calibration_round = 1
-            self._calibration_rounds_data = []
+            self._calibration.start()
             self._phase = Phase.CALIBRATE_LEFT
-        elif self._phase in (Phase.CALIBRATE_LEFT, Phase.CALIBRATE_CENTER, Phase.CALIBRATE_RIGHT):
-            self._press_calibration()
+        elif self._phase in _CALIBRATION_PHASES:
+            self._on_calibration(self._calibration.press(self._clock.now(), self.space_tally))
         elif self._phase is Phase.PRACTICE_AWAITING_SPACE:
             self._start_foreperiod()
         elif self._phase is not Phase.COMPLETE:
@@ -150,38 +128,12 @@ class TutorialSession:
             # COMPLETE: the runner decides when to move on.
             self.space_tally.record("not accepted in this phase")
 
-    def _press_calibration(self) -> None:
-        """One press is enough: if the gaze window is not full yet the press is latched and tick() completes it."""
-        ratio = self._calibration_latch.press_recorded(self._gaze, self._clock.now(), self.space_tally)
-        if ratio is not None:
-            self._advance_calibration(ratio)
-
-    def _advance_calibration(self, ratio: float) -> None:
-        self._calibration_latch.clear()
-        if self._phase is Phase.CALIBRATE_LEFT:
-            self._pending_left_ratio = ratio
-            self._gaze.begin_calibration_sample()
-            self._phase = Phase.CALIBRATE_CENTER
-        elif self._phase is Phase.CALIBRATE_CENTER:
-            self._pending_center_ratio = ratio
-            self._gaze.begin_calibration_sample()
-            self._phase = Phase.CALIBRATE_RIGHT
-        elif self._phase is Phase.CALIBRATE_RIGHT:
-            if self._pending_left_ratio is None or self._pending_center_ratio is None:
-                return
-            self._calibration_rounds_data.append((self._pending_left_ratio, self._pending_center_ratio, ratio))
-            if self._calibration_round < CALIBRATION_ROUNDS:
-                self._calibration_round += 1
-                self._gaze.begin_calibration_sample()
-                self._phase = Phase.CALIBRATE_LEFT
-            else:
-                # Indexed from the end (not unpacked as exactly 3
-                # elements) so this doesn't break if CALIBRATION_ROUNDS
-                # is ever changed to something other than 3.
-                round2, round3 = self._calibration_rounds_data[-2], self._calibration_rounds_data[-1]
-                self._calibration_ratios = average_calibration_rounds(round2, round3)
-                self._gaze.calibrate(*self._calibration_ratios)
-                self._enter_quiz()
+    def _on_calibration(self, final_ratios: tuple[float, float, float] | None) -> None:
+        if final_ratios is not None:
+            self._calibration_ratios = final_ratios
+            self._enter_quiz()
+        elif self._phase in _CALIBRATION_PHASES:
+            self._phase = _CALIBRATION_PHASES[self._calibration.step]
 
     def on_response_key(self, orientation: Side) -> None:
         if self._phase is Phase.QUIZ:
@@ -256,20 +208,14 @@ class TutorialSession:
             self._flash_scheduled_at = self._trial_start + self._rt.average / 1000
 
     def _sample_time(self, sample, now: float) -> float:
-        """When the eye was actually where `sample` says, on the session clock
-        (same rule as ExperimentSession): the sample's capture timestamp, minus
-        the tracker's latency when the source does not already stamp capture time."""
+        """Capture time of `sample` on the session clock (same rule as ExperimentSession): minus the tracker's latency unless
+        the source already stamps capture time."""
         latency_s = 0.0
         if not getattr(self._gaze, "timestamps_are_capture_time", False):
             latency_ms = getattr(self._gaze, "gaze_latency_ms", None)
             if latency_ms is not None and latency_ms == latency_ms:
                 latency_s = min(max(float(latency_ms), 0.0), GAZE_LATENCY_MAX_MS) / 1000
-        if sample.timestamp is None or sample.timestamp <= 0:
-            return now - latency_s
-        t = self._clock.from_perf_counter(sample.timestamp)
-        if t > now or now - t > 1.0:
-            t = now
-        return t - latency_s
+        return sample_capture_time(sample, now, latency_s, self._clock.from_perf_counter)
 
     def _tick_active(self) -> None:
         now = self._clock.now()
@@ -333,9 +279,7 @@ class TutorialSession:
     # -- tick ----------------------------------------------------------------
 
     def tick(self) -> None:
-        ratio = self._calibration_latch.poll(self._gaze)
-        if ratio is not None:
-            self._advance_calibration(ratio)
+        self._on_calibration(self._calibration.poll())
         if self._phase is Phase.PRACTICE_FOREPERIOD:
             self._tick_foreperiod()
         elif self._phase is Phase.PRACTICE_ACTIVE:
@@ -350,10 +294,8 @@ class TutorialSession:
         if self._phase is Phase.WAITING_TO_START:
             return "Press SPACE to begin"
         if self._phase in (Phase.CALIBRATE_LEFT, Phase.CALIBRATE_CENTER, Phase.CALIBRATE_RIGHT):
-            # Only narrate round 1 of CALIBRATION_ROUNDS - by round 2 the
-            # participant already knows the drill, so re-speaking it every
-            # round just slows calibration down for no benefit.
-            if self._calibration_round > 1:
+            # Only round 1 is narrated: later rounds would just re-speak the same drill.
+            if self._calibration.round > 1:
                 return ""
             return {
                 Phase.CALIBRATE_LEFT: "Look at the dot, then press SPACE.",
@@ -437,6 +379,6 @@ class TutorialSession:
                 "source_available": self._gaze.is_available,
                 "trial": self._trial_label(),
                 "trial_index": 0,
-                "calibration_wait_s": self._calibration_latch.waiting_s(self._clock.now()),
+                "calibration_wait_s": self._calibration.latch.waiting_s(self._clock.now()),
             },
         }
