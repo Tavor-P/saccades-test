@@ -27,18 +27,13 @@ from include.experiment.constants import (
 )
 from include.experiment.types import Side, Target, TrialResult, TrialSpec
 from src.experiment.pausable_clock import PausableClock
+from helpers import NullLogger as _NullLogger
 from src.experiment.session import ExperimentSession, Phase
 
 
 pytestmark = pytest.mark.usefixtures("staircase_no_jitter")
 
 
-class _NullLogger:
-    """Swallows .log() calls - tests check session.results/_saccade_results()
-    instead of a real CSV, so they don't need filesystem isolation."""
-
-    def log(self, result) -> None:
-        pass
 
 
 def _make_session(fake_gaze, show_gaze_indicator: bool = False, skip_practice_trials: bool = True, **kwargs) -> ExperimentSession:

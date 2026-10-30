@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+from helpers import NullLogger as _NullLogger
 from include.experiment.constants import CALIBRATION_ROUNDS, FOREPERIOD_MAX_MS, RESPONSE_WINDOW_MS
 from include.experiment.types import Side
 from src.experiment.pausable_clock import PausableClock
@@ -18,11 +19,6 @@ from src.experiment.space_input import (
 from src.experiment.tutorial_session import TutorialSession
 
 pytestmark = pytest.mark.usefixtures("staircase_no_jitter")
-
-
-class _NullLogger:
-    def log(self, result) -> None:
-        pass
 
 
 def _phase(session) -> str:

@@ -13,14 +13,10 @@ from include.experiment.constants import (
     RESPONSE_WINDOW_MS,
     ZEST_LOG_CONTRAST_MAX,
 )
+from helpers import NullLogger as _NullLogger
 from include.experiment.types import FlashTrialSpec, Side
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.presaccade_session import Phase, PresaccadeSession
-
-
-class _NullLogger:
-    def log(self, result) -> None:
-        pass
 
 
 def _make_session() -> PresaccadeSession:
