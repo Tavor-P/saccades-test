@@ -390,6 +390,35 @@ def run_sync_flashes(win: visual.Window, stimuli: dict, logger: ResultLogger, na
     flash.opacity = 0.0
 
 
+class FramePresenter:
+    """The per-frame drawing state every phase loop shares: caption/narration memory, symbol fades and the frame clock."""
+
+    def __init__(self, stimuli: dict, narrator: Narrator) -> None:
+        self.stimuli = stimuli
+        self.narrator = narrator
+        self.fade_opacities = {"dot": 0.0, "cross": 0.0, "calibration_center": 0.0}
+        self.frame_clock = core.Clock()
+        self.last_spoken: str | None = None
+        self.last_caption = ""
+
+    def update(self, state: dict) -> None:
+        """Caption + speech, then every stimulus from `state` (call draw_all and flip afterwards)."""
+        self.last_spoken, self.last_caption = update_caption(
+            self.narrator, self.stimuli["caption"], state, self.last_spoken, self.last_caption
+        )
+        dt = self.frame_clock.getTime()
+        self.frame_clock.reset()
+        apply_render_state(state, self.stimuli, self.fade_opacities, dt)
+        self.stimuli["start_flash"].opacity = 0.0  # only run_sync_flashes shows it, never a phase's own frames
+
+
+def deliver_keys(session, keys: list[str]) -> bool:
+    """Forward SPACE and the answer keys to a baseline/saccade session; True if a SPACE press was delivered."""
+    space_delivered = deliver_space(session, keys.count("space"))  # no-op if already COMPLETE
+    dispatch_response_keys(session, keys)
+    return space_delivered
+
+
 def draw_all(stimuli: dict) -> None:
     # start_flash/feedback_flash first so they sit behind the fixation
     # stimuli, which stay visible/fixatable on top of them during a flash.
@@ -453,54 +482,51 @@ def _start_gating_gaze(win, gaze_backend: str, camera_index: int, calibration_ra
 
 
 def _run_presaccade_loop(win, stimuli, logger, narrator, contrast_floor, test_mode, gaze) -> PresaccadeSession | None:
-    clock = PausableClock()
     session = PresaccadeSession(
-        logger=logger, clock=clock, contrast_floor=contrast_floor, test_mode=test_mode, gaze=gaze
+        logger=logger, clock=PausableClock(), contrast_floor=contrast_floor, test_mode=test_mode, gaze=gaze
     )
-    fade_opacities = {"dot": 0.0, "cross": 0.0, "calibration_center": 0.0}
-    frame_clock = core.Clock()
-    last_spoken_instructions: str | None = None
-    last_caption = ""
+    presenter = FramePresenter(stimuli, narrator)
     last_phase: str | None = None
-
     try:
-        return _presaccade_frames(
-            win, stimuli, narrator, session, fade_opacities, frame_clock, last_spoken_instructions, last_caption, last_phase
-        )
+        drain_stale_space(session)
+        while True:
+            keys = event.getKeys(keyList=["space", "escape", *RESPONSE_KEYS])
+            if "escape" in keys:
+                return None
+
+            space_delivered = deliver_keys(session, keys)
+            session.tick()
+            state = session.render_state()
+
+            if leaves_complete_screen(last_phase, space_delivered):
+                return session  # a space press on the results screen moves on
+            last_phase = state["hud"]["phase"]
+
+            presenter.update(state)
+            draw_all(stimuli)
+            win.flip()
     finally:
         report_space_presses(session, "baseline", logger)
 
 
-def _presaccade_frames(
-    win, stimuli, narrator, session, fade_opacities, frame_clock, last_spoken_instructions, last_caption, last_phase
-) -> PresaccadeSession | None:
-    drain_stale_space(session)
-    while True:
-        keys = event.getKeys(keyList=["space", "escape", *RESPONSE_KEYS])
-        if "escape" in keys:
-            return None
+def _start_glasses_recording(gaze, logger: ResultLogger) -> bool:
+    """The phone records the glasses' video itself; the green sync flashes (before any trial) let it be lined up with the PC clock.
+    True if a recording started."""
+    if not hasattr(gaze, "start_recording"):
+        logger.update_glasses_video(recording="not available (webcam backend)")
+        return False
+    status = gaze.start_recording()
+    logger.update_glasses_video(**status)
+    return status.get("recording") == "started"
 
-        space_delivered = deliver_space(session, keys.count("space"))  # no-op if already COMPLETE
-        dispatch_response_keys(session, keys)
 
-        session.tick()
-        state = session.render_state()
-
-        if leaves_complete_screen(last_phase, space_delivered):
-            return session  # a space press on the results screen moves on
-        last_phase = state["hud"]["phase"]
-
-        last_spoken_instructions, last_caption = update_caption(
-            narrator, stimuli["caption"], state, last_spoken_instructions, last_caption
-        )
-
-        dt = frame_clock.getTime()
-        frame_clock.reset()
-        apply_render_state(state, stimuli, fade_opacities, dt)
-        stimuli["start_flash"].opacity = 0.0  # unused in this phase
-
-        draw_all(stimuli)
-        win.flip()
+def _stop_glasses_recording(win, stimuli: dict, logger: ResultLogger, narrator: Narrator, gaze) -> None:
+    try:  # one more flash at the very end (also after Escape) pins down clock drift; then stop and save the phone recording
+        run_sync_flashes(win, stimuli, logger, narrator, END_FLASH_COUNT, "end", announce=False)
+        gaze.send_event("saccade_phase_end")
+    except Exception as exc:  # noqa: BLE001 - the end flash is a refinement; never let it block saving the recording
+        print(f"WARNING: end sync flash failed ({exc!r})", file=sys.stderr)
+    logger.update_glasses_video(**gaze.stop_recording())
 
 
 def run_saccade_phase(
@@ -531,14 +557,7 @@ def run_saccade_phase(
     # Raw gaze is recorded alongside the results CSV (Neon only) so the session can be replayed offline.
     gaze = build_gaze_source(gaze_backend, camera_index, trace_path=logger.gaze_trace_path)
     gaze.start()
-    # The phone records the glasses' video itself; the green sync flashes (before any trial) let it be lined up with the PC clock.
-    recording_started = False
-    if hasattr(gaze, "start_recording"):
-        status = gaze.start_recording()
-        logger.update_glasses_video(**status)
-        recording_started = status.get("recording") == "started"
-    else:
-        logger.update_glasses_video(recording="not available (webcam backend)")
+    recording_started = _start_glasses_recording(gaze, logger)
     # Neon has no latest_frame() (gaze only, no Mono8 camera feed), so video + preview are webcam-only.
     has_frames = hasattr(gaze, "latest_frame")
     video_recorder = (
@@ -571,11 +590,8 @@ def run_saccade_phase(
         win, size=(preview_width, CAMERA_PREVIEW_HEIGHT), pos=preview_pos, units="height"
     )
 
-    fade_opacities = {"dot": 0.0, "cross": 0.0, "calibration_center": 0.0}
-    frame_clock = core.Clock()
+    presenter = FramePresenter(stimuli, narrator)
     last_phase = None
-    last_spoken_instructions: str | None = None
-    last_caption = ""
 
     try:
         if recording_started:  # its own short step before the first screen/trial; SPACE pressed meanwhile is discarded (and counted) below
@@ -587,9 +603,7 @@ def run_saccade_phase(
             if "escape" in keys:
                 return None
 
-            space_delivered = deliver_space(session, keys.count("space"))  # no-op if already COMPLETE
-            dispatch_response_keys(session, keys)
-
+            space_delivered = deliver_keys(session, keys)
             session.tick()
             state = session.render_state()
             phase = state["hud"]["phase"]
@@ -601,16 +615,7 @@ def run_saccade_phase(
                 go_cue_tone.play()
             last_phase = phase
 
-            last_spoken_instructions, last_caption = update_caption(
-                narrator, stimuli["caption"], state, last_spoken_instructions, last_caption
-            )
-
-            dt = frame_clock.getTime()
-            frame_clock.reset()
-            apply_render_state(state, stimuli, fade_opacities, dt)
-
-            stimuli["start_flash"].opacity = 0.0  # only the sync step (run_sync_flashes) shows it, never a trial
-
+            presenter.update(state)
             draw_all(stimuli)
             if has_frames and camera_preview_enabled(state["hud"]["trial_index"]):
                 frame = gaze.latest_frame()  # raw Mono8 (grayscale)
@@ -625,12 +630,7 @@ def run_saccade_phase(
         if video_recorder is not None:
             video_recorder.stop()
         if recording_started:
-            try:  # one more flash at the very end (also after Escape) pins down clock drift; then stop and save the phone recording
-                run_sync_flashes(win, stimuli, logger, narrator, END_FLASH_COUNT, "end", announce=False)
-                gaze.send_event("saccade_phase_end")
-            except Exception as exc:  # noqa: BLE001 - the end flash is a refinement; never let it block saving the recording
-                print(f"WARNING: end sync flash failed ({exc!r})", file=sys.stderr)
-            logger.update_glasses_video(**gaze.stop_recording())
+            _stop_glasses_recording(win, stimuli, logger, narrator, gaze)
         gaze.stop()
 
 
@@ -655,11 +655,8 @@ def run_tutorial_phase(
     session = TutorialSession(gaze, clock)
     go_cue_tone = build_go_cue_tone()
 
-    fade_opacities = {"dot": 0.0, "cross": 0.0, "calibration_center": 0.0}
-    frame_clock = core.Clock()
+    presenter = FramePresenter(stimuli, narrator)
     last_phase = None
-    last_spoken_instructions: str | None = None
-    last_caption = ""
     last_feedback_token = 0
     feedback_frames_remaining = 0
 
@@ -703,9 +700,7 @@ def run_tutorial_phase(
                 go_cue_tone.play()
             last_phase = phase
 
-            last_spoken_instructions, last_caption = update_caption(
-                narrator, stimuli["caption"], state, last_spoken_instructions, last_caption
-            )
+            presenter.update(state)
 
             feedback_token = state["feedback_flash"]["token"]
             if feedback_token != last_feedback_token:
@@ -713,11 +708,6 @@ def run_tutorial_phase(
                 color = state["feedback_flash"]["color"]
                 stimuli["feedback_flash"].fillColor = FEEDBACK_FLASH_GREEN if color == "green" else FEEDBACK_FLASH_RED
                 feedback_frames_remaining = FEEDBACK_FLASH_DURATION_FRAMES
-
-            dt = frame_clock.getTime()
-            frame_clock.reset()
-            apply_render_state(state, stimuli, fade_opacities, dt)
-            stimuli["start_flash"].opacity = 0.0  # unused in this phase
 
             stimuli["feedback_flash"].opacity = 1.0 if feedback_frames_remaining > 0 else 0.0
             feedback_frames_remaining = max(0, feedback_frames_remaining - 1)
