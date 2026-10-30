@@ -117,13 +117,20 @@ def load_flashes(path: Path) -> list[Flash]:
             continue
         shown = float(row["grating_shown_at_unix_ms"]) / 1000
         delay = row.get("scheduled_delay_ms")
+        outcome = row["outcome"]
+        if outcome == "timeout":
+            # The live trial ended on its no-saccade timeout although the line was shown (and maybe answered): score the answer.
+            if row.get("responded") != "True":
+                outcome = "miss"
+            else:
+                outcome = "correct" if row.get("response_orientation") == row.get("orientation") else "incorrect"
         flashes.append(
             Flash(
                 trial=int(row["trial_index"]),
                 time=shown,
                 contrast=float(row["contrast"]),
                 orientation=row.get("orientation", ""),
-                outcome=row["outcome"],
+                outcome=outcome,
                 go_cue=shown - float(delay) / 1000 if delay else None,
             )
         )
