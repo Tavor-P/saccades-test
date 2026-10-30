@@ -18,7 +18,7 @@ walkthrough (controls, output files, troubleshooting).
 *feasibility pilot (n=1)*, not as a group result. The experiment flashes a brief grating around the participant's
 saccades (Neon glasses, 2AFC orientation) and measures detection vs flash time relative to saccade onset.
 
-**Shipped setup (`FLASH_TRIGGER="scheduled"`).** Flashes at average RT + offset (-80..+80 ms) + random +/-10 ms, fixed
+**Shipped setup.** Flashes at average RT + offset (-80..+80 ms) + random +/-10 ms, fixed
 saccade-phase contrasts 10/15/20 % (startup dialog "Saccade contrast min/max (%)"), sharp go-cue, dot/cross at 15 %/85 % of
 the screen, plain Neon backend with a still head (chin rest). Onboarding is calibration -> how-to-answer quiz -> 8 practice
 trials that seed the reaction-time average. Every trial waits for SPACE. Control flashes (+400/+500 ms after the average
@@ -39,7 +39,7 @@ window was chosen after seeing session 1 (the gates are now pre-specified).
 
 **Known problems.**
 1. Gaze reaches the PC ~95 ms late at ~160 Hz in real sessions (see the open problem in the Gotchas). Irrelevant to the
-   post-hoc analysis (phone capture times) but it makes the live `flash_during_saccade` flag useless and blocks `FLASH_TRIGGER="onset"`.
+   post-hoc analysis (phone capture times) but it makes the live `flash_during_saccade` flag useless.
 2. Reaction time varies (SD ~60-80 ms), so only ~1/3 of flashes land near onset; TBI will likely be worse. The live
    rolling average (`RollingReactionTime`) only helps when the RT drifts (simulation only).
 3. The screen geometry constants (`VIEWING_DISTANCE_CM`, `SCREEN_HEIGHT_CM`) are still the 24-inch defaults; the user's monitor
@@ -71,7 +71,7 @@ All via the wrapper (PowerShell shown; from Git Bash use `scripts/py.sh` with th
 
 ```
 .\scripts\py.ps1 -m pip install -r requirements.txt            # install deps (into PsychoPy's Python)
-.\scripts\py.ps1 -m pytest -q                                   # full test suite (~70 s, no camera/window needed)
+.\scripts\py.ps1 -m pytest -q                                   # full test suite (~55 s, no camera/window needed)
 .\scripts\py.ps1 -m pytest tests/ai-tests/test_session.py::test_name -v  # one test
 .\scripts\py.ps1 -m src.experiment.simulation                   # HEADLESS simulated trial, event timeline (safe for AI)
 .\scripts\py.ps1 tests/ai-tests/run_sim.py --help               # headless simulation runner (scenarios, sweeps, JSON)
@@ -110,7 +110,7 @@ Paths in this section are checked by `tests/test_docs.py` - keep them real.
 | `src/experiment/settings.py` | dashboard-configured default contrast floor (`data/settings.json`) |
 | `src/experiment/scoring.py` | `score_outcome`, `is_valid_for_saccadic_analysis` (the validity gate) |
 | `src/experiment/trial_mechanics.py` | `OnsetDetector` (displacement rule), `ShuffledBag`, `zone_for`, `robust_filter_ms`, `RollingReactionTime` (shared helpers; the robust average drops anticipations/outliers then takes the median; `RollingReactionTime` is the live RT estimate: last `RT_AVERAGE_ROLLING_WINDOW`=12 latencies, updated at EVERY confirmed eye movement - RT test, tutorial practice, practice and main trials, valid or not - so the next trial's flash uses it; <`RT_AVERAGE_MIN_USABLE`=3 usable samples -> `DEFAULT_REACTION_TIME_MS`; shared by `TutorialSession` and `ExperimentSession`) |
-| `src/experiment/calibration.py` | `average_calibration_rounds`, `validate_calibration` / `CalibrationCheck` / `fit_residual` (monotonic, span, noise, residual checks; not yet wired into `session.py`) |
+| `src/experiment/calibration.py` | `average_calibration_rounds` (rounds 2 and 3 of the 3-round calibration) |
 | `src/experiment/space_input.py` | SPACE bookkeeping with no PsychoPy: `CalibrationLatch` (a calibration press made before the gaze window is full is latched and completed in `tick()`), `NarrationKeyGate` (tutorial: a press during narration is delivered after it), `SpaceTally` (ignored presses per phase + reason), `deliver_space`, `leaves_complete_screen` |
 | `src/experiment/session_schedule.py` | `phase_order`: baseline/saccade order counterbalanced by participant ID |
 | `src/timebase.py` | the ONE time source: `now()` = `time.perf_counter()`; wall-clock via an edge-synchronised anchor (`unix_now()`, `unix_ms()`) |
@@ -156,7 +156,7 @@ it from tests or simulations (the simulator uses an in-memory logger).
    measurement script and ask the human to run it; don't guess numbers.
 
 Report test results truthfully (what ran, what was skipped). The suite passes at the time of writing
-(~520 tests, ~75 s, 2 skipped when PySpin/mediapipe are absent).
+(~490 tests, ~55 s, 2 skipped when PySpin/mediapipe are absent).
 
 **Bug-hunting tests** (`tests/ai-tests/`): `find_bugs.py` fuzzes the real session with random/hostile
 participants and checks `invariants.py` (run `find_bugs.py --sessions 300` after changing session,
@@ -332,9 +332,8 @@ render loop starts) and stays flat, while the rate falls from 200 to ~160/s (~19
 arrive): the signature of the receiving thread being starved by the render loop (same process /
 GIL; the Real-Time API's simple device keeps only the newest sample, so the backlog is not in our
 code). Untested fixes: `sys.setswitchinterval(0.0005)`, or receive Neon in its own process.
-Consequence: the gaze-triggered flash (`FLASH_TRIGGER="onset"`) cannot land inside a saccade until
-this is fixed; judging flashes after the fact from the raw trace's phone capture times is
-unaffected. Also: the phone clock drifts ~1.2 ms/min against the PC (the clock offset is
+Consequence: the live `flash_during_saccade` check is unreliable; judging flashes after the fact from the
+raw trace's phone capture times is unaffected. Also: the phone clock drifts ~1.2 ms/min against the PC (the clock offset is
 re-estimated every 60 s), and `time.monotonic()`/`time.time()` have 15.6 ms resolution on
 Windows (everything now uses `src/timebase.py` / `perf_counter`).
 
@@ -389,20 +388,13 @@ under ~15 words and are not repeated between screens (the narrator re-speaks
 on every text change), so the practice intro is spoken once and later trials
 have an empty caption.
 
-**Flash trigger modes (`FLASH_TRIGGER` in `include/experiment/constants.py`).** The shipped default
-is `"scheduled"` (see the grant-demo setup at the end of this paragraph); `"onset"` is gaze-triggered: no reaction-time test and no prediction - the flash fires the
-tick `OnsetDetector` confirms a saccade (plus `FLASH_ONSET_DELAYS_MS`, default `(0,)`), so it can
-only land during/after the saccade (~35-50 ms after the true onset: Neon ~16 ms + displacement
-debounce + one frame + display). That only fits inside the movement if the saccade is long, which
-is why `DOT_POSITION`/`CROSS_POSITION` are now 15%/85% of the screen (~41 deg, expected ~110 ms by
-the main sequence - unverified on this setup: check `saccade_duration_ms` in the next real
-session; the simulator's `ParticipantProfile.saccade_ms_*` scale with the same geometry). The
-simulator (latency 16 ms) gives ~94% valid flashes at 110 ms saccades but ~0% at 35-45 ms ones.
-`SACCADE_ONSET_DISPLACEMENT` is a fraction of the dot-cross span (an angle), so it was rescaled
-0.08 -> 0.05 for the wider layout. The older mode, `"scheduled"` (below), is kept and tested via
-the `scheduled_flash_mode` fixture (`tests/ai-tests/conftest.py`). `SHARP_GO_CUE` shows the
-dot/cross instantly (no 0.4 s fade) in the trials.
-Shipped saccade-phase setup (built for judging flashes
+**Flash timing (the only mode).** The dot/cross sit at 15%/85% of the screen (~41 deg, expected ~110 ms
+by the main sequence - unverified on this setup: check `saccade_duration_ms` in the next real session; the
+simulator's `ParticipantProfile.saccade_ms_*` scale with the same geometry). `SACCADE_ONSET_DISPLACEMENT` is a
+fraction of the dot-cross span (an angle), so it was rescaled 0.08 -> 0.05 for the wider layout. `SHARP_GO_CUE` shows the
+dot/cross instantly (no 0.4 s fade) in the trials. (A gaze-triggered "onset" flash mode existed once and was removed in the trim-onset cleanup;
+see git history.)
+Saccade-phase setup (built for judging flashes
 after the fact because the live check is useless at ~90 ms gaze latency): scheduled flashes at
 average RT + one of `TIMING_OFFSETS_MS` (-80..+80 ms) + a random `TIMING_JITTER_MS` (+/-10 ms)
 bounce (logged in `scheduled_delay_ms`), fixed probe contrasts `SACCADE_FIXED_CONTRASTS`

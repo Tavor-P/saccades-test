@@ -135,7 +135,7 @@ Not yet verified on real glasses footage: how well the scene camera sees the gre
 .\scripts\py.ps1 -m pytest -q
 ```
 
-About 520 tests in ~60 s; no camera, glasses or PsychoPy window needed (fakes for the gaze source and clock). A headless
+About 490 tests in ~55 s; no camera, glasses or PsychoPy window needed (fakes for the gaze source and clock). A headless
 simulator runs whole sessions: see `tests/ai-tests/README.md`.
 
 ## Browsing past sessions
