@@ -275,3 +275,20 @@ def test_missing_ci_is_formatted():
     r["ci"] = None
     assert "CI not available" in an.format_suppression(r)
     json.dumps(r)
+
+
+def test_wilson_interval_contains_the_proportion_for_every_k():
+    for n in range(1, 120):
+        for k in range(n + 1):
+            lo, hi = an.wilson(k, n)
+            assert 0.0 <= lo <= k / n <= hi <= 1.0, (k, n, lo, hi)
+        assert an.wilson(0, n)[0] == 0.0 and an.wilson(n, n)[1] == 1.0
+
+
+@pytest.mark.parametrize("outcomes", [["correct"] * 6, ["incorrect"] * 11, ["correct"], ["incorrect"], ["correct", "incorrect", "miss"]])
+def test_plot_report_handles_all_correct_all_wrong_and_single_flash_bins(tmp_path, outcomes):
+    """Regression: k == n (or k == 0) used to give an error bar of -1e-16 and matplotlib refused to draw it."""
+    placed = [an.Placed(an.Flash(i, 1000.0 + i, 0.06, "above", o), 10.0 * i - 20, False) for i, o in enumerate(outcomes)]
+    summary = an.summarize(placed, [])
+    png = an.plot_report(placed, [], summary, tmp_path / "plot.png")
+    assert png.exists()
