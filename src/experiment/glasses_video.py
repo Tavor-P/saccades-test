@@ -68,7 +68,7 @@ def detect_flash_events(scores: Sequence[float], times: Sequence[float]) -> list
         return []
     frame_s = float(np.median(np.diff(t))) if len(t) > 1 else 1 / 30
     excess = s - _baseline(s, max(3, int(round(BASELINE_WINDOW_S / max(frame_s, 1e-6)))))
-    peak = float(np.percentile(excess, 99.5))
+    peak = float(np.partition(excess, -3)[-3])  # the 3rd strongest frame: the flashes are a tiny share of a long video, so a percentile of all frames would be background
     if peak < MIN_FLASH_FRACTION:
         return []
     hot = excess >= max(MIN_FLASH_FRACTION, RELATIVE_THRESHOLD * peak)
