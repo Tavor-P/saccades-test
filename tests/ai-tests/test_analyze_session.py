@@ -310,3 +310,18 @@ def test_a_timeout_row_whose_line_was_shown_and_answered_is_scored_from_the_answ
         for i, responded, answer, outcome in rows:
             w.writerow({"trial_index": i, "phase": "saccade", "grating_shown": "True", "contrast": 0.06, "orientation": "above", "responded": responded, "response_orientation": answer, "outcome": outcome, "grating_shown_at_unix_ms": 1_000_000 + i})
     assert [f.outcome for f in an.load_flashes(path)] == ["correct", "incorrect", "miss", "correct"]
+
+
+def test_clock_offset_history_is_interpolated_over_the_trace(tmp_path):
+    """The phone clock drifts against the PC's: the offset at the start of the trace differs from the final one."""
+    path = tmp_path / "trace.csv"
+    with path.open("w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["t_s", "device_unix_s", "x_px", "worn"])
+        for phone_t in (1000.0, 1060.0, 1120.0, 1180.0):
+            w.writerow([0, phone_t, 500, 1])
+    history = [{"phone_unix_s": 1000.0, "offset_ms": 250.0}, {"phone_unix_s": 1120.0, "offset_ms": 270.0}]
+    t, _ = an.load_trace(path, 0.999, history)
+    assert t - np.asarray([1000.0, 1060.0, 1120.0, 1180.0]) == pytest.approx([0.250, 0.260, 0.270, 0.270])
+    t, _ = an.load_trace(path, 0.25, [history[0]])  # a single entry (or none) falls back to the scalar offset
+    assert t - np.asarray([1000.0, 1060.0, 1120.0, 1180.0]) == pytest.approx([0.25] * 4)
