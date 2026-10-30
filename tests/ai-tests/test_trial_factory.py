@@ -1,15 +1,11 @@
 from include.experiment.constants import (
-    CATCH_TRIAL_FRACTION,
     NUM_PRACTICE_TRIALS_TEST,
     NUM_TRIALS_PER_PHASE_TEST,
     TIMING_OFFSETS_MS,
 )
-from include.experiment.types import Target
+from include.experiment.types import Side, Target
 from src.experiment.trial_factory import build_presaccade_sequence, build_saccade_sequence, generate_next_saccade_trial
 from src.experiment.trial_mechanics import ShuffledBag
-
-_CATCH_TRIAL_COUNT = round(NUM_TRIALS_PER_PHASE_TEST * CATCH_TRIAL_FRACTION)
-
 
 def _presaccade_sequence():
     return build_presaccade_sequence(num_trials=NUM_TRIALS_PER_PHASE_TEST, num_practice=NUM_PRACTICE_TRIALS_TEST)
@@ -25,7 +21,6 @@ def test_presaccade_sequence_counts():
     real = [t for t in trials if not t.practice]
     assert len(practice) == NUM_PRACTICE_TRIALS_TEST
     assert len(real) == NUM_TRIALS_PER_PHASE_TEST
-    assert sum(1 for t in real if not t.grating_shown) == _CATCH_TRIAL_COUNT
 
 
 def test_presaccade_indices_are_sequential_within_each_block():
@@ -36,17 +31,10 @@ def test_presaccade_indices_are_sequential_within_each_block():
     assert [t.index for t in real] == list(range(len(real)))
 
 
-def test_practice_schedule_alternates_shown_and_catch():
-    trials = _presaccade_sequence()
-    practice_shown = [t.grating_shown for t in trials if t.practice]
-    assert practice_shown == [i % 2 == 0 for i in range(len(practice_shown))]
-
-
-def test_saccade_practice_sequence_counts_and_alternates_shown_and_catch():
+def test_saccade_practice_sequence_has_the_requested_count():
     trials = _saccade_practice_sequence()
     assert len(trials) == NUM_PRACTICE_TRIALS_TEST
     assert all(t.practice for t in trials)
-    assert [t.grating_shown for t in trials] == [i % 2 == 0 for i in range(len(trials))]
 
 
 def test_saccade_practice_sequence_alternates_dot_and_cross_continuously():
@@ -57,13 +45,17 @@ def test_saccade_practice_sequence_alternates_dot_and_cross_continuously():
         assert current.source != current.target
 
 
-def test_orientation_is_set_only_when_grating_is_shown():
-    for trials in (_presaccade_sequence(), _saccade_practice_sequence()):
-        for trial in trials:
-            if trial.grating_shown:
-                assert trial.orientation is not None
-            else:
-                assert trial.orientation is None
+def test_no_trial_is_a_catch_trial_and_every_trial_has_an_orientation():
+    # Catch trials (no flash, false alarms) were removed: every trial of either phase flashes.
+    assert not hasattr(_presaccade_sequence()[0], "grating_shown")
+    for _ in range(50):  # many random draws
+        for trials in (_presaccade_sequence(), _saccade_practice_sequence()):
+            assert all(t.orientation in (Side.ABOVE, Side.BELOW) for t in trials)
+        source = Target.DOT
+        bag = ShuffledBag(TIMING_OFFSETS_MS)
+        for i in range(40):
+            trial, source = generate_next_saccade_trial(i, source, bag)
+            assert trial.orientation in (Side.ABOVE, Side.BELOW)
 
 
 def test_presaccade_orientation_is_randomized_not_fixed():
@@ -73,7 +65,7 @@ def test_presaccade_orientation_is_randomized_not_fixed():
     # is generated dynamically now - see
     # test_generate_next_saccade_trial_shown_rate_is_not_fixed_exact_ratio
     # below for its equivalent coverage.)
-    orientations = {t.orientation for t in _presaccade_sequence() if t.grating_shown}
+    orientations = {t.orientation for t in _presaccade_sequence()}
     assert len(orientations) > 1
 
 
@@ -118,18 +110,14 @@ def test_generate_next_saccade_trial_draws_a_timing_offset_from_the_bag():
     assert trial.timing_offset_ms in TIMING_OFFSETS_MS
 
 
-def test_generate_next_saccade_trial_shown_rate_is_not_fixed_exact_ratio():
-    # Unlike build_saccade_sequence's pre-shuffled exact-ratio schedule, each
-    # call draws grating_shown independently - over enough draws that should
-    # produce both outcomes, not a suspiciously exact CATCH_TRIAL_FRACTION
-    # split every time.
+def test_generate_next_saccade_trial_orientation_is_randomized():
     bag = ShuffledBag(TIMING_OFFSETS_MS)
     source = Target.DOT
-    shown_flags = []
+    seen = set()
     for i in range(200):
         trial, source = generate_next_saccade_trial(i, source, bag)
-        shown_flags.append(trial.grating_shown)
-    assert True in shown_flags and False in shown_flags
+        seen.add(trial.orientation)
+    assert seen == {Side.ABOVE, Side.BELOW}
 
 
 def test_shuffled_bag_covers_every_item_before_any_repeat():

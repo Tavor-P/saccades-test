@@ -92,7 +92,6 @@ LINE_HEIGHT_HEIGHT_UNITS = LINE_SD_HEIGHT_UNITS * 6
 # baseline condition and a shorter baseline keeps total session length down.
 NUM_TRIALS_PER_PHASE_TEST = 25
 NUM_TRIALS_PER_PHASE_REAL = 25
-CATCH_TRIAL_FRACTION = 0.2  # rest drive/query the adaptive staircase, in either mode
 
 # A few throwaway trials before each phase's real block, so a participant
 # doesn't learn the response mapping on data that counts. Fixed at a high,
@@ -164,14 +163,6 @@ RESPONSE_WINDOW_MS = 1000
 # which the observer fixates. (Diamond, Ross & Morrone 2000 used 800-1200ms after a warning tone.)
 FOREPERIOD_MIN_MS = 500
 FOREPERIOD_MAX_MS = 1000
-
-# Same paper's data-quality check: they report false-alarm rates <1/200 as
-# evidence the observer was reliably attentive, not guessing/spamming responses.
-# That bar assumes a much larger sample than a short session gets, so require a
-# minimum number of catch trials before claiming "reliable" at all - otherwise
-# a small catch-trial count could show 0 false alarms by luck, not evidence.
-FALSE_ALARM_RATE_THRESHOLD = 1 / 200
-MIN_CATCH_TRIALS_FOR_RELIABILITY = 8  # each phase has 20 catch trials, comfortably above this floor
 
 SACCADE_TIMEOUT_MS = 15_000  # force-advance a trial if gaze never lands (broken tracking)
 # A flash-shown trial is flagged tracking_ok=False (and excluded from ZEST and
@@ -308,7 +299,7 @@ DEFAULT_REACTION_TIME_MS = 225.0
 # Live rolling reaction-time average (trial_mechanics.RollingReactionTime): avg_reaction_time_ms is the
 # robust average of the last RT_AVERAGE_ROLLING_WINDOW detected saccade-onset latencies, recomputed at
 # EVERY detected eye movement - RT-test attempts, tutorial practice trials, practice and main trials,
-# whether or not the trial later turns out valid, flashed or a catch trial. So the next trial's scheduled
+# whether or not the trial later turns out valid or answered. So the next trial's scheduled
 # flash already uses the newest sample (a flash already scheduled in the running trial is not moved). The
 # same object carries from the tutorial's practice trials into the saccade phase. Window 12: wide enough
 # that 2-3 stray latencies cannot move the median (the robust rule drops them anyway), narrow enough that a

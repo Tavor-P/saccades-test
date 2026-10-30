@@ -7,7 +7,9 @@ movement (a *saccade*). Built with [PsychoPy](https://psychopy.org), following D
 **How it works:** the participant looks at a dot, then jumps their gaze to a second dot when it swaps. A faint thin
 horizontal line (after Braun, Schutz & Gegenfurtner 2021) flashes for a single frame just above or below the dot being
 looked at, timed from the participant's own measured reaction time to land around the eye movement, and they report which
-side it was on. Gaze is recorded throughout so each flash can be placed against the real saccade onset
+side it was on. **Every trial shows a flash** (there are no catch trials where nothing
+flashes, so there is nothing to withhold an answer on; if the flash was too faint to see, the participant still guesses a side or lets the
+answer window pass). Old sessions may still contain catch trials. Gaze is recorded throughout so each flash can be placed against the real saccade onset
 afterwards (`src.experiment.analyze_session`). The same test also runs *without* eye movements (a baseline) so the two
 results can be compared.
 
@@ -77,11 +79,11 @@ data/
 - `phase`: baseline / saccade / rt_test
 - `trial`: the trial number within the phase
 - `contrast_pct`: the flash's contrast in percent (blank when no flash)
-- `flash_shown`: was a flash shown (no on catch trials)
+- `flash_shown`: was a flash shown (always `yes`: there are no catch trials)
 - `flash_during_saccade`: did the scheduled flash fall inside the eye movement, as the live detector judged it (late gaze; `analyze_session` re-judges it from the trace)
 - `answered`: did the participant answer in time
-- `correct`: was the answer right (a catch trial with no answer counts as right; blank for rt_test)
-- `outcome`: correct / wrong / no_answer / false_alarm / correct_rejection / detected
+- `correct`: was the answer right (blank for rt_test)
+- `outcome`: correct / wrong / no_answer / detected (old sessions also have false_alarm / correct_rejection from the removed catch trials)
 - `line_side`: where the flashed line was relative to the target (`above` / `below`)
 - `answer_side`: the side the participant answered (UP/DOWN key: `above` / `below`)
 - `flash_ms_after_go_cue`: delay from the go cue to the flash, with the random jitter
@@ -90,7 +92,6 @@ data/
 - `flash_unix_ms`: PC wall-clock time of the flash (used by `analyze_session`)
 - `tracking_ok`: gaze tracking did not drop out around the flash
 
-There is no planned-offset column (the actual delay is `flash_ms_after_go_cue`; `analyze_session` recomputes timing and picks the control flashes from the gaze trace).
 There are no `from`/`to` columns: the two symbols are the left and right dot and trials alternate strictly, so the direction of the eye movement
 is the trial's parity within its phase (old `results_<ts>.csv` files still have `source`/`target`).
 The code-side schema is `TRIAL_COLUMNS` in `src/experiment/logger.py`.

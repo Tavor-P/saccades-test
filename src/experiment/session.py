@@ -14,7 +14,6 @@ from include.experiment.constants import (
     CROSS_POSITION,
     DEFAULT_REACTION_TIME_MS,
     DOT_POSITION,
-    FALSE_ALARM_RATE_THRESHOLD,
     FLASH_ONSET_DELAYS_MS,
     FLASH_TRIGGER,
     FOREPERIOD_MAX_MS,
@@ -24,7 +23,6 @@ from include.experiment.constants import (
     GRATING_DURATION_FRAMES,
     MAX_SACCADE_TRIALS_REAL,
     MAX_SACCADE_TRIALS_TEST,
-    MIN_CATCH_TRIALS_FOR_RELIABILITY,
     NUM_PRACTICE_TRIALS_REAL,
     NUM_PRACTICE_TRIALS_TEST,
     NUM_RT_TEST_TRIALS_REAL,
@@ -96,8 +94,7 @@ class ExperimentSession:
     branch, after Braun, Schutz & Gegenfurtner 2021) a thin horizontal line just above or
     below the saccade target, at random - and is scored as a 2-alternative forced-choice
     above/below discrimination (UP arrow = above, DOWN arrow = below) rather than plain yes/no
-    detection, with false-alarm rate tracked as a data-quality check exactly
-    as in that paper. Contrast is picked trial by trial by a ZEST staircase
+    detection. Contrast is picked trial by trial by a ZEST staircase
     (see src.experiment.zest), the same adaptive procedure the paper used, run
     independently from the presaccade phase's staircase so each condition
     converges on its own threshold.
@@ -667,9 +664,7 @@ class ExperimentSession:
                     self._onset_flash_due_at = self._onset_detector.since + self._trial_scheduled_delay_ms / 1000
 
         # Open-loop: fires once, at its scheduled absolute time, independent
-        # of the onset detection above. Catch trials still "decide" here (no
-        # grating) purely so the response window has a well-defined open
-        # point, matching shown trials.
+        # of the onset detection above.
         flash_fired_this_tick = False
         if self._closed_loop:
             flash_due = self._onset_flash_due_at is not None and now >= self._onset_flash_due_at
@@ -682,18 +677,17 @@ class ExperimentSession:
             flash_fired_this_tick = True
             self._response_window_open = True
             self._response_deadline = now + RESPONSE_WINDOW_MS / 1000
-            if trial.grating_shown:
-                self._grating_shown_at = now
-                self._grating_shown_at_unix_ms = self._clock.unix_ms()
-                self._grating_visible = True
-                self._grating_frames_remaining = GRATING_DURATION_FRAMES
-                self._grating_actually_shown = True
-                if trial.practice:
-                    self._trial_contrast = PRACTICE_CONTRAST
-                elif self._fixed_contrast_bag is not None:
-                    self._trial_contrast = self._fixed_contrast_bag.draw()
-                else:
-                    self._trial_contrast = self._zest.next_contrast()
+            self._grating_shown_at = now
+            self._grating_shown_at_unix_ms = self._clock.unix_ms()
+            self._grating_visible = True
+            self._grating_frames_remaining = GRATING_DURATION_FRAMES
+            self._grating_actually_shown = True
+            if trial.practice:
+                self._trial_contrast = PRACTICE_CONTRAST
+            elif self._fixed_contrast_bag is not None:
+                self._trial_contrast = self._fixed_contrast_bag.draw()
+            else:
+                self._trial_contrast = self._zest.next_contrast()
 
         # Frame-counted (not time-based) so the flash lasts exactly N drawn
         # frames regardless of the display's refresh rate. Skipped on the tick
@@ -784,12 +778,10 @@ class ExperimentSession:
             and self._target_landed_since >= onset_at
             else None
         )
-        if not landed and not self._onset_detector.confirmed:
-            outcome = "timeout"
+        if (not landed and not self._onset_detector.confirmed) or not self._grating_actually_shown:
+            outcome = "timeout"  # no saccade, or the trial ended before its flash fired
         else:
-            outcome = score_outcome(
-                self._grating_actually_shown, self._responded, self._response_orientation, trial.orientation
-            )
+            outcome = score_outcome(self._responded, self._response_orientation, trial.orientation)
         self._flash_during_saccade = self._compute_flash_during_saccade()
         tracking_ok = (not self._tracking_lost_near_flash) if self._grating_actually_shown else None
 
@@ -857,28 +849,11 @@ class ExperimentSession:
         correct = sum(1 for r in self._results if r.outcome == "correct")
         incorrect = sum(1 for r in self._results if r.outcome == "incorrect")
         misses = sum(1 for r in self._results if r.outcome == "miss")
-        false_alarms = sum(1 for r in self._results if r.outcome == "false_alarm")
-        rejections = sum(1 for r in self._results if r.outcome == "correct_rejection")
 
         grating_shown_count = correct + incorrect + misses
         accuracy = correct / grating_shown_count if grating_shown_count else 0.0
-        catch_trial_count = false_alarms + rejections
-        fa_rate = false_alarms / catch_trial_count if catch_trial_count else 0.0
-
-        # Diamond, Ross & Morrone (2000) report false-alarm rates <1/200 as their
-        # bar for a reliably attentive observer (not guessing/spamming responses).
-        # That assumes hundreds of catch trials though - with only a handful,
-        # even a genuinely careless observer could show 0 false alarms by luck,
-        # so don't claim "reliable" until there's enough data to back it up.
-        if catch_trial_count < MIN_CATCH_TRIALS_FOR_RELIABILITY:
-            reliability = "not enough data"
-        elif fa_rate < FALSE_ALARM_RATE_THRESHOLD:
-            reliability = "reliable"
-        else:
-            reliability = "unreliable"
         return (
             f"Accuracy: {correct}/{grating_shown_count} ({accuracy:.0%}) | "
-            f"False alarms: {false_alarms}/{catch_trial_count} ({fa_rate:.1%}, {reliability}) | "
             f"Threshold estimate: {self._zest.threshold_estimate:.1%} contrast"
         )
 

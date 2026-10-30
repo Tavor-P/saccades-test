@@ -319,7 +319,7 @@ class TutorialSession:
         if timed_out and not self._onset_detector.confirmed:
             outcome = "timeout"
         else:
-            outcome = score_outcome(self._grating_actually_shown, self._responded, self._response_orientation, self._orientation)
+            outcome = score_outcome(self._responded, self._response_orientation, self._orientation)
         self._set_feedback("green" if outcome == "correct" else "red")
 
         self._grating_visible = False

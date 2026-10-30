@@ -42,7 +42,7 @@ def test_live_zest_feed_matches_the_graph_filter(monkeypatch, profile, seed):
     ]
     assert fed == expected
 
-    # What the graph keeps among flashed trials is exactly the valid ones; catch trials untouched.
+    # What the graph keeps among flashed trials is exactly the valid ones; legacy catch rows untouched.
     kept = _exclude_flashes_not_during_saccade(rows)
     kept_flashed = [r for r in kept if r.grating_shown]
     assert kept_flashed == [r for r in rows if r.grating_shown and is_valid_for_saccadic_analysis(r.flash_during_saccade, r.tracking_ok)]

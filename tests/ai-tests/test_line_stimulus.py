@@ -77,7 +77,7 @@ def test_saccade_phase_line_sits_next_to_the_target_not_the_source(fake_gaze, fa
 def test_baseline_line_sits_next_to_the_screen_centre(fake_time):
     for side in (Side.ABOVE, Side.BELOW):
         session = _make_presaccade()
-        session._trials = [FlashTrialSpec(index=0, grating_shown=True, orientation=side)]
+        session._trials = [FlashTrialSpec(index=0, orientation=side)]
         _enter_flash_window(session, fake_time)
         line = session.render_state()["grating"]
         assert line["visible"] is True
@@ -98,9 +98,9 @@ def test_answer_keys_are_up_and_down_only():
 
 
 def test_scoring_above_below():
-    assert score_outcome(True, True, Side.ABOVE, Side.ABOVE) == "correct"
-    assert score_outcome(True, True, Side.BELOW, Side.ABOVE) == "incorrect"
-    assert score_outcome(True, False, None, Side.BELOW) == "miss"
+    assert score_outcome(True, Side.ABOVE, Side.ABOVE) == "correct"
+    assert score_outcome(True, Side.BELOW, Side.ABOVE) == "incorrect"
+    assert score_outcome(False, None, Side.BELOW) == "miss"
 
 
 def test_instructions_name_up_and_down_and_no_other_keys(fake_gaze, fake_time):

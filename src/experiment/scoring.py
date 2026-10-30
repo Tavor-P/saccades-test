@@ -1,23 +1,22 @@
-"""score_outcome (correct/incorrect/miss/false_alarm/correct_rejection) and is_valid_for_saccadic_analysis - the single validity gate for saccade-phase
+"""score_outcome (correct/incorrect/miss) and is_valid_for_saccadic_analysis - the single validity gate for saccade-phase
 flashes (flash_during_saccade AND tracking_ok), shared by live ZEST updates and the end-of-run graph."""
 
 from include.experiment.types import Side
 
 
 def score_outcome(
-    grating_shown: bool,
     responded: bool,
     response_orientation: Side | None,
     actual_orientation: Side | None,
 ) -> str:
     """Shared scoring used by both phases (outside of the saccade phase's
     "timeout" case, which its own state machine handles before falling back
-    to this). Grating-shown trials are scored as a 2-alternative orientation
-    discrimination (correct/incorrect/miss) rather than plain yes/no
+    to this). Every trial flashes a grating and is scored as a 2-alternative
+    orientation discrimination (correct/incorrect/miss) rather than plain yes/no
     detection - correctly reporting *which* orientation it was rules out a
-    lucky guess in a way merely detecting *that* something flashed doesn't."""
-    if not grating_shown:
-        return "false_alarm" if responded else "correct_rejection"
+    lucky guess in a way merely detecting *that* something flashed doesn't.
+    (Old sessions also hold "false_alarm"/"correct_rejection" outcomes from the
+    removed catch trials; they are only ever read, never produced.)"""
     if not responded:
         return "miss"
     return "correct" if response_orientation == actual_orientation else "incorrect"
