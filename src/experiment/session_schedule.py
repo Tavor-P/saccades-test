@@ -13,5 +13,5 @@ def phase_order(participant_id: str, test_mode: bool) -> tuple[str, str]:
     if test_mode:
         return PHASE_SACCADE, PHASE_BASELINE
     pid = participant_id.strip()
-    bucket = int(pid) % 2 if pid.isdigit() else zlib.crc32(pid.lower().encode("utf8")) % 2
+    bucket = int(pid) % 2 if pid.isascii() and pid.isdigit() else zlib.crc32(pid.lower().encode("utf8")) % 2
     return (PHASE_BASELINE, PHASE_SACCADE) if bucket == 0 else (PHASE_SACCADE, PHASE_BASELINE)

@@ -20,3 +20,10 @@ def test_order_is_deterministic_and_ignores_surrounding_whitespace():
 def test_non_numeric_ids_reach_both_orders():
     orders = {phase_order(f"p{c}", False) for c in "abcdefghij"}
     assert orders == {(PHASE_BASELINE, PHASE_SACCADE), (PHASE_SACCADE, PHASE_BASELINE)}
+
+
+def test_non_ascii_digit_ids_do_not_crash_and_are_stable():
+    from src.experiment.session_schedule import phase_order
+
+    assert phase_order("²", False) == phase_order("²", False)
+    assert phase_order("٣", False) in {("baseline", "saccade"), ("saccade", "baseline")}
