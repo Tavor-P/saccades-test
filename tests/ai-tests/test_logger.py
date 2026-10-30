@@ -49,9 +49,9 @@ def test_header_is_the_trial_columns_in_order(tmp_path, monkeypatch):
     header = next(tmp_path.glob("*/*/trials.csv")).read_text().splitlines()[0]
     assert header.split(",") == FIELDNAMES == [c.name for c in TRIAL_COLUMNS]
     assert FIELDNAMES == [
-        "phase", "trial", "from", "to", "flash_shown", "contrast_pct", "line_side",
-        "planned_offset_ms", "flash_ms_after_go_cue", "reaction_ms", "flash_unix_ms",
-        "answered", "answer_side", "answer_ms", "outcome", "correct", "tracking_ok", "flash_during_saccade",
+        "phase", "trial", "contrast_pct", "flash_shown", "flash_during_saccade", "answered", "correct", "outcome",
+        "line_side", "answer_side",
+        "flash_ms_after_go_cue", "reaction_ms", "answer_ms", "flash_unix_ms", "tracking_ok",
     ]
 
 
@@ -98,10 +98,10 @@ def test_log_writes_plain_words_and_units(tmp_path, monkeypatch):
     log.close()
     (row,) = _rows(tmp_path)
     assert row["phase"] == "saccade" and row["trial"] == "0"
-    assert (row["from"], row["to"]) == ("left", "right")  # dot = left, cross = right
+    assert "from" not in row and "to" not in row  # direction = trial parity, so source/target are not written
     assert row["flash_shown"] == "yes" and row["contrast_pct"] == "5.0"
     assert row["line_side"] == "above" and row["answer_side"] == "above"
-    assert row["planned_offset_ms"] == "-40" and row["flash_ms_after_go_cue"] == "185.0" and row["reaction_ms"] == "210.5"
+    assert "planned_offset_ms" not in row and row["flash_ms_after_go_cue"] == "185.0" and row["reaction_ms"] == "210.5"
     assert row["flash_unix_ms"] == "1700000000123.5"
     assert row["answered"] == "yes" and row["answer_ms"] == "250.0"
     assert row["outcome"] == "correct" and row["correct"] == "yes"
@@ -115,7 +115,7 @@ def test_baseline_phase_and_outcome_words(tmp_path, monkeypatch):
     log.log(_trial(index=2, grating_shown=False, contrast=None, orientation=None, outcome="correct_rejection", responded=False, response_orientation=None))
     log.close()
     first, second, third = _rows(tmp_path)
-    assert first["phase"] == "baseline" and first["from"] == "" and first["outcome"] == "no_answer" and first["correct"] == "no"
+    assert first["phase"] == "baseline" and first["outcome"] == "no_answer" and first["correct"] == "no"
     assert second["outcome"] == "wrong" and second["correct"] == "no"
     assert third["outcome"] == "correct_rejection" and third["correct"] == "yes" and third["flash_shown"] == "no"
 
