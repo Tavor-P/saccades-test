@@ -64,7 +64,10 @@ def load_metadata(timestamp: str) -> dict:
     at all - treat that the same as one with every field blank, rather than
     excluding those older runs from the dashboard."""
     path = meta_path_for(timestamp)
-    meta = _flatten(json.loads(path.read_text())) if path.exists() else {}
+    try:
+        meta = _flatten(json.loads(path.read_text())) if path.exists() else {}
+    except (OSError, ValueError):  # a damaged file (e.g. an aborted write) must not take the whole listing down
+        meta = {}
     meta.setdefault("participant_id", None)
     meta.setdefault("started_at", None)
     meta.setdefault("test_mode", None)
@@ -116,7 +119,10 @@ def discover_sessions() -> list[SessionSummary]:
     sessions = []
     for ref in session_files.list_sessions(DATA_DIR):
         trial_counts: dict[str, int] = {}
-        for trial in read_trials(ref.trials_path):
-            trial_counts[trial.phase] = trial_counts.get(trial.phase, 0) + 1
+        try:
+            for trial in read_trials(ref.trials_path):
+                trial_counts[trial.phase] = trial_counts.get(trial.phase, 0) + 1
+        except (OSError, ValueError, KeyError):  # a damaged trials file: list the session without counts
+            pass
         sessions.append(SessionSummary(timestamp=ref.key, metadata=load_metadata(ref.key), trial_counts=trial_counts))
     return sessions
