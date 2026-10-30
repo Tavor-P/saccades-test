@@ -30,7 +30,7 @@ from test_session import (
 )
 
 
-pytestmark = pytest.mark.usefixtures("scheduled_flash_mode")
+pytestmark = pytest.mark.usefixtures("staircase_no_jitter")
 
 
 def _stamped_gaze(fake_gaze):

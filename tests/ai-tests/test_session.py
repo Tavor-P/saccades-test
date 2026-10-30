@@ -30,7 +30,7 @@ from src.experiment.pausable_clock import PausableClock
 from src.experiment.session import ExperimentSession, Phase
 
 
-pytestmark = pytest.mark.usefixtures("scheduled_flash_mode")
+pytestmark = pytest.mark.usefixtures("staircase_no_jitter")
 
 
 class _NullLogger:

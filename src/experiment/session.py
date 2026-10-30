@@ -14,8 +14,6 @@ from include.experiment.constants import (
     CROSS_POSITION,
     DEFAULT_REACTION_TIME_MS,
     DOT_POSITION,
-    FLASH_ONSET_DELAYS_MS,
-    FLASH_TRIGGER,
     FOREPERIOD_MAX_MS,
     FOREPERIOD_MIN_MS,
     GAZE_LANDING_STABILITY_MS,
@@ -150,18 +148,13 @@ class ExperimentSession:
         self._practice_index = 0
         self._trial_source: Target = self._practice_trials[-1].target if self._practice_trials else Target.DOT
         self._main_trial_counter = 0
-        # "onset": the flash fires when the onset detector confirms a saccade (no RT test, no
-        # prediction); "scheduled": the older open-loop mode. See FLASH_TRIGGER in constants.py.
-        self._closed_loop = FLASH_TRIGGER == "onset"
         # Fixed probe contrasts (method of constant stimuli) instead of the live staircase - see
         # SACCADE_FIXED_CONTRASTS. Practice trials keep PRACTICE_CONTRAST either way.
         # `fixed_contrasts` (from the startup dialog) overrides the SACCADE_FIXED_CONTRASTS default.
         contrasts = SACCADE_FIXED_CONTRASTS if fixed_contrasts is None else tuple(fixed_contrasts)
         self._fixed_contrast_bag: ShuffledBag[float] | None = ShuffledBag(contrasts) if contrasts else None
         self._fixed_trials = SACCADE_FIXED_TRIALS_TEST if test_mode else SACCADE_FIXED_TRIALS_REAL
-        self._timing_offset_bag: ShuffledBag[int] = ShuffledBag(
-            FLASH_ONSET_DELAYS_MS if self._closed_loop else TIMING_OFFSETS_MS + CONTROL_OFFSETS_MS
-        )
+        self._timing_offset_bag: ShuffledBag[int] = ShuffledBag(TIMING_OFFSETS_MS + CONTROL_OFFSETS_MS)
         self._current_trial_spec: TrialSpec | None = None
 
         # -- reaction-time test + rolling average (see constants.py) --
@@ -279,7 +272,6 @@ class ExperimentSession:
         self._onset_detector: OnsetDetector | None = None
         self._target_landed_since: float | None = None
         self._flash_scheduled_at = 0.0
-        self._onset_flash_due_at: float | None = None  # gaze-triggered mode: detected onset + delay
         self._flash_decided = False
         self._grating_shown_at: float | None = None
         self._grating_shown_at_unix_ms: float | None = None
@@ -310,7 +302,7 @@ class ExperimentSession:
         if self._phase is Phase.WAITING_TO_START:
             if self._precomputed_calibration:
                 # A tutorial already calibrated - skip straight to the
-                # reaction-time test (or, gaze-triggered, to the trials).
+                # reaction-time test.
                 self._begin_after_calibration()
             else:
                 self._gaze.begin_calibration_sample()  # fresh window before the dot appears
@@ -398,9 +390,9 @@ class ExperimentSession:
             self._response_time_ms = (now - self._grating_shown_at) * 1000 if self._grating_shown_at else None
 
     def _begin_after_calibration(self) -> None:
-        """Scheduled mode measures the participant's reaction time first, unless the tutorial already did
-        (seeded samples); the gaze-triggered mode needs no prediction. Both go straight to the trials."""
-        if self._closed_loop or self._rt_seeded:
+        """Measures the participant's reaction time first, unless the tutorial already did (seeded
+        samples), in which case it goes straight to the trials."""
+        if self._rt_seeded:
             self._begin_next_trial_or_complete()
         else:
             self._begin_rt_test_foreperiod()
@@ -432,9 +424,7 @@ class ExperimentSession:
     def _record_reaction_time(self, reaction_ms: float) -> None:
         """A saccade onset was just confirmed (RT test, practice or main trial, valid or not): add its latency
         to the rolling window and refresh the average at once. The running trial's flash is already scheduled
-        and stays put; the next trial's schedule uses the new average. Not used in gaze-triggered mode."""
-        if self._closed_loop:
-            return
+        and stays put; the next trial's schedule uses the new average."""
         self._avg_reaction_time_ms = self._rt.add(reaction_ms)
 
     def _tick_rt_test_active(self) -> None:
@@ -609,19 +599,10 @@ class ExperimentSession:
         offset_ms = trial.timing_offset_ms if trial.timing_offset_ms is not None else 0
         self._trial_gaze_latency_ms = self.gaze_latency_ms
         self._latency_s = self._timestamp_latency_s(self._trial_gaze_latency_ms)
-        if self._closed_loop:
-            # Gaze-triggered: no schedule at all. The flash fires the tick the onset detector
-            # confirms a saccade, `offset_ms` (a FLASH_ONSET_DELAYS_MS draw, usually 0) after
-            # the detected onset; _flash_scheduled_at becomes the actual fire time then.
-            self._trial_avg_rt_ms = None
-            self._trial_scheduled_delay_ms = float(offset_ms)
-            self._flash_scheduled_at = float("inf")
-            self._onset_flash_due_at = None
-        else:
-            self._trial_avg_rt_ms = self._avg_reaction_time_ms
-            jitter_ms = random.uniform(-TIMING_JITTER_MS, TIMING_JITTER_MS) if TIMING_JITTER_MS else 0.0
-            self._trial_scheduled_delay_ms = self._avg_reaction_time_ms + offset_ms + jitter_ms
-            self._flash_scheduled_at = self._trial_start_time + self._trial_scheduled_delay_ms / 1000
+        self._trial_avg_rt_ms = self._avg_reaction_time_ms
+        jitter_ms = random.uniform(-TIMING_JITTER_MS, TIMING_JITTER_MS) if TIMING_JITTER_MS else 0.0
+        self._trial_scheduled_delay_ms = self._avg_reaction_time_ms + offset_ms + jitter_ms
+        self._flash_scheduled_at = self._trial_start_time + self._trial_scheduled_delay_ms / 1000
 
     def tick(self) -> None:
         ratio = self._calibration_latch.poll(self._gaze)
@@ -660,19 +641,11 @@ class ExperimentSession:
                 self._reaction_latency_ms = (self._onset_detector.since - self._trial_start_time) * 1000
                 self._record_reaction_time(self._reaction_latency_ms)
                 self._onset_detection_lag_ms = (s_t - self._onset_detector.since) * 1000
-                if self._closed_loop:
-                    self._onset_flash_due_at = self._onset_detector.since + self._trial_scheduled_delay_ms / 1000
 
         # Open-loop: fires once, at its scheduled absolute time, independent
         # of the onset detection above.
         flash_fired_this_tick = False
-        if self._closed_loop:
-            flash_due = self._onset_flash_due_at is not None and now >= self._onset_flash_due_at
-        else:
-            flash_due = now >= self._flash_scheduled_at
-        if not self._flash_decided and flash_due:
-            if self._closed_loop:
-                self._flash_scheduled_at = now  # the real fire time (drawn this frame)
+        if not self._flash_decided and now >= self._flash_scheduled_at:
             self._flash_decided = True
             flash_fired_this_tick = True
             self._response_window_open = True
