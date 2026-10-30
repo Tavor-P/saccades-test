@@ -18,7 +18,14 @@ GRAPH_CACHE_DIR = DATA_DIR / "dashboard_cache"
 def _ref(timestamp: str) -> session_files.SessionRef:
     """The session with this key; a not-found one resolves to its old-layout paths (which don't exist), so callers'
     `.exists()` checks keep working."""
-    return session_files.find_session(DATA_DIR, timestamp) or session_files._legacy_ref(DATA_DIR, timestamp)
+    if not (timestamp.isascii() and timestamp.isdigit()):
+        # Only session keys (unix start times) address a session here, never a path: '..', separators or absolute paths
+        # would let find_session resolve (and delete_session remove) a folder outside data/.
+        return session_files._legacy_ref(DATA_DIR, "0")
+    ref = session_files.find_session(DATA_DIR, timestamp)
+    if ref is not None and ref.folder is not None and ref.folder.resolve().parent.parent != DATA_DIR.resolve():
+        return session_files._legacy_ref(DATA_DIR, "0")
+    return ref or session_files._legacy_ref(DATA_DIR, timestamp)
 
 
 def csv_path_for(timestamp: str) -> Path:
