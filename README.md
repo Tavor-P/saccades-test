@@ -57,20 +57,61 @@ Both phases end in a graph comparing baseline and saccade results. Instructions 
 
 ## Output
 
-Each session writes to `data/` (git-ignored):
-- `results_<timestamp>.csv`: every trial (a `phase` column separates baseline, saccade and reaction-time-test rows; practice trials are excluded)
-- `results_<timestamp>_meta.json`: participant info, settings, constants snapshot, gaze quality, per-phase summaries
-- `results_<timestamp>_gaze_trace.csv`: raw Neon gaze with phone capture times (input of `analyze_session`)
-- `accuracy_comparison.png`: the results graph
-- `results_<timestamp>_video.mp4` + `_video_timestamps.csv`: webcam source only, if "Record video" was on
+One folder **per participant**, and inside it one subfolder **per run of the experiment** (a run is one start of the program, with both phases;
+it is *not* one flash trial). Everything is under `data/` (git-ignored):
+
+```
+data/
+  <participant id>/                  blank id in Test mode -> "anonymous"; characters Windows forbids become "_"
+    2026-10-25_14-03-11[_test]/      one run, local start time; "_test" for Test mode
+      trials.csv                     one row per trial (columns below)
+      session.json                   participant, settings, hardware, results summary, gaze quality, ignored SPACE presses, glasses-video sync
+      gaze_trace.csv                 raw Neon gaze with the phone's capture times (input of analyze_session)
+      comparison_graph.png           the end-of-run results graph
+      analysis/                      written by analyze_session: report.txt, plot.png, flashes.csv, suppression.json
+      glasses/                       the phone's video + video_sync.json (see "Glasses video" below)
+```
+
+`trials.csv` columns, left to right: **who/what** `phase` (baseline / saccade / rt_test), `trial`; **stimulus** `from`, `to` (`left`/`right`: the two
+symbols of the screen are the left and right dot), `flash_shown`, `contrast_pct`, `line_side` (`above`/`below` the target); **timing** `planned_offset_ms` (the
+flash's offset around the average reaction time), `flash_ms_after_go_cue`, `reaction_ms`, `flash_unix_ms` (PC wall clock of the flash, used by
+`analyze_session`); **response** `answered`, `answer_side` (UP/DOWN key: `above`/`below`), `answer_ms`; **result** `outcome` (correct / wrong / no_answer / false_alarm /
+correct_rejection / detected), `correct`; **quality** `tracking_ok`, `flash_during_saccade`. Booleans are `yes`/`no`. Practice trials are not written.
+The code-side schema is `TRIAL_COLUMNS` in `src/experiment/logger.py`.
+
+Sessions recorded before this layout (loose `data/results_<timestamp>.csv`, `_meta.json`, `_gaze_trace.csv`, with `dot`/`cross` values) are never
+moved or rewritten; the dashboard and `analyze_session` still read them.
 
 ## Analysing a session
 
 ```
-.\scripts\py.ps1 -m src.experiment.analyze_session [timestamp] [--data-dir DIR]
+.\scripts\py.ps1 -m src.experiment.analyze_session [session] [--data-dir DIR]
 ```
 
-Accuracy vs flash time relative to saccade onset (newest session by default); writes a report, plot and per-flash CSV next to the results.
+Accuracy vs flash time relative to saccade onset. `session` is the newest one by default (either layout), or a unix timestamp, a run folder
+name (`2026-10-25_14-03-11`), `participant/folder`, or a path. The report, plot, per-flash CSV and suppression json go to the run's `analysis/` folder
+(old loose-file sessions get `analysis_<timestamp>*` files next to them, as before).
+
+## Glasses video
+
+The Neon phone records the glasses' scene video itself (nothing is streamed to the PC): the experiment starts that recording when the saccade
+phase starts and stops/saves it when the phase ends (`recording` in `session.json` says `started`/`saved`/`failed (reason)`; a failure never stops the session).
+So the phone must show the Companion app with a wearer and workspace selected. To line the video up with the PC clock, a short step before the first
+trial flashes the whole screen **green** three times (150 ms on, 300 ms off; "A green flash will show." is the only spoken line) and once more at the end;
+the PC wall-clock time of every flash is logged in `session.json` (`glasses_video.sync_flashes`). Nothing is added to the trials themselves.
+
+After the session:
+1. Get the recording off the phone: in the Neon Companion app, open the recording and export it (or plug the phone in by USB and copy the
+   recording folder; or download it from Pupil Cloud). You need the scene video as an `.mp4`.
+2. Attach it to the run:
+   ```
+   .\scripts\py.ps1 -m src.experiment.import_glasses_video data\<participant>\<run folder> C:\path\to\exported_scene_video.mp4
+   ```
+   This copies the video into the run's `glasses/` folder, finds the green flashes in it, and writes `glasses/video_sync.json` (clock offset, residual,
+   `ok` or `check manually`) and `glasses/flash_video_times.csv` (where each flash trial is in the video). A PC time `T` (unix ms, e.g. `flash_unix_ms`)
+   is at `T / 1000 - offset_s` seconds into the video.
+
+Not yet verified on real glasses footage: how well the scene camera sees the green flash from the participant's distance, and the frame-rate/clock behaviour of the exported video.
 
 ## Running the tests
 
@@ -78,7 +119,7 @@ Accuracy vs flash time relative to saccade onset (newest session by default); wr
 .\scripts\py.ps1 -m pytest -q
 ```
 
-About 500 tests in ~70 s; no camera, glasses or PsychoPy window needed (fakes for the gaze source and clock). A headless
+About 520 tests in ~60 s; no camera, glasses or PsychoPy window needed (fakes for the gaze source and clock). A headless
 simulator runs whole sessions: see `tests/ai-tests/README.md`.
 
 ## Browsing past sessions
@@ -108,7 +149,7 @@ filter them, adjust the default contrast floor for future runs, delete sessions.
 include/          shared types, enums, constants (no logic)
 src/
   eye_tracking/     gaze sources (Neon default; FLIR Blackfly S + MediaPipe alternative), calibration mapping, traces
-  experiment/       session state machines, staircase, scoring, logging, analysis, run_experiment.py
+  experiment/       session state machines, staircase, scoring, logging (run folders), analysis, glasses-video sync, run_experiment.py
   dashboard/        local Flask app for browsing past sessions
 tests/             pytest suite (tests/ai-tests/ also holds the headless simulator tools)
 ```
