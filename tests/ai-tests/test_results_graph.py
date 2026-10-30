@@ -65,7 +65,10 @@ def test_replay_zest_via_build_comparison_graph_excludes_false_flash_during_sacc
 
 
 def test_build_comparison_graph_writes_a_png(tmp_path):
-    results = [_trial("presaccade", i, 0.05, i % 2 == 0) for i in range(10)]
+    # Both phases, mixed orientations and a flash that missed the saccade, so one render covers the panels.
+    results = [_trial("presaccade", i, 0.05, i % 2 == 0, orientation=Side.ABOVE if i % 2 else Side.BELOW) for i in range(10)]
+    results += [_trial("saccade", 10 + i, 0.1, i % 2 == 0, orientation=Side.BELOW if i % 2 else Side.ABOVE, flash_during_saccade=True) for i in range(10)]
+    results.append(_trial("saccade", 20, 0.9, False, flash_during_saccade=False))
     out = tmp_path / "graph.png"
     path = build_comparison_graph(results, output_path=out)
     assert path == out
@@ -76,13 +79,6 @@ def test_build_comparison_graph_writes_a_png(tmp_path):
 def test_build_comparison_graph_handles_no_results_at_all(tmp_path):
     out = tmp_path / "empty.png"
     build_comparison_graph([], output_path=out)
-    assert out.exists()
-
-
-def test_build_comparison_graph_handles_only_one_phase(tmp_path):
-    results = [_trial("presaccade", i, 0.05, i % 2 == 0) for i in range(10)]
-    out = tmp_path / "one_phase.png"
-    build_comparison_graph(results, output_path=out)
     assert out.exists()
 
 
@@ -109,31 +105,6 @@ def test_build_comparison_graph_ignores_legacy_false_alarm_rows(tmp_path):
     results = [_trial("presaccade", i, 0.05, i % 2 == 0) for i in range(10)]
     results.append(_false_alarm_trial("presaccade", 10))
     out = tmp_path / "false_alarms.png"
-    build_comparison_graph(results, output_path=out)
-    assert out.exists()
-    assert out.stat().st_size > 0
-
-
-def test_build_comparison_graph_handles_flash_not_during_saccade(tmp_path):
-    results = [_trial("saccade", i, 0.1, i % 2 == 0, flash_during_saccade=True) for i in range(10)]
-    results.append(_trial("saccade", 10, 0.9, False, flash_during_saccade=False))
-    out = tmp_path / "flash_not_during_saccade.png"
-    build_comparison_graph(results, output_path=out)
-    assert out.exists()
-    assert out.stat().st_size > 0
-
-
-def test_build_comparison_graph_handles_mixed_orientations(tmp_path):
-    # Regression test for the orientation-accuracy panels: vertical and
-    # horizontal trials mixed together shouldn't crash the new bar charts,
-    # including the per-phase breakdown across both phases.
-    results = [
-        _trial("presaccade", 0, 0.05, True, orientation=Side.ABOVE),
-        _trial("presaccade", 1, 0.05, False, orientation=Side.BELOW),
-        _trial("saccade", 2, 0.1, True, orientation=Side.BELOW),
-        _trial("saccade", 3, 0.1, False, orientation=Side.ABOVE),
-    ]
-    out = tmp_path / "orientations.png"
     build_comparison_graph(results, output_path=out)
     assert out.exists()
     assert out.stat().st_size > 0
