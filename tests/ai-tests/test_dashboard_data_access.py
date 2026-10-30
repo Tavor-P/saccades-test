@@ -220,3 +220,14 @@ def test_delete_session_removes_it_from_discover_sessions(tmp_path, monkeypatch)
     data_access.delete_session("888")
 
     assert [s.timestamp for s in data_access.discover_sessions()] == ["999"]
+
+
+def test_discover_sessions_survives_a_damaged_meta_file_and_a_damaged_trials_row(tmp_path, monkeypatch):
+    monkeypatch.setattr(data_access, "DATA_DIR", tmp_path)
+    _write_session(tmp_path, "1700000100", rows=[_row(phase="presaccade", outcome="correct")])
+    _write_session(tmp_path, "1700000200", rows=[_row(phase="presaccade", outcome="correct"), _row(phase="saccade", trial_index="oops")])
+    (tmp_path / "results_1700000200_meta.json").write_text('{"participant_id": "p1", "start')  # cut off mid-write
+    sessions = {s.timestamp: s for s in data_access.discover_sessions()}
+    assert set(sessions) == {"1700000100", "1700000200"}
+    assert sessions["1700000200"].metadata["participant_id"] is None
+    assert sessions["1700000200"].trial_counts == {}
