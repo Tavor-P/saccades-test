@@ -233,3 +233,15 @@ def test_stopping_the_source_stops_a_recording_left_running():
     source.start_recording()
     source.stop()
     assert device.calls == ["start", "stop", "close"]
+
+
+def test_detector_finds_the_flashes_in_a_long_recording_where_they_are_a_tiny_share_of_the_frames():
+    """A real recording is minutes long; 4 flashes of 5 frames are ~0.1 % of its frames, so the strength reference must come from
+    the strongest few frames, not a fixed percentile of all of them."""
+    n = 20000
+    scores = np.zeros(n)
+    onsets = (600, 614, 628, 15000)
+    for start in onsets:
+        scores[start : start + 5] = 0.5
+    events = gv.detect_flash_events(scores, [i / FPS for i in range(n)])
+    assert [round(e.time_s * FPS) for e in events] == list(onsets)

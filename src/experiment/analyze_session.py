@@ -92,16 +92,23 @@ class Placed:
 # -- loading -------------------------------------------------------------------------------------
 
 
-def load_trace(path: Path, clock_offset_s: float) -> tuple[np.ndarray, np.ndarray]:
-    """(capture times in PC unix seconds, gaze x ratio), strictly increasing, without lost samples."""
+def load_trace(path: Path, clock_offset_s: float, offset_history: list[dict] | None = None) -> tuple[np.ndarray, np.ndarray]:
+    """(capture times in PC unix seconds, gaze x ratio), strictly increasing, without lost samples. With an `offset_history`
+    of two or more {"phone_unix_s", "offset_ms"} entries (session.json gaze_quality.clock_offset_history) the offset is
+    interpolated over the phone-clock time (the clocks drift); otherwise the single `clock_offset_s` applies throughout."""
     times, xs = [], []
     with Path(path).open(newline="") as f:
         for row in csv.DictReader(f):
             if not row.get("x_px") or not row.get("device_unix_s"):
                 continue
-            times.append(float(row["device_unix_s"]) + clock_offset_s)
+            times.append(float(row["device_unix_s"]))
             xs.append(float(row["x_px"]) / NEON_SCENE_WIDTH)
     t, x = np.asarray(times), np.asarray(xs)
+    if offset_history is not None and len(offset_history) >= 2:
+        history = sorted(offset_history, key=lambda h: h["phone_unix_s"])
+        t = t + np.interp(t, [h["phone_unix_s"] for h in history], [h["offset_ms"] / 1000 for h in history])  # held constant beyond the ends
+    else:
+        t = t + clock_offset_s
     keep = np.concatenate(([True], np.diff(t) > 0)) if len(t) else np.asarray([], dtype=bool)
     ok = keep & ~np.isnan(x)
     return t[ok], x[ok]
@@ -117,13 +124,20 @@ def load_flashes(path: Path) -> list[Flash]:
             continue
         shown = float(row["grating_shown_at_unix_ms"]) / 1000
         delay = row.get("scheduled_delay_ms")
+        outcome = row["outcome"]
+        if outcome == "timeout":
+            # The live trial ended on its no-saccade timeout although the line was shown (and maybe answered): score the answer.
+            if row.get("responded") != "True":
+                outcome = "miss"
+            else:
+                outcome = "correct" if row.get("response_orientation") == row.get("orientation") else "incorrect"
         flashes.append(
             Flash(
                 trial=int(row["trial_index"]),
                 time=shown,
                 contrast=float(row["contrast"]),
                 orientation=row.get("orientation", ""),
-                outcome=row["outcome"],
+                outcome=outcome,
                 go_cue=shown - float(delay) / 1000 if delay else None,
             )
         )
@@ -525,12 +539,15 @@ def analyze(
     if ref is None:
         raise FileNotFoundError(f"no session {timestamp!r} found in {data_dir}")
     stamp = ref.key if ref.is_legacy else ref.label
+    offset_history = None
     if clock_offset_ms is None:
         meta = json.loads(ref.meta_path.read_text())
-        clock_offset_ms = (meta.get("gaze_quality") or {}).get("clock_offset_ms")
+        quality = meta.get("gaze_quality") or {}
+        clock_offset_ms = quality.get("clock_offset_ms")
+        offset_history = quality.get("clock_offset_history")
         if clock_offset_ms is None:
             raise ValueError("this session has no clock_offset_ms in its meta file; pass --offset-ms")
-    t, x = load_trace(ref.gaze_trace_path, clock_offset_ms / 1000)
+    t, x = load_trace(ref.gaze_trace_path, clock_offset_ms / 1000, offset_history)
     saccades = detect_saccades(t, x, min_amplitude=min_amplitude)
     flashes = load_flashes(ref.trials_path)
     placed = place_flashes(flashes, saccades, flash_delay_ms)

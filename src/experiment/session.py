@@ -439,22 +439,26 @@ class ExperimentSession:
         log = getattr(self._logger, "set_phase_summary", None)
         if log is None:
             return
-        estimate = self._zest.threshold_estimate
-        lo, hi = self._zest.credible_interval(0.68)
         log_lo, log_hi = self._zest_log_min, ZEST_LOG_CONTRAST_MAX
-        margin = ZEST_GRID_BOUND_MARGIN_LOG
-        at_lower = min(math.log10(estimate), math.log10(lo)) <= log_lo + margin
-        at_upper = max(math.log10(estimate), math.log10(hi)) >= log_hi - margin
+        if self._fixed_contrast_bag is None:
+            estimate = self._zest.threshold_estimate
+            lo, hi = self._zest.credible_interval(0.68)
+            margin = ZEST_GRID_BOUND_MARGIN_LOG
+            at_lower = min(math.log10(estimate), math.log10(lo)) <= log_lo + margin
+            at_upper = max(math.log10(estimate), math.log10(hi)) >= log_hi - margin
+            bound = "lower" if at_lower else "upper" if at_upper else None
+        else:  # constant stimuli: the staircase is never updated, so its "estimate" would just be the prior
+            estimate, lo, hi, bound = None, None, None, None
         log(
             "saccade",
             {
                 "threshold_estimate": estimate,
-                "credible_interval_68": [lo, hi],
+                "credible_interval_68": None if estimate is None else [lo, hi],
                 "valid_trials": self._valid_trial_count,
                 "completed_trials": self._completed_main_trial_count,
                 "hit_max_trial_cap": self._completed_main_trial_count >= self._max_saccade_trials,
                 "zest_grid_log10_range": [log_lo, log_hi],
-                "threshold_at_grid_bound": "lower" if at_lower else "upper" if at_upper else None,
+                "threshold_at_grid_bound": bound,
                 "final_avg_reaction_time_ms": self._avg_reaction_time_ms,
                 "rt_samples_total": self._rt.total_added,
                 "rt_samples_in_window": len(self._rt.samples),
@@ -705,10 +709,10 @@ class ExperimentSession:
 
         grating_shown_count = correct + incorrect + misses
         accuracy = correct / grating_shown_count if grating_shown_count else 0.0
-        return (
-            f"Accuracy: {correct}/{grating_shown_count} ({accuracy:.0%}) | "
-            f"Threshold estimate: {self._zest.threshold_estimate:.1%} contrast"
-        )
+        text = f"Accuracy: {correct}/{grating_shown_count} ({accuracy:.0%})"
+        if self._fixed_contrast_bag is not None:  # constant stimuli: no staircase, so no threshold to report
+            return text
+        return f"{text} | Threshold estimate: {self._zest.threshold_estimate:.1%} contrast"
 
     def _instructions(self) -> str:
         if self._phase is Phase.COMPLETE:
@@ -716,8 +720,7 @@ class ExperimentSession:
         # The answer text is shared by AWAITING_SPACE (after the first trial), FOREPERIOD and TRIAL_ACTIVE
         # so it is spoken once and never flickers or repeats from trial to trial.
         if self._phase is Phase.AWAITING_SPACE:
-            first_trial = self._practice_index + self._main_trial_counter <= 1
-            return "Press SPACE when you are ready." if first_trial else _ANSWER_TEXT
+            return "Press SPACE when you are ready." if self._is_first_trial() else _ANSWER_TEXT
         if self._phase in (Phase.FOREPERIOD, Phase.TRIAL_ACTIVE):
             return _ANSWER_TEXT
         if self._phase in _RT_TEST_PHASES:
@@ -807,8 +810,14 @@ class ExperimentSession:
             },
         }
 
+    def _is_first_trial(self) -> bool:
+        return self._practice_index + self._main_trial_counter <= 1
+
     def _hide_caption(self) -> bool:
-        """True during the real (non-practice) main-block trials: the runner then neither draws nor speaks the bottom caption."""
+        """True during the real (non-practice) main-block trials: the runner then neither draws nor speaks the bottom caption.
+        Not on the very first screen of the block (after the tutorial there are no practice trials), which must say to press SPACE."""
+        if self._phase is Phase.AWAITING_SPACE and self._is_first_trial():
+            return False
         return self._phase in _MAIN_TRIAL_PHASES and not self._current_trial_spec.practice
 
     def _has_trial_label(self) -> bool:

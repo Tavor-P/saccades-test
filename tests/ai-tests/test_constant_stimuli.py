@@ -54,3 +54,36 @@ def test_main_block_stops_by_trial_count_not_by_the_staircase(fake_gaze):
     assert not session._should_stop_main_block()
     session._results = _fake_valid_saccade_results(SACCADE_FIXED_TRIALS_TEST)
     assert session._should_stop_main_block()
+
+
+class _SummaryLogger:
+    def __init__(self):
+        self.summaries = {}
+
+    def log(self, result) -> None:
+        pass
+
+    def set_phase_summary(self, phase, summary) -> None:
+        self.summaries[phase] = summary
+
+
+def test_constant_stimuli_report_no_staircase_threshold(fake_gaze):
+    """The staircase is never updated with fixed contrasts, so its 'estimate' is just the prior and must not be reported as a result."""
+    session = _make_session(fake_gaze, test_mode=True)
+    logger = _SummaryLogger()
+    session._logger = logger
+    session._results = _fake_valid_saccade_results(SACCADE_FIXED_TRIALS_TEST)
+    session._log_phase_summary()
+    summary = logger.summaries["saccade"]
+    assert summary["threshold_estimate"] is None and summary["credible_interval_68"] is None and summary["threshold_at_grid_bound"] is None
+    assert summary["completed_trials"] == SACCADE_FIXED_TRIALS_TEST
+    assert "hreshold" not in session._summary()
+
+
+def test_staircase_mode_still_reports_its_threshold(fake_gaze):
+    session = _make_session(fake_gaze, test_mode=True, fixed_contrasts=())
+    logger = _SummaryLogger()
+    session._logger = logger
+    session._log_phase_summary()
+    assert 0 < logger.summaries["saccade"]["threshold_estimate"] < 1
+    assert "Threshold estimate" in session._summary()

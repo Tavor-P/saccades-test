@@ -815,6 +815,7 @@ def test_hide_caption_only_for_main_block_trials_not_calibration_rt_or_practice(
     _enter_trial_active(session, fake_time)
     assert session.render_state()["hide_caption"] is False  # practice TRIAL_ACTIVE
 
+    session._main_trial_counter = 5  # not the block's first trial (that one's SPACE prompt stays visible)
     _set_single_trial(session, practice=False)
     assert session.render_state()["hide_caption"] is True  # main FOREPERIOD
     _enter_trial_active(session, fake_time)
@@ -879,6 +880,7 @@ def test_practice_trials_keep_a_spoken_caption_while_main_trials_hide_it(fake_ga
     # Combined behaviour of the onboarding wording and the hide_caption flag.
     session = _make_session(fake_gaze)
     _complete_calibration_and_rt_test(session, fake_gaze, fake_time)
+    session._main_trial_counter = 5  # not the block's first trial (that one's SPACE prompt stays visible)
     for practice, hidden in ((True, False), (False, True)):
         _set_single_trial(session, practice=practice)
         for phase in (Phase.AWAITING_SPACE, Phase.FOREPERIOD, Phase.TRIAL_ACTIVE):
@@ -886,3 +888,16 @@ def test_practice_trials_keep_a_spoken_caption_while_main_trials_hide_it(fake_ga
             state = session.render_state()
             assert state["hide_caption"] is hidden
             assert state["instructions"]  # text exists; the runner shows/speaks it unless hidden
+
+
+def test_first_screen_after_the_tutorial_says_to_press_space(fake_gaze):
+    """With the tutorial's calibration and RT samples there are no practice trials, so the first main trial is the first thing on screen:
+    its 'Press SPACE when you are ready' must not be hidden, and later trials' captions are."""
+    session = _make_session(fake_gaze, precomputed_calibration_ratios=(0.2, 0.5, 0.8), precomputed_rt_samples_ms=[250.0, 260.0, 255.0])
+    session.on_space()  # "Press SPACE to begin"
+    state = session.render_state()
+    assert state["hud"]["phase"] == "AWAITING_SPACE"
+    assert state["instructions"] == "Press SPACE when you are ready."
+    assert state["hide_caption"] is False
+    session.on_space()  # FOREPERIOD: caption (the answer keys) is hidden again from here on
+    assert session.render_state()["hide_caption"] is True

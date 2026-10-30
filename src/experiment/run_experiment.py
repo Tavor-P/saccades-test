@@ -508,41 +508,49 @@ def run_saccade_phase(
     # Raw gaze is recorded alongside the results CSV (Neon only) so the session can be replayed offline.
     gaze = build_gaze_source(gaze_backend, camera_index, trace_path=logger.gaze_trace_path)
     gaze.start()
-    recording_started = _start_glasses_recording(gaze, logger)
-    # Neon has no latest_frame() (gaze only, no Mono8 camera feed), so video + preview are webcam-only.
-    has_frames = hasattr(gaze, "latest_frame")
-    video_recorder = (
-        VideoRecorder(logger.video_path, logger.video_timestamps_path, gaze) if record_video and has_frames else None
-    )
-    if video_recorder is not None:
-        video_recorder.start()
-    clock = PausableClock()
-    session = ExperimentSession(
-        gaze,
-        logger=logger,
-        clock=clock,
-        contrast_floor=contrast_floor,
-        show_gaze_indicator=show_gaze_indicator,
-        test_mode=test_mode,
-        precomputed_calibration_ratios=precomputed_calibration_ratios,
-        skip_practice_trials=skip_practice_trials,
-        precomputed_rt_samples_ms=precomputed_rt_samples_ms,
-        fixed_contrasts=saccade_contrasts,
-    )
-    go_cue_tone = build_go_cue_tone()
+    recording_started = False
+    video_recorder = None
+    try:  # a failure before the main loop must still stop the phone recording (gaze.stop() does) and the video recorder
+        recording_started = _start_glasses_recording(gaze, logger)
+        # Neon has no latest_frame() (gaze only, no Mono8 camera feed), so video + preview are webcam-only.
+        has_frames = hasattr(gaze, "latest_frame")
+        video_recorder = (
+            VideoRecorder(logger.video_path, logger.video_timestamps_path, gaze) if record_video and has_frames else None
+        )
+        if video_recorder is not None:
+            video_recorder.start()
+        clock = PausableClock()
+        session = ExperimentSession(
+            gaze,
+            logger=logger,
+            clock=clock,
+            contrast_floor=contrast_floor,
+            show_gaze_indicator=show_gaze_indicator,
+            test_mode=test_mode,
+            precomputed_calibration_ratios=precomputed_calibration_ratios,
+            skip_practice_trials=skip_practice_trials,
+            precomputed_rt_samples_ms=precomputed_rt_samples_ms,
+            fixed_contrasts=saccade_contrasts,
+        )
+        go_cue_tone = build_go_cue_tone()
 
-    aspect = stimuli["aspect"]
-    preview_width = CAMERA_PREVIEW_HEIGHT * CAMERA_PREVIEW_FRAME_ASPECT
-    preview_pos = (
-        -aspect / 2 + preview_width / 2 + CAMERA_PREVIEW_MARGIN,
-        0.5 - CAMERA_PREVIEW_HEIGHT / 2 - CAMERA_PREVIEW_MARGIN,
-    )
-    camera_preview = visual.ImageStim(
-        win, size=(preview_width, CAMERA_PREVIEW_HEIGHT), pos=preview_pos, units="height"
-    )
+        aspect = stimuli["aspect"]
+        preview_width = CAMERA_PREVIEW_HEIGHT * CAMERA_PREVIEW_FRAME_ASPECT
+        preview_pos = (
+            -aspect / 2 + preview_width / 2 + CAMERA_PREVIEW_MARGIN,
+            0.5 - CAMERA_PREVIEW_HEIGHT / 2 - CAMERA_PREVIEW_MARGIN,
+        )
+        camera_preview = visual.ImageStim(
+            win, size=(preview_width, CAMERA_PREVIEW_HEIGHT), pos=preview_pos, units="height"
+        )
 
-    presenter = FramePresenter(stimuli, narrator)
-    last_phase = None
+        presenter = FramePresenter(stimuli, narrator)
+        last_phase = None
+    except BaseException:
+        if video_recorder is not None:
+            video_recorder.stop()
+        gaze.stop()
+        raise
 
     try:
         if recording_started:  # its own short step before the first screen/trial; SPACE pressed meanwhile is discarded (and counted) below
