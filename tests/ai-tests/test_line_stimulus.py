@@ -33,7 +33,7 @@ from test_tutorial_session import _complete_calibration
 from test_tutorial_session import _make_session as _make_tutorial
 from test_tutorial_session import _reach_practice, _start_attempt
 
-pytestmark = pytest.mark.usefixtures("scheduled_flash_mode")
+pytestmark = pytest.mark.usefixtures("staircase_no_jitter")
 
 
 def test_side_enum_is_above_and_below_only():
