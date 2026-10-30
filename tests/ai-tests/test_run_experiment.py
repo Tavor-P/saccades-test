@@ -230,3 +230,23 @@ def test_apply_render_state_draws_the_hud_only_when_show_hud_is_set():
     stimuli.pop("show_hud")  # absent flag (default) = hidden
     apply_render_state(_render_state_for_fade_test(snap=False, dot_visible=False), stimuli, fades, dt=0.016)
     assert stimuli["hud"].opacity == 0.0
+
+
+def test_a_failure_while_setting_up_the_saccade_phase_still_stops_the_gaze_source():
+    """The phone recording is started before the main loop; if building the session (or the tone, preview...) raises, the gaze
+    source - whose stop() ends the recording - must still be stopped."""
+    import pytest
+
+    from src.experiment import run_experiment
+
+    gaze = MagicMock()
+    gaze.start_recording.return_value = {"recording": "started"}
+    del gaze.latest_frame  # Neon: no camera frames
+    logger = MagicMock()
+    with patch.object(run_experiment, "build_gaze_source", return_value=gaze), patch.object(
+        run_experiment, "ExperimentSession", side_effect=RuntimeError("boom")
+    ):
+        with pytest.raises(RuntimeError, match="boom"):
+            run_experiment.run_saccade_phase(MagicMock(), {"aspect": 1.6}, logger, MagicMock())
+    gaze.start_recording.assert_called_once()
+    gaze.stop.assert_called_once()
