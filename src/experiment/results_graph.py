@@ -26,14 +26,6 @@ _ORIENTATION_COLORS = {
     Side.BELOW: "#8172B2",
 }
 
-# False alarms (responded on a catch trial, where no grating was ever shown)
-# have no real contrast to plot on the x-axis, so they're placed at a fixed
-# spot near the low edge of the log-scaled axis - purely a "no stimulus was
-# actually shown here" marker - in a color distinct from every phase's
-# correct/incorrect scatter so they can't be mistaken for real detections.
-FALSE_ALARM_DISPLAY_CONTRAST_PERCENT = 0.15
-FALSE_ALARM_COLOR = "black"
-
 _Replay = tuple[ZestStaircase, list[TrialResult]]
 
 
@@ -52,8 +44,8 @@ def _exclude_flashes_not_during_saccade(results: list[TrialResult]) -> list[Tria
     undeterminable - see TrialResult.flash_during_saccade), which is just as
     unusable for analysis as an explicit False.
 
-    flash_during_saccade is left alone (not excluded) for presaccade rows,
-    catch trials, and rt_test rows - all of which are always None here since
+    flash_during_saccade is left alone (not excluded) for presaccade rows
+    and rt_test rows - all of which are always None here since
     nothing ever flashes on them - so this never touches those, only
     saccade-phase rows where a grating was actually shown."""
     return [
@@ -127,20 +119,6 @@ def _plot_psychometric_curves(ax, replays: dict[str, _Replay], results: list[Tri
         trial_correct = np.array([100 if t.outcome == "correct" else 0 for t in trials], dtype=float)
         jitter = rng.uniform(-3, 3, size=len(trials))
         ax.scatter(trial_contrasts, trial_correct + jitter, color=style["color"], alpha=0.4, s=18)
-
-    catch_trials = [r for r in results if not r.grating_shown]
-    false_alarms = [r for r in catch_trials if r.outcome == "false_alarm"]
-    if false_alarms:
-        y_jitter = rng.uniform(-3, 3, size=len(false_alarms))
-        ax.scatter(
-            [FALSE_ALARM_DISPLAY_CONTRAST_PERCENT] * len(false_alarms),
-            100 + y_jitter,
-            color=FALSE_ALARM_COLOR,
-            marker="x",
-            alpha=0.7,
-            s=30,
-            label=f"False alarm ({len(false_alarms)}/{len(catch_trials)})",
-        )
 
     shown_trials = [r for r in results if r.grating_shown and r.outcome in ("correct", "incorrect", "miss")]
     if shown_trials:

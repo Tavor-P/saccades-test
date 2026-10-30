@@ -140,7 +140,7 @@ Paths in this section are checked by `tests/test_docs.py` - keep them real.
 | `src/experiment/space_input.py` | SPACE bookkeeping with no PsychoPy: `CalibrationLatch` (a calibration press made before the gaze window is full is latched and completed in `tick()`), `NarrationKeyGate` (tutorial: a press during narration is delivered after it), `SpaceTally` (ignored presses per phase + reason), `deliver_space`, `leaves_complete_screen` |
 | `src/experiment/session_schedule.py` | `phase_order`: baseline/saccade order counterbalanced by participant ID |
 | `src/timebase.py` | the ONE time source: `now()` = `time.perf_counter()`; wall-clock via an edge-synchronised anchor (`unix_now()`, `unix_ms()`) |
-| `src/experiment/trial_factory.py` | builds trial sequences |
+| `src/experiment/trial_factory.py` | builds trial sequences; every trial flashes (catch trials / false alarms were removed - old sessions may still contain them, their `false_alarm`/`correct_rejection` outcome words stay readable) |
 | `src/experiment/zest.py` | adaptive contrast staircase |
 | `src/experiment/logger.py` | `ResultLogger` writes one run folder: `trials.csv` (schema = `TRIAL_COLUMNS`, plain names; `DROPPED_FROM_CSV` lists the `TrialResult` fields left out and why), `session.json` (sections participant/run/settings/hardware/results/gaze_quality/ignored_space_presses/glasses_video), side-file paths; `read_trial_rows`/`read_trials` read BOTH the new and the old layout |
 | `src/experiment/session_files.py` | run-folder naming (`sanitize_participant_id`, `create_session_folder`), `SessionRef`, `list_sessions`/`find_session`/`newest_session` over the new and the old loose-file layout (a session's key is its unix start time) |

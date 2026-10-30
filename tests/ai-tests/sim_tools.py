@@ -110,7 +110,6 @@ def summarize(sim: SimulationResult) -> dict:
     """One flat, JSON-friendly dict of what matters about a run."""
     rows = sim.saccade_results
     flashes = [r for r in rows if r.grating_shown]
-    catches = [r for r in rows if not r.grating_shown]
     valid = [r for r in flashes if is_valid_for_saccadic_analysis(r.flash_during_saccade, r.tracking_ok)]
     valid_indices = {r.index for r in valid}
     truly_in = [r for r in flashes if sim.flash_truth.get((r.phase, r.index)) is True]
@@ -133,7 +132,6 @@ def summarize(sim: SimulationResult) -> dict:
         },
         "tracking_not_ok": sum(r.tracking_ok is False for r in flashes),
         "timeouts": sum(r.outcome == "timeout" for r in rows),
-        "false_alarm_rate": round(sum(r.outcome == "false_alarm" for r in catches) / len(catches), 3) if catches else None,
         "mean_reaction_latency_ms": _mean([r.reaction_latency_ms for r in rows]),
         "mean_onset_detection_lag_ms": _mean([r.onset_detection_lag_ms for r in rows]),
         "zest_threshold_estimate": round(sim.session._zest.threshold_estimate, 4),
@@ -165,7 +163,7 @@ def run(scenario: str = "default", trials: int = 30, seed: int = 0, profile: dic
 
 SWEEP_METRICS = (
     "valid_flash_rate", "valid_precision", "valid_recall", "mean_reaction_latency_ms",
-    "mean_onset_detection_lag_ms", "false_alarm_rate", "zest_threshold_estimate", "tracking_not_ok", "timeouts",
+    "mean_onset_detection_lag_ms", "zest_threshold_estimate", "tracking_not_ok", "timeouts",
     "avg_rt_bias_ms", "avg_rt_abs_err_ms", "avg_rt_abs_err_vs_trial_ms",
 )
 

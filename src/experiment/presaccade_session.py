@@ -32,7 +32,7 @@ class Phase(Enum):
     WAITING_TO_START = auto()
     AWAITING_SPACE = auto()  # between trials: the participant presses SPACE when ready for the next one
     FOREPERIOD = auto()  # 500-1000 ms after SPACE, fixating center, before the flash-or-not moment
-    FLASH_WINDOW = auto()  # flash (or catch) has fired; response window open
+    FLASH_WINDOW = auto()  # flash has fired; response window open
     COMPLETE = auto()
 
 
@@ -77,8 +77,8 @@ class FixationGate:
 
 class PresaccadeSession:
     """Baseline (non-saccade) contrast detection: fixate the center dot the
-    whole time; after a foreperiod, a grating flashes (or not, on catch
-    trials); score a yes/no button response. No eye tracking involved at all -
+    whole time; after a foreperiod, a grating flashes; score the
+    orientation answer. No eye tracking involved at all -
     this measures detection accuracy without any saccade in the mix, for
     comparison against the saccade-phase results. Contrast is picked trial by
     trial by its own ZEST staircase (see src.experiment.zest), run
@@ -209,11 +209,10 @@ class PresaccadeSession:
             trial = self._current_trial()
             self._response_window_open = True
             self._response_deadline = now + RESPONSE_WINDOW_MS / 1000
-            if trial.grating_shown:
-                self._trial_contrast = PRACTICE_CONTRAST if trial.practice else self._zest.next_contrast()
-                self._grating_shown_at = now
-                self._grating_visible = True
-                self._grating_frames_remaining = GRATING_DURATION_FRAMES
+            self._trial_contrast = PRACTICE_CONTRAST if trial.practice else self._zest.next_contrast()
+            self._grating_shown_at = now
+            self._grating_visible = True
+            self._grating_frames_remaining = GRATING_DURATION_FRAMES
             self._phase = Phase.FLASH_WINDOW
 
     def _tick_flash_window(self) -> None:
@@ -232,7 +231,7 @@ class PresaccadeSession:
 
     def _finish_trial(self) -> None:
         trial = self._current_trial()
-        outcome = score_outcome(trial.grating_shown, self._responded, self._response_orientation, trial.orientation)
+        outcome = score_outcome(self._responded, self._response_orientation, trial.orientation)
 
         if not trial.practice:
             # "miss" (no response within the window) counts as a non-detection
@@ -240,7 +239,7 @@ class PresaccadeSession:
             # identical change for why, and results_graph.py's replay, which
             # already treated misses this way when rebuilding the staircase
             # from the logged CSV.
-            if trial.grating_shown and outcome in ("correct", "incorrect", "miss"):
+            if outcome in ("correct", "incorrect", "miss"):
                 self._zest.update(self._trial_contrast, detected=outcome == "correct")
 
             result = TrialResult(
@@ -249,9 +248,9 @@ class PresaccadeSession:
                 source=None,
                 target=None,
                 saccade_duration_ms=None,
-                grating_shown=trial.grating_shown,
+                grating_shown=True,
                 contrast=self._trial_contrast,
-                orientation=trial.orientation if trial.grating_shown else None,
+                orientation=trial.orientation,
                 responded=self._responded,
                 response_orientation=self._response_orientation,
                 response_time_ms=self._response_time_ms,

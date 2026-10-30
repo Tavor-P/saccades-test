@@ -89,7 +89,7 @@ def _complete_calibration_and_rt_test(session, fake_gaze, fake_time, reaction_ti
     """Ends at the first practice/main trial's AWAITING_SPACE, with
     session._avg_reaction_time_ms == reaction_time_s * 1000 - override
     session._current_trial_spec afterward for tests that need a specific
-    trial (source/target/grating_shown/orientation/practice)."""
+    trial (source/target/orientation/practice)."""
     _complete_calibration(session)
     _complete_rt_test(session, fake_gaze, fake_time, reaction_time_s)
 
@@ -139,7 +139,7 @@ def _set_single_trial(session, **kwargs) -> None:
     visibility (set at foreperiod-start from the current trial's source -
     see ExperimentSession._begin_foreperiod) reflects this trial, not
     whatever was auto-generated before it."""
-    defaults = dict(index=0, source=Target.DOT, target=Target.CROSS, grating_shown=True, orientation=Side.ABOVE)
+    defaults = dict(index=0, source=Target.DOT, target=Target.CROSS, orientation=Side.ABOVE)
     defaults.update(kwargs)
     session._current_trial_spec = TrialSpec(**defaults)
     session._begin_foreperiod()
@@ -455,41 +455,6 @@ def test_invalid_trial_does_not_update_zest(fake_gaze, fake_time):
     assert session._valid_trial_count == 0
 
 
-def test_false_alarm_does_not_update_zest(fake_gaze, fake_time):
-    session = _make_session(fake_gaze)
-    _complete_calibration_and_rt_test(session, fake_gaze, fake_time)
-    _set_single_trial(session, grating_shown=False, orientation=None)
-    _enter_trial_active(session, fake_time)
-    initial_threshold = session._zest.threshold_estimate
-
-    _trigger_onset_and_landing(session, fake_gaze, fake_time, GazeZone.RIGHT)
-    session.on_response_key(Side.ABOVE)  # guess during the response window even though nothing was shown
-    session.tick()
-
-    assert len(_saccade_results(session)) == 1
-    result = _saccade_results(session)[0]
-    assert result.outcome == "false_alarm"
-    assert result.grating_shown is False
-    assert session._zest.threshold_estimate == initial_threshold
-
-
-def test_correct_rejection_does_not_update_zest(fake_gaze, fake_time):
-    session = _make_session(fake_gaze)
-    _complete_calibration_and_rt_test(session, fake_gaze, fake_time)
-    _set_single_trial(session, grating_shown=False, orientation=None)
-    _enter_trial_active(session, fake_time)
-    initial_threshold = session._zest.threshold_estimate
-
-    _trigger_onset_and_landing(session, fake_gaze, fake_time, GazeZone.RIGHT)
-    fake_time(RESPONSE_WINDOW_MS / 1000 + 0.1)
-    session.tick()
-
-    assert len(_saccade_results(session)) == 1
-    result = _saccade_results(session)[0]
-    assert result.outcome == "correct_rejection"
-    assert session._zest.threshold_estimate == initial_threshold
-
-
 def test_incorrect_orientation_is_still_scored_correctly(fake_gaze, fake_time):
     session = _make_session(fake_gaze)
     _complete_calibration_and_rt_test(session, fake_gaze, fake_time)
@@ -553,7 +518,7 @@ def test_source_symbol_hides_the_instant_the_target_appears(fake_gaze, fake_time
     # the target's flips on, not wait for gaze to land on the target.
     session = _make_session(fake_gaze)
     _complete_calibration_and_rt_test(session, fake_gaze, fake_time)
-    _set_single_trial(session, grating_shown=False, orientation=None)
+    _set_single_trial(session)
     assert session.render_state()["dot"]["visible"] is True  # source lit during the foreperiod
 
     _enter_trial_active(session, fake_time)
@@ -565,12 +530,12 @@ def test_source_symbol_hides_the_instant_the_target_appears(fake_gaze, fake_time
 # -- rolling reaction-time average ---------------------------------------------
 
 
-def _run_catch_trial_with_reaction_time(session, fake_gaze, fake_time, index: int, reaction_time_s: float) -> None:
-    """A catch trial (no grating, so no orientation-response bookkeeping
+def _run_trial_with_reaction_time(session, fake_gaze, fake_time, index: int, reaction_time_s: float) -> None:
+    """A flash trial answered by nobody (so no orientation-response bookkeeping
     needed) whose gaze departs the source at a controlled, deliberate delay
     after target onset - unlike _trigger_onset_and_landing, which only cares
     about clearing the debounce windows as fast as possible."""
-    _set_single_trial(session, index=index, grating_shown=False, orientation=None)
+    _set_single_trial(session, index=index)
     _enter_trial_active(session, fake_time)
     fake_time(reaction_time_s)
     fake_gaze.zone = GazeZone.CENTER
@@ -579,13 +544,13 @@ def _run_catch_trial_with_reaction_time(session, fake_gaze, fake_time, index: in
     session.tick()  # onset fires at ~reaction_time_s
     delay = session._flash_scheduled_at - session._clock.now()
     fake_time(max(delay, 0.0) + 0.001)
-    session.tick()  # scheduled flash (catch: no grating) decides, response window opens
+    session.tick()  # scheduled flash decides, response window opens
     fake_gaze.zone = GazeZone.RIGHT
     session.tick()
     fake_time(GAZE_LANDING_STABILITY_MS / 1000 + 0.01)
     session.tick()  # lands
     fake_time(RESPONSE_WINDOW_MS / 1000 + 0.1)
-    session.tick()  # window closes, no response given -> finalizes as correct_rejection
+    session.tick()  # window closes, no response given -> finalizes as a miss
 
 
 def test_rt_test_attempts_feed_the_rolling_window(fake_gaze, fake_time):
@@ -603,10 +568,9 @@ def test_average_updates_at_every_detected_eye_movement_and_the_next_trial_uses_
     for i in range(NUM_RT_TEST_TRIALS_TEST + 2):  # the participant slows down to 300 ms
         before = session._avg_reaction_time_ms
         total_before = session._rt.total_added
-        _run_catch_trial_with_reaction_time(session, fake_gaze, fake_time, i, reaction_time_s=0.3)
+        _run_trial_with_reaction_time(session, fake_gaze, fake_time, i, reaction_time_s=0.3)
         row = _saccade_results(session)[-1]
-        assert session._rt.total_added == total_before + 1  # even though a catch trial is never a valid flash
-        assert row.flash_during_saccade is not True
+        assert session._rt.total_added == total_before + 1
         assert row.avg_rt_used_ms == pytest.approx(before)  # the running trial kept the schedule it started with
         assert row.reaction_latency_ms == pytest.approx(300.0)
         averages.append(session._avg_reaction_time_ms)
@@ -614,7 +578,7 @@ def test_average_updates_at_every_detected_eye_movement_and_the_next_trial_uses_
     assert 200.0 < averages[NUM_RT_TEST_TRIALS_TEST - 1] < 300.0  # moves before the window is full of slow trials
     assert averages[-1] == pytest.approx(300.0)
 
-    _set_single_trial(session, index=99, grating_shown=False, orientation=None)
+    _set_single_trial(session, index=99)
     _enter_trial_active(session, fake_time)
     assert session._trial_avg_rt_ms == pytest.approx(averages[-1])  # the next trial is scheduled from the new average
 
@@ -623,7 +587,7 @@ def test_a_trial_without_a_detected_saccade_adds_no_sample(fake_gaze, fake_time)
     session = _make_session(fake_gaze, test_mode=True)
     _complete_calibration_and_rt_test(session, fake_gaze, fake_time, reaction_time_s=0.2)
     total = session._rt.total_added
-    _set_single_trial(session, index=0, grating_shown=False, orientation=None)
+    _set_single_trial(session, index=0)
     _enter_trial_active(session, fake_time)
     fake_time(SACCADE_TIMEOUT_MS / 1000 + 0.5)
     session.tick()
@@ -633,10 +597,10 @@ def test_a_trial_without_a_detected_saccade_adds_no_sample(fake_gaze, fake_time)
 def test_the_window_rolls_and_a_stray_latency_does_not_move_the_average(fake_gaze, fake_time):
     session = _make_session(fake_gaze, test_mode=True)
     _complete_calibration_and_rt_test(session, fake_gaze, fake_time, reaction_time_s=0.2)
-    _run_catch_trial_with_reaction_time(session, fake_gaze, fake_time, 0, reaction_time_s=0.9)  # a lapse
+    _run_trial_with_reaction_time(session, fake_gaze, fake_time, 0, reaction_time_s=0.9)  # a lapse
     assert session._avg_reaction_time_ms == pytest.approx(200.0)
     for i in range(RT_AVERAGE_ROLLING_WINDOW):
-        _run_catch_trial_with_reaction_time(session, fake_gaze, fake_time, 1 + i, reaction_time_s=0.25)
+        _run_trial_with_reaction_time(session, fake_gaze, fake_time, 1 + i, reaction_time_s=0.25)
     assert len(session._rt.samples) == RT_AVERAGE_ROLLING_WINDOW  # old samples rolled out
     assert session._avg_reaction_time_ms == pytest.approx(250.0)
 
@@ -655,11 +619,11 @@ def test_render_state_snaps_symbols_during_rt_test_and_trials_but_not_calibratio
 # -- stopping criterion ---------------------------------------------------------
 
 
-def _run_valid_catch_trial(session, fake_gaze, fake_time, index: int) -> None:
-    """A quick, always-valid (flash_during_saccade True) catch trial, purely
+def _run_valid_trial(session, fake_gaze, fake_time, index: int) -> None:
+    """A quick, always-valid (flash_during_saccade True) unanswered trial, purely
     to drive session._completed_main_trial_count/_valid_trial_count forward
     without needing a real orientation response."""
-    _set_single_trial(session, index=index, grating_shown=False, orientation=None)
+    _set_single_trial(session, index=index)
     _enter_trial_active(session, fake_time)
     _trigger_onset_and_landing(session, fake_gaze, fake_time, GazeZone.RIGHT)
     fake_time(RESPONSE_WINDOW_MS / 1000 + 0.1)
@@ -670,7 +634,7 @@ def test_main_block_does_not_stop_before_the_minimum_valid_trial_floor(fake_gaze
     session = _make_session(fake_gaze, test_mode=True)
     _complete_calibration_and_rt_test(session, fake_gaze, fake_time)
     for i in range(session._min_valid_trials - 1):
-        _run_valid_catch_trial(session, fake_gaze, fake_time, i)
+        _run_valid_trial(session, fake_gaze, fake_time, i)
     assert session.render_state()["hud"]["phase"] != "COMPLETE"
 
 
@@ -679,7 +643,7 @@ def test_main_block_stops_once_the_max_trial_cap_is_hit_even_with_a_wide_interva
     session._min_valid_trials = 0  # isolate the max-cap behavior from the credible-interval check
     _complete_calibration_and_rt_test(session, fake_gaze, fake_time)
     for i in range(session._max_saccade_trials):
-        _run_valid_catch_trial(session, fake_gaze, fake_time, i)
+        _run_valid_trial(session, fake_gaze, fake_time, i)
     assert session.render_state()["hud"]["phase"] == "COMPLETE"
 
 
@@ -802,7 +766,7 @@ def test_render_state_reports_the_main_trial_counter(fake_gaze, fake_time):
     _complete_calibration_and_rt_test(session, fake_gaze, fake_time)
     first_counter = session.render_state()["hud"]["trial_index"]
 
-    _set_single_trial(session, grating_shown=False, orientation=None)
+    _set_single_trial(session)
     _enter_trial_active(session, fake_time)
     fake_time(SACCADE_TIMEOUT_MS / 1000 + 0.1)
     session.tick()  # timeout - finalizes, advances to the next dynamically-generated trial

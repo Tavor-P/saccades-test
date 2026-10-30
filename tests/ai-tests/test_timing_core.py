@@ -212,7 +212,7 @@ def test_saccade_duration_is_landing_minus_onset(fake_gaze, fake_time):
     gaze.gaze_latency_ms = 0.0
     session = _make_session(gaze)
     _complete_calibration_and_rt_test(session, gaze, fake_time)
-    _set_single_trial(session, grating_shown=False)
+    _set_single_trial(session)
     _enter_trial_active(session, fake_time)
     start = session._trial_start_time
 
@@ -262,19 +262,6 @@ def test_trial_rows_log_the_scheduling_inputs_and_flash_relative_to_onset(fake_g
     assert row.scheduled_delay_ms == pytest.approx(220.0)
     assert row.gaze_latency_ms == pytest.approx(20.0)
     assert row.flash_relative_to_onset_ms is not None
-
-
-def test_catch_trial_has_no_flash_relative_to_onset(fake_gaze, fake_time):
-    session = _make_session(fake_gaze)
-    _complete_calibration_and_rt_test(session, fake_gaze, fake_time)
-    _set_single_trial(session, grating_shown=False)
-    _enter_trial_active(session, fake_time)
-    _trigger_onset_and_landing(session, fake_gaze, fake_time, GazeZone.RIGHT)
-    fake_time(RESPONSE_WINDOW_MS / 1000 + 0.1)
-    session.tick()
-    row = _saccade_results(session)[0]
-    assert row.flash_relative_to_onset_ms is None
-    assert row.avg_rt_used_ms is not None
 
 
 # -- _meta.json ---------------------------------------------------------------------

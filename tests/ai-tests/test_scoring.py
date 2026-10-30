@@ -5,7 +5,6 @@ from src.experiment.scoring import score_outcome
 def test_correct_when_response_orientation_matches():
     assert (
         score_outcome(
-            grating_shown=True,
             responded=True,
             response_orientation=Side.ABOVE,
             actual_orientation=Side.ABOVE,
@@ -17,7 +16,6 @@ def test_correct_when_response_orientation_matches():
 def test_incorrect_when_response_orientation_does_not_match():
     assert (
         score_outcome(
-            grating_shown=True,
             responded=True,
             response_orientation=Side.BELOW,
             actual_orientation=Side.ABOVE,
@@ -29,21 +27,17 @@ def test_incorrect_when_response_orientation_does_not_match():
 def test_miss_when_grating_shown_but_no_response():
     assert (
         score_outcome(
-            grating_shown=True, responded=False, response_orientation=None, actual_orientation=Side.ABOVE
+            responded=False, response_orientation=None, actual_orientation=Side.ABOVE
         )
         == "miss"
     )
 
 
-def test_false_alarm():
-    assert (
-        score_outcome(grating_shown=False, responded=True, response_orientation=Side.BELOW, actual_orientation=None)
-        == "false_alarm"
-    )
-
-
-def test_correct_rejection():
-    assert (
-        score_outcome(grating_shown=False, responded=False, response_orientation=None, actual_orientation=None)
-        == "correct_rejection"
-    )
+def test_every_outcome_is_a_flash_outcome():
+    # No catch trials any more: scoring only ever yields correct / incorrect / miss.
+    outcomes = {
+        score_outcome(responded, answer, Side.ABOVE)
+        for responded in (True, False)
+        for answer in (None, Side.ABOVE, Side.BELOW)
+    }
+    assert outcomes == {"correct", "incorrect", "miss"}

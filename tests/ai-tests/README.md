@@ -53,7 +53,7 @@ Constants are overridden temporarily (restored afterwards).
   dominated by the trial-to-trial SD, which no average can remove). In Python: `sim.cues` (every go-cue incl. RT test and
   practice, as `CueRecord(t, phase, cue_index, latency_ms, true_mean_ms, kind)`; kind is normal/anticipation/lapse) and
   `sim.trial_cues[(phase, index)]` for each logged saccade-phase row, next to `sim.flash_truth`.
-- `tracking_not_ok`, `timeouts`, `false_alarm_rate`, `zest_threshold_estimate`, `outcomes`.
+- `tracking_not_ok`, `timeouts`, `zest_threshold_estimate`, `outcomes`.
 
 ## Reaction-time realism
 

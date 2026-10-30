@@ -29,7 +29,7 @@ def test_one_trial_completes_with_a_logged_result():
     sim = simulate_trial(seed=0)
     assert len(sim.saccade_results) == 1
     result = sim.saccade_results[0]
-    assert result.outcome in {"correct", "incorrect", "miss", "false_alarm", "correct_rejection", "timeout"}
+    assert result.outcome in {"correct", "incorrect", "miss", "timeout"}
     assert result.reaction_latency_ms is not None  # classifier saw the saccade
     assert any("go-cue" in text for _, text in sim.events)
 
@@ -65,3 +65,12 @@ def test_tracking_dropouts_get_flagged_as_not_ok():
     assert any(r.tracking_ok is False for r in sim.saccade_results)
     clean = simulate_session(max_trials=25, seed=3)
     assert all(r.tracking_ok is not False for r in clean.saccade_results)
+
+
+@pytest.mark.parametrize("seed", range(6))
+def test_no_catch_trials_every_simulated_trial_flashes(seed):
+    sim = simulate_session(max_trials=12, seed=seed, skip_practice_trials=False)
+    rows = [r for r in sim.saccade_results if r.phase == "saccade"]
+    assert len(rows) >= 12
+    assert all(r.grating_shown for r in rows)
+    assert not any(r.outcome in ("false_alarm", "correct_rejection") for r in rows)

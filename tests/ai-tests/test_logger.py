@@ -155,3 +155,15 @@ def test_glasses_video_block_records_recording_and_sync_flashes(tmp_path, monkey
     block = _meta(tmp_path)["glasses_video"]
     assert block["recording"] == "started" and block["recording_id"] == "abc"
     assert block["sync_flashes"] == [{"label": "start 1", "pc_unix_ms": 1_700_000_000_000.0}, {"label": "start 2", "pc_unix_ms": 1_700_000_000_450.0}]
+
+
+def test_old_catch_trial_outcome_words_still_load(tmp_path, monkeypatch):
+    # Sessions recorded before catch trials were removed hold false_alarm / correct_rejection rows.
+    log = _make_logger(tmp_path, monkeypatch)
+    log.log(_trial(index=0, grating_shown=False, contrast=None, orientation=None, outcome="false_alarm"))
+    log.log(_trial(index=1, grating_shown=False, contrast=None, orientation=None, outcome="correct_rejection", responded=False, response_orientation=None))
+    log.close()
+    run = next(tmp_path.glob("*/*/trials.csv"))
+    rows = logger_module.read_trials(run)
+    assert [r.outcome for r in rows] == ["false_alarm", "correct_rejection"]
+    assert not any(r.grating_shown for r in rows)
