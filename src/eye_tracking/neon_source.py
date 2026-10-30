@@ -62,6 +62,7 @@ class NeonGazeSource(GazeSource):
         self._thread: threading.Thread | None = None
         # Session quality bookkeeping (see quality_summary()) - all guarded by _lock.
         self._clock_offset_ms: float | None = None
+        self._offset_history: list[dict] = []  # every offset in force, with the phone-clock time it applies from (see _note_offset)
         self._anchor = timebase.measure_anchor()  # pairs with _clock_offset_ms; refreshed together (phone/PC clocks drift)
         self._offset_stop = threading.Event()
         self._offset_thread: threading.Thread | None = None
@@ -156,6 +157,13 @@ class NeonGazeSource(GazeSource):
             self._clock_offset_std_ms = std_ms
             self._roundtrip_ms = roundtrip_ms
             self._anchor = anchor
+            self._note_offset()
+
+    def _note_offset(self) -> None:
+        """Remembers the offset now in force and the phone-clock time (PC unix time minus the offset) it was measured at: the two clocks drift
+        apart (~1 ms/min), so the post-hoc analysis interpolates over this history instead of applying the final offset to the whole trace.
+        Caller holds self._lock (or is single-threaded)."""
+        self._offset_history.append({"phone_unix_s": round(timebase.unix_now() - self._clock_offset_ms / 1000, 3), "offset_ms": round(self._clock_offset_ms, 3)})
 
     def _start_offset_thread(self) -> None:
         if NEON_CLOCK_REESTIMATE_S and self._clock_offset_ms is not None:
@@ -187,6 +195,7 @@ class NeonGazeSource(GazeSource):
                 self._clock_offset_std_ms = std_ms
                 self._roundtrip_ms = roundtrip_ms
                 self._anchor = anchor
+                self._note_offset()
 
     @property
     def timestamps_are_capture_time(self) -> bool:
@@ -299,6 +308,7 @@ class NeonGazeSource(GazeSource):
                 "longest_gap_ms": round(self._longest_gap_ms, 1),
                 "clock_offset_ms": self._clock_offset_ms,
                 "clock_offset_std_ms": self._clock_offset_std_ms,
+                "clock_offset_history": list(self._offset_history),
                 "clock_roundtrip_ms": self._roundtrip_ms,
                 "latency_ms_median": round(statistics.median(latencies), 1) if latencies else None,
                 "latency_ms_p95": round(latencies[int(0.95 * (len(latencies) - 1))], 1) if latencies else None,

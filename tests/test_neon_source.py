@@ -311,3 +311,27 @@ def test_ingest_exception_does_not_kill_the_thread():
 def test_quality_summary_reports_zero_errors_by_default():
     summary = NeonGazeSource(device=object()).quality_summary()
     assert summary["receive_errors"] == 0 and summary["last_receive_error"] is None
+
+
+def test_every_accepted_clock_offset_is_kept_in_a_history_for_the_analysis(monkeypatch):
+    from src.eye_tracking import neon_source as module
+
+    monkeypatch.setattr(module, "NEON_CLOCK_REESTIMATE_S", 0.02)
+    calls = []
+
+    def estimate():
+        calls.append(1)
+        return _est(200.0 + 10 * len(calls), 1.0)
+
+    source = NeonGazeSource(device=_streaming_device(estimate))
+    source.start()
+    time.sleep(0.2)
+    source.stop()
+    history = source.quality_summary()["clock_offset_history"]
+    assert len(history) >= 3 and history[0]["offset_ms"] == 210.0
+    assert [h["phone_unix_s"] for h in history] == sorted(h["phone_unix_s"] for h in history)
+    assert history[-1]["offset_ms"] == round(source._clock_offset_ms, 3)  # the last entry is the offset still in force
+
+
+def test_no_offset_history_without_an_estimate():
+    assert NeonGazeSource(device=object()).quality_summary()["clock_offset_history"] == []
