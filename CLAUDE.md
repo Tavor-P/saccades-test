@@ -13,7 +13,7 @@ Real-Time API) or, picked in the startup dialog, FLIR Blackfly S (`PySpin`) + Me
 ## Rules (read first)
 
 - **Run Python only via the wrapper**: `.\scripts\py.ps1 <args>` (PowerShell) or `scripts/py.sh <args>` (Git Bash). It finds PsychoPy's
-  Python (`%LOCALAPPDATA%\Programs\PsychoPy\python.exe`, or `$env:PSYCHOPY_PYTHON`) and runs from the repo root. Plain `python` lacks deps and `src`/`include`.
+  Python (`%LOCALAPPDATA%\Programs\PsychoPy\python.exe`, or `$env:PSYCHOPY_PYTHON`) and runs from the repo root; it cannot be double-clicked or typed in cmd (use `powershell -ExecutionPolicy Bypass -File scriptspy.ps1 ...`). Plain `python` lacks deps and `src`/`include`.
 - **Never launch the experiment or dashboard** (`run_experiment` opens a fullscreen window on the user's screen). Use the headless
   simulator or tests. Real-glasses runs are the human's. The Neon (`NEON_DEVICE_ADDRESS`, `include/eye_tracking/constants.py`) is sometimes reachable for read-only checks: ask first.
 - Don't merge, push or switch branches unless asked. **Before any push/merge the user asks for, update this file first** (Repo map rows,
