@@ -393,6 +393,11 @@ class ResultLogger:
         self._metadata["results"][key] = summary
         self._write_metadata()
 
+    def set_geometry(self, geometry) -> None:
+        """The screen geometry this run used (heights/distance, the line's size in degrees and screen-height units, placeholder or measured)."""
+        self._metadata["settings"].update(geometry.as_settings())
+        self._write_metadata()
+
     def set_saccade_contrasts(self, levels) -> None:
         """The fixed probe contrasts (0-1 fractions) used in the saccade phase of this session, stored as percent."""
         self._metadata["settings"]["saccade_contrasts_pct"] = [round(float(c) * 100, 4) for c in levels]

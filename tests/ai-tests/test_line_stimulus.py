@@ -18,7 +18,10 @@ from include.experiment.constants import (
 )
 from include.experiment.types import Side, Target
 from src.dashboard import data_access
+from src.experiment.geometry import Geometry
 from src.experiment.scoring import score_outcome
+from src.experiment.tutorial_session import TutorialSession
+from src.experiment.pausable_clock import PausableClock
 from src.experiment.trial_mechanics import line_position, random_orientation
 from test_session import (
     _complete_calibration_and_rt_test,
@@ -31,6 +34,7 @@ from test_tutorial_session import _make_session as _make_tutorial
 from test_tutorial_session import _reach_practice, _start_attempt
 
 pytestmark = pytest.mark.usefixtures("staircase_no_jitter")
+
 
 
 def test_side_enum_is_above_and_below_only():
@@ -69,6 +73,27 @@ def test_saccade_phase_line_sits_next_to_the_target_not_the_source(fake_gaze, fa
     assert (line["x"], line["y"]) == pytest.approx(line_position(expected, side))
     assert line["orientation"] is side
     assert (line["y"] < expected[1]) == (side is Side.ABOVE)
+
+
+def test_saccade_phase_line_offset_follows_the_session_geometry(fake_gaze, fake_time):
+    geometry = Geometry(screen_height_cm=13.0, viewing_distance_cm=40.0)
+    session = _make_session(fake_gaze, geometry=geometry)
+    _complete_calibration_and_rt_test(session, fake_gaze, fake_time, reaction_time_s=0.2)
+    _set_single_trial(session, source=Target.DOT, target=Target.CROSS, orientation=Side.ABOVE)
+    _enter_trial_active(session, fake_time)
+    fake_time(0.201)
+    session.tick()
+    line = session.render_state()["grating"]
+    assert line["y"] == pytest.approx(CROSS_POSITION[1] - LINE_OFFSET_DEG / geometry.height_deg)
+    assert line["y"] != pytest.approx(CROSS_POSITION[1] - LINE_OFFSET_HEIGHT_UNITS)
+
+
+def test_tutorial_quiz_line_offset_follows_the_geometry(fake_gaze):
+    geometry = Geometry(screen_height_cm=13.0, viewing_distance_cm=40.0)
+    session = TutorialSession(fake_gaze, PausableClock(), geometry=geometry)
+    _complete_calibration(session)
+    line = session.render_state()["grating"]
+    assert abs(line["y"] - DOT_POSITION[1]) == pytest.approx(LINE_OFFSET_DEG / geometry.height_deg)
 
 
 def test_answer_keys_are_up_and_down_only():
