@@ -1,103 +1,132 @@
 # saccades-test
 
-A vision-science experiment testing **saccadic suppression**: we are briefly "blind" to faint flashes during a rapid eye
-movement (a *saccade*). Built with [PsychoPy](https://psychopy.org), following Diamond, Ross & Morrone (2000, *J Neurosci*
-20:3449-3455). Developer documentation (what is where and why) is in [CLAUDE.md](CLAUDE.md).
+A PsychoPy experiment that measures **saccadic suppression**: around the time of a rapid eye movement (a *saccade*) we become
+much less sensitive to brief faint flashes. The participant looks at a dot, jumps their gaze to a second dot when it swaps,
+and reports on which side of the target a briefly flashed thin line appeared. Gaze comes from Pupil Labs Neon glasses.
+This is the `line-stimulus` branch; `main` uses a flashed grating (left/right/up/down orientation) instead of a line.
+Developer documentation is in [CLAUDE.md](CLAUDE.md).
 
-**How it works:** the participant looks at a dot, then jumps their gaze to a second dot when it swaps. A faint thin
-horizontal line (after Braun, Schutz & Gegenfurtner 2021) flashes for a single frame just above or below the dot being
-looked at, timed from the participant's own measured reaction time to land around the eye movement, and they report which
-side it was on. **Every trial shows a flash** (there are no catch trials where nothing
-flashes, so there is nothing to withhold an answer on; if the flash was too faint to see, the participant still guesses a side or lets the
-answer window pass). Old sessions may still contain catch trials. Gaze is recorded throughout so each flash can be placed against the real saccade onset
-afterwards (`src.experiment.analyze_session`). The same test also runs *without* eye movements (a baseline) so the two
-results can be compared.
+## Why, and where this stands
 
-Gaze comes from **Pupil Labs Neon glasses** (default, still head / chin rest) or, as an alternative picked in the startup
-dialog, a FLIR Blackfly S camera + MediaPipe iris tracking.
+The aim is a **feasibility pilot (n = 1)** for a grant proposing to compare saccadic suppression in people with traumatic
+brain injury (TBI) and without. The question for a person is: how much worse is their contrast sensitivity for a flash during a
+saccade than during steady fixation? (The suppression index below.)
 
-## Quick start
+Honest status:
+- This is a pipeline and a first participant, not a group result. No TBI/control comparison exists yet.
+- The only earlier data are one participant, in test mode, with an older setup (grating, other contrasts and timing). A few flashes close to
+  saccade onset were answered worse than flashes 50-300 ms away, small numbers and a window chosen after seeing the first session.
+- **The current line version, its contrasts, the new results layout, the tutorial and the glasses-video steps have been run only against
+  simulators, fake devices and unit tests, not yet on real glasses with a person.** See [Known limitations](#known-limitations).
 
-1. Install [PsychoPy Standalone](https://www.psychopy.org/download.html) (it bundles its own Python).
-2. Install the remaining dependencies into PsychoPy's Python (the Neon needs `pupil-labs-realtime-api`, included in
-   `requirements.txt`; the webcam backend additionally needs the FLIR Spinnaker SDK for `PySpin`):
+## Research background
+
+**Diamond, Ross & Morrone (2000)**, *J Neurosci* 20:3449-3455, is the design this experiment started from. The paper itself was *not
+checked* for this README; what follows is only what this repository's code and comments record about it.
+- Taken from it: a participant fixates a symbol, a jittered wait (800-1200 ms after a warning tone in the paper; here 500-1000 ms after
+  the participant's own SPACE press) precedes the saccade target, the flash is a single display frame, contrast is varied with a ZEST
+  staircase (used here in the baseline phase), and the same detection task is run during saccades and during fixation.
+- Where we differ: the flash is a line, not their grating (below); the tone is a go cue at target onset; the saccade phase uses fixed contrasts
+  rather than the staircase; gaze is Neon, not a lab eye tracker.
+
+**Braun, Schutz & Gegenfurtner (2021)**, "Age effects on saccadic suppression of luminance and color", *J Vis* 21(6):11,
+doi:10.1167/jov.21.6.11, <https://pmc.ncbi.nlm.nih.gov/articles/PMC8237129/>. Abstract and Methods were read for this README (the Results and
+Discussion were not checked). In that paper participants (ages 8-78; about 100 analysed) were about 66% less sensitive to a luminance line during saccades.
+- Taken from it:
+  - **Stimulus:** one horizontal line across the full screen width, vertical Gaussian profile (SD 0.15 deg), shown for one refresh cycle
+    2 deg above or below the saccade target.
+  - **Task:** two-alternative forced choice, "above or below the target?".
+  - **Fixation control:** the same task during steady fixation.
+  - **Saccade/fixation gates:** a saccade trial counts only for a well-formed saccade (latency 100-500 ms, amplitude within a range, eye speed
+    at the flash in a plausible band); a fixation trial only if no saccade or blink is within +-100 ms of the flash. Our gates live in
+    `src/experiment/flash_gates.py`.
+  - **Suppression index:** `1 - CS_saccade / CS_fixation`, with contrast sensitivity CS = 1 / threshold contrast.
+- Where we differ:
+
+| | Braun et al. 2021 | This experiment |
+|---|---|---|
+| Eye tracker | EyeLink 1000, 1000 Hz | Pupil Labs Neon, ~160-200 Hz, gaze reaches the PC late |
+| Flash trigger | live: 15 ms after online saccade-onset detection | scheduled from the person's average reaction time (+-80 ms offsets), judged **after the fact** from the raw gaze trace |
+| Display | 120 Hz, 8 ms flash | 60 Hz monitor, one frame (~17 ms) |
+| Saccade size | 10 deg target step | about 30-40 deg (dot at 15 % and cross at 85 % of the screen width) |
+| Thresholds | 1-up/2-down staircase, then a psychometric fit | method of constant stimuli (fixed contrasts, default 4/6/8 %), then a Weibull fit |
+| Viewing | 90 cm, lab setup | chin rest, geometry still to be measured |
+
+## Setup
+
+1. **Hardware:** a Windows PC, a monitor (60 Hz here), a chin rest or other way to keep the head still (the Neon scene camera moves with the
+   head, so calibration assumes a still head), Neon glasses, and the Neon Companion phone on the same Wi-Fi/hotspot as the PC.
+2. Install [PsychoPy Standalone](https://www.psychopy.org/download.html) (it bundles its own Python). Always run Python through the wrapper
+   `.\scripts\py.ps1` (PowerShell) or `scripts/py.sh` (Git Bash); it finds PsychoPy's Python and runs from the project root.
+3. Install dependencies into that Python:
    ```
    .\scripts\py.ps1 -m pip install -r requirements.txt
    ```
-3. Connect the Neon companion phone and this PC to the same Wi-Fi/hotspot and start the companion app. The Neon is
-   auto-discovered; `NEON_DEVICE_ADDRESS` in `include/eye_tracking/constants.py` pins it to an IP instead.
-4. From this project folder run the experiment:
-   ```
-   .\scripts\py.ps1 -m src.experiment.run_experiment
-   ```
+   The FLIR Blackfly S + MediaPipe backend additionally needs the Spinnaker SDK (`PySpin`); Neon-only machines do not.
+4. Start the Neon Companion app on the phone. The experiment looks for the Neon at `NEON_DEVICE_ADDRESS` in
+   `include/eye_tracking/constants.py` (pinned to a phone IP at the time of writing; set it to your phone's address, or to `None` to auto-discover).
+5. **Measure your screen.** `VIEWING_DISTANCE_CM` and `SCREEN_HEIGHT_CM` in `include/experiment/constants.py` are still placeholders. The line's
+   offset (2 deg) and thickness, and the reported saccade size in degrees, are only right once they match the real monitor and seat distance.
 
-`scripts/py.ps1` (PowerShell) / `scripts/py.sh` (Git Bash) find PsychoPy's Python and run from the project root.
+## Running a session
 
-The startup dialog asks for: **Mode** (Real or Test), **Participant ID** (required for Real), **Gaze source**, the camera
-(webcam source only), **Saccade contrast min/max (%)** (the saccade phase flashes fixed contrasts spaced between them),
-a gaze indicator toggle (debug aid), **Run tutorial** (first-timer on-ramp) and **Record video** (webcam source only).
-Test mode shortens everything and runs the saccade phase first; Real mode counterbalances phase order by participant ID.
+```
+.\scripts\py.ps1 -m src.experiment.run_experiment
+```
 
-Each phase:
-- **Baseline (no eye movement)**: 25 trials (after a few practice trials), fixating the centre.
-- **Saccade phase**: calibration (look at each of 3 targets), a short reaction-time test and a few practice trials, then
-  the real trials (150 in Real mode, 30 in Test mode). If the tutorial ran, it replaces the reaction-time test and practice:
-  it walks through calibration, how to answer with the arrow keys (3 correct in a row) and 8 practice trials that measure
-  the reaction time.
+The startup dialog asks for:
 
-Both phases end in a graph comparing baseline and saccade results. Instructions are spoken aloud and captioned; during real
-(non-practice) trials the caption is hidden and silent, and the debug text at the top-left is shown in Test mode only.
-
-## Controls
-
-| Key | Effect |
+| Field | Meaning |
 |---|---|
-| **Space** | Start / calibrate / continue, and **start each trial** (the wait between trials is the participant's break; the dot swaps 0.5-1 s after the press). A press during a trial's wait is ignored; every ignored press is counted per phase on the console and in `_meta.json` (`ignored_space_presses`) |
-| **Up** | "The line was above the dot" |
-| **Down** | "The line was below the dot" |
-| **Escape** | Quit immediately |
+| Mode | **Real** (full length, phase order counterbalanced by participant ID) or **Test** (shortened, saccade phase first, debug text shown top-left) |
+| Participant ID | required for Real; blank in Test becomes `anonymous` |
+| Gaze source | Pupil Labs Neon (default) or Blackfly S + MediaPipe |
+| Camera | webcam source only |
+| Saccade contrast min / max (%) | the saccade phase flashes fixed contrasts spaced between these (defaults 4 and 8, three levels: 4, 6, 8) |
+| Show gaze indicator | debug aid |
+| Run tutorial | first-timer on-ramp (below) |
+| Record video | webcam source only |
+
+What happens, in order (`Space` advances everything; `Esc` quits at once):
+1. **Tutorial** (if chosen, narrated aloud and captioned; input is held while it speaks): calibration, a quiz on how to answer (a line above or below a
+   dot, UP/DOWN, 3 correct in a row) and 8 practice trials whose saccade latencies seed the reaction-time average.
+2. **Calibration** (saccade phase): look steadily at each of 3 targets, 3 rounds. Without the tutorial, a short reaction-time test and a few practice trials follow.
+3. **Green sync flashes** (saccade phase, Neon): the screen flashes green three times before the first trial and once at the end. See [Glasses video](#glasses-video).
+4. **Trials.** The participant presses **SPACE** to start each trial (the wait between trials is their break). A dot and a cross sit at the left and
+   right; 0.5-1 s after the press the dot swaps to the cross (a go cue with a beep) and the participant looks to it as fast as they can.
+   A thin line flashes for one frame 2 deg above or below the symbol being looked at, at the average reaction time plus a random offset of -80..+80 ms (+-10 ms jitter), plus
+   some control flashes at +400/+500 ms when the eye has already landed. The participant presses **Up** (line above) or **Down** (below) within 1 s;
+   a missed flash is still guessed. **Every trial shows a flash**; there are no catch trials. In real trials the caption is hidden and silent.
+   Saccade phase: 150 trials (30 in Test).
+5. **Baseline phase:** the same task without an eye movement, fixating the centre while the staircase (ZEST) adapts the contrast; 25 trials after a few practice trials.
+6. A comparison graph of the two phases ends the run.
+
+The phone records the glasses' scene video during the saccade phase (see below); the phone app must show a wearer and workspace selected.
 
 ## Output
 
-One folder **per participant**, and inside it one subfolder **per run of the experiment** (a run is one start of the program, with both phases;
-it is *not* one flash trial). Everything is under `data/` (git-ignored):
+Everything is under `data/` (git-ignored): one folder per participant, one subfolder per run (one start of the program, both phases).
 
 ```
-data/
-  <participant id>/                  blank id in Test mode -> "anonymous"; characters Windows forbids become "_"
-    2026-10-25_14-03-11[_test]/      one run, local start time; "_test" for Test mode
-      trials.csv                     one row per trial (columns below)
-      session.json                   participant, settings, hardware, results summary, gaze quality, ignored SPACE presses, glasses-video sync
-      gaze_trace.csv                 raw Neon gaze with the phone's capture times (input of analyze_session)
-      comparison_graph.png           the end-of-run results graph
-      analysis/                      written by analyze_session: report.txt, plot.png, flashes.csv, suppression.json
-      glasses/                       the phone's video + video_sync.json (see "Glasses video" below)
+data/<participant id>/<YYYY-MM-DD_HH-MM-SS>[_test]/
+  trials.csv           one row per trial
+  session.json         metadata, see below
+  gaze_trace.csv       raw Neon gaze with the phone's capture times
+  comparison_graph.png end-of-run graph
+  analysis/            report.txt, plot.png, flashes.csv, suppression.json (written by analyze_session)
+  glasses/             the phone's video + video_sync.json + flash_video_times.csv (written by import_glasses_video)
 ```
 
-`trials.csv` columns, left to right (booleans are `yes`/`no`; practice trials are not written):
+`trials.csv` columns (booleans are `yes`/`no`; practice trials are not written): `phase` (baseline / saccade / rt_test), `trial`, `contrast_pct`,
+`flash_shown`, `flash_during_saccade` (the live, unreliable judgement), `answered`, `correct`, `outcome` (correct / wrong / no_answer / detected),
+`line_side` (above / below), `answer_side`, `flash_ms_after_go_cue`, `reaction_ms`, `answer_ms`, `flash_unix_ms`, `tracking_ok`. The direction of the eye movement is
+the trial's parity within its phase. The code-side schema is `TRIAL_COLUMNS` in `src/experiment/logger.py`.
 
-- `phase`: baseline / saccade / rt_test
-- `trial`: the trial number within the phase
-- `contrast_pct`: the flash's contrast in percent (blank when no flash)
-- `flash_shown`: was a flash shown (always `yes`: there are no catch trials)
-- `flash_during_saccade`: did the scheduled flash fall inside the eye movement, as the live detector judged it (late gaze; `analyze_session` re-judges it from the trace)
-- `answered`: did the participant answer in time
-- `correct`: was the answer right (blank for rt_test)
-- `outcome`: correct / wrong / no_answer / detected (old sessions also have false_alarm / correct_rejection from the removed catch trials)
-- `line_side`: where the flashed line was relative to the target (`above` / `below`)
-- `answer_side`: the side the participant answered (UP/DOWN key: `above` / `below`)
-- `flash_ms_after_go_cue`: delay from the go cue to the flash, with the random jitter
-- `reaction_ms`: time from the go cue to the detected eye movement
-- `answer_ms`: time from the flash to the answer
-- `flash_unix_ms`: PC wall-clock time of the flash (used by `analyze_session`)
-- `tracking_ok`: gaze tracking did not drop out around the flash
+`session.json` sections: `participant`, `run` (mode, start time, git state, versions), `settings` (screen geometry, line parameters, contrasts, calibration, constants),
+`hardware`, `results` (per-phase summaries), `gaze_quality` (rate, gaps, latency, clock offset), `ignored_space_presses` (per phase and reason) and
+`glasses_video` (recording state and sync-flash times).
 
-There are no `from`/`to` columns: the two symbols are the left and right dot and trials alternate strictly, so the direction of the eye movement
-is the trial's parity within its phase (old `results_<ts>.csv` files still have `source`/`target`).
-The code-side schema is `TRIAL_COLUMNS` in `src/experiment/logger.py`.
-
-Sessions recorded before this layout (loose `data/results_<timestamp>.csv`, `_meta.json`, `_gaze_trace.csv`, with `dot`/`cross` values) are never
-moved or rewritten; the dashboard and `analyze_session` still read them.
+Older sessions (loose `data/results_<timestamp>.csv`, `_meta.json`, and `vertical`/`horizontal` sides from the grating version) are never rewritten and are still read.
 
 ## Analysing a session
 
@@ -105,68 +134,84 @@ moved or rewritten; the dashboard and `analyze_session` still read them.
 .\scripts\py.ps1 -m src.experiment.analyze_session [session] [--data-dir DIR]
 ```
 
-Accuracy vs flash time relative to saccade onset. `session` is the newest one by default (either layout), or a unix timestamp, a run folder
-name (`2026-10-25_14-03-11`), `participant/folder`, or a path. The report, plot, per-flash CSV and suppression json go to the run's `analysis/` folder
-(old loose-file sessions get `analysis_<timestamp>*` files next to them, as before).
+`session` defaults to the newest; it can also be a unix timestamp, a run folder name, `participant/folder`, or a path. The script finds the
+saccades in `gaze_trace.csv` (using the phone's capture times, so the late arrival at the PC does not matter), places each flash against
+the nearest saccade onset, and writes accuracy vs time-from-onset. It labels every flash with the pre-specified gates in
+`src/experiment/flash_gates.py`:
+- **saccade:** a saccade within +-100 ms, the eye moving fast at the flash (not a spike), latency from the go cue 100-500 ms, amplitude 0.5-1.5x the session median;
+- **fixation:** at least 100 ms from any saccade, with no tracking gap;
+- **excluded:** everything else, with the reason in `flashes.csv`.
+
+**Suppression index** (per person): a Weibull psychometric fit per condition (2AFC, guess rate 0.5, shared slope) gives thresholds and
+`1 - CS_saccade / CS_fixation = 1 - threshold_fixation / threshold_saccade`, with a bootstrap 95 % CI. 0 means no suppression, 1 means
+flashes are never seen during saccades, negative means better during saccades. If the fit is not possible (fewer than 12 flashes in a condition, fewer than 2 contrasts, or accuracy
+at ceiling/floor so no threshold is identified) it falls back to a clearly labelled **accuracy difference** (fixation minus saccade) with a Wilson-based CI; if
+either condition has too few flashes (or both are at ceiling or fixation accuracy is near chance) the report says "cannot be computed" with the reason. Options: `--offset-ms`,
+`--flash-delay-ms`, `--min-amplitude`, `--index-near-ms`, `--index-far-ms` (see `--help`).
 
 ## Glasses video
 
-The Neon phone records the glasses' scene video itself (nothing is streamed to the PC): the experiment starts that recording when the saccade
-phase starts and stops/saves it when the phase ends (`recording` in `session.json` says `started`/`saved`/`failed (reason)`; a failure never stops the session).
-So the phone must show the Companion app with a wearer and workspace selected. To line the video up with the PC clock, a short step before the first
-trial flashes the whole screen **green** three times (150 ms on, 300 ms off; "A green flash will show." is the only spoken line) and once more at the end;
-the PC wall-clock time of every flash is logged in `session.json` (`glasses_video.sync_flashes`). Nothing is added to the trials themselves.
-
-After the session:
-1. Get the recording off the phone: in the Neon Companion app, open the recording and export it (or plug the phone in by USB and copy the
-   recording folder; or download it from Pupil Cloud). You need the scene video as an `.mp4`.
-2. Attach it to the run:
+The Neon phone records the glasses' scene video itself (nothing streams to the PC): the recording starts with the saccade phase and is saved when it ends
+(`glasses_video.recording` in `session.json` says `started`/`saved`/`failed (reason)`; a failure never stops the session). The PC logs the wall-clock time of each green
+flash. Afterwards:
+1. Export the scene video from the phone: in the Companion app, from a USB copy of the recording folder, or from Pupil Cloud (an `.mp4`).
+2. Attach it:
    ```
-   .\scripts\py.ps1 -m src.experiment.import_glasses_video data\<participant>\<run folder> C:\path\to\exported_scene_video.mp4
+   .\scripts\py.ps1 -m src.experiment.import_glasses_video data\<participant>\<run folder> C:\path\to\scene_video.mp4
    ```
-   This copies the video into the run's `glasses/` folder, finds the green flashes in it, and writes `glasses/video_sync.json` (clock offset, residual,
-   `ok` or `check manually`) and `glasses/flash_video_times.csv` (where each flash trial is in the video). A PC time `T` (unix ms, e.g. `flash_unix_ms`)
-   is at `T / 1000 - offset_s` seconds into the video.
+   This copies it to `glasses/`, finds the green flashes in the video, and writes `video_sync.json` (clock offset, residual, `ok` or `check manually`) and
+   `flash_video_times.csv`. A PC time `T` (unix ms, e.g. `flash_unix_ms`) is at `T / 1000 - offset_s` seconds into the video.
 
-Not yet verified on real glasses footage: how well the scene camera sees the green flash from the participant's distance, and the frame-rate/clock behaviour of the exported video.
+Not verified on real footage: whether the scene camera sees the green flash from the participant's distance, and the exported video's frame-rate/clock behaviour.
 
-## Running the tests
-
-```
-.\scripts\py.ps1 -m pytest -q
-```
-
-About 510 tests in ~60 s; no camera, glasses or PsychoPy window needed (fakes for the gaze source and clock). A headless
-simulator runs whole sessions: see `tests/ai-tests/README.md`.
-
-## Browsing past sessions
+## Dashboard
 
 ```
 .\scripts\py.ps1 -m src.dashboard.app
 ```
 
-Open [http://localhost:5000](http://localhost:5000) for a local dashboard listing every past session: label sessions,
-filter them, adjust the default contrast floor for future runs, delete sessions.
+[http://localhost:5000](http://localhost:5000) lists past sessions (both layouts): label, filter, adjust the baseline phase's default contrast floor, delete.
 
 ## Troubleshooting
 
 | Problem | Fix |
 |---|---|
-| `No module named 'src'` | Run commands from inside this project folder (or through `scripts/py.ps1`) |
-| `No module named 'mediapipe'`/`'flask'`/`'PySpin'` | The install did not take (often `Program Files` was not writable): rerun the terminal as Administrator and reinstall. Neon-only machines do not need `PySpin`/`mediapipe` |
-| `_ARRAY_API not found` or `numpy.core.multiarray failed to import` | numpy/opencv drifted out of sync with `PySpin`: reinstall `requirements.txt`, which pins working versions |
-| Neon not found | Phone and PC must share a network and the companion app must be running; or set `NEON_DEVICE_ADDRESS` |
-| Camera picker is empty | Webcam backend only: it lists FLIR cameras via the Spinnaker SDK, not generic webcams |
-| Eye tracking seems inaccurate | Redo calibration (look steadily at each target); with the Neon the head must stay still (chin rest) after calibrating |
-| A webcam session's `_video.mp4` is missing or empty | OpenCV could not open the codec; look for `WARNING: video recording failed to start` in the console. The rest of the data is unaffected |
+| `No module named 'src'` | Run commands from the project folder, or through `scripts/py.ps1` |
+| `No module named 'flask'` / `'PySpin'` / `'mediapipe'` | The install did not take (often a non-writable `Program Files`): rerun the terminal as Administrator and reinstall. Neon-only machines do not need `PySpin`/`mediapipe` |
+| `_ARRAY_API not found` or `numpy.core.multiarray failed to import` | numpy/opencv drifted from `PySpin`: reinstall `requirements.txt`, which pins working versions |
+| Neon not found | Phone and PC must share a network, the Companion app must be running; set `NEON_DEVICE_ADDRESS` to the phone's IP |
+| Camera picker is empty | Webcam backend only: it lists FLIR cameras via Spinnaker, not generic webcams |
+| Eye tracking seems inaccurate | Redo calibration, looking steadily at each target; keep the head still after calibrating |
+| Pressing SPACE seems to do nothing | Presses during a trial's wait are ignored by design; they are counted in the console summary and `ignored_space_presses` |
+| Glasses recording `failed` in `session.json` | The phone app must be open with a wearer and workspace selected; the rest of the data is unaffected |
+| A webcam session's video is missing or empty | OpenCV could not open the codec; look for `WARNING: video recording failed to start` in the console |
 
-## Project layout
+## Known limitations
+
+- **Untested on glasses:** the line's rendering at 60 Hz (profile, brightness, one-frame visibility), the tutorial and captions, the new results layout, the phone
+  recording and sync flashes, and every contrast level. Covered by the simulator and tests only.
+- **Contrasts are a guess.** 4/6/8 % was set after a test run at 10/15/20 % hit ceiling and an earlier 2/4/6 % guess was judged too hard. On an 8-bit
+  display those are only ~5-10 grey steps, so levels are coarse. Re-pilot and adjust in the startup dialog.
+- **Screen geometry is a placeholder** (see Setup), so degrees are approximate.
+- **Gaze reaches the PC ~90-100 ms late** in real sessions (about 16 ms in standalone scripts), so the live `flash_during_saccade` flag is unreliable. Judging after the fact
+  from the phone's capture times (`analyze_session`) is unaffected. Cause not found.
+- **Timing is open-loop:** flashes are scheduled, not triggered by the saccade, and reaction times vary (SD ~60-80 ms), so only about a third of flashes land near onset.
+  People with TBI may vary more.
+- **The baseline is not a like-for-like control** (foveal, a different retinal location); the fixation-control flashes inside the saccade phase address that, which is what
+  the suppression index uses.
+- A single participant so far; no group analysis exists.
+
+## For developers
+
+[CLAUDE.md](CLAUDE.md) describes the architecture, the repo map and the gotchas. All logic can be run without hardware:
 
 ```
-include/          shared types, enums, constants (no logic)
-src/
-  eye_tracking/     gaze sources (Neon default; FLIR Blackfly S + MediaPipe alternative), calibration mapping, traces
-  experiment/       session state machines, staircase, scoring, logging (run folders), analysis, glasses-video sync, run_experiment.py
-  dashboard/        local Flask app for browsing past sessions
-tests/             pytest suite (tests/ai-tests/ also holds the headless simulator tools)
+.\scripts\py.ps1 -m pytest -q                 # about 540 tests in ~2 min, no glasses or window needed
+.\scripts\py.ps1 -m src.experiment.simulation # headless simulated trial; see tests/ai-tests/README.md for run_sim.py
+```
+
+```
+include/    shared types, enums, constants (no logic)
+src/        eye_tracking/ (gaze sources), experiment/ (sessions, scoring, logging, analysis), dashboard/ (Flask)
+tests/      pytest suite; tests/ai-tests/ holds the headless simulator tools
 ```
