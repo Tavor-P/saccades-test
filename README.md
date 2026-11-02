@@ -25,7 +25,8 @@ Honest status:
 checked* for this README; what follows is only what this repository's code and comments record about it.
 - Taken from it: a participant fixates a symbol, a jittered wait (800-1200 ms after a warning tone in the paper; here 500-1000 ms after
   the participant's own SPACE press) precedes the saccade target, the flash is a single display frame, contrast is varied with a ZEST
-  staircase (used here in the baseline phase), and the same detection task is run during saccades and during fixation.
+  staircase (here only if the fixed contrasts are switched off), and the same detection task is run during saccades and during fixation (here the
+  fixation condition comes from flashes inside the saccade phase, see below).
 - Where we differ: their grating parameters were changed (spatial frequency 0.12 cpd instead of the paper's 0.04, per the comments in `include/experiment/constants.py`, so that several cycles fit in the Gaussian patch; the patch has a 4.8 deg Gaussian envelope); the tone is a go cue at target onset; the saccade phase uses fixed contrasts
   rather than the staircase; gaze is Neon, not a lab eye tracker.
 
@@ -77,7 +78,7 @@ The startup dialog asks for:
 
 | Field | Meaning |
 |---|---|
-| Mode | **Real** (full length, phase order counterbalanced by participant ID) or **Test** (shortened, saccade phase first, debug text shown top-left) |
+| Mode | **Real** (full length, needs a participant ID) or **Test** (shortened, debug text shown top-left) |
 | Participant ID | required for Real; blank in Test becomes `anonymous` |
 | Gaze source | Pupil Labs Neon (default) or Blackfly S + MediaPipe |
 | Camera | webcam source only |
@@ -97,26 +98,25 @@ What happens, in order (`Space` advances everything; `Esc` quits at once):
    some control flashes at +400/+500 ms when the eye has already landed. The participant presses **Up** or **Down** for vertical stripes, **Left** or **Right** for horizontal stripes, within 1 s;
    a missed flash is still guessed. **Every trial shows a flash**; there are no catch trials. In real trials the caption is hidden and silent.
    Saccade phase: 150 trials (30 in Test).
-5. **Baseline phase:** the same task without an eye movement, fixating the centre while the staircase (ZEST) adapts the contrast; 25 trials after a few practice trials.
-6. A comparison graph of the two phases ends the run.
+5. The run ends after the last trial; the console prints the `analyze_session` command to run on it. Fixation data come from the control flashes and the
+   far-from-saccade flashes of the same trials, sorted after the fact (see [Analysing a session](#analysing-a-session)).
 
 The phone records the glasses' scene video during the saccade phase (see below); the recording may need the Companion app open with a wearer and workspace selected (not verified yet); a failure never stops the session.
 
 ## Output
 
-Everything is under `data/` (git-ignored): one folder per participant, one subfolder per run (one start of the program, both phases).
+Everything is under `data/` (git-ignored): one folder per participant, one subfolder per run (one start of the program).
 
 ```
 data/<participant id>/<YYYY-MM-DD_HH-MM-SS>[_test]/
   trials.csv           one row per trial
   session.json         metadata, see below
   gaze_trace.csv       raw Neon gaze with the phone's capture times
-  comparison_graph.png end-of-run graph
   analysis/            report.txt, plot.png, flashes.csv, suppression.json (written by analyze_session)
   glasses/             the phone's video + video_sync.json + flash_video_times.csv (written by import_glasses_video)
 ```
 
-`trials.csv` columns (booleans are `yes`/`no`; practice trials are not written): `phase` (baseline / saccade / rt_test), `trial`, `contrast_pct`,
+`trials.csv` columns (booleans are `yes`/`no`; practice trials are not written): `phase` (saccade / rt_test; `baseline` only in old runs), `trial`, `contrast_pct`,
 `flash_shown`, `flash_during_saccade` (the live, unreliable judgement), `answered`, `correct`, `outcome` (correct / wrong / no_answer / detected),
 `grating_orientation` (vertical / horizontal), `answer_orientation`, `flash_ms_after_go_cue`, `reaction_ms`, `answer_ms`, `flash_unix_ms`, `tracking_ok`. The direction of the eye movement is
 the trial's parity within its phase. The code-side schema is `TRIAL_COLUMNS` in `src/experiment/logger.py`.
@@ -169,7 +169,7 @@ Not verified on real footage: whether the scene camera sees the green flash from
 .\scripts\py.ps1 -m src.dashboard.app
 ```
 
-[http://localhost:5000](http://localhost:5000) lists past sessions (both layouts): label, filter, adjust the baseline phase's default contrast floor, delete.
+[http://localhost:5000](http://localhost:5000) lists past sessions (both layouts): label, filter, adjust the default contrast floor (used only when the saccade phase runs the staircase instead of fixed contrasts), delete. Old runs' baseline rows are listed too.
 
 ## Troubleshooting
 
@@ -196,8 +196,9 @@ Not verified on real footage: whether the scene camera sees the green flash from
   from the phone's capture times (`analyze_session`) is unaffected. Cause not found.
 - **Timing is open-loop:** flashes are scheduled, not triggered by the saccade, and reaction times vary (SD ~60-80 ms), so only about a third of flashes land near onset.
   People with TBI may vary more.
-- **The baseline is not a like-for-like control** (foveal, a different retinal location); the fixation-control flashes inside the saccade phase address that, which is what
-  the suppression index uses.
+- **No separate baseline phase any more.** It was removed because foveal fixation is not a like-for-like control (a different retinal location). The fixation condition of the
+  suppression index now comes only from the saccade phase: control flashes and flashes at least 100 ms from any saccade, so it depends on enough of them landing
+  (150 trials give roughly 35 saccade-condition and 45 fixation-condition flashes in the simulator; real data may differ).
 - A single participant so far; no group analysis exists.
 
 ## For developers
