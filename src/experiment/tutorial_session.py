@@ -68,7 +68,7 @@ class TutorialSession:
        and handed to ExperimentSession, which seeds its reaction-time average
        from them instead of running a separate RT test.
 
-    Framework-agnostic like ExperimentSession/PresaccadeSession:
+    Framework-agnostic like ExperimentSession:
     `on_space()`/`on_response_key()`/`tick()` are called by the PsychoPy
     frame loop, `render_state()` returns a plain dict the runner applies to
     its stimuli. Never logs to the results CSV - none of this counts as

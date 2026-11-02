@@ -146,8 +146,7 @@ def _set_single_trial(session, **kwargs) -> None:
 
 
 def test_contrast_floor_overrides_the_zest_staircase_minimum(fake_gaze):
-    # See the matching test in test_presaccade_session.py for why the
-    # midpoint is the right thing to check.
+    # The staircase's first contrast is the midpoint of its log range, so that is what the floor moves.
     floor = 0.2
     session = ExperimentSession(fake_gaze, logger=_NullLogger(), clock=PausableClock(), contrast_floor=floor)
     expected = 10 ** ((math.log10(floor) + ZEST_LOG_CONTRAST_MAX) / 2)
