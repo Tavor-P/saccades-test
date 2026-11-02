@@ -131,3 +131,19 @@ def test_test_fixtures_are_not_swallowed_by_gitignore():
     except FileNotFoundError:
         pytest.skip("git not available")
     assert out.stdout.strip() == "", f"ignored fixtures (would never be committed): {out.stdout}"
+
+
+def test_no_participant_data_is_tracked():
+    """Safety net for the README's 'Data and privacy' section: data/ is ignored, nothing under it is tracked,
+    and the tracked old-layout fixtures carry the anonymous participant id."""
+    assert "data/" in (ROOT / ".gitignore").read_text(encoding="utf8").split()
+    try:
+        tracked = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True).stdout.splitlines()
+    except (OSError, subprocess.CalledProcessError):
+        pytest.skip("git is unavailable")
+    assert [p for p in tracked if p.startswith("data/")] == []
+    import json
+    for path in tracked:
+        if path.startswith("tests/fixtures/old_layout/") and path.endswith("_meta.json"):
+            participant = json.loads((ROOT / path).read_text(encoding="utf8")).get("participant_id")
+            assert participant in (None, "anonymous"), f"{path} holds a real participant id"
