@@ -114,7 +114,7 @@ def test_tutorial_quiz_shows_a_line_above_or_below_the_dot_and_needs_a_streak(fa
         assert (line["y"] < DOT_POSITION[1]) == (line["orientation"] is Side.ABOVE)
         assert len(state["instructions"].split()) <= 15
         session.on_response_key(line["orientation"])
-    assert session.render_state()["hud"]["phase"] == "PRACTICE_AWAITING_SPACE"
+    assert session.render_state()["hud"]["phase"] == "PRACTICE_INTRO"
 
 
 def test_tutorial_practice_line_follows_the_target(fake_gaze, fake_time):

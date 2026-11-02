@@ -41,6 +41,7 @@ from include.experiment.constants import (
     ZEST_MIN_VALID_TRIALS_REAL,
     ZEST_MIN_VALID_TRIALS_TEST,
 )
+from include.experiment import participant_text as words
 from include.experiment.types import Side, Target, TrialResult, TrialSpec
 from src.experiment.calibration import CalibrationRounds
 from src.experiment.logger import ResultLogger
@@ -80,7 +81,7 @@ _MAIN_TRIAL_PHASES = (Phase.AWAITING_SPACE, Phase.FOREPERIOD, Phase.TRIAL_ACTIVE
 _TRIAL_PHASES = _RT_TEST_PHASES + _MAIN_TRIAL_PHASES
 
 
-_ANSWER_TEXT = "Press UP if the line was above the dot, DOWN if below."
+_ANSWER_TEXT = words.ANSWER
 
 
 class ExperimentSession:
@@ -716,20 +717,20 @@ class ExperimentSession:
 
     def _instructions(self) -> str:
         if self._phase is Phase.COMPLETE:
-            return f"Saccade test complete! {self._summary()} — Press SPACE to see your results"
+            return f"{words.FINISHED} {self._summary()} — Press SPACE to see your results"
         # The answer text is shared by AWAITING_SPACE (after the first trial), FOREPERIOD and TRIAL_ACTIVE
         # so it is spoken once and never flickers or repeats from trial to trial.
         if self._phase is Phase.AWAITING_SPACE:
-            return "Press SPACE when you are ready." if self._is_first_trial() else _ANSWER_TEXT
+            return words.FIRST_TRIAL if self._is_first_trial() else _ANSWER_TEXT
         if self._phase in (Phase.FOREPERIOD, Phase.TRIAL_ACTIVE):
             return _ANSWER_TEXT
         if self._phase in _RT_TEST_PHASES:
             # Said once, before the first attempt; silent afterwards (the narrator re-speaks on every text change).
-            return "Press SPACE, look at the dot, then look at the other dot when it appears." if self._rt_test_attempt == 0 else ""
+            return words.RT_TEST_INTRO if self._rt_test_attempt == 0 else ""
         calibration_targets = {
-            Phase.CALIBRATE_LEFT: "Look at the dot, then press SPACE.",
-            Phase.CALIBRATE_CENTER: "Look at the middle, then press SPACE.",
-            Phase.CALIBRATE_RIGHT: "Look at the other dot, then press SPACE.",
+            Phase.CALIBRATE_LEFT: words.CALIBRATE_LEFT,
+            Phase.CALIBRATE_CENTER: words.CALIBRATE_CENTER,
+            Phase.CALIBRATE_RIGHT: words.CALIBRATE_RIGHT,
         }
         if self._phase in calibration_targets:
             # Only round 1 is narrated: later rounds would just re-speak the same drill.
@@ -784,6 +785,7 @@ class ExperimentSession:
         return {
             "instructions": self._instructions(),
             "hide_caption": self._hide_caption(),
+            "milestone_line": self._milestone_line(),
             "dot": {"visible": dot_visible, "x": DOT_POSITION[0], "y": DOT_POSITION[1]},
             "cross": {"visible": cross_visible, "x": CROSS_POSITION[0], "y": CROSS_POSITION[1]},
             "calibration_center": {
@@ -819,6 +821,17 @@ class ExperimentSession:
         if self._phase is Phase.AWAITING_SPACE and self._is_first_trial():
             return False
         return self._phase in _MAIN_TRIAL_PHASES and not self._current_trial_spec.practice
+
+    def _milestone_line(self) -> str:
+        """A short spoken-only line (never drawn) while the participant waits for SPACE before the trial that follows 25/50/75 %
+        of the planned trials. Said before the press, so the speech is over before the foreperiod and the flash. Constant stimuli only."""
+        if self._phase is not Phase.AWAITING_SPACE or self._fixed_contrast_bag is None or self._current_trial_spec.practice:
+            return ""
+        done = self._main_trial_counter - 1
+        for line, fraction in words.MILESTONES:
+            if done == round(self._fixed_trials * fraction) and done > 0:
+                return line
+        return ""
 
     def _has_trial_label(self) -> bool:
         return self._phase in _TRIAL_PHASES

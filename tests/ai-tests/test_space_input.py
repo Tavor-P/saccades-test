@@ -24,6 +24,15 @@ def _phase(session) -> str:
     return session.render_state()["hud"]["phase"]
 
 
+def _begin(session) -> None:
+    """Press SPACE until the first calibration target (the tutorial has its INTRO screens first)."""
+    for _ in range(10):
+        if _phase(session) == "CALIBRATE_LEFT":
+            return
+        session.on_space()
+    raise AssertionError("never reached CALIBRATE_LEFT")
+
+
 def _make_experiment(fake_gaze):
     return ExperimentSession(fake_gaze, logger=_NullLogger(), clock=PausableClock(), skip_practice_trials=True)
 
@@ -41,7 +50,7 @@ SESSIONS = pytest.mark.parametrize("make", [_make_experiment, _make_tutorial], i
 @SESSIONS
 def test_press_before_the_window_fills_completes_the_step_once_it_fills(make, fake_gaze):
     session = make(fake_gaze)
-    session.on_space()  # WAITING_TO_START -> CALIBRATE_LEFT
+    _begin(session)  # WAITING_TO_START -> CALIBRATE_LEFT
     fake_gaze.calibration_window_full = False
 
     session.on_space()  # on the dot, but the window is still filling
@@ -62,7 +71,7 @@ def test_press_before_the_window_fills_completes_the_step_once_it_fills(make, fa
 @SESSIONS
 def test_one_press_per_target_walks_all_rounds(make, fake_gaze):
     session = make(fake_gaze)
-    session.on_space()
+    _begin(session)
     expected = ["CALIBRATE_CENTER", "CALIBRATE_RIGHT", "CALIBRATE_LEFT"] * CALIBRATION_ROUNDS
     for step, next_phase in enumerate(expected, start=1):
         before = _phase(session)
@@ -82,7 +91,7 @@ def test_one_press_per_target_walks_all_rounds(make, fake_gaze):
 @SESSIONS
 def test_a_second_press_while_waiting_is_counted_not_chained(make, fake_gaze):
     session = make(fake_gaze)
-    session.on_space()
+    _begin(session)
     fake_gaze.calibration_window_full = False
     session.on_space()
     session.on_space()
@@ -95,7 +104,7 @@ def test_a_second_press_while_waiting_is_counted_not_chained(make, fake_gaze):
 @SESSIONS
 def test_a_latched_press_restarts_the_window_so_it_holds_only_post_press_samples(make, fake_gaze):
     session = make(fake_gaze)
-    session.on_space()
+    _begin(session)
     begun = fake_gaze.calibration_samples_begun
     fake_gaze.calibration_window_full = False
     session.on_space()
@@ -105,7 +114,7 @@ def test_a_latched_press_restarts_the_window_so_it_holds_only_post_press_samples
 @SESSIONS
 def test_press_with_a_full_window_still_advances_immediately(make, fake_gaze):
     session = make(fake_gaze)
-    session.on_space()
+    _begin(session)
     session.on_space()
     assert _phase(session) == "CALIBRATE_CENTER"
 
@@ -173,7 +182,7 @@ def test_complete_screen_needs_a_frame_of_its_own():
 
 def _to_awaiting_space(session, fake_gaze):
     """Calibration + RT test done: the first RT-test attempt waits for SPACE."""
-    session.on_space()
+    _begin(session)
     for _ in range(3 * CALIBRATION_ROUNDS):
         session.on_space()
     assert _phase(session) == "RT_TEST_AWAITING_SPACE"
@@ -241,7 +250,7 @@ def test_space_after_answering_starts_the_next_trial_as_soon_as_it_is_ready(fake
 
 def test_tutorial_space_in_quiz_is_counted(fake_gaze):
     session = _make_tutorial(fake_gaze)
-    session.on_space()
+    _begin(session)
     for _ in range(3 * CALIBRATION_ROUNDS):
         session.on_space()
     assert _phase(session) == "QUIZ"
