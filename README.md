@@ -18,7 +18,7 @@
 A PsychoPy experiment that measures **saccadic suppression**: around the time of a rapid eye movement (a *saccade*) we become
 much less sensitive to brief faint flashes. The participant looks at a dot, jumps their gaze to a second dot when it swaps,
 and reports on which side of the target a briefly flashed thin line appeared. Gaze comes from Pupil Labs Neon glasses.
-This is the `line-stimulus` branch; `main` uses a flashed grating (left/right/up/down orientation) instead of a line.
+This is `main`, which flashes a line. The `grating` branch flashes a grating (left/right/up/down orientation) instead.
 Developer documentation is in [CLAUDE.md](CLAUDE.md).
 
 ## Why, and where this stands

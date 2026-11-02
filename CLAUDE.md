@@ -4,7 +4,7 @@ PsychoPy gaze-contingent saccade experiment (Diamond, Ross & Morrone 2000 design
 during a saccade and during fixation (the saccade phase's control and far-from-saccade flashes, sorted post hoc) to measure saccadic suppression. Gaze: Pupil Labs Neon (default,
 Real-Time API) or, with `SACCADES_BACKEND=webcam` (no dialog field any more), FLIR Blackfly S (`PySpin`) + MediaPipe. Participant-facing docs: [README.md](README.md).
 
-**This is the `line-stimulus` branch**; `main` has the grating version. Differences from the grating:
+**`main` is the line-stimulus version** (the grating version lives on the `grating` branch, old `main`). Differences from the grating:
 - Flash = thin horizontal line (Braun, Schutz & Gegenfurtner 2021): full screen width, vertical Gaussian (`LINE_SD_DEG` 0.15),
   centred `LINE_OFFSET_DEG` (2 deg) above/below the saccade TARGET, drawn `GRATING_DURATION_FRAMES` (1) frame.
   Answer UP (above) / DOWN (below); LEFT/RIGHT unused.
@@ -37,7 +37,7 @@ Real-Time API) or, with `SACCADES_BACKEND=webcam` (no dialog field any more), FL
 - Environment: PowerShell 5.1 has no `&&`; files may be CRLF (keep each file's endings); `.gitignore` has `data/`, which also matches any `data` folder (tests: use `tests/fixtures/`).
 - `data/` is git-ignored runtime output: never commit it, never write to it from tests/simulations (simulator uses an in-memory logger).
 - Participant data (trials, gaze trace, glasses video) is personal data: never commit it, never print it in reports, never copy real sessions into `tests/fixtures/` (only anonymous recordings belong there).
-- Report test results truthfully (ran / skipped). Suite: ~555 tests, ~1-2 min, 2 skipped without PySpin/mediapipe (`test_camera.py`, `test_gaze_tracking.py` `importorskip`).
+- Report test results truthfully (ran / skipped). Suite: ~580 tests, ~1-2 min, 2 skipped without PySpin/mediapipe (`test_camera.py`, `test_gaze_tracking.py` `importorskip`).
 
 ## Commands (all through the wrapper)
 
