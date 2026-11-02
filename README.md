@@ -31,6 +31,10 @@ dialog, a FLIR Blackfly S camera + MediaPipe iris tracking.
    .\scripts\py.ps1 -m src.experiment.run_experiment
    ```
 
+**Running it on Windows.** Double-click `run_experiment.bat`, `analyze_latest.bat` or `run_tests.bat` in this folder (or type their names in Command Prompt/PowerShell here).
+Typing `scripts\py.ps1` into Command Prompt, the Run box or Explorer opens the .ps1 file in an editor instead of running it, and `$env:...` is PowerShell-only syntax.
+The one-line command that works from any shell:
+`powershell -ExecutionPolicy Bypass -File scripts\py.ps1 -m src.experiment.run_experiment`
 `scripts/py.ps1` (PowerShell) / `scripts/py.sh` (Git Bash) find PsychoPy's Python and run from the project root.
 
 The startup dialog asks for: **Mode** (Real or Test), **Participant ID** (required for Real), **Gaze source**, the camera

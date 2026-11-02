@@ -102,6 +102,7 @@ All via the wrapper (PowerShell shown; from Git Bash use `scripts/py.sh` with th
 .\scripts\py.ps1 -m src.experiment.simulation                   # HEADLESS simulated trial, event timeline (safe for AI)
 .\scripts\py.ps1 tests/ai-tests/run_sim.py --help               # headless simulation runner (scenarios, sweeps, JSON)
 .\scripts\py.ps1 -m src.experiment.run_experiment               # REAL experiment (opens a window - human only)
+# double-click launchers in the repo root: run_experiment.bat, analyze_latest.bat, run_tests.bat (extra args pass through; fine from cmd)
 .\scripts\py.ps1 -m src.dashboard.app                           # session dashboard at localhost:5000
 .\scripts\py.ps1 -m src.experiment.analyze_session [session] [--data-dir D]  # accuracy vs flash time relative to saccade onset (newest session by default; a unix ts, run folder name or path; writes <run>/analysis/)
 .\scripts\py.ps1 -m src.experiment.import_glasses_video <run-folder> <exported.mp4>  # attach + sync the phone's glasses video
