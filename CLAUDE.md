@@ -19,13 +19,13 @@ Real-Time API) or, picked in the startup dialog, FLIR Blackfly S (`PySpin`) + Me
   (18/22 correct), old foveal grating threshold ~1.3 %, 2/4/6 % judged too hard. 4-8 % is ~5-10 grey steps on 8-bit
   (`HARDWARE_CONTRAST_FLOOR` 0.78 %), so levels are coarse. Re-pilot on glasses.
 - Rolling RT = `robust_average_ms` over the last `RT_AVERAGE_ROLLING_WINDOW` (12) latencies; <`RT_MIN_SAMPLES_FOR_AVERAGE` (3)
-  plausible samples keep the previous value (initially `DEFAULT_REACTION_TIME_MS`). `_meta.json` phase summary adds `rt_samples_total/_in_window/_dropped_in_window`.
+  plausible samples keep the previous value (initially `DEFAULT_REACTION_TIME_MS`). `session.json` phase summary (results section) adds `rt_samples_total/_in_window/_dropped_in_window`.
 - Line rendering (profile, width, brightness, one-frame visibility at 60 Hz), quiz/captions and every contrast level are untested on a real window/glasses (simulator + tests only).
 
 ## Rules (read first)
 
 - **Run Python only via the wrapper**: `.\scripts\py.ps1 <args>` (PowerShell) or `scripts/py.sh <args>` (Git Bash). It finds PsychoPy's
-  Python (`%LOCALAPPDATA%\Programs\PsychoPy\python.exe`, or `$env:PSYCHOPY_PYTHON`) and runs from the repo root. Plain `python` lacks deps and `src`/`include`.
+  Python (`%LOCALAPPDATA%\Programs\PsychoPy\python.exe`, or `$env:PSYCHOPY_PYTHON`) and runs from the repo root; it cannot be double-clicked or typed in cmd (use `powershell -ExecutionPolicy Bypass -File scriptspy.ps1 ...`). Plain `python` lacks deps and `src`/`include`.
 - **Never launch the experiment or dashboard** (`run_experiment` opens a fullscreen window on the user's screen). Use the headless
   simulator or tests. Real-glasses runs are the human's. The Neon (`NEON_DEVICE_ADDRESS`, `include/eye_tracking/constants.py`) is sometimes reachable for read-only checks: ask first.
 - Don't merge, push or switch branches unless asked. **Before any push/merge the user asks for, update this file first** (Repo map rows,
