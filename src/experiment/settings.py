@@ -94,3 +94,30 @@ def resolve_saccade_contrasts(raw_min: str, raw_max: str) -> tuple[float, ...]:
         return saccade_contrast_levels(float(raw_min), float(raw_max))
     except (TypeError, ValueError):
         return saccade_contrast_levels(DEFAULT_SACCADE_CONTRAST_MIN_PERCENT, DEFAULT_SACCADE_CONTRAST_MAX_PERCENT)
+
+
+# -- the startup dialog's remembered values (key `last_startup` in settings.json) -------------
+
+
+def load_last_startup() -> dict:
+    """The startup dialog's last values (a plain dict; {} if there is no settings file, it is unreadable or predates this key)."""
+    path = _settings_path()
+    try:
+        value = json.loads(path.read_text()).get("last_startup") if path.exists() else None
+    except (OSError, ValueError, AttributeError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def save_last_startup(values: dict) -> None:
+    """Remember the startup dialog's values, leaving the other settings alone."""
+    DATA_DIR.mkdir(exist_ok=True)
+    path = _settings_path()
+    try:
+        data = json.loads(path.read_text()) if path.exists() else {}
+    except (OSError, ValueError):
+        data = {}
+    if not isinstance(data, dict):
+        data = {}
+    data["last_startup"] = values
+    path.write_text(json.dumps(data, indent=2))
