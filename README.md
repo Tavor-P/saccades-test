@@ -74,6 +74,11 @@ Discussion were not checked). In that paper participants (ages 8-78; about 100 a
 .\scripts\py.ps1 -m src.experiment.run_experiment
 ```
 
+**Running it on Windows.** Double-click `run_experiment.bat`, `analyze_latest.bat` or `run_tests.bat` in this folder (or type their names in Command Prompt/PowerShell here).
+Typing `scripts\py.ps1` into Command Prompt, the Run box or Explorer opens the .ps1 file in an editor instead of running it, and `$env:...` is PowerShell-only syntax.
+The one-line command that works from any shell:
+`powershell -ExecutionPolicy Bypass -File scripts\py.ps1 -m src.experiment.run_experiment`
+
 The startup dialog asks for:
 
 | Field | Meaning |
