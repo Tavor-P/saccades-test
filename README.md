@@ -176,6 +176,23 @@ Not verified on real footage: whether the scene camera sees the green flash from
 
 [http://localhost:5000](http://localhost:5000) lists past sessions (both layouts): label, filter, adjust the default contrast floor (used only when the saccade phase runs the staircase instead of fixed contrasts), delete. Old runs' baseline rows are listed too.
 
+## Data and privacy
+
+Participants (people with traumatic brain injury and controls) produce personal data. What this software does and does not do:
+
+- **What is stored**: `data/<participant id>/<run>/` holds `trials.csv` (answers and timing), `session.json` (settings, hardware, git commit), `gaze_trace.csv` (raw gaze),
+  `analysis/` (reports and plots) and `glasses/` (the phone's scene video; it shows the room and anyone in it, so it is personal data too). `data/` is git-ignored,
+  so it is never committed. `tests/fixtures/` holds only anonymous test-mode recordings (participant id `anonymous`).
+- **Participant IDs**: use a study code (`P01`), never a name. The program turns the ID into a safe folder name (`sanitize_participant_id` in `src/experiment/session_files.py`); that is the only processing.
+- **Network**: the dashboard listens only on this computer (`localhost:5000`, Flask's default). Do not change it to listen on the network: it lists and deletes participant data.
+  The Neon phone's Real-Time API has no password, so use a private hotspot or your own router, not shared or campus Wi-Fi.
+- **Not handled by this software**: consent, ethics approval, de-identification of the phone's video, encryption and backups. Recommended (not enforced):
+  disk encryption (BitLocker) on the computer, a backup plan for `data/`, and following the study's ethics/IRB protocol.
+- **Before pushing or sharing code**:
+  1. `git status` shows nothing under `data/`.
+  2. Never copy real session folders into `tests/fixtures/`.
+  3. Delete the phone recording from the phone after export if the protocol requires it.
+
 ## Troubleshooting
 
 | Problem | Fix |
