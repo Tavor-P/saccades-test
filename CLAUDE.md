@@ -1,12 +1,12 @@
 # CLAUDE.md
 
 PsychoPy gaze-contingent saccade experiment (Diamond, Ross & Morrone 2000 design): detect a briefly flashed stimulus once
-during a saccade and once during fixation (baseline) to measure saccadic suppression. Gaze: Pupil Labs Neon (default,
+during a saccade and during fixation (the saccade phase's control and far-from-saccade flashes, sorted post hoc) to measure saccadic suppression. Gaze: Pupil Labs Neon (default,
 Real-Time API) or, picked in the startup dialog, FLIR Blackfly S (`PySpin`) + MediaPipe. Participant-facing docs: [README.md](README.md).
 
 **This is the `line-stimulus` branch**; `main` has the grating version. Differences from the grating:
 - Flash = thin horizontal line (Braun, Schutz & Gegenfurtner 2021): full screen width, vertical Gaussian (`LINE_SD_DEG` 0.15),
-  centred `LINE_OFFSET_DEG` (2 deg) above/below the saccade TARGET (baseline: screen centre), drawn `GRATING_DURATION_FRAMES` (1) frame.
+  centred `LINE_OFFSET_DEG` (2 deg) above/below the saccade TARGET, drawn `GRATING_DURATION_FRAMES` (1) frame.
   Answer UP (above) / DOWN (below); LEFT/RIGHT unused.
 - `Side.ABOVE/BELOW` replaces `Orientation`. `TrialResult` fields (and old loose-CSV columns) are still `orientation` / `response_orientation`
   (hold 'above'/'below'); `trials.csv` calls them `line_side` / `answer_side`; old 'vertical'/'horizontal' CSVs load via `logger._LEGACY_SIDES` (vertical->above, horizontal->below, arbitrary
@@ -34,7 +34,7 @@ Real-Time API) or, picked in the startup dialog, FLIR Blackfly S (`PySpin`) + Me
   stage and commit only your own files by name (never `git add -A` / `commit -a`); don't touch other sessions' files (e.g. `src/eye_tracking/neon_*`), tell the user instead.
 - Environment: PowerShell 5.1 has no `&&`; files may be CRLF (keep each file's endings); `.gitignore` has `data/`, which also matches any `data` folder (tests: use `tests/fixtures/`).
 - `data/` is git-ignored runtime output: never commit it, never write to it from tests/simulations (simulator uses an in-memory logger).
-- Report test results truthfully (ran / skipped). Suite: ~540 tests, ~1-2 min, 2 skipped without PySpin/mediapipe (`test_camera.py`, `test_gaze_tracking.py` `importorskip`).
+- Report test results truthfully (ran / skipped). Suite: ~500 tests, ~1-2 min, 2 skipped without PySpin/mediapipe (`test_camera.py`, `test_gaze_tracking.py` `importorskip`).
 
 ## Commands (all through the wrapper)
 
@@ -68,7 +68,7 @@ Real-Time API) or, picked in the startup dialog, FLIR Blackfly S (`PySpin`) + Me
 - **Known problems**: (1) gaze reaches the PC ~95 ms late (Gotchas) so live `flash_during_saccade` is useless (post-hoc analysis unaffected).
   (2) RT SD ~60-80 ms, only ~1/3 of flashes land near onset (TBI likely worse); live rolling RT helps only with drift (simulation only).
   (3) `VIEWING_DISTANCE_CM`/`SCREEN_HEIGHT_CM` are placeholders; the user's monitor is small (~12 in wide), 60 Hz: ask for real width/height (cm) and distance.
-  (4) Baseline (foveal) phase isn't a like-for-like control for the saccade phase (different retinal location); the fixation-control flashes in the saccade phase address it.
+  (4) The separate baseline (foveal) phase was removed (not a like-for-like control, different retinal location): fixation now comes only from the saccade phase's control flashes + flashes >=100 ms from any saccade; the simulator gives ~46 fixation / ~36 saccade flashes per 150 trials (`flash_gates`), so ~15/~12 per contrast level.
 - **Next, in order**: (1) short Test run then full 150-trial Real run with participant ID on glasses, analyse with `analyze_session`; (2) group analysis
   (per-person suppression index + group test or mixed model); (3) one-page grant figure + wording; (4) clinical metadata fields (group, time since injury,
   severity, symptoms, medication; needs IRB) in the dashboard; (5) find the ~95 ms delay cause (e.g. Neon in its own process); (6) update geometry constants.
@@ -85,7 +85,6 @@ Paths in this section are checked by `tests/test_docs.py` - keep them real.
 | `include/eye_tracking/interfaces.py` | `GazeSource`, the only gaze interface sessions use |
 | `include/eye_tracking/types.py` | `GazeZone`, `GazeSample` |
 | `src/experiment/session.py` | `ExperimentSession`: saccade phase state machine (core logic) |
-| `src/experiment/presaccade_session.py` | `PresaccadeSession`: baseline (fixation) phase |
 | `src/experiment/tutorial_session.py` | `TutorialSession`: calibration -> quiz -> 8 practice trials yielding the first RT samples |
 | `src/experiment/run_experiment.py` | entry point + PsychoPy rendering; the only PsychoPy-dependent module |
 | `src/experiment/pausable_clock.py` | `PausableClock`: the injected time source (name historical, no longer pauses) |
@@ -94,7 +93,6 @@ Paths in this section are checked by `tests/test_docs.py` - keep them real.
 | `src/experiment/trial_mechanics.py` | `OnsetDetector`, `ShuffledBag`, `zone_for`, `line_position`, `robust_average_ms`, `sample_capture_time`, `RollingReactionTime` (updated at every detected onset incl. RT test/practice) |
 | `src/experiment/calibration.py` | `CalibrationRounds` (3-point x 3-round state machine shared by saccade session and tutorial), `average_calibration_rounds` (rounds 2 and 3) |
 | `src/experiment/space_input.py` | `CalibrationLatch`, `NarrationKeyGate`, `SpaceTally`, `deliver_space`, `leaves_complete_screen` |
-| `src/experiment/session_schedule.py` | `phase_order`: baseline/saccade order counterbalanced by participant ID |
 | `src/timebase.py` | the ONE time source: `now()` = `perf_counter()`; wall clock via edge-synchronised anchor (`unix_now()`, `unix_ms()`) |
 | `src/experiment/trial_factory.py` | trial sequences; every trial flashes (catch trials removed; old sessions may hold `false_alarm`/`correct_rejection`, still readable) |
 | `src/experiment/zest.py` | adaptive contrast staircase |
@@ -102,7 +100,6 @@ Paths in this section are checked by `tests/test_docs.py` - keep them real.
 | `src/experiment/session_files.py` | run-folder naming (`sanitize_participant_id`, `create_session_folder`), `SessionRef`, `list_sessions`/`find_session`/`newest_session` (a session's key is its unix start time) |
 | `src/experiment/glasses_video.py` | no PsychoPy: sync-flash frame counts, `find_sync_flashes`, `compute_offset` (residual, ok/check manually) |
 | `src/experiment/import_glasses_video.py` | CLI: copies exported video to `<run>/glasses/`, writes `video_sync.json` + `flash_video_times.csv` |
-| `src/experiment/results_graph.py` | end-of-run comparison figure |
 | `src/experiment/analyze_session.py` | post-hoc analysis: saccades from the raw gaze trace (phone capture times), flashes placed against nearest onset; report + plot + per-flash CSV |
 | `src/experiment/flash_gates.py` | pre-specified gates (Braun 2021): `saccade` (eye fast at flash, latency 100-500 ms, amplitude 0.5-1.5x median), `fixation` (>=100 ms from any saccade, no tracking gap), else `excluded`; controls from `CONTROL_OFFSETS_MS` |
 | `src/experiment/simulation.py` | headless simulator (simulated participant, clock, gaze) |
@@ -115,7 +112,7 @@ Paths in this section are checked by `tests/test_docs.py` - keep them real.
 | `src/dashboard/app.py` | Flask dashboard (separate process; `data_access.py` reads/writes `data/`) |
 | `tests/conftest.py` | `FakeGazeSource`, `fake_time` fixture |
 | `tests/helpers.py` | `NullLogger` for session tests |
-| `tests/ai-tests/test_line_stimulus.py` | line branch: placement above/below target and baseline centre, UP/DOWN only, quiz, old-CSV loading |
+| `tests/ai-tests/test_line_stimulus.py` | line branch: placement above/below target, UP/DOWN only, quiz, old-CSV loading |
 | `tests/ai-tests/README.md` | headless-simulation guide for AI agents |
 | `tests/ai-tests/run_sim.py` | simulation CLI |
 | `tests/ai-tests/find_bugs.py` | randomized campaign over the simulator; prints a repro command per finding |
@@ -131,7 +128,7 @@ Paths in this section are checked by `tests/test_docs.py` - keep them real.
 3. **Gaze source**: patterns in `tests/test_neon_source.py` / `tests/test_gaze_trace.py` (fake device, or replay the fixture via `ReplayGazeSource`).
 4. **Needs real eyes/glasses/screen** (latency, jitter, calibration quality): write the measurement script and ask the human; don't guess numbers.
 - After changing session, scoring or ZEST logic run `tests/ai-tests/find_bugs.py --sessions 300` (fuzzes the real session against `invariants.py`). `test_bug_injection.py` re-injects known bugs to prove checks still catch them.
-- Enforced by tests: TrialResult/CSV/dashboard schema sync (`test_schema_sync.py`), constant relations (`test_constants_sanity.py`), live-vs-graph validity lockstep (`test_validity_lockstep.py`), architecture (`test_architecture_rules.py`: no PsychoPy in session logic, no `time.monotonic()`/`time.time()` in `src/` outside `timebase.py`, lazy backend imports, no logic in `include/`).
+- Enforced by tests: TrialResult/CSV/dashboard schema sync (`test_schema_sync.py`), constant relations (`test_constants_sanity.py`), live ZEST feed vs the shared validity gate (`test_validity_lockstep.py`), architecture (`test_architecture_rules.py`: no PsychoPy in session logic, no `time.monotonic()`/`time.time()` in `src/` outside `timebase.py`, lazy backend imports, no logic in `include/`).
 
 ## Recipes
 
@@ -144,7 +141,7 @@ Paths in this section are checked by `tests/test_docs.py` - keep them real.
 
 ## On-disk contracts
 
-- `trials.csv`: one row per trial, both phases (`phase` column), schema `TRIAL_COLUMNS` with plain names. Order: contrast, yes/no group, outcome,
+- `trials.csv`: one row per trial (`phase` column: saccade / rt_test; old runs also baseline), schema `TRIAL_COLUMNS` with plain names. Order: contrast, yes/no group, outcome,
   stimulus/answer pair, ms block (`flash_ms_after_go_cue`, `reaction_ms`, `answer_ms`, `flash_unix_ms`), `tracking_ok`. `DROPPED_FROM_CSV` lists fields kept out and why
   (`source`/`target`: direction = trial parity; `timing_offset_ms`: the delay is in `flash_ms_after_go_cue`).
 - `session.json` sections: participant, run, settings, hardware, results, gaze_quality, ignored_space_presses, glasses_video. Saccade phase also writes `gaze_trace.csv`.
@@ -154,14 +151,14 @@ Paths in this section are checked by `tests/test_docs.py` - keep them real.
 ## Architecture invariants
 
 - **`include/` = dataclasses, enums, constants only; no logic. `src/` mirrors it and holds all behaviour.**
-- **Sessions are PsychoPy-free state machines.** `PresaccadeSession` (baseline) and `ExperimentSession` (saccade) expose `on_space()`/`on_response_key()`/`tick()`/`render_state()`;
+- **Sessions are PsychoPy-free state machines.** `ExperimentSession` (saccade phase) exposes `on_space()`/`on_response_key()`/`tick()`/`render_state()`;
   the `run_experiment.py` frame loops (shared `FramePresenter` for caption/fades/frame clock, `deliver_keys`) call `tick()` + `render_state()` once per frame and apply the plain dict
-  (`apply_render_state()`/`draw_all()`). Both phases share one `ResultLogger` but separate `ZestStaircase`s. Test mode (short counts, saccade phase first) is a runtime choice:
-  `_resolve_test_mode()` reads the startup Mode dropdown; Real needs a non-empty Participant ID and counterbalanced phase order (`session_schedule.py`).
-  There is no pause menu, rest break, session cap or mid-session recalibration. `PresaccadeSession` uses `_TEST`/`_REAL` count pairs; `ExperimentSession` uses `SACCADE_FIXED_TRIALS_*`.
+  (`apply_render_state()`/`draw_all()`). Test mode (short counts) is a runtime choice:
+  `_resolve_test_mode()` reads the startup Mode dropdown; Real needs a non-empty Participant ID. A run is tutorial (optional) -> saccade phase -> a console line naming the `analyze_session` command.
+  There is no pause menu, rest break, session cap or mid-session recalibration, and no baseline phase (removed; old `baseline` rows still load via `PHASE_WORDS`). `ExperimentSession` uses `SACCADE_FIXED_TRIALS_*`.
 - **Gaze is behind `GazeSource`.** `NeonGazeSource` polls `receive_gaze_datum()` on a thread, turns scene gaze x / `NEON_SCENE_WIDTH` into a 0-1 ratio; `GazeMapper` does calibration fit, dead zone, smoothing.
   `build_gaze_source()` imports lazily so a machine missing `PySpin`/`mediapipe`/`pupil-labs-realtime-api` still runs the others. `IOHubGazeSource` is an untested placeholder. `WebcamGazeSource` = `Camera` (own thread, keeps only the newest Mono8 frame, intentionally) + `GazeTracker` (MediaPipe on a frame downscaled to `TRACKING_FRAME_WIDTH`).
-- **Shared logic lives once**: `OnsetDetector` (RT test, main trials, tutorial practice), `is_valid_for_saccadic_analysis()` (live ZEST update and `results_graph.py` must stay in lockstep), `RollingReactionTime`, `CalibrationLatch`. Reuse them, don't hand-roll.
+- **Shared logic lives once**: `OnsetDetector` (RT test, main trials, tutorial practice), `is_valid_for_saccadic_analysis()` (the live ZEST update), `RollingReactionTime`, `CalibrationLatch`. Reuse them, don't hand-roll.
 - **Test doubles**: `FakeGazeSource` (set `.zone`/`.face_found`/`.position`; `position` must move with `.zone`) and `fake_time` (patches `timebase._clock`, never the global `time`).
 - **Simulator**: `simulation.py` runs the real `ExperimentSession` against `SimulatedParticipant` (reads only `render_state()`), `SimulatedClock`, `SimulatedGazeSource` (real `GazeMapper`); no PsychoPy, no files, deterministic per `seed`.
   `ParticipantProfile` = knobs (RT, thresholds incl. suppression, tracker noise/latency, dropouts); `simulate_session()` returns `flash_truth` (whether each flash really hit the saccade, unknowable live).
@@ -172,7 +169,7 @@ Paths in this section are checked by `tests/test_docs.py` - keep them real.
 
 - **Flash timing is open-loop (`"scheduled"`)**, because live gaze is ~95 ms late: each flash is scheduled at average RT + one of `TIMING_OFFSETS_MS` (-80..+80 ms, bag shuffled with `CONTROL_OFFSETS_MS`)
   + `TIMING_JITTER_MS` (+/-10, logged as `scheduled_delay_ms`) from target onset. The live classifier only measures `reaction_latency_ms` and computes `flash_during_saccade` post hoc
-  (scheduled time inside `[_onset_detector.since, _target_landed_since]`); it is `True`/`False`/`None` (`None` = landing never confirmed). ZEST and `results_graph.py` both require exactly `True`.
+  (scheduled time inside `[_onset_detector.since, _target_landed_since]`); it is `True`/`False`/`None` (`None` = landing never confirmed). ZEST requires exactly `True`.
   Real judgement is `analyze_session` on the raw trace's phone capture times (accuracy vs flash time relative to saccade onset).
 - **Constant stimuli**: `SACCADE_FIXED_CONTRASTS` (evenly spaced between the dialog's min/max, logged as `saccade_contrasts`) and a fixed count `SACCADE_FIXED_TRIALS_*`; no live ZEST in the saccade phase.
   `SACCADE_FIXED_CONTRASTS = ()` returns to the staircase (stops via `_should_stop_main_block()` when the ZEST credible interval narrows; floor of valid trials; `MAX_SACCADE_TRIALS_*` cap).
@@ -199,7 +196,7 @@ SPACE presses are never silently dropped.
 
 - If the tutorial ran, its `precomputed_calibration_ratios` and `precomputed_rt_samples_ms` (`TutorialSession.rt_samples_ms`) go to `run_saccade_phase`: it skips calibration, RT test and practice, seeds `RollingReactionTime`
   (`_rt`, `_avg_reaction_time_ms`; `DEFAULT_REACTION_TIME_MS` if <3 usable) and starts the main trials. Without the tutorial: calibration + RT test + practice.
-- `update_caption()` shows and speaks the caption in lockstep (`narrate_if_changed`; never speaks blank). `render_state()["hide_caption"]` is True in real (non-practice) main trials of both phases: neither drawn nor spoken.
+- `update_caption()` shows and speaks the caption in lockstep (`narrate_if_changed`; never speaks blank). `render_state()["hide_caption"]` is True in real (non-practice) main trials: neither drawn nor spoken.
   The top-left HUD is drawn only in Test mode (`build_stimuli(win, show_hud=test_mode)`). Narrated strings: under ~15 words, never repeated between screens (it re-speaks on every text change), so the practice intro is spoken once and later trials have an empty caption.
 - Neon source has no `latest_frame()`, so the debug preview and video recording are skipped for it (`has_frames = hasattr(gaze, "latest_frame")` in `run_saccade_phase`).
 
