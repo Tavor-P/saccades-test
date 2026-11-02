@@ -59,7 +59,7 @@ def test_session_json_has_named_sections(tmp_path, monkeypatch):
     log = _make_logger(tmp_path, monkeypatch, participant_id="alice")
     log.close()
     meta = _meta(tmp_path)
-    assert list(meta) == ["participant", "run", "settings", "hardware", "results", "gaze_quality", "ignored_space_presses", "glasses_video"]
+    assert list(meta) == ["participant", "run", "settings", "hardware", "results", "gaze_quality", "head_motion", "ignored_space_presses", "glasses_video"]
     assert meta["participant"]["id"] == "alice"
     assert meta["run"]["unix_timestamp"] > 0 and meta["run"]["mode"] is None
     assert "viewing_distance_cm" in meta["settings"] and meta["settings"]["calibration"] is None

@@ -16,6 +16,7 @@ ANONYMOUS = "anonymous"
 TRIALS_FILE = "trials.csv"
 SESSION_FILE = "session.json"
 GAZE_TRACE_FILE = "gaze_trace.csv"
+HEAD_MOTION_FILE = "head_motion.csv"  # Neon IMU head speed/drift, downsampled (see src/eye_tracking/head_monitor.py)
 ANALYSIS_DIR = "analysis"
 GLASSES_DIR = "glasses"
 GRAPH_FILE = "comparison_graph.png"

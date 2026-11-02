@@ -6,6 +6,7 @@ import math
 import random
 from enum import Enum, auto
 
+from include.eye_tracking.constants import HEAD_DRIFT_WARN_DEG, HEAD_MAX_SPEED_DPS, HEAD_WARN_MIN_INTERVAL_S, HEAD_WARN_TEXT
 from include.eye_tracking.interfaces import GazeSource
 from include.experiment.constants import (
     CONTROL_OFFSETS_MS,
@@ -121,6 +122,9 @@ class ExperimentSession:
         self._clock = clock
         self._show_gaze_indicator = show_gaze_indicator
         self._phase = Phase.WAITING_TO_START
+        self.head_flagged_trials = 0  # trials excluded for a head-speed spike near the flash (session.json head_motion)
+        self.head_warnings = 0
+        self._head_last_warning_at: float | None = None
 
         # -- practice (fixed list) then dynamically-generated real trials --
         # Reaction times already measured (the tutorial's practice trials) replace both the RT test and this
@@ -568,6 +572,36 @@ class ExperimentSession:
         if self._landed and self._flash_decided and (self._responded or not self._response_window_open):
             self._finish_trial(landed=True)
 
+    def _head_tracker(self):
+        """The source's head-movement monitor (Neon IMU), or None when the source has none / it switched itself off."""
+        return getattr(self._gaze, "head_motion", None)
+
+    def _head_speed_spike_near_flash(self) -> bool:
+        """True if head angular speed exceeded HEAD_MAX_SPEED_DPS within TRACKING_LOSS_WINDOW_MS of the flash: the scene-camera gaze is then
+        shifted by head, not eye, movement, so the trial counts as tracking-not-ok (excluded by the same gates as a tracking loss)."""
+        tracker = self._head_tracker()
+        if tracker is None or not self._grating_actually_shown:
+            return False
+        window = TRACKING_LOSS_WINDOW_MS / 1000
+        return tracker.speed_spike_between(self._flash_scheduled_at - window, self._flash_scheduled_at + window, HEAD_MAX_SPEED_DPS)
+
+    def pop_head_warning(self) -> str | None:
+        """The "keep your head still" text, once, when the head has rotated more than HEAD_DRIFT_WARN_DEG from its calibration orientation;
+        only between trials (waiting for SPACE) and at most once per HEAD_WARN_MIN_INTERVAL_S. The runner speaks it (speech only, no
+        caption: real trials hide the caption) and prints it. None otherwise."""
+        tracker = self._head_tracker()
+        if tracker is None or self._phase is not Phase.AWAITING_SPACE:
+            return None
+        drift = tracker.drift_deg
+        now = self._clock.now()
+        if drift is None or drift <= HEAD_DRIFT_WARN_DEG:
+            return None
+        if self._head_last_warning_at is not None and now - self._head_last_warning_at < HEAD_WARN_MIN_INTERVAL_S:
+            return None
+        self._head_last_warning_at = now
+        self.head_warnings += 1
+        return HEAD_WARN_TEXT
+
     def _measure_reaction(self, new_samples) -> None:
         """Onset detection runs every tick purely as a measurement (reaction_latency_ms, the rolling RT average and one
         bound of the flash_during_saccade window); it no longer triggers the flash."""
@@ -649,7 +683,10 @@ class ExperimentSession:
         else:
             outcome = score_outcome(self._responded, self._response_orientation, trial.orientation)
         self._flash_during_saccade = self._compute_flash_during_saccade()
-        tracking_ok = (not self._tracking_lost_near_flash) if self._grating_actually_shown else None
+        head_moved = self._head_speed_spike_near_flash()
+        if head_moved and not trial.practice:
+            self.head_flagged_trials += 1
+        tracking_ok = (not (self._tracking_lost_near_flash or head_moved)) if self._grating_actually_shown else None
 
         if not trial.practice:
             # A "miss" counts as a non-detection like "correct"/"incorrect" (results_graph.py replays it the same way); only
@@ -807,8 +844,13 @@ class ExperimentSession:
                 "trial": self._trial_label() if self._has_trial_label() else "-",
                 "trial_index": self._main_trial_counter,
                 "calibration_wait_s": self._calibration.latch.waiting_s(self._clock.now()),
+                **self._head_hud(),
             },
         }
+
+    def _head_hud(self) -> dict:
+        tracker = self._head_tracker()
+        return {} if tracker is None else {"head_drift_deg": tracker.drift_deg}
 
     def _is_first_trial(self) -> bool:
         return self._practice_index + self._main_trial_counter <= 1

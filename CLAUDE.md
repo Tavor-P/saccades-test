@@ -34,7 +34,7 @@ Real-Time API) or, picked in the startup dialog, FLIR Blackfly S (`PySpin`) + Me
   stage and commit only your own files by name (never `git add -A` / `commit -a`); don't touch other sessions' files (e.g. `src/eye_tracking/neon_*`), tell the user instead.
 - Environment: PowerShell 5.1 has no `&&`; files may be CRLF (keep each file's endings); `.gitignore` has `data/`, which also matches any `data` folder (tests: use `tests/fixtures/`).
 - `data/` is git-ignored runtime output: never commit it, never write to it from tests/simulations (simulator uses an in-memory logger).
-- Report test results truthfully (ran / skipped). Suite: ~540 tests, ~1-2 min, 2 skipped without PySpin/mediapipe (`test_camera.py`, `test_gaze_tracking.py` `importorskip`).
+- Report test results truthfully (ran / skipped). Suite: ~555 tests, ~1-2 min, 2 skipped without PySpin/mediapipe (`test_camera.py`, `test_gaze_tracking.py` `importorskip`).
 
 ## Commands (all through the wrapper)
 
@@ -107,7 +107,8 @@ Paths in this section are checked by `tests/test_docs.py` - keep them real.
 | `src/experiment/flash_gates.py` | pre-specified gates (Braun 2021): `saccade` (eye fast at flash, latency 100-500 ms, amplitude 0.5-1.5x median), `fixation` (>=100 ms from any saccade, no tracking gap), else `excluded`; controls from `CONTROL_OFFSETS_MS` |
 | `src/experiment/simulation.py` | headless simulator (simulated participant, clock, gaze) |
 | `src/experiment/narrator.py` | Windows SAPI TTS narrator (see Gotchas) |
-| `src/eye_tracking/neon_source.py` | `NeonGazeSource` (default backend): Real-Time API stream + quality stats |
+| `src/eye_tracking/neon_source.py` | `NeonGazeSource` (default backend): Real-Time API stream + quality stats; also runs the IMU poll thread (`head_motion`) |
+| `src/eye_tracking/head_monitor.py` | `HeadMotionTracker` (no PsychoPy/device): head speed, drift from the calibration orientation, `max_speed_between`/`moved_since` over a ring buffer; flags only, never corrects gaze |
 | `src/eye_tracking/gaze_mapping.py` | `GazeMapper`: ratio -> calibrated position / zone / smoothing |
 | `src/eye_tracking/gaze_factory.py` | `build_gaze_source()` backend picker (lazy imports) |
 | `src/eye_tracking/gaze_trace.py` | raw gaze recording + `ReplayGazeSource` |
@@ -147,7 +148,7 @@ Paths in this section are checked by `tests/test_docs.py` - keep them real.
 - `trials.csv`: one row per trial, both phases (`phase` column), schema `TRIAL_COLUMNS` with plain names. Order: contrast, yes/no group, outcome,
   stimulus/answer pair, ms block (`flash_ms_after_go_cue`, `reaction_ms`, `answer_ms`, `flash_unix_ms`), `tracking_ok`. `DROPPED_FROM_CSV` lists fields kept out and why
   (`source`/`target`: direction = trial parity; `timing_offset_ms`: the delay is in `flash_ms_after_go_cue`).
-- `session.json` sections: participant, run, settings, hardware, results, gaze_quality, ignored_space_presses, glasses_video. Saccade phase also writes `gaze_trace.csv`.
+- `session.json` sections: participant, run, settings, hardware, results, gaze_quality, head_motion, ignored_space_presses, glasses_video. Saccade phase also writes `gaze_trace.csv` and a head-motion CSV (IMU, separate file so the trace format is untouched).
 - Readers (`read_trial_rows`/`read_trials`, `data_access`, `analyze_session`, replay) accept both the run-folder layout and old loose `results_<ts>.csv/_meta.json`; old screen-backend traces hold screen-ratio x `NEON_SCENE_WIDTH` in `x_px` (why that constant stays).
 - The dashboard is a separate Flask process sharing only files with the experiment; deleting a new-layout session removes its whole run folder (glasses video included).
 
@@ -167,6 +168,7 @@ Paths in this section are checked by `tests/test_docs.py` - keep them real.
   `ParticipantProfile` = knobs (RT, thresholds incl. suppression, tracker noise/latency, dropouts); `simulate_session()` returns `flash_truth` (whether each flash really hit the saccade, unknowable live).
   Entry points: `tests/ai-tests/README.md`, `run_sim.py`, `sim_tools.py`. Real gaze replays via `ReplayGazeSource`.
 - **Tracking-quality gate**: a flash is `tracking_ok=False` (excluded like `flash_during_saccade != True`) if tracking dropped within `TRACKING_LOSS_WINDOW_MS` of it. `gaze_quality` (rate, gaps, latency, clock offset) goes to `session.json`.
+- **Head monitor (Neon IMU, `HEAD_*` constants)**: polls `receive_imu_datum(timeout_seconds=0)` at `HEAD_POLL_HZ` on its own thread (never in the gaze loop; ~15 us per poll, measured on fakes); a flash with head speed > `HEAD_MAX_SPEED_DPS` within `TRACKING_LOSS_WINDOW_MS` is `tracking_ok=False` (`ExperimentSession._head_speed_spike_near_flash`, `head_flagged_trials`); drift > `HEAD_DRIFT_WARN_DEG` is warned once per `HEAD_WARN_MIN_INTERVAL_S` between trials (`pop_head_warning`, spoken, no caption). No IMU/errors/no data -> off with one warning, `session.json` `head_motion.status` = `unavailable (...)`. **Unvalidated on glasses**: thresholds, real rate, IMU-vs-gaze clock alignment, whether the quaternion drifts in yaw. Simulator: `ParticipantProfile.head_spikes` (default off).
 
 ## Experiment design (why it is built this way)
 

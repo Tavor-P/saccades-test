@@ -340,6 +340,7 @@ class ResultLogger:
             "hardware": {"display_refresh_hz": None, "neon_device": _neon_address()},
             "results": {"phases": {}, "saccade_phase_summary": {}},
             "gaze_quality": None,
+            "head_motion": None,
             "ignored_space_presses": {},
             "glasses_video": {"recording": "not started"},
         }
@@ -366,6 +367,11 @@ class ResultLogger:
     def gaze_trace_path(self) -> Path:
         """Raw gaze recording for this session (see src/eye_tracking/gaze_trace.py)."""
         return self._folder / session_files.GAZE_TRACE_FILE
+
+    @property
+    def head_motion_path(self) -> Path:
+        """Head speed/drift from the Neon IMU (see src/eye_tracking/head_monitor.py), written at the end of the saccade phase."""
+        return self._folder / session_files.HEAD_MOTION_FILE
 
     @property
     def analysis_dir(self) -> Path:
@@ -413,6 +419,12 @@ class ResultLogger:
         clock offset) from a GazeSource that reports it - see
         NeonGazeSource.quality_summary()."""
         self._metadata["gaze_quality"] = summary
+        self._write_metadata()
+
+    def set_head_motion(self, summary: dict) -> None:
+        """Head-movement monitor summary (status, max speed/drift, flagged trials) from NeonGazeSource.head_motion_summary();
+        status "unavailable (reason)" when the IMU could not be used."""
+        self._metadata["head_motion"] = summary
         self._write_metadata()
 
     def set_ignored_space_presses(self, label: str, counts: dict) -> None:

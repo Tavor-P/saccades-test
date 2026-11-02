@@ -107,3 +107,24 @@ NEON_CLOCK_REESTIMATE_MAX_STD_MS = 10.0
 # Replaying a recorded trace (gaze_trace.py) has no clock offset; capture times come from the trace's device
 # timestamps, assuming this typical end-to-end latency (measured median on Neon, Oct 2026).
 NEON_REPLAY_LATENCY_MS = 16.0
+# -- Head-movement monitor (Neon IMU; src/eye_tracking/head_monitor.py). It only FLAGS head movement, it never corrects gaze.
+# ALL of these values are untested defaults, not validated on glasses: check head_motion.csv / session.json "head_motion" after the first run.
+# IMU is polled at this rate on its own thread (the device keeps only the newest ~110 Hz sample, so this is a subsample).
+HEAD_POLL_HZ = 30.0
+# Seconds of IMU history kept for moved_since()/max_speed_between() (a trial is well under this).
+HEAD_BUFFER_S = 10.0
+# A flash whose +-TRACKING_LOSS_WINDOW_MS window contains head angular speed above this (deg/s) gets tracking_ok=False.
+# A still head on a chin rest reads well under 5 deg/s (gyro noise ~0.1-1); 25 only trips on a real nudge or turn.
+HEAD_MAX_SPEED_DPS = 25.0
+# Head rotation (deg, total angle) away from the orientation at calibration that triggers a console/spoken "keep your head still".
+# Roughly the gaze error a rotation of this size adds to the scene-camera gaze x; the dot-cross span is ~41 deg.
+HEAD_DRIFT_WARN_DEG = 3.0
+# At most one warning per this many seconds, and only between trials.
+HEAD_WARN_MIN_INTERVAL_S = 120.0
+HEAD_WARN_TEXT = "Please keep your head still."
+# No IMU datum within this many seconds of starting the poll: the monitor is switched off ("unavailable") with one warning.
+HEAD_NO_DATA_TIMEOUT_S = 5.0
+# Consecutive receive_imu_datum exceptions before the monitor switches itself off.
+HEAD_MAX_CONSECUTIVE_ERRORS = 5
+# Cap on the samples kept for head_motion.csv (30 Hz x 2 h).
+HEAD_MAX_LOGGED_SAMPLES = 216_000

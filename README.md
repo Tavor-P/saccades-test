@@ -68,6 +68,21 @@ Discussion were not checked). In that paper participants (ages 8-78; about 100 a
 5. **Measure your screen.** `VIEWING_DISTANCE_CM` and `SCREEN_HEIGHT_CM` in `include/experiment/constants.py` are still placeholders. The line's
    offset (2 deg) and thickness, and the reported saccade size in degrees, are only right once they match the real monitor and seat distance.
 
+### Head movement
+
+The Neon's inertial sensor (IMU) is polled at ~30 Hz on a light background thread while the saccade phase runs. It **flags, it does not correct**: the chin rest
+remains the plan. It records head angular speed and the head's rotation away from its orientation at calibration, and:
+
+- a flash with a head-speed spike (> `HEAD_MAX_SPEED_DPS`) within `TRACKING_LOSS_WINDOW_MS` of it gets `tracking_ok = no`, so it is excluded like a tracking loss;
+- if the head turns more than `HEAD_DRIFT_WARN_DEG` from the calibration orientation, "Please keep your head still." is printed and spoken (between trials only, at most
+  once every `HEAD_WARN_MIN_INTERVAL_S`; speech only, because trials show no caption);
+- Test mode's top-left text shows the drift in degrees;
+- `session.json` gets a `head_motion` section (status, samples, rate, max speed and drift, flagged trials) and the run folder a downsampled `head_motion.csv`
+  (`t_s`, `phone_unix_s`, `speed_dps`, `drift_deg`).
+
+If the device has no IMU or it fails, the monitor switches itself off with one console warning and `head_motion.status` reads `unavailable (...)`. The thresholds and the
+IMU's rate and clock alignment with the gaze stamps are **not validated on glasses** yet.
+
 ## Running a session
 
 ```
@@ -112,6 +127,7 @@ data/<participant id>/<YYYY-MM-DD_HH-MM-SS>[_test]/
   trials.csv           one row per trial
   session.json         metadata, see below
   gaze_trace.csv       raw Neon gaze with the phone's capture times
+  head_motion.csv      Neon IMU head speed and drift, ~30 Hz (only if the IMU worked)
   comparison_graph.png end-of-run graph
   analysis/            report.txt, plot.png, flashes.csv, suppression.json (written by analyze_session)
   glasses/             the phone's video + video_sync.json + flash_video_times.csv (written by import_glasses_video)
@@ -123,7 +139,7 @@ data/<participant id>/<YYYY-MM-DD_HH-MM-SS>[_test]/
 the trial's parity within its phase. The code-side schema is `TRIAL_COLUMNS` in `src/experiment/logger.py`.
 
 `session.json` sections: `participant`, `run` (mode, start time, git state, versions), `settings` (screen geometry, line parameters, contrasts, calibration, constants),
-`hardware`, `results` (per-phase summaries), `gaze_quality` (rate, gaps, latency, clock offset), `ignored_space_presses` (per phase and reason) and
+`hardware`, `results` (per-phase summaries), `gaze_quality` (rate, gaps, latency, clock offset), `head_motion` (IMU monitor summary), `ignored_space_presses` (per phase and reason) and
 `glasses_video` (recording state and sync-flash times).
 
 Older sessions (loose `data/results_<timestamp>.csv`, `_meta.json`, and `vertical`/`horizontal` sides from the grating version) are never rewritten and are still read.
@@ -195,6 +211,7 @@ Not verified on real footage: whether the scene camera sees the green flash from
 - **Screen geometry is a placeholder** (see Setup), so degrees are approximate.
 - **Gaze reaches the PC ~90-100 ms late** in real sessions (about 16 ms in standalone scripts), so the live `flash_during_saccade` flag is unreliable. Judging after the fact
   from the phone's capture times (`analyze_session`) is unaffected. Cause not found.
+- **Head monitor unvalidated:** the IMU monitor's thresholds, real rate and clock alignment with gaze have not been checked on glasses (see Head movement).
 - **Timing is open-loop:** flashes are scheduled, not triggered by the saccade, and reaction times vary (SD ~60-80 ms), so only about a third of flashes land near onset.
   People with TBI may vary more.
 - **The baseline is not a like-for-like control** (foveal, a different retinal location); the fixation-control flashes inside the saccade phase address that, which is what

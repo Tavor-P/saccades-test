@@ -26,6 +26,7 @@ from include.eye_tracking.interfaces import GazeSource
 from include.eye_tracking.types import GazeSample, GazeZone
 from include.experiment.constants import CROSS_POSITION, DOT_POSITION, SCREEN_HEIGHT_CM, VIEWING_DISTANCE_CM
 from include.experiment.types import Side, TrialResult
+from src.eye_tracking.head_monitor import HeadMotionTracker
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.scoring import is_valid_for_saccadic_analysis
 from src.experiment.session import ExperimentSession
@@ -74,6 +75,9 @@ class ParticipantProfile:
     dropout_rate_per_s: float = 0.0  # tracking losses (blinks etc.) per second
     dropout_ms: float = 80.0
     gaze_offset_ratio: float = 0.01  # constant offset of this participant's gaze readings
+    # Synthetic head movement for the head monitor (off by default: no tracker is attached unless set): each (start_s, end_s, deg_per_s)
+    # turns the head about the vertical axis at that speed during that span of simulated session time.
+    head_spikes: tuple[tuple[float, float, float], ...] = ()
 
     # -- optional reaction-time realism (all off by default: with the defaults the latency is
     # exactly gauss(reaction_ms_mean, reaction_ms_sd), floored at 120 ms, as before). Each is
@@ -172,6 +176,7 @@ class SimulatedGazeSource(GazeSource):
         self._latest = GazeSample(zone=GazeZone.UNKNOWN, ratio=None, face_found=False, timestamp=0.0)
         self._history: deque[GazeSample] = deque(maxlen=GAZE_HZ)  # ~1 s of samples, like a real source's buffer
         self.gaze_latency_ms: float | None = None  # what a real source (Neon) measures; set from the profile by the participant
+        self.head_motion = None  # optional HeadMotionTracker fed by the participant (ParticipantProfile.head_spikes)
 
     def push(self, ratio: float | None, t: float) -> None:
         if ratio is None:
@@ -199,6 +204,8 @@ class SimulatedGazeSource(GazeSource):
 
     def calibrate(self, left_ratio: float, center_ratio: float, right_ratio: float) -> None:
         self._mapper.calibrate(left_ratio, center_ratio, right_ratio)
+        if self.head_motion is not None:
+            self.head_motion.set_reference()
 
     def average_recent_ratio(self) -> float | None:
         return self._mapper.average_recent_ratio()
@@ -229,6 +236,7 @@ class SimulatedParticipant:
         self._move_start = 0.0
         self._move_dur = 0.05
         self._dropout_until = -1.0
+        self._head_yaw_deg = 0.0
         self.cues: list[CueRecord] = []  # ground-truth latency of every go-cue so far
         self._ar_dev = 0.0  # AR(1) state: last cue's deviation from its true mean
         self._reset_phase_state()
@@ -254,8 +262,16 @@ class SimulatedParticipant:
         self._eye_from = self._eye_to = x
         self._move_start = t
 
+    def _feed_head(self, t: float) -> None:
+        speed = next((dps for start, end, dps in self._p.head_spikes if start <= t < end), 0.0)
+        self._head_yaw_deg += speed / GAZE_HZ
+        half = math.radians(self._head_yaw_deg) / 2
+        self._gaze.head_motion.add(t, (0.0, 0.0, speed), (0.0, 0.0, math.sin(half), math.cos(half)))
+
     def feed_gaze(self, t: float) -> None:
         """One tracker sample, taken from where the eye was tracker_latency ago."""
+        if self._gaze.head_motion is not None:
+            self._feed_head(t)
         if t < self._dropout_until:
             self._gaze.push(None, t)
             return
@@ -423,6 +439,8 @@ def simulate_session(
         session = ExperimentSession(
             gaze, logger=logger, clock=clock, test_mode=test_mode, skip_practice_trials=skip_practice_trials
         )
+        if profile.head_spikes:
+            gaze.head_motion = HeadMotionTracker()
         participant = SimulatedParticipant(session, gaze, profile, random.Random(seed), events)
 
         step = 0
