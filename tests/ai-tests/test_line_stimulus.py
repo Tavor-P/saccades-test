@@ -7,7 +7,6 @@ import json
 import pytest
 
 from include.experiment.constants import (
-    CENTER_POSITION,
     CROSS_POSITION,
     DOT_POSITION,
     LINE_OFFSET_DEG,
@@ -17,12 +16,10 @@ from include.experiment.constants import (
     SCREEN_HEIGHT_DEG,
     TUTORIAL_QUIZ_STREAK_TARGET,
 )
-from include.experiment.types import FlashTrialSpec, Side, Target
+from include.experiment.types import Side, Target
 from src.dashboard import data_access
 from src.experiment.scoring import score_outcome
 from src.experiment.trial_mechanics import line_position, random_orientation
-from test_presaccade_session import _enter_flash_window
-from test_presaccade_session import _make_session as _make_presaccade
 from test_session import (
     _complete_calibration_and_rt_test,
     _enter_trial_active,
@@ -74,16 +71,6 @@ def test_saccade_phase_line_sits_next_to_the_target_not_the_source(fake_gaze, fa
     assert (line["y"] < expected[1]) == (side is Side.ABOVE)
 
 
-def test_baseline_line_sits_next_to_the_screen_centre(fake_time):
-    for side in (Side.ABOVE, Side.BELOW):
-        session = _make_presaccade()
-        session._trials = [FlashTrialSpec(index=0, orientation=side)]
-        _enter_flash_window(session, fake_time)
-        line = session.render_state()["grating"]
-        assert line["visible"] is True
-        assert (line["x"], line["y"]) == pytest.approx(line_position(CENTER_POSITION, side))
-
-
 def test_answer_keys_are_up_and_down_only():
     run_experiment = pytest.importorskip("src.experiment.run_experiment")
     assert sorted(run_experiment.RESPONSE_KEYS) == ["down", "up"]
@@ -110,10 +97,7 @@ def test_instructions_name_up_and_down_and_no_other_keys(fake_gaze, fake_time):
     session.on_space()
     text = session.render_state()["instructions"]
     assert "UP" in text and "DOWN" in text
-    pre = _make_presaccade()
-    pre.on_space()
-    for t in (text, pre.render_state()["instructions"]):
-        assert "LEFT" not in t and "RIGHT" not in t and "grating" not in t.lower()
+    assert "LEFT" not in text and "RIGHT" not in text and "grating" not in text.lower()
     assert len(text.split()) <= 15
 
 

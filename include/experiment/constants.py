@@ -9,7 +9,7 @@ import math
 # (~41 deg, ~110 ms) gives a longer movement for the flash to land in than the old 30%/70% (~24 deg).
 DOT_POSITION = (0.15, 0.5)
 CROSS_POSITION = (0.85, 0.5)
-CENTER_POSITION = (0.5, 0.5)  # presaccade-phase fixation point
+CENTER_POSITION = (0.5, 0.5)  # the calibration step's centre target
 GRATING_POSITION = (
     (DOT_POSITION[0] + CROSS_POSITION[0]) / 2,
     (DOT_POSITION[1] + CROSS_POSITION[1]) / 2,
@@ -32,7 +32,7 @@ SCREEN_HEIGHT_DEG = 2 * math.degrees(math.atan((SCREEN_HEIGHT_CM / 2) / VIEWING_
 
 # LINE-STIMULUS BRANCH: the flash is NOT the grating below but a thin horizontal line (Braun, Schutz &
 # Gegenfurtner 2021, J Vis): full screen width, a vertical Gaussian luminance profile, 2 deg above or below
-# the saccade target (the symbol the eye is moving to; in the baseline the fixation point), and the
+# the saccade target (the symbol the eye is moving to), and the
 # participant says which side with UP / DOWN. Their values: SD 0.15 deg, offset 2 deg, one frame at 120 Hz.
 # Sizes go through SCREEN_HEIGHT_DEG like the grating's, so they are only right once VIEWING_DISTANCE_CM /
 # SCREEN_HEIGHT_CM match the real monitor (they are still the 24-inch placeholders).
@@ -77,22 +77,12 @@ LINE_SD_HEIGHT_UNITS = LINE_SD_DEG / SCREEN_HEIGHT_DEG
 # PsychoPy's 'gauss' mask has a standard deviation of size/6, so a mask this tall has SD = LINE_SD_DEG.
 LINE_HEIGHT_HEIGHT_UNITS = LINE_SD_HEIGHT_UNITS * 6
 
-# Whether a session is a quick test/smoke run (fewer trials, saccade phase
-# first so you reach the thing you're testing faster) or a real
+# Whether a session is a quick test/smoke run (fewer trials) or a real
 # data-collection session is a runtime decision, not a constant to edit here
 # - see run_experiment.py's _resolve_test_mode(): leaving the startup
-# dialog's Participant ID blank means test, entering one means real. The two
-# trial-count pairs below are what that choice picks between.
-#
-# Fixed trial count for PresaccadeSession (baseline/fixation phase) only now
-# - ExperimentSession's real saccade block no longer uses this at all, since
-# its trial count is open-ended (see ZEST_MIN_VALID_TRIALS_*/MAX_SACCADE_TRIALS_*
-# below). 25 either way (not 100 for "real") - that's plenty of data for the
-# baseline condition and a shorter baseline keeps total session length down.
-NUM_TRIALS_PER_PHASE_TEST = 25
-NUM_TRIALS_PER_PHASE_REAL = 25
+# dialog's Participant ID blank means test, entering one means real.
 
-# A few throwaway trials before each phase's real block, so a participant
+# A few throwaway trials before the real block, so a participant
 # doesn't learn the response mapping on data that counts. Fixed at a high,
 # easily-visible contrast (not drawn from the staircase) and excluded from
 # both the ZEST update and the logged CSV/results.
@@ -242,8 +232,8 @@ TIMING_JITTER_MS = 10
 # TIMING_OFFSETS_MS, that fire this long AFTER the average reaction time - by then the eye has landed
 # (typical reaction ~250 ms + saccade ~75 ms, so +400 ms is well past it) and rests on the target.
 # The flash is at the same screen position, contrast and retinal location as the saccade-phase
-# flashes, so accuracy here is the like-for-like fixation baseline for the suppression index (the
-# separate foveal baseline phase is not). Two of eleven offsets are controls, ~18 % of trials.
+# flashes, so accuracy here is the like-for-like fixation condition for the suppression index (the
+# old separate foveal baseline phase was removed). Two of eleven offsets are controls, ~18 % of trials.
 # () = no controls.
 CONTROL_OFFSETS_MS = (400, 500)
 
@@ -367,7 +357,7 @@ WARNING_TONE_DURATION_S = 0.5
 # First-timer tutorial (see src/experiment/tutorial_session.py), offered as a
 # yes/no dialog toggle before a real saccade-phase session: calibration ->
 # "how to answer" quiz -> practice trials that look exactly like real ones.
-# Runs once, ahead of both phases; hands its calibration and its practice
+# Runs once, ahead of the saccade phase; hands its calibration and its practice
 # reaction times to the saccade phase so neither is repeated.
 
 # Contrast of the fixed gratings in the "how to answer" quiz - comfortably

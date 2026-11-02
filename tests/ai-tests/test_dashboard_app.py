@@ -24,12 +24,11 @@ _FIELDNAMES = [
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
-    # app.py only ever reaches data_access's DATA_DIR/GRAPH_CACHE_DIR through
-    # data_access's own functions (graph_cache_path_for, delete_session, ...),
+    # app.py only ever reaches data_access's DATA_DIR through
+    # data_access's own functions (delete_session, ...),
     # so patching them here is enough - app.py holds no separate binding of
     # its own to go stale.
     monkeypatch.setattr(data_access, "DATA_DIR", tmp_path)
-    monkeypatch.setattr(data_access, "GRAPH_CACHE_DIR", tmp_path / "cache")
     monkeypatch.setattr(settings_module, "DATA_DIR", tmp_path)
     app_module.app.config.update(TESTING=True)
     return app_module.app.test_client()
@@ -74,19 +73,6 @@ def test_update_session_rejects_bad_age(client, tmp_path):
 
 def test_update_session_404s_for_unknown_timestamp(client):
     response = client.post("/sessions/000000", json={"name": "", "gender": "", "age": ""})
-    assert response.status_code == 404
-
-
-def test_session_graph_renders_a_png(client, tmp_path):
-    _write_session(tmp_path, "321")
-    response = client.get("/sessions/321/graph.png")
-    assert response.status_code == 200
-    assert response.content_type == "image/png"
-    assert len(response.data) > 0
-
-
-def test_session_graph_404s_for_unknown_timestamp(client):
-    response = client.get("/sessions/000000/graph.png")
     assert response.status_code == 404
 
 
