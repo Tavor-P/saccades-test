@@ -367,10 +367,3 @@ TUTORIAL_QUIZ_CONTRAST = 0.5
 TUTORIAL_QUIZ_STREAK_TARGET = 3  # consecutive correct needed to pass the quiz; a miss resets the streak
 TUTORIAL_PRACTICE_ATTEMPTS = 8  # fixed count, not gated by success; also the source of the saccade phase's first reaction-time average
 TUTORIAL_PRACTICE_CONTRAST = 0.5  # a clearly visible flash: the practice teaches the loop, it does not measure a threshold
-
-# Correctness-feedback flash for the tutorial's quiz/practice stages -
-# same style as START_FLASH_COLOR above, just red/green instead of the
-# trial-start green.
-FEEDBACK_FLASH_RED = [1, -1, -1]
-FEEDBACK_FLASH_GREEN = [-1, 1, -1]
-FEEDBACK_FLASH_DURATION_FRAMES = 8
