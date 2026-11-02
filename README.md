@@ -100,7 +100,7 @@ What happens, in order (`Space` advances everything; `Esc` quits at once):
 5. **Baseline phase:** the same task without an eye movement, fixating the centre while the staircase (ZEST) adapts the contrast; 25 trials after a few practice trials.
 6. A comparison graph of the two phases ends the run.
 
-The phone records the glasses' scene video during the saccade phase (see below); the phone app must show a wearer and workspace selected.
+The phone records the glasses' scene video during the saccade phase (see below); the recording may need the Companion app open with a wearer and workspace selected (not verified yet); a failure never stops the session.
 
 ## Output
 
@@ -182,7 +182,7 @@ Not verified on real footage: whether the scene camera sees the green flash from
 | Camera picker is empty | Webcam backend only: it lists FLIR cameras via Spinnaker, not generic webcams |
 | Eye tracking seems inaccurate | Redo calibration, looking steadily at each target; keep the head still after calibrating |
 | Pressing SPACE seems to do nothing | Presses during a trial's wait are ignored by design; they are counted in the console summary and `ignored_space_presses` |
-| Glasses recording `failed` in `session.json` | The phone app must be open with a wearer and workspace selected; the rest of the data is unaffected |
+| Glasses recording `failed` in `session.json` | The recording may need the Companion app open with a wearer and workspace selected (not verified yet); a failure never stops the session and the rest of the data is unaffected |
 | A webcam session's video is missing or empty | OpenCV could not open the codec; look for `WARNING: video recording failed to start` in the console |
 
 ## Known limitations
