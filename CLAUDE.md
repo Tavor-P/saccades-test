@@ -32,6 +32,7 @@ Real-Time API) or, picked in the startup dialog, FLIR Blackfly S (`PySpin`) + Me
 .\scripts\py.ps1 -m src.experiment.simulation                   # headless simulated trial timeline (AI-safe)
 .\scripts\py.ps1 tests/ai-tests/run_sim.py --help               # sim runner: --scenario --set --profile --sweep --sweep-profile --seeds --timeline --json --real --list
 .\scripts\py.ps1 -m src.experiment.run_experiment               # REAL experiment (human only)
+# double-click launchers in the repo root: run_experiment.bat, analyze_latest.bat, run_tests.bat (extra args pass through; fine from cmd)
 .\scripts\py.ps1 -m src.dashboard.app                           # dashboard, localhost:5000 (human)
 .\scripts\py.ps1 -m src.experiment.analyze_session [session] [--data-dir D]  # newest session by default (unix ts, run folder name or path); writes <run>/analysis/
 .\scripts\py.ps1 -m src.experiment.import_glasses_video <run-folder> <exported.mp4>  # attach + sync the phone's glasses video
