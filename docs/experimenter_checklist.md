@@ -5,9 +5,9 @@ Commands run from the project folder in PowerShell. Full details: [README.md](..
 ## Before the session
 - [ ] Phone: Neon Companion app open, glasses connected, a wearer and workspace selected, same Wi-Fi/hotspot as the PC, battery OK.
 - [ ] Glasses on the participant (clean lenses), head on the chin rest, seat height so the screen centre is at eye level.
-- [ ] Measured once per setup: screen height (cm) and eye-to-screen distance (cm), set as `SCREEN_HEIGHT_CM` / `VIEWING_DISTANCE_CM` in `include/experiment/constants.py`.
+- [ ] Measured once per setup: screen height (cm) and eye-to-screen distance (cm), typed into the startup dialog.
 - [ ] Room dim, screen brightness the same as last time, notifications off, nothing else running.
-- [ ] Start: `powershell -ExecutionPolicy Bypass -File scripts\py.ps1 -m src.experiment.run_experiment`
+- [ ] Start: double-click `run_experiment.bat`.
 - [ ] Dialog: Mode **Real**, a **Participant ID**, Gaze source Pupil Labs Neon, **Run tutorial = Yes** (it is "No" by default), Record video as is. OK.
 - [ ] Read the participant script (README, Quick start) before pressing OK.
 
