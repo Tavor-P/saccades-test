@@ -40,7 +40,7 @@ _CONTRAST_HELP = (
 )
 # Field key -> help bubble text. One place for the dialog, the README and the tests.
 HELP_TEXTS = {
-    "participant_id": "Who is doing the test. Letters, digits, - and _. Results go to data/<ID>/ and a new person gets the tutorial.",
+    "participant_id": "Who is doing the test. Use a study code (for example P01), not a name. Letters, digits, - and _. Results go to data/<ID>/ and a new person gets the tutorial.",
     "mode": "Real = full session. Test = short trial run with debug text, saved as a _test run.",
     "run_tutorial": "Explains the task step by step and calibrates the eye tracker. Recommended for anyone new.",
     "screen_height_cm": "Height of the visible picture on the monitor in cm (measure it). Used to make the line the right size in degrees.",
