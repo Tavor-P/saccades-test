@@ -108,16 +108,13 @@ def test_quiz_passes_after_three_in_a_row_and_a_miss_resets_the_streak(fake_gaze
     wrong = Side.BELOW if session._quiz_orientation is Side.ABOVE else Side.ABOVE
     session.on_response_key(wrong)
     assert session._quiz_streak == 0
-    assert session.render_state()["feedback_flash"]["color"] == "red"
     assert session.render_state()["hud"]["phase"] == "QUIZ"
 
     for _ in range(TUTORIAL_QUIZ_STREAK_TARGET - 1):
         session.on_response_key(session._quiz_orientation)
         assert session.render_state()["hud"]["phase"] == "QUIZ"
     session.on_response_key(session._quiz_orientation)
-    state = session.render_state()
-    assert state["hud"]["phase"] == "PRACTICE_AWAITING_SPACE"
-    assert state["feedback_flash"]["color"] == "green"
+    assert session.render_state()["hud"]["phase"] == "PRACTICE_AWAITING_SPACE"
 
 
 def test_quiz_explains_the_keys_once(fake_gaze):
@@ -146,15 +143,6 @@ def test_practice_runs_fixed_attempts_regardless_of_outcome(fake_gaze, fake_time
             _run_timeout_attempt(session, fake_gaze, fake_time)
         expected = "COMPLETE" if attempt == TUTORIAL_PRACTICE_ATTEMPTS - 1 else "PRACTICE_AWAITING_SPACE"
         assert session.render_state()["hud"]["phase"] == expected
-
-
-def test_practice_gives_colour_feedback(fake_gaze, fake_time):
-    session = _make_session(fake_gaze)
-    _reach_practice(session)
-    _run_attempt(session, fake_gaze, fake_time, respond_correctly=True)
-    assert session.render_state()["feedback_flash"]["color"] == "green"
-    _run_attempt(session, fake_gaze, fake_time, respond_correctly=False)
-    assert session.render_state()["feedback_flash"]["color"] == "red"
 
 
 def test_practice_produces_one_reaction_time_sample_per_trial_with_a_saccade(fake_gaze, fake_time):

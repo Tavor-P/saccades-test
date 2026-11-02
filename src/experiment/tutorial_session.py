@@ -24,7 +24,6 @@ from include.experiment.constants import (
 from include.experiment.types import Side, Target
 from src.experiment.calibration import CalibrationRounds
 from src.experiment.pausable_clock import PausableClock
-from src.experiment.scoring import score_outcome
 from src.experiment.space_input import SpaceTally
 from src.experiment.trial_mechanics import OnsetDetector, RollingReactionTime, line_position, sample_capture_time
 from src.experiment.trial_mechanics import random_orientation as _random_orientation
@@ -54,7 +53,7 @@ class TutorialSession:
     2. QUIZ ("how to answer") - a line above or below a dot, UP/DOWN to answer, TUTORIAL_QUIZ_STREAK_TARGET correct in a row
        (a miss resets the streak).
     3. PRACTICE - TUTORIAL_PRACTICE_ATTEMPTS trials that look like real saccade trials (SPACE -> dot -> cross -> visible flash
-       -> key -> colour feedback). The flash fires at the rolling robust average of this stage's own reaction times
+       -> key). The flash fires at the rolling robust average of this stage's own reaction times
        (DEFAULT_REACTION_TIME_MS until there are 3); each trial's onset latency is kept in `rt_samples_ms` to seed
        ExperimentSession's average instead of a separate RT test.
 
@@ -80,10 +79,6 @@ class TutorialSession:
         # -- quiz --
         self._quiz_streak = 0
         self._quiz_orientation: Side | None = None
-
-        # -- feedback flash: color + a token that increments per event, so the renderer can edge-detect a new flash --
-        self._feedback_color: str | None = None
-        self._feedback_token = 0
 
         # -- practice trials --
         self._attempt = 0
@@ -140,13 +135,11 @@ class TutorialSession:
             if orientation == self._quiz_orientation:
                 self._quiz_streak += 1
                 if self._quiz_streak >= TUTORIAL_QUIZ_STREAK_TARGET:
-                    self._set_feedback("green")
                     self._enter_practice()
                 else:
                     self._quiz_orientation = _random_orientation()
             else:
                 self._quiz_streak = 0
-                self._set_feedback("red")
                 self._quiz_orientation = _random_orientation()
         elif self._phase is Phase.PRACTICE_ACTIVE:
             if self._responded or not self._response_window_open:
@@ -155,10 +148,6 @@ class TutorialSession:
             if now <= self._response_deadline:
                 self._responded = True
                 self._response_orientation = orientation
-
-    def _set_feedback(self, color: str) -> None:
-        self._feedback_color = color
-        self._feedback_token += 1
 
     def _enter_quiz(self) -> None:
         self._quiz_streak = 0
@@ -255,19 +244,13 @@ class TutorialSession:
                 self._target_landed_since = None
 
             if now - self._trial_start >= SACCADE_TIMEOUT_MS / 1000:
-                self._finish_attempt(timed_out=True)
+                self._finish_attempt()
                 return
 
         if self._landed and self._flash_decided and (self._responded or not self._response_window_open):
-            self._finish_attempt(timed_out=False)
+            self._finish_attempt()
 
-    def _finish_attempt(self, timed_out: bool) -> None:
-        if timed_out and not self._onset_detector.confirmed:
-            outcome = "timeout"
-        else:
-            outcome = score_outcome(self._responded, self._response_orientation, self._orientation)
-        self._set_feedback("green" if outcome == "correct" else "red")
-
+    def _finish_attempt(self) -> None:
         self._grating_visible = False
         self._source = self._target
         self._attempt += 1
@@ -363,7 +346,6 @@ class TutorialSession:
         return {
             "instructions": self._instructions(),
             "tutorial_text": {"visible": text is not None, "text": text or "", "position": position},
-            "feedback_flash": {"color": self._feedback_color, "token": self._feedback_token},
             "dot": {"visible": dot_visible, "x": DOT_POSITION[0], "y": DOT_POSITION[1]},
             "cross": {"visible": cross_visible, "x": CROSS_POSITION[0], "y": CROSS_POSITION[1]},
             "calibration_center": {

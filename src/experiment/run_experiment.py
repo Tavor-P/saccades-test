@@ -12,9 +12,6 @@ from psychopy import core, event, gui, sound, visual
 from include.experiment.constants import (
     BACKGROUND_LUMINANCE,
     CIRCLE_RADIUS_RATIO,
-    FEEDBACK_FLASH_DURATION_FRAMES,
-    FEEDBACK_FLASH_GREEN,
-    FEEDBACK_FLASH_RED,
     GAZE_INDICATOR_OPACITY,
     GAZE_INDICATOR_RADIUS_RATIO,
     ABOVE_RESPONSE_KEYS,
@@ -181,8 +178,6 @@ def build_stimuli(win: visual.Window, show_hud: bool = False) -> dict:
         "start_flash": visual.Rect(
             win, width=aspect * 2 + 1, height=2, fillColor=START_FLASH_COLOR, lineColor=None, opacity=0
         ),
-        # Tutorial-only correctness feedback: a full-screen rect whose colour is set per frame.
-        "feedback_flash": visual.Rect(win, width=aspect * 2 + 1, height=2, lineColor=None, opacity=0),
         # Tutorial-only larger instruction text; `pos` is set per frame from render_state()'s "center"/"bottom".
         "tutorial_text": visual.TextStim(win, text="", pos=(0, -0.4), color="white", height=0.04, opacity=0),
         # The narrated text (state["instructions"]), shown in every phase. Bottom-anchored so the longest (multi-line)
@@ -371,11 +366,10 @@ def deliver_keys(session, keys: list[str]) -> bool:
 
 
 def draw_all(stimuli: dict) -> None:
-    # start_flash/feedback_flash first so they sit behind the fixation
-    # stimuli, which stay visible/fixatable on top of them during a flash.
+    # start_flash first so it sits behind the fixation
+    # stimuli, which stay visible/fixatable on top of it during a flash.
     for name in (
         "start_flash",
-        "feedback_flash",
         "dot",
         "cross",
         "calibration_center",
@@ -616,8 +610,6 @@ def run_tutorial_phase(
 
     presenter = FramePresenter(stimuli, narrator)
     last_phase = None
-    last_feedback_token = 0
-    feedback_frames_remaining = 0
 
     try:
         drain_stale_space(session)
@@ -660,16 +652,6 @@ def run_tutorial_phase(
             last_phase = phase
 
             presenter.update(state)
-
-            feedback_token = state["feedback_flash"]["token"]
-            if feedback_token != last_feedback_token:
-                last_feedback_token = feedback_token
-                color = state["feedback_flash"]["color"]
-                stimuli["feedback_flash"].fillColor = FEEDBACK_FLASH_GREEN if color == "green" else FEEDBACK_FLASH_RED
-                feedback_frames_remaining = FEEDBACK_FLASH_DURATION_FRAMES
-
-            stimuli["feedback_flash"].opacity = 1.0 if feedback_frames_remaining > 0 else 0.0
-            feedback_frames_remaining = max(0, feedback_frames_remaining - 1)
 
             draw_all(stimuli)
             win.flip()
