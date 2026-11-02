@@ -104,6 +104,7 @@ Paths in this section are checked by `tests/test_docs.py` - keep them real.
 | `src/experiment/import_glasses_video.py` | CLI: copies exported video to `<run>/glasses/`, writes `video_sync.json` + `flash_video_times.csv` |
 | `src/experiment/results_graph.py` | end-of-run comparison figure |
 | `src/experiment/analyze_session.py` | post-hoc analysis: saccades from the raw gaze trace (phone capture times), flashes placed against nearest onset; report + plot + per-flash CSV |
+| `src/experiment/run_summary.py` | end-of-run plain-language summary (RUN_SUMMARY.txt in the run folder + console, never raises; CLI `-m src.experiment.run_summary [session]`); `run_experiment` shows a final "Done" screen after it
 | `src/experiment/flash_gates.py` | pre-specified gates (Braun 2021): `saccade` (eye fast at flash, latency 100-500 ms, amplitude 0.5-1.5x median), `fixation` (>=100 ms from any saccade, no tracking gap), else `excluded`; controls from `CONTROL_OFFSETS_MS` |
 | `src/experiment/simulation.py` | headless simulator (simulated participant, clock, gaze) |
 | `src/experiment/narrator.py` | Windows SAPI TTS narrator (see Gotchas) |

@@ -1,5 +1,20 @@
 # saccades-test
 
+## Quick start (experimenter)
+
+1. Glasses on the participant, Neon Companion app open on the phone (same Wi-Fi as the PC), head on the chin rest.
+2. Once per setup: measure screen height and eye-to-screen distance (cm) into `SCREEN_HEIGHT_CM` / `VIEWING_DISTANCE_CM` in `include/experiment/constants.py`.
+3. Start: `powershell -ExecutionPolicy Bypass -File scripts\py.ps1 -m src.experiment.run_experiment`
+4. In the dialog choose Mode **Real**, type a **Participant ID**, set **Run tutorial** to **Yes** (default is No), click OK.
+5. Read the participant script below, then follow the narrated tutorial (SPACE advances; Esc quits and keeps the data).
+6. At the end the console and `RUN_SUMMARY.txt` in the run folder show what happened and the next commands; SPACE closes the window.
+7. Export the scene video from the phone, then `.\scripts\py.ps1 -m src.experiment.import_glasses_video data\<participant>\<run folder> <video.mp4>`
+8. Analyse: `.\scripts\py.ps1 -m src.experiment.analyze_session` (newest run). Printable checklist: [docs/experimenter_checklist.md](docs/experimenter_checklist.md).
+
+> **Participant script.** "Look at the dot and press SPACE when you are ready. After a moment, with a beep, it jumps to the other side of the screen: look at it as fast as you can.
+> Around then a very faint thin line flashes for an instant above or below it. Press UP if it was above, DOWN if below, and guess if you are not sure.
+> You can rest between trials: nothing happens until you press SPACE."
+
 A PsychoPy experiment that measures **saccadic suppression**: around the time of a rapid eye movement (a *saccade*) we become
 much less sensitive to brief faint flashes. The participant looks at a dot, jumps their gaze to a second dot when it swaps,
 and reports on which side of the target a briefly flashed thin line appeared. Gaze comes from Pupil Labs Neon glasses.
