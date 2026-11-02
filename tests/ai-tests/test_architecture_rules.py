@@ -11,7 +11,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 
 # Session/state-machine modules: pure logic, driven by tick()/render_state().
-LOGIC_MODULES = ["session", "presaccade_session", "tutorial_session", "trial_mechanics", "trial_factory", "scoring", "zest", "calibration"]
+LOGIC_MODULES = ["session", "tutorial_session", "trial_mechanics", "trial_factory", "scoring", "zest", "calibration"]
 
 
 def _tree(path: Path) -> ast.AST:
@@ -35,7 +35,7 @@ def test_session_logic_does_not_import_a_graphics_or_hardware_stack(module):
     assert not imported & {"psychopy", "pyglet", "cv2", "PySpin", "mediapipe", "pupil_labs"}, imported
 
 
-@pytest.mark.parametrize("module", ["session", "presaccade_session", "tutorial_session", "trial_mechanics"])
+@pytest.mark.parametrize("module", ["session", "tutorial_session", "trial_mechanics"])
 def test_session_logic_reads_time_only_through_the_injected_clock(module):
     """Why: a direct time.perf_counter()/sleep() makes the logic untestable and breaks the simulated
     clock (and pausing). Wall-clock stamps come from clock.unix_ms() too."""

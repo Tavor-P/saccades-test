@@ -21,18 +21,6 @@ class Orientation(str, Enum):
 
 
 @dataclass(frozen=True)
-class FlashTrialSpec:
-    """A presaccade-phase trial: just fixate center, maybe a flash, no saccade.
-    Contrast isn't known ahead of time - it's picked from the ZEST staircase
-    right when the trial actually flashes (or fixed at PRACTICE_CONTRAST for
-    practice trials, which also skip the staircase update and logging)."""
-
-    index: int
-    orientation: Orientation
-    practice: bool = False
-
-
-@dataclass(frozen=True)
 class TrialSpec:
     index: int
     source: Target
@@ -49,7 +37,7 @@ class TrialSpec:
 @dataclass
 class TrialResult:
     index: int
-    phase: str  # "presaccade" | "saccade" | "rt_test"
+    phase: str  # "saccade" | "rt_test" (old sessions also: "presaccade", the removed baseline phase)
     source: Target | None
     target: Target | None
     saccade_duration_ms: float | None
@@ -60,7 +48,7 @@ class TrialResult:
     response_orientation: Orientation | None
     response_time_ms: float | None
     outcome: str  # "correct" | "incorrect" | "miss" | "timeout"  (old sessions also: "false_alarm" | "correct_rejection")
-    # Saccade phase only (None in presaccade rows, which have no saccade to
+    # Saccade phase only (None in old presaccade rows, which have no saccade to
     # time): go-cue to the gaze classifier's first sample outside the source
     # zone, and that sample to the debounced onset that actually fired the
     # flash - together they let SACCADE_ONSET_STABILITY_MS be tuned against
@@ -68,7 +56,7 @@ class TrialResult:
     # "rt_test" rows, where it's literally the thing being measured.
     reaction_latency_ms: float | None = None
     onset_detection_lag_ms: float | None = None
-    # Saccade phase, flash-shown trials only (None otherwise - presaccade
+    # Saccade phase, flash-shown trials only (None otherwise - old presaccade
     # rows or rt_test rows, which never flash): whether
     # this trial's scheduled flash time actually fell within
     # [onset, landing] - the real-time-detected saccade window. False if
@@ -79,14 +67,14 @@ class TrialResult:
     flash_during_saccade: bool | None = None
     # Which of TIMING_OFFSETS_MS this trial's flash was scheduled at - see
     # TrialSpec.timing_offset_ms. None for rows that don't use open-loop
-    # scheduling (presaccade, rt_test, or CSVs logged before this existed).
+    # scheduling (old presaccade, rt_test, or CSVs logged before this existed).
     timing_offset_ms: int | None = None
     # Wall-clock (time.time(), milliseconds since the Unix epoch) timestamp
     # of the moment the grating actually flashed - unlike every other timing
     # field here, which is relative to PausableClock's monotonic clock and
     # only meaningful within one trial/session. This is what lets the flash
     # be located in absolute time against something recorded independently
-    # (e.g. a synced video/frame log). None for presaccade
+    # (e.g. a synced video/frame log). None for old presaccade
     # rows and rt_test rows, which never flash.
     grating_shown_at_unix_ms: float | None = None
     # Saccade phase, flash-shown trials only (None otherwise, and for CSVs

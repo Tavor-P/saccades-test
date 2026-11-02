@@ -84,25 +84,12 @@ def test_would_have_caught_the_clock_offset_sign_bug(monkeypatch):
         test_neon_source.test_latency_uses_clock_offset_with_correct_sign(monkeypatch)
 
 
-def test_would_have_caught_the_graph_ignoring_tracking_ok(monkeypatch):
-    """Bug class: the live ZEST gate and the analysis graph drifting apart."""
-    import test_validity_lockstep
-    from src.experiment import results_graph
-    from src.experiment.simulation import ParticipantProfile
-
-    monkeypatch.setattr(results_graph, "is_valid_for_saccadic_analysis", lambda flash, tracking_ok=None: flash is True)
-    with pytest.raises(AssertionError):
-        test_validity_lockstep.test_live_zest_feed_matches_the_graph_filter(
-            monkeypatch, ParticipantProfile(dropout_rate_per_s=2.0), 4
-        )
-
-
 def test_would_have_caught_a_live_gate_that_forgets_tracking_ok(monkeypatch):
     import test_validity_lockstep
     from src.experiment.simulation import ParticipantProfile
 
     monkeypatch.setattr(session_module, "is_valid_for_saccadic_analysis", lambda flash, tracking_ok=None: flash is True)
     with pytest.raises(AssertionError):
-        test_validity_lockstep.test_live_zest_feed_matches_the_graph_filter(
+        test_validity_lockstep.test_live_zest_feed_matches_the_validity_gate(
             monkeypatch, ParticipantProfile(dropout_rate_per_s=2.0), 4
         )

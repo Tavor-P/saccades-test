@@ -186,25 +186,19 @@ def test_discover_sessions_counts_trials_per_phase_and_sorts_newest_first(tmp_pa
     assert by_timestamp["200"].trial_counts == {}
 
 
-def test_delete_session_removes_csv_meta_and_cached_graph(tmp_path, monkeypatch):
+def test_delete_session_removes_csv_and_meta(tmp_path, monkeypatch):
     monkeypatch.setattr(data_access, "DATA_DIR", tmp_path)
-    cache_dir = tmp_path / "dashboard_cache"
-    monkeypatch.setattr(data_access, "GRAPH_CACHE_DIR", cache_dir)
     _write_session(tmp_path, "666", rows=[], meta={"name": "Old Name"})
-    cache_dir.mkdir()
-    (cache_dir / "666.png").write_bytes(b"fake png")
 
     data_access.delete_session("666")
 
     assert not data_access.csv_path_for("666").exists()
     assert not data_access.meta_path_for("666").exists()
-    assert not data_access.graph_cache_path_for("666").exists()
 
 
-def test_delete_session_tolerates_missing_meta_and_cached_graph(tmp_path, monkeypatch):
+def test_delete_session_tolerates_missing_meta(tmp_path, monkeypatch):
     monkeypatch.setattr(data_access, "DATA_DIR", tmp_path)
-    monkeypatch.setattr(data_access, "GRAPH_CACHE_DIR", tmp_path / "dashboard_cache")
-    _write_session(tmp_path, "777", rows=[])  # no meta.json, no cached graph
+    _write_session(tmp_path, "777", rows=[])  # no meta.json
 
     data_access.delete_session("777")  # should not raise
 
@@ -213,7 +207,6 @@ def test_delete_session_tolerates_missing_meta_and_cached_graph(tmp_path, monkey
 
 def test_delete_session_removes_it_from_discover_sessions(tmp_path, monkeypatch):
     monkeypatch.setattr(data_access, "DATA_DIR", tmp_path)
-    monkeypatch.setattr(data_access, "GRAPH_CACHE_DIR", tmp_path / "dashboard_cache")
     _write_session(tmp_path, "888", rows=[])
     _write_session(tmp_path, "999", rows=[])
 
@@ -241,7 +234,6 @@ def test_a_path_is_never_a_session_key(tmp_path, monkeypatch, key):
         folder.mkdir(parents=True)
         (folder / "trials.csv").write_text("phase,trial\n")
     monkeypatch.setattr(data_access, "DATA_DIR", data)
-    monkeypatch.setattr(data_access, "GRAPH_CACHE_DIR", data / "dashboard_cache")
     key = key.replace("{outside}", str(outside))
     assert not data_access.csv_path_for(key).exists()
     data_access.delete_session(key)

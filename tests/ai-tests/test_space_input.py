@@ -7,7 +7,6 @@ import pytest
 from include.experiment.constants import CALIBRATION_ROUNDS, FOREPERIOD_MAX_MS, RESPONSE_WINDOW_MS
 from include.experiment.types import Orientation
 from src.experiment.pausable_clock import PausableClock
-from src.experiment.presaccade_session import PresaccadeSession
 from src.experiment.session import ExperimentSession
 from src.experiment.space_input import (
     NarrationKeyGate,
@@ -242,33 +241,6 @@ def test_space_after_answering_starts_the_next_trial_as_soon_as_it_is_ready(fake
     fake_time(RESPONSE_WINDOW_MS / 1000)  # nothing further is pending
     session.on_space()
     assert session.space_tally.as_dict()["FOREPERIOD: during foreperiod"] == 1
-
-
-# -- real-run rules: baseline phase -------------------------------------------------------------------------------------
-
-
-def test_baseline_space_rules(fake_time):
-    session = PresaccadeSession(logger=_NullLogger(), clock=PausableClock())
-    session.on_space()  # WAITING_TO_START -> first trial's FOREPERIOD
-    assert _phase(session) == "FOREPERIOD"
-    started = session._foreperiod_start
-    fake_time(0.1)
-    session.on_space()  # must not restart the foreperiod
-    assert session._foreperiod_start == started
-    assert session.space_tally.as_dict() == {"FOREPERIOD: during foreperiod": 1}
-
-    fake_time(FOREPERIOD_MAX_MS / 1000)
-    session.tick()
-    assert _phase(session) == "FLASH_WINDOW"
-    session.on_space()  # not answered yet
-    assert session.space_tally.as_dict()["FLASH_WINDOW: during trial"] == 1
-
-    session.on_response_key(Orientation.VERTICAL)
-    session.on_space()  # answered: carried
-    fake_time(RESPONSE_WINDOW_MS / 1000 + 0.1)
-    session.tick()  # trial ends -> AWAITING_SPACE -> carried press starts the next trial
-    assert _phase(session) == "FOREPERIOD"
-    assert session.space_tally.total == 2
 
 
 def test_tutorial_space_in_quiz_is_counted(fake_gaze):

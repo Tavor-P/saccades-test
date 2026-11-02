@@ -12,7 +12,6 @@ from src.experiment import session_files
 from src.experiment.logger import read_trials
 
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
-GRAPH_CACHE_DIR = DATA_DIR / "dashboard_cache"
 
 
 def _ref(timestamp: str) -> session_files.SessionRef:
