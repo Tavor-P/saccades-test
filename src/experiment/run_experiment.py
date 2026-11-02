@@ -1,6 +1,7 @@
 """Entry point (`-m src.experiment.run_experiment`): startup dialog, PsychoPy window/stimuli, and the per-phase frame loops that call each session's
 tick() + render_state() and draw the result. All experiment logic lives in the session classes, not here - this is the only module that needs PsychoPy."""
 
+import os
 import sys
 from functools import partial
 
@@ -16,7 +17,6 @@ from include.experiment.constants import (
     GAZE_INDICATOR_RADIUS_RATIO,
     ABOVE_RESPONSE_KEYS,
     BELOW_RESPONSE_KEYS,
-    LINE_HEIGHT_HEIGHT_UNITS,
     LINE_WIDTH_SCREENS,
     WARNING_TONE_DURATION_S,
     WARNING_TONE_HZ,
@@ -25,7 +25,7 @@ from include.experiment.types import Side
 from include.eye_tracking.constants import CAMERA_INDEX, FRAME_HEIGHT, FRAME_WIDTH
 from src.eye_tracking.gaze_factory import (
     BACKEND_NEON,
-    BACKENDS,
+    BACKEND_WEBCAM,
     NEON_BACKENDS,
     build_gaze_source,
     list_cameras,
@@ -33,16 +33,15 @@ from src.eye_tracking.gaze_factory import (
 from src.eye_tracking.video_recorder import VideoRecorder
 from src import timebase
 from src.experiment.glasses_video import END_FLASH_COUNT, SYNC_FLASH_COUNT, sync_flash_frames
+from src.experiment.geometry import Geometry
 from src.experiment.logger import ResultLogger
 from src.experiment.narrator import Narrator
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.session import ExperimentSession
 from src.experiment.space_input import NarrationKeyGate, deliver_space, leaves_complete_screen
 from src.experiment.settings import (
-    DEFAULT_SACCADE_CONTRAST_MAX_PERCENT,
-    DEFAULT_SACCADE_CONTRAST_MIN_PERCENT,
     load_contrast_floor_percent,
-    resolve_saccade_contrasts,
+    saccade_contrast_levels,
 )
 from src.experiment.tutorial_session import TutorialSession
 
@@ -166,8 +165,10 @@ def build_window(fullscreen: bool = True) -> visual.Window:
     return visual.Window(**kwargs)
 
 
-def build_stimuli(win: visual.Window, show_hud: bool = False) -> dict:
-    """`show_hud`: draw the top-left debug text (Test mode only; apply_render_state honours it)."""
+def build_stimuli(win: visual.Window, show_hud: bool = False, geometry: Geometry | None = None) -> dict:
+    """`show_hud`: draw the top-left debug text (Test mode only; apply_render_state honours it). `geometry` sizes the line (0.15 deg thick) for the
+    chosen screen height and viewing distance (default: the placeholder constants)."""
+    geometry = geometry or Geometry.default()
     aspect = win.size[0] / win.size[1]
     return {
         "aspect": aspect,
@@ -197,7 +198,7 @@ def build_stimuli(win: visual.Window, show_hud: bool = False) -> dict:
             win,
             tex=None,
             mask="gauss",
-            size=(LINE_WIDTH_SCREENS * aspect, LINE_HEIGHT_HEIGHT_UNITS),
+            size=(LINE_WIDTH_SCREENS * aspect, geometry.line_height_height_units),
             color="white",
             contrast=0,
             opacity=0,
@@ -414,6 +415,7 @@ def run_saccade_phase(
     precomputed_rt_samples_ms: list[float] | None = None,
     record_video: bool = False,
     saccade_contrasts: tuple[float, ...] | None = None,
+    geometry: Geometry | None = None,
 ) -> ExperimentSession | None:
     """The gaze-contingent saccade test. `precomputed_calibration_ratios`/
     `skip_practice_trials`/`precomputed_rt_samples_ms` come from a completed
@@ -450,6 +452,7 @@ def run_saccade_phase(
             skip_practice_trials=skip_practice_trials,
             precomputed_rt_samples_ms=precomputed_rt_samples_ms,
             fixed_contrasts=saccade_contrasts,
+            geometry=geometry,
         )
         go_cue_tone = build_go_cue_tone()
 
@@ -518,6 +521,7 @@ def run_tutorial_phase(
     narrator: Narrator,
     camera_index: int = CAMERA_INDEX,
     gaze_backend: str = BACKEND_NEON,
+    geometry: Geometry | None = None,
 ) -> TutorialSession | None:
     """A one-time, narrated on-ramp for first-time participants, run before
     the saccade phase (see main()). Unlike that phase, no key or
@@ -530,7 +534,7 @@ def run_tutorial_phase(
     gaze = build_gaze_source(gaze_backend, camera_index)
     gaze.start()
     clock = PausableClock()
-    session = TutorialSession(gaze, clock)
+    session = TutorialSession(gaze, clock, geometry=geometry)
     go_cue_tone = build_go_cue_tone()
 
     presenter = FramePresenter(stimuli, narrator)
@@ -631,65 +635,46 @@ def _resolve_record_video(selected_label: str) -> bool:
     return selected_label == "Yes"
 
 
-def prompt_session_info() -> tuple[str, str, int, str, float, bool, bool, bool, bool, tuple[float, ...]] | None:
-    """The startup dialog: Mode (Test/Real), Participant ID, gaze source, webcam picker, the saccade phase's contrast range
-    (min/max, see SACCADE_FIXED_CONTRASTS; the staircase floor, used only when those are empty, comes from src/experiment/settings.py), and the
-    Show gaze indicator / Run tutorial / Record video toggles. A real run with a blank Participant ID re-shows the dialog
-    with the problem in its title. Returns None if the dialog was cancelled."""
-    try:
-        camera_indices = list_cameras() or [CAMERA_INDEX]
-    except ImportError:  # PySpin not installed (Neon-only machine)
-        camera_indices = [CAMERA_INDEX]
-    camera_labels = _camera_labels(camera_indices)
-    default_contrast_floor_percent = load_contrast_floor_percent()
+BACKEND_ENV_VAR = "SACCADES_BACKEND"  # set to "webcam" to use the Blackfly S + MediaPipe backend (no dialog field any more; Neon is the default)
 
-    previous: dict = {}
-    error: str | None = None
-    while True:
-        info = {
-            "Mode": _selected_first([MODE_REAL, MODE_TEST], previous.get("Mode")),
-            "Participant ID": previous.get("Participant ID", ""),
-            "Gaze source": _selected_first(BACKENDS, previous.get("Gaze source")),
-            "Camera (webcam source only)": _selected_first(camera_labels, previous.get("Camera (webcam source only)")),
-            # The saccade phase flashes fixed contrasts evenly spaced between these two (SACCADE_FIXED_CONTRASTS).
-            "Saccade contrast min (%)": previous.get("Saccade contrast min (%)", f"{DEFAULT_SACCADE_CONTRAST_MIN_PERCENT:g}"),
-            "Saccade contrast max (%)": previous.get("Saccade contrast max (%)", f"{DEFAULT_SACCADE_CONTRAST_MAX_PERCENT:g}"),
-            "Show gaze indicator": _selected_first(["No", "Yes"], previous.get("Show gaze indicator")),
-            "Run tutorial": _selected_first(["No", "Yes"], previous.get("Run tutorial")),
-            "Record video": _selected_first(["Yes", "No"], previous.get("Record video")),
-        }
-        dlg = gui.DlgFromDict(info, title="Saccade experiment" + (f" - {error}" if error else ""))
-        if not dlg.OK:
-            return None
-        previous = dict(info)
-        error = _session_info_error(info["Mode"], info["Participant ID"])
-        if error is None:
-            break
 
-    raw_participant_id = info["Participant ID"]
-    test_mode = _resolve_test_mode(info["Mode"])
-    participant_id = raw_participant_id.strip() or "anonymous"
-    camera_index, camera_label = _resolve_camera_choice(camera_indices, camera_labels, info["Camera (webcam source only)"])
-    gaze_backend = info["Gaze source"]
-    if gaze_backend in NEON_BACKENDS:
-        camera_index, camera_label = CAMERA_INDEX, gaze_backend
-    # No dialog field: the staircase floor (only used when SACCADE_FIXED_CONTRASTS is empty) is the dashboard-configured default.
-    contrast_floor_percent = default_contrast_floor_percent
-    saccade_contrasts = resolve_saccade_contrasts(info["Saccade contrast min (%)"], info["Saccade contrast max (%)"])
-    show_gaze_indicator = _resolve_show_gaze_indicator(info["Show gaze indicator"])
-    run_tutorial = _resolve_run_tutorial(info["Run tutorial"])
-    record_video = _resolve_record_video(info["Record video"])
+def _selected_backend() -> str:
+    return BACKEND_WEBCAM if os.environ.get(BACKEND_ENV_VAR, "").strip().lower() == "webcam" else BACKEND_NEON
+
+
+def prompt_session_info() -> tuple[str, str, int, str, float, bool, bool, bool, bool, tuple[float, ...], Geometry] | None:
+    """The startup dialog (src/experiment/startup_dialog.py): Participant ID, Mode, Run tutorial, screen height/distance and, under Advanced, the saccade
+    phase's contrast range (min/max, see SACCADE_FIXED_CONTRASTS; the staircase floor, used only when those are empty, comes from src/experiment/settings.py)
+    and the Show gaze indicator toggle. Invalid input keeps the dialog open with a message. The gaze backend is Neon unless $SACCADES_BACKEND=webcam.
+    Returns (participant_id, gaze_backend, camera_index, camera_label, contrast_floor_percent, show_gaze_indicator, run_tutorial, record_video,
+    test_mode, saccade_contrasts, geometry), or None if the dialog was cancelled."""
+    from src.experiment.startup_dialog import prompt_startup_settings
+
+    gui.ensureQtApp()  # PsychoPy's own QApplication (Fusion style), shared with the dialog so the PsychoPy window created afterwards keeps working
+    chosen = prompt_startup_settings()
+    if chosen is None:
+        return None
+    gaze_backend = _selected_backend()
+    camera_index, camera_label = CAMERA_INDEX, gaze_backend
+    if gaze_backend not in NEON_BACKENDS:  # the webcam backend: first available camera, and it records the camera video (the Neon records on the phone)
+        try:
+            camera_indices = list_cameras() or [CAMERA_INDEX]
+        except ImportError:  # PySpin not installed
+            camera_indices = [CAMERA_INDEX]
+        camera_index, camera_label = _resolve_camera_choice(camera_indices, _camera_labels(camera_indices), _camera_labels(camera_indices)[0])
     return (
-        participant_id,
+        chosen.folder_id,
         gaze_backend,
         camera_index,
         camera_label,
-        contrast_floor_percent,
-        show_gaze_indicator,
-        run_tutorial,
-        record_video,
-        test_mode,
-        saccade_contrasts,
+        # No dialog field: the staircase floor (only used when SACCADE_FIXED_CONTRASTS is empty) is the dashboard-configured default.
+        load_contrast_floor_percent(),
+        chosen.show_gaze_indicator,
+        chosen.run_tutorial,
+        gaze_backend not in NEON_BACKENDS,
+        chosen.test_mode,
+        saccade_contrast_levels(chosen.contrast_min_percent, chosen.contrast_max_percent),
+        chosen.geometry,
     )
 
 
@@ -712,6 +697,7 @@ def main() -> None:
         record_video,
         test_mode,
         saccade_contrasts,
+        geometry,
     ) = session_info
     contrast_floor = contrast_floor_percent / 100
 
@@ -719,9 +705,10 @@ def main() -> None:
         participant_id, camera_label=camera_label, contrast_floor_percent=contrast_floor_percent, test_mode=test_mode
     )
     logger.set_saccade_contrasts(saccade_contrasts)
+    logger.set_geometry(geometry)
     win = build_window(fullscreen=True)
     logger.set_display_refresh_hz(measure_refresh_hz(win))
-    stimuli = build_stimuli(win, show_hud=test_mode)
+    stimuli = build_stimuli(win, show_hud=test_mode, geometry=geometry)
     print(f"Session folder: {logger.folder}")
     narrator = Narrator()
 
@@ -730,7 +717,7 @@ def main() -> None:
         precomputed_rt_samples_ms = None
         if run_tutorial:
             tutorial_session = run_tutorial_phase(
-                win, stimuli, narrator, camera_index=camera_index, gaze_backend=gaze_backend
+                win, stimuli, narrator, camera_index=camera_index, gaze_backend=gaze_backend, geometry=geometry
             )
             if tutorial_session is None:
                 return  # quit early
@@ -750,6 +737,7 @@ def main() -> None:
             precomputed_rt_samples_ms=precomputed_rt_samples_ms,
             record_video=record_video,
             saccade_contrasts=saccade_contrasts,
+            geometry=geometry,
         )
 
         result = saccade_phase(win, stimuli, logger)

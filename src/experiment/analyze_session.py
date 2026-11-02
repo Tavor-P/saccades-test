@@ -262,9 +262,23 @@ def _pct(k_n: tuple[int, int]) -> str:
     return f"{k}/{n} = {100 * k / n:.0f}%" if n else "n/a"
 
 
-def format_report(summary: dict, label: str = "") -> str:
+def format_geometry(settings: dict | None) -> str | None:
+    """One header line from session.json `settings` (None for sessions that predate the geometry record)."""
+    s = settings or {}
+    if s.get("screen_height_deg") is None:
+        return None
+    note = "  [PLACEHOLDER: not measured]" if s.get("geometry_is_placeholder") else ""
+    return (
+        f"  screen {s['screen_height_cm']:g} cm high at {s['viewing_distance_cm']:g} cm = {s['screen_height_deg']:.1f} deg; line offset "
+        f"{s['line_offset_deg']:g} deg = {s['line_offset_height_units']:.4f} screen heights, SD {s['line_sd_deg']:g} deg{note}"
+    )
+
+
+def format_report(summary: dict, label: str = "", geometry: str | None = None) -> str:
     s = summary
     lines = [f"Saccade-phase analysis {label}".strip()]
+    if geometry:
+        lines.append(geometry)
     lines.append(f"  saccades found: {s['saccades']}" + (
         f" (median duration {s['median_saccade_ms']:.0f} ms, amplitude {s['median_amplitude']:.2f} of the width)" if s["median_saccade_ms"] else ""))
     lines.append(f"  flashes: {s['flashes']}; correct {_pct(s['overall'])}; no answer {s['misses']}")
@@ -556,7 +570,11 @@ def analyze(
     summary["gates"] = summarize_gates(placed, gates)
     suppression = suppression_index(placed, near_ms, far_ms, gates=gates)
     summary["suppression"] = suppression
-    report = format_report(summary, label=f"(session {stamp})") + "\n" + format_gate_report(summary["gates"]) + "\n" + format_suppression(suppression)
+    try:
+        geometry_line = format_geometry(json.loads(ref.meta_path.read_text()).get("settings"))
+    except (OSError, ValueError, AttributeError, KeyError):
+        geometry_line = None
+    report = format_report(summary, label=f"(session {stamp})", geometry=geometry_line) + "\n" + format_gate_report(summary["gates"]) + "\n" + format_suppression(suppression)
 
     out_dir = Path(out_dir) if out_dir is not None else ref.analysis_dir
     out_dir.mkdir(parents=True, exist_ok=True)

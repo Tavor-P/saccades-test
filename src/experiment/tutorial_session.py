@@ -23,6 +23,7 @@ from include.experiment.constants import (
 )
 from include.experiment.types import Side, Target
 from src.experiment.calibration import CalibrationRounds
+from src.experiment.geometry import Geometry
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.space_input import SpaceTally
 from src.experiment.trial_mechanics import OnsetDetector, RollingReactionTime, line_position, sample_capture_time
@@ -60,8 +61,9 @@ class TutorialSession:
     Framework-agnostic like the other sessions; never logs to the results CSV (none of this counts as data).
     """
 
-    def __init__(self, gaze_source: GazeSource, clock: PausableClock) -> None:
+    def __init__(self, gaze_source: GazeSource, clock: PausableClock, geometry: Geometry | None = None) -> None:
         self._gaze = gaze_source
+        self._geometry = geometry or Geometry.default()
         self._clock = clock
         self._phase = Phase.WAITING_TO_START
 
@@ -317,10 +319,10 @@ class TutorialSession:
         """The flashed line (key kept as "grating"): in the quiz 2 deg above/below the dot, in a practice trial
         above/below the symbol the eye is moving to."""
         if self._phase is Phase.QUIZ:
-            x, y = line_position(DOT_POSITION, self._quiz_orientation or Side.ABOVE)
+            x, y = line_position(DOT_POSITION, self._quiz_orientation or Side.ABOVE, self._geometry)
             return {"visible": True, "x": x, "y": y, "contrast": TUTORIAL_QUIZ_CONTRAST, "orientation": self._quiz_orientation}
         target_position = DOT_POSITION if self._target is Target.DOT else CROSS_POSITION
-        x, y = line_position(target_position, self._orientation or Side.ABOVE)
+        x, y = line_position(target_position, self._orientation or Side.ABOVE, self._geometry)
         if self._phase is Phase.PRACTICE_ACTIVE:
             return {
                 "visible": self._grating_visible,

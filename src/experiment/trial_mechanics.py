@@ -8,7 +8,6 @@ from typing import Generic, Sequence, TypeVar
 from include.eye_tracking.constants import CENTER_POSITION, LEFT_POSITION, RIGHT_POSITION
 from include.eye_tracking.types import GazeZone
 from include.experiment.constants import (
-    LINE_OFFSET_HEIGHT_UNITS,
     ONSET_BASELINE_NEAR_SOURCE,
     ONSET_BASELINE_WINDOW_MS,
     RT_AVERAGE_ROLLING_WINDOW,
@@ -20,6 +19,7 @@ from include.experiment.constants import (
     SACCADE_ONSET_STABILITY_MS,
 )
 from include.experiment.types import Side, Target
+from src.experiment.geometry import Geometry
 
 
 
@@ -35,13 +35,14 @@ def random_orientation() -> Side:
     return random.choice([Side.ABOVE, Side.BELOW])
 
 
-def line_position(reference: tuple[float, float], side: Side) -> tuple[float, float]:
+def line_position(reference: tuple[float, float], side: Side, geometry: Geometry | None = None) -> tuple[float, float]:
     """(x, y) ratio position of the flashed line's centre: `reference` (the saccade target's, or the
-    fixation point's, (xRatio, yRatio)) shifted LINE_OFFSET_HEIGHT_UNITS up (Side.ABOVE) or down
+    fixation point's, (xRatio, yRatio)) shifted `geometry.line_offset_height_units` (default: the placeholder geometry) up (Side.ABOVE) or down
     (Side.BELOW). y is a fraction of the screen height measured from the TOP, so above = smaller y.
     The renderer draws the line the full screen width; x only records which target it belongs to."""
     x, y = reference
-    return x, y - LINE_OFFSET_HEIGHT_UNITS if side is Side.ABOVE else y + LINE_OFFSET_HEIGHT_UNITS
+    offset = (geometry or Geometry.default()).line_offset_height_units
+    return x, y - offset if side is Side.ABOVE else y + offset
 
 
 def robust_kept_ms(samples: Sequence[float]) -> list[float]:

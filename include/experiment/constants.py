@@ -34,8 +34,9 @@ SCREEN_HEIGHT_DEG = 2 * math.degrees(math.atan((SCREEN_HEIGHT_CM / 2) / VIEWING_
 # Gegenfurtner 2021, J Vis): full screen width, a vertical Gaussian luminance profile, 2 deg above or below
 # the saccade target (the symbol the eye is moving to), and the
 # participant says which side with UP / DOWN. Their values: SD 0.15 deg, offset 2 deg, one frame at 120 Hz.
-# Sizes go through SCREEN_HEIGHT_DEG like the grating's, so they are only right once VIEWING_DISTANCE_CM /
-# SCREEN_HEIGHT_CM match the real monitor (they are still the 24-inch placeholders).
+# Sizes in degrees depend on the screen height and viewing distance, which the startup dialog asks for each run (src/experiment/geometry.py
+# turns them into the values the line uses); VIEWING_DISTANCE_CM / SCREEN_HEIGHT_CM above and the LINE_*_HEIGHT_UNITS below are only the
+# defaults (24-inch placeholders). A saccade between dot and cross spans a different angle on every screen width and distance.
 LINE_OFFSET_DEG = 2.0  # distance of the line's centre above/below the target
 LINE_SD_DEG = 0.15  # vertical standard deviation of the Gaussian profile
 LINE_WIDTH_SCREENS = 24.0  # drawn this many screen widths wide so the horizontal Gaussian edge-fade is invisible (~1 % at the screen edge)

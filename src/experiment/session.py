@@ -43,6 +43,7 @@ from include.experiment.constants import (
 )
 from include.experiment.types import Side, Target, TrialResult, TrialSpec
 from src.experiment.calibration import CalibrationRounds
+from src.experiment.geometry import Geometry
 from src.experiment.logger import ResultLogger
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.scoring import is_valid_for_saccadic_analysis, score_outcome
@@ -111,8 +112,10 @@ class ExperimentSession:
         precomputed_rt_samples_ms: list[float] | None = None,
         gaze_latency_ms: float | None = None,
         fixed_contrasts: tuple[float, ...] | None = None,
+        geometry: Geometry | None = None,
     ) -> None:
         self._gaze = gaze_source
+        self._geometry = geometry or Geometry.default()  # sizes the line's offset (screen height / viewing distance)
         self._gaze_latency_fallback_ms = gaze_latency_ms
         # Snapshot of gaze_latency_ms taken at each RT attempt / trial start, so the
         # per-sample timing path never queries the source and onset/landing share one offset.
@@ -299,7 +302,7 @@ class ExperimentSession:
     def _line_state(self, trial: TrialSpec | None) -> dict:
         side = trial.orientation if trial is not None else None
         target_position = DOT_POSITION if trial is None or trial.target is Target.DOT else CROSS_POSITION
-        x, y = line_position(target_position, side or Side.ABOVE)
+        x, y = line_position(target_position, side or Side.ABOVE, self._geometry)
         return {
             "visible": self._grating_visible,
             "x": x,
