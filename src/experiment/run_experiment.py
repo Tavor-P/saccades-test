@@ -263,6 +263,7 @@ def apply_render_state(state: dict, stimuli: dict, fade_opacities: dict, dt: flo
             f"phase: {hud['phase']} | trial: {hud['trial']} | gaze: {hud['gaze_zone']} | "
             f"face: {'yes' if hud['face_found'] else 'no'} | source: {'ok' if hud['source_available'] else 'unavailable'}"
             f"{_calibration_wait_text(hud.get('calibration_wait_s'))}"
+            f"{_head_drift_text(hud.get('head_drift_deg'))}"
         )
         stimuli["hud"].opacity = 1.0
     else:
@@ -277,6 +278,19 @@ def apply_render_state(state: dict, stimuli: dict, fade_opacities: dict, dt: flo
         tutorial_text_stim.opacity = 1.0
     else:
         tutorial_text_stim.opacity = 0.0
+
+
+def _head_drift_text(drift_deg: float | None) -> str:
+    """HUD suffix: head rotation since calibration, from the Neon IMU (absent when the source has no head monitor)."""
+    return "" if drift_deg is None else f" | head: {drift_deg:.1f} deg"
+
+
+def warn_if_head_moved(session, narrator: Narrator) -> None:
+    """Between trials, once the head has turned away from its calibration orientation: console + speech (no caption: real trials hide it)."""
+    text = session.pop_head_warning()
+    if text:
+        print(f"WARNING: {text} (head rotated away from its orientation at calibration)", file=sys.stderr)
+        narrator.speak(text)
 
 
 def _calibration_wait_text(waited_s: float | None) -> str:
@@ -488,6 +502,7 @@ def run_saccade_phase(
 
             space_delivered = deliver_keys(session, keys)
             session.tick()
+            warn_if_head_moved(session, narrator)
             state = session.render_state()
             phase = state["hud"]["phase"]
 
@@ -510,6 +525,12 @@ def run_saccade_phase(
         report_space_presses(session, "saccade", logger)
         if hasattr(gaze, "quality_summary"):
             logger.set_gaze_quality(gaze.quality_summary())
+        if hasattr(gaze, "head_motion_summary"):
+            try:  # best effort: must never stop gaze.stop() / the phone recording below from running
+                logger.set_head_motion(gaze.head_motion_summary(session.head_flagged_trials))
+                gaze.write_head_motion_csv(logger.head_motion_path)
+            except Exception as exc:  # noqa: BLE001
+                print(f"WARNING: could not save the head-movement summary: {exc}", file=sys.stderr)
         if video_recorder is not None:
             video_recorder.stop()
         if recording_started:

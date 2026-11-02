@@ -1,3 +1,4 @@
+import csv
 import math
 import statistics
 import sys
@@ -17,6 +18,9 @@ from include.eye_tracking.constants import (
     NEON_CLOCK_REESTIMATE_MAX_STD_MS,
     NEON_DISCOVERY_TIMEOUT_S,
     NEON_SCENE_WIDTH,
+    HEAD_POLL_HZ,
+    HEAD_NO_DATA_TIMEOUT_S,
+    HEAD_MAX_CONSECUTIVE_ERRORS,
 )
 from include.eye_tracking.interfaces import GazeSource
 from include.eye_tracking.types import GazeSample, GazeZone
@@ -24,6 +28,7 @@ from pathlib import Path
 
 from src.eye_tracking.gaze_mapping import GazeMapper
 from src.eye_tracking.gaze_trace import GazeTraceWriter
+from src.eye_tracking.head_monitor import HeadMotionTracker
 from src import timebase
 
 _MAX_LATENCY_SAMPLES = 100_000  # ~8 min at 200 Hz; older samples drop off, bounding memory
@@ -84,6 +89,12 @@ class NeonGazeSource(GazeSource):
         self._error_count = 0
         self._last_error: str | None = None
         self._seen_errors: set[tuple[str, str]] = set()
+        # Head-movement monitor (head_monitor.py): None until start() finds a working IMU, and again if it later switches itself off.
+        self.head_motion: HeadMotionTracker | None = None
+        self._head_status = "not started"  # "ok" or "unavailable (reason)", for session.json
+        self._head_tracker: HeadMotionTracker | None = None  # kept after a switch-off so the summary still has what was recorded
+        self._head_stop = threading.Event()
+        self._head_thread: threading.Thread | None = None
 
     def _record_error(self, where: str, exc: Exception) -> None:
         """Count a receive-loop error and print the first occurrence of each
@@ -123,6 +134,7 @@ class NeonGazeSource(GazeSource):
         self._thread = threading.Thread(target=self._loop, daemon=True)
         self._thread.start()
         self._start_offset_thread()
+        self._start_head_monitor()
 
     def _loop(self) -> None:
         while self._running:
@@ -139,6 +151,91 @@ class NeonGazeSource(GazeSource):
             except Exception as exc:
                 self._record_error("ingest", exc)
                 time.sleep(0.005)
+
+    # -- head-movement monitor (IMU) ----------------------------------------------------------------
+    # One separate daemon thread that wakes HEAD_POLL_HZ times a second, does a non-blocking receive (timeout 0) and a handful of
+    # float operations, then sleeps: it never touches the gaze receive loop. Failure-proof by design: no IMU, an exception or no data
+    # switches the monitor off with one warning; nothing here raises into the experiment.
+
+    def _start_head_monitor(self) -> None:
+        if not hasattr(self._device, "receive_imu_datum"):
+            self._disable_head_monitor("this device object has no IMU")
+            return
+        self._head_tracker = self.head_motion = HeadMotionTracker()
+        self._head_status = "ok"
+        self._head_stop.clear()
+        self._head_thread = threading.Thread(target=self._head_loop, args=(self.head_motion,), daemon=True)
+        self._head_thread.start()
+
+    def _disable_head_monitor(self, reason: str) -> None:
+        self.head_motion = None
+        self._head_status = f"unavailable ({reason})"
+        print(f"WARNING: head-movement monitor off ({reason}); head movement will not be flagged this session.", file=sys.stderr)
+
+    def _imu_time(self, datum) -> tuple[float, float | None]:
+        """(time on the perf_counter timeline, phone unix stamp) of an IMU datum: phone capture time + the gaze clock offset when that gives a
+        plausible latency, else arrival time. Reads the offset/anchor without the gaze lock (plain attribute reads; a rare one-poll skew is harmless)."""
+        arrival = timebase.now()
+        stamp = getattr(datum, "timestamp_unix_seconds", None)
+        offset_ms = self._clock_offset_ms
+        if offset_ms is not None and stamp is not None and not math.isnan(stamp):
+            capture = self._anchor.to_perf(stamp + offset_ms / 1000)
+            if 0.0 <= arrival - capture <= NEON_MAX_PLAUSIBLE_LATENCY_MS / 1000:
+                return capture, stamp
+        return arrival, stamp
+
+    def _head_loop(self, tracker: HeadMotionTracker) -> None:
+        started = timebase.now()
+        errors = 0
+        while not self._head_stop.wait(1.0 / HEAD_POLL_HZ):
+            try:
+                datum = self._device.receive_imu_datum(timeout_seconds=0)
+            except Exception as exc:  # noqa: BLE001 - no IMU, firmware too old, network: all mean "monitor off", never an experiment error
+                self._record_error("receive_imu_datum", exc)
+                errors += 1
+                if errors >= HEAD_MAX_CONSECUTIVE_ERRORS:
+                    self._disable_head_monitor(f"IMU receive failed {errors} times in a row: {type(exc).__name__}: {exc}")
+                    return
+                continue
+            errors = 0
+            if datum is None:
+                if not tracker.has_data and timebase.now() - started > HEAD_NO_DATA_TIMEOUT_S:
+                    self._disable_head_monitor(f"no IMU data within {HEAD_NO_DATA_TIMEOUT_S:g} s")
+                    return
+                continue
+            try:
+                t, stamp = self._imu_time(datum)
+                tracker.add(t, tuple(datum.gyro_data), tuple(datum.quaternion), stamp)
+            except Exception as exc:  # noqa: BLE001
+                self._record_error("imu_ingest", exc)
+
+    def head_motion_summary(self, flagged_trials: int | None = None) -> dict:
+        """For session.json "head_motion": {"status": "ok" | "unavailable (reason)" | "not started", sample count/rate, max speed and drift,
+        flagged_trials (trials the session excluded for head speed)}."""
+        summary: dict = {"status": self._head_status}
+        if self._head_tracker is not None:
+            summary.update(self._head_tracker.summary())
+        if flagged_trials is not None:
+            summary["flagged_trials"] = flagged_trials
+        return summary
+
+    def write_head_motion_csv(self, path: Path) -> bool:
+        """head_motion.csv (t_s on the gaze trace's arrival-time axis, phone_unix_s, speed_dps, drift_deg); nothing is written without data. Best effort."""
+        if self._head_tracker is None:
+            return False
+        rows = self._head_tracker.csv_rows()
+        if not rows:
+            return False
+        try:
+            with Path(path).open("w", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(["t_s", "phone_unix_s", "speed_dps", "drift_deg"])
+                for t, unix_s, speed, drift in rows:
+                    writer.writerow([f"{t:.6f}", "" if unix_s is None else f"{unix_s:.6f}", f"{speed:.3f}", "" if drift is None else f"{drift:.3f}"])
+        except OSError as exc:
+            print(f"WARNING: could not write {path}: {exc}", file=sys.stderr)
+            return False
+        return True
 
     def _estimate_clock_offset(self) -> None:
         """Phone-vs-PC clock offset (Pupil's Time Echo protocol), needed to turn
@@ -325,6 +422,9 @@ class NeonGazeSource(GazeSource):
 
     def calibrate(self, left_ratio: float, center_ratio: float, right_ratio: float) -> None:
         self._mapper.calibrate(left_ratio, center_ratio, right_ratio)
+        tracker = self.head_motion
+        if tracker is not None:
+            tracker.set_reference()  # head drift is measured from the orientation at calibration
 
     def average_recent_ratio(self) -> float | None:
         return self._mapper.average_recent_ratio()
@@ -374,6 +474,9 @@ class NeonGazeSource(GazeSource):
             self.stop_recording()
         self._running = False
         self._offset_stop.set()
+        self._head_stop.set()
+        if self._head_thread is not None:
+            self._head_thread.join(timeout=1)
         if self._offset_thread is not None:
             self._offset_thread.join(timeout=1)
         if self._thread is not None:
