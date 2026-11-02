@@ -98,8 +98,7 @@ What happens, in order (`Space` advances everything; `Esc` quits at once):
 1. **Tutorial** (if chosen, narrated aloud and captioned; input is held while it speaks): a short plain-language intro (4 screens, SPACE advances: the dot jumps,
    a thin line flashes, it can be very faint so guess if unsure, you can rest because nothing starts until SPACE; the start screen says to keep the head still on the
    chin rest), calibration, a quiz on how to answer (a line above or below a dot, UP/DOWN, 3 correct in a row) and 8 practice trials whose saccade latencies seed the
-   reaction-time average. Practice starts with a screen saying the real lines are much fainter, so guessing is normal. After each quiz answer and practice trial the
-   caption quietly says "Correct" or "Not quite" (text and speech only, no flash or sound); real trials give no feedback.
+   reaction-time average. Practice starts with a screen saying the real lines are much fainter, so guessing is normal. There is no feedback on answers.
 2. **Calibration** (saccade phase): look steadily at each of 3 targets, 3 rounds. Without the tutorial, a short reaction-time test and a few practice trials follow.
 3. **Green sync flashes** (saccade phase, Neon; announced aloud as "The screen will flash green a few times. This is normal."): the screen flashes green three times before the first trial and once at the end. See [Glasses video](#glasses-video).
 4. **Trials.** The participant presses **SPACE** to start each trial (the wait between trials is their break). A dot and a cross sit at the left and
@@ -107,8 +106,7 @@ What happens, in order (`Space` advances everything; `Esc` quits at once):
    A thin line flashes for one frame 2 deg above or below the symbol being looked at, at the average reaction time plus a random offset of -80..+80 ms (+-10 ms jitter), plus
    some control flashes at +400/+500 ms when the eye has already landed. The participant presses **Up** (line above) or **Down** (below) within 1 s;
    a missed flash is still guessed. **Every trial shows a flash**; there are no catch trials. In real trials the caption is hidden and silent.
-   Saccade phase: 150 trials (30 in Test). Real trials show no caption; the narrator only says one short line (speech only, nothing drawn) while waiting for SPACE
-   after about 25 %, 50 % and 75 % of the trials ("A quarter done.", "Halfway there.", "Almost done.").
+   Saccade phase: 150 trials (30 in Test). Real trials show no caption and are silent.
 5. The run ends after the last trial; the console prints the `analyze_session` command to run on it. Fixation data come from the control flashes and the
    far-from-saccade flashes of the same trials, sorted after the fact (see [Analysing a session](#analysing-a-session)).
 

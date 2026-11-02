@@ -20,18 +20,12 @@ CALIBRATE_RIGHT = "Look at the dot on the right, then press SPACE."
 QUIZ = "Press UP if the line is above the dot, DOWN if it is below."
 PRACTICE_INTRO = "Practice lines are clear. Real ones are much fainter, so guessing is normal."
 PRACTICE_DONE = "Practice done. The real test starts now. Press SPACE."
-# Quiet feedback after an answer. The variant alternates per answer so two equal verdicts in a row are different strings
-# (the narrator does not re-speak an unchanged caption).
-FEEDBACK_CORRECT = ("Correct.", "Yes, correct.")
-FEEDBACK_WRONG = ("Not quite.", "Not quite. UP is above, DOWN is below.")
-FEEDBACK_MISSED = ("Too slow. Guess if unsure.", "No answer. Guess if unsure.")
 
 # -- saccade phase --
 RT_TEST_INTRO = "Press SPACE. Look at the dot on the left. Follow it when it jumps."
 ANSWER = "Press UP if the line was above, DOWN if below. If unsure, guess."
 FIRST_TRIAL = "Nothing starts until you press SPACE. Follow the dot when it jumps."
 FINISHED = "All done. Thank you!"
-MILESTONES = (("A quarter done.", 0.25), ("Halfway there.", 0.5), ("Almost done.", 0.75))
 
 # -- glasses-video sync step --
 SYNC_FLASH = "The screen will flash green a few times. This is normal."

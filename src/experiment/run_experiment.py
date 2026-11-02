@@ -104,9 +104,7 @@ def update_caption(
     if state.get("hide_caption"):
         caption_stim.text = ""
         caption_stim.opacity = 0.0
-        # A milestone line ("Halfway there.") is speech only, nothing drawn; remembering it keeps it from being re-spoken per frame.
-        milestone = state.get("milestone_line") or ""
-        return (narrate_if_changed(narrator, milestone, last_spoken) if milestone else None), ""
+        return None, ""
     last_spoken = narrate_if_changed(narrator, state["instructions"], last_spoken)
     last_caption = render_caption(caption_stim, state["instructions"], last_caption)
     return last_spoken, last_caption

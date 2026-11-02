@@ -257,7 +257,7 @@ def test_practice_intro_is_spoken_once_and_later_trials_are_silent(fake_gaze, fa
     assert session.render_state()["instructions"] == intro  # unchanged through the trial: not re-spoken
     _run_timeout_attempt(session, fake_gaze, fake_time)
     assert session.render_state()["hud"]["phase"] == "PRACTICE_AWAITING_SPACE"
-    assert session.render_state()["instructions"] in words.FEEDBACK_MISSED  # then only the verdict, no instructions again
+    assert session.render_state()["instructions"] == ""
 
 
 def test_tutorial_strings_are_short_enough_to_narrate(fake_gaze, fake_time):
@@ -299,40 +299,6 @@ def test_intro_screens_come_first_and_each_needs_a_space(fake_gaze):
     assert tuple(shown) == words.TUTORIAL_INTRO
     session.on_space()
     assert session.render_state()["hud"]["phase"] == "CALIBRATE_LEFT"
-
-
-def test_quiz_says_correct_or_not_quite_and_never_repeats_a_string(fake_gaze):
-    session = _make_session(fake_gaze)
-    _complete_calibration(session)
-    assert session.render_state()["instructions"] == words.QUIZ
-    verdicts = []
-    for answer_is_correct in (True, True, False, False, True):
-        orientation = session._quiz_orientation
-        if not answer_is_correct:
-            orientation = Side.BELOW if orientation is Side.ABOVE else Side.ABOVE
-        session.on_response_key(orientation)
-        if session.render_state()["hud"]["phase"] != "QUIZ":
-            break
-        verdicts.append((answer_is_correct, session.render_state()["instructions"]))
-        assert session.render_state()["tutorial_text"]["text"] == words.QUIZ  # the key mapping stays up
-    for correct, text in verdicts:
-        assert text in (words.FEEDBACK_CORRECT if correct else words.FEEDBACK_WRONG)
-    texts = [text for _, text in verdicts]
-    assert len(texts) >= 3
-    assert all(a != b for a, b in zip(texts, texts[1:]))  # the narrator would not re-speak an equal neighbour
-
-
-def test_practice_trial_ends_with_a_verdict_and_two_equal_verdicts_differ(fake_gaze, fake_time):
-    session = _make_session(fake_gaze)
-    _reach_practice(session)
-    _run_attempt(session, fake_gaze, fake_time, respond_correctly=True)
-    first = session.render_state()["instructions"]
-    assert first in words.FEEDBACK_CORRECT
-    _run_attempt(session, fake_gaze, fake_time, respond_correctly=True)
-    second = session.render_state()["instructions"]
-    assert second in words.FEEDBACK_CORRECT and second != first
-    _run_attempt(session, fake_gaze, fake_time, respond_correctly=False)
-    assert session.render_state()["instructions"] in words.FEEDBACK_WRONG
 
 
 def test_practice_intro_screen_tells_that_real_lines_are_fainter(fake_gaze):

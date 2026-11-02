@@ -86,8 +86,8 @@ Paths in this section are checked by `tests/test_docs.py` - keep them real.
 | `include/eye_tracking/interfaces.py` | `GazeSource`, the only gaze interface sessions use |
 | `include/eye_tracking/types.py` | `GazeZone`, `GazeSample` |
 | `src/experiment/session.py` | `ExperimentSession`: saccade phase state machine (core logic) |
-| `src/experiment/tutorial_session.py` | `TutorialSession`: intro screens -> calibration -> quiz -> practice intro -> 8 practice trials yielding the first RT samples; quiet Correct/Not quite caption after answers |
-| `include/experiment/participant_text.py` | every string the participant reads/hears (<=15 words, positional dot names, no "other dot"/"cross"; `tests/ai-tests/test_participant_text.py`); `render_state()["milestone_line"]` = speech-only 25/50/75 % lines |
+| `src/experiment/tutorial_session.py` | `TutorialSession`: intro screens -> calibration -> quiz -> practice intro -> 8 practice trials yielding the first RT samples |
+| `include/experiment/participant_text.py` | every string the participant reads/hears (<=15 words, positional dot names, no "other dot"/"cross"; `tests/ai-tests/test_participant_text.py`) |
 | `src/experiment/run_experiment.py` | entry point + PsychoPy rendering; the only PsychoPy-dependent module |
 | `src/experiment/pausable_clock.py` | `PausableClock`: the injected time source (name historical, no longer pauses) |
 | `src/experiment/settings.py` | dashboard-configured default contrast floor (`data/settings.json`) |

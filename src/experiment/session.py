@@ -785,7 +785,6 @@ class ExperimentSession:
         return {
             "instructions": self._instructions(),
             "hide_caption": self._hide_caption(),
-            "milestone_line": self._milestone_line(),
             "dot": {"visible": dot_visible, "x": DOT_POSITION[0], "y": DOT_POSITION[1]},
             "cross": {"visible": cross_visible, "x": CROSS_POSITION[0], "y": CROSS_POSITION[1]},
             "calibration_center": {
@@ -821,17 +820,6 @@ class ExperimentSession:
         if self._phase is Phase.AWAITING_SPACE and self._is_first_trial():
             return False
         return self._phase in _MAIN_TRIAL_PHASES and not self._current_trial_spec.practice
-
-    def _milestone_line(self) -> str:
-        """A short spoken-only line (never drawn) while the participant waits for SPACE before the trial that follows 25/50/75 %
-        of the planned trials. Said before the press, so the speech is over before the foreperiod and the flash. Constant stimuli only."""
-        if self._phase is not Phase.AWAITING_SPACE or self._fixed_contrast_bag is None or self._current_trial_spec.practice:
-            return ""
-        done = self._main_trial_counter - 1
-        for line, fraction in words.MILESTONES:
-            if done == round(self._fixed_trials * fraction) and done > 0:
-                return line
-        return ""
 
     def _has_trial_label(self) -> bool:
         return self._phase in _TRIAL_PHASES

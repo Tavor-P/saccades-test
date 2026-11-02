@@ -60,8 +60,7 @@ class TutorialSession:
        (DEFAULT_REACTION_TIME_MS until there are 3); each trial's onset latency is kept in `rt_samples_ms` to seed
        ExperimentSession's average instead of a separate RT test.
 
-    A short narrated INTRO (what you will see, what to do) runs before the calibration. After a quiz answer or a practice trial
-    the caption says Correct / Not quite (text only: no flash, no sound; the real trials stay silent).
+    A short narrated INTRO (what you will see, what to do) runs before the calibration. There is no feedback on answers.
 
     Framework-agnostic like the other sessions; never logs to the results CSV (none of this counts as data).
     """
@@ -86,8 +85,6 @@ class TutorialSession:
         self._quiz_streak = 0
         self._quiz_orientation: Side | None = None
         self._intro_step = 0
-        self._feedback = ""  # the last Correct / Not quite caption (quiz and practice only)
-        self._answers_given = 0  # alternates the feedback variant so consecutive verdicts are never the same string
 
         # -- practice trials --
         self._attempt = 0
@@ -149,7 +146,6 @@ class TutorialSession:
     def on_response_key(self, orientation: Side) -> None:
         if self._phase is Phase.QUIZ:
             correct = orientation == self._quiz_orientation
-            self._give_feedback(words.FEEDBACK_CORRECT if correct else words.FEEDBACK_WRONG)
             if correct:
                 self._quiz_streak += 1
                 if self._quiz_streak >= TUTORIAL_QUIZ_STREAK_TARGET:
@@ -167,10 +163,6 @@ class TutorialSession:
                 self._responded = True
                 self._response_orientation = orientation
 
-    def _give_feedback(self, variants: tuple[str, str]) -> None:
-        self._feedback = variants[self._answers_given % len(variants)]
-        self._answers_given += 1
-
     def _enter_quiz(self) -> None:
         self._quiz_streak = 0
         self._quiz_orientation = _random_orientation()
@@ -180,7 +172,6 @@ class TutorialSession:
 
     def _enter_practice(self) -> None:
         self._attempt = 0
-        self._feedback = ""
         self._rt = RollingReactionTime(DEFAULT_REACTION_TIME_MS)
         self._source = Target.DOT
         self._dot_visible = True
@@ -275,11 +266,6 @@ class TutorialSession:
 
     def _finish_attempt(self) -> None:
         self._grating_visible = False
-        if self._grating_actually_shown:
-            if not self._responded:
-                self._give_feedback(words.FEEDBACK_MISSED)
-            else:
-                self._give_feedback(words.FEEDBACK_CORRECT if self._response_orientation == self._orientation else words.FEEDBACK_WRONG)
         self._source = self._target
         self._attempt += 1
         if self._attempt >= TUTORIAL_PRACTICE_ATTEMPTS:
@@ -313,13 +299,12 @@ class TutorialSession:
                 Phase.CALIBRATE_RIGHT: words.CALIBRATE_RIGHT,
             }[self._phase]
         if self._phase is Phase.QUIZ:
-            # The key mapping stays on screen as the large text; the caption turns into the verdict after each answer.
-            return self._feedback or words.QUIZ
+            return words.QUIZ
         if self._phase is Phase.PRACTICE_INTRO:
             return words.PRACTICE_INTRO
         if self._phase in (Phase.PRACTICE_AWAITING_SPACE, Phase.PRACTICE_FOREPERIOD, Phase.PRACTICE_ACTIVE):
-            # The first attempt says what to do; afterwards the caption is the last verdict (unchanged text is never re-spoken).
-            return words.RT_TEST_INTRO if self._attempt == 0 else self._feedback
+            # Said once, before the first trial; silent afterwards (the narrator re-speaks on every text change).
+            return words.RT_TEST_INTRO if self._attempt == 0 else ""
         return words.PRACTICE_DONE
 
     def _tutorial_text(self) -> tuple[str | None, str]:
