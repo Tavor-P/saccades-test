@@ -104,10 +104,8 @@
         </td>
         <td>
           <div class="row-actions">
-            <button class="graph-toggle" type="button">Show graph</button>
             <button class="btn-danger delete-session" type="button">Delete</button>
           </div>
-          <div class="graph-row" style="display:none"></div>
         </td>
       </tr>
       {% endfor %}
@@ -185,23 +183,7 @@ document.querySelectorAll("tr[data-timestamp]").forEach((row) => {
     });
   });
 
-  const toggleButton = row.querySelector(".graph-toggle");
-  const graphRow = row.querySelector(".graph-row");
-  toggleButton.addEventListener("click", () => {
-    const showing = graphRow.style.display !== "none";
-    if (showing) {
-      graphRow.style.display = "none";
-      toggleButton.textContent = "Show graph";
-      return;
-    }
-    if (!graphRow.querySelector("img")) {
-      const img = document.createElement("img");
-      img.src = `/sessions/${timestamp}/graph.png?_=${Date.now()}`;
-      graphRow.appendChild(img);
-    }
-    graphRow.style.display = "block";
-    toggleButton.textContent = "Hide graph";
-  });
+});
 });
 
 const filterName = document.getElementById("filter-name");

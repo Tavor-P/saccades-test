@@ -36,14 +36,9 @@ def meta_path_for(timestamp: str) -> Path:
     return _ref(timestamp).meta_path
 
 
-def graph_cache_path_for(timestamp: str) -> Path:
-    return GRAPH_CACHE_DIR / f"{timestamp}.png"
-
-
 def load_session_trials(timestamp: str) -> list[TrialResult]:
     """Reparses a session's logged CSV back into TrialResult objects, so it
-    can be fed straight into results_graph.build_comparison_graph - the exact
-    same graph the experiment itself shows at the end of a run. Reads both file layouts."""
+    can be analysed as TrialResult objects. Reads both file layouts."""
     return read_trials(csv_path_for(timestamp))
 
 
@@ -100,7 +95,7 @@ def save_participant_info(timestamp: str, name: str, gender: str, age: str) -> N
 def delete_session(timestamp: str) -> None:
     """Removes a session permanently (no trash/undo): an old session's CSV and metadata sidecar; a
     new-layout session's WHOLE run folder (trials, session.json, gaze trace, analysis and the glasses video), and its
-    participant folder if that is now empty. Also the cached graph."""
+    participant folder if that is now empty."""
     ref = _ref(timestamp)
     if ref.is_legacy:
         ref.trials_path.unlink(missing_ok=True)
@@ -111,7 +106,6 @@ def delete_session(timestamp: str) -> None:
             ref.folder.parent.rmdir()  # only succeeds when empty
         except OSError:
             pass
-    graph_cache_path_for(timestamp).unlink(missing_ok=True)
 
 
 @dataclass

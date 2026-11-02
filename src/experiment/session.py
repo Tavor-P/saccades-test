@@ -90,12 +90,12 @@ class ExperimentSession:
     Trial structure follows Diamond, Ross & Morrone (2000): a jittered foreperiod showing only the fixation symbol, then the
     other symbol's appearance is the go-cue. A brief flash (here a thin line just above or below the saccade target, after
     Braun, Schutz & Gegenfurtner 2021) is scored as a 2AFC above/below discrimination (UP/DOWN). Contrast comes from fixed
-    levels (SACCADE_FIXED_CONTRASTS) or, when those are empty, a ZEST staircase independent of the baseline phase's.
+    levels (SACCADE_FIXED_CONTRASTS) or, when those are empty, a ZEST staircase.
     With SHARP_GO_CUE (default) the dot/cross swap is instant (render_state()["snap_symbols"]) so the go-cue has a definite
     onset; otherwise the old symbol crossfades out as the new one appears.
 
     Framework-agnostic: the runner calls `on_space()`/`on_response_key()`/`tick()` and applies `render_state()` to its
-    stimuli. Gaze state lives in the injected GazeSource and the logger is shared with the baseline phase.
+    stimuli. Gaze state lives in the injected GazeSource and the logger records the run.
     """
 
     def __init__(
@@ -652,7 +652,7 @@ class ExperimentSession:
         tracking_ok = (not self._tracking_lost_near_flash) if self._grating_actually_shown else None
 
         if not trial.practice:
-            # A "miss" counts as a non-detection like "correct"/"incorrect" (results_graph.py replays it the same way); only
+            # A "miss" counts as a non-detection like "correct"/"incorrect"; only
             # flashes that really hit the saccade window feed the staircase, since open-loop misses are structurally common.
             if (
                 self._grating_actually_shown

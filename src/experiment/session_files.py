@@ -18,7 +18,6 @@ SESSION_FILE = "session.json"
 GAZE_TRACE_FILE = "gaze_trace.csv"
 ANALYSIS_DIR = "analysis"
 GLASSES_DIR = "glasses"
-GRAPH_FILE = "comparison_graph.png"
 
 _LEGACY_CSV_RE = re.compile(r"^results_(\d+)\.csv$")
 _FOLDER_NAME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}(_test)?(_\d+)?$")
@@ -84,9 +83,6 @@ class SessionRef:
     @property
     def label(self) -> str:
         return self.key if self.folder is None else f"{self.folder.parent.name}/{self.folder.name}"
-
-    def graph_path(self) -> Path | None:
-        return None if self.folder is None else self.folder / GRAPH_FILE
 
 
 def _ref_from_folder(folder: Path) -> SessionRef | None:

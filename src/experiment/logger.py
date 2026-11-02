@@ -43,7 +43,7 @@ def _enum_value(value) -> str:
     return "" if value is None else value.value
 
 
-PHASE_WORDS = {"presaccade": "baseline"}  # trials.csv says "baseline" for the fixation phase
+PHASE_WORDS = {"presaccade": "baseline"}  # old runs only: the removed fixation phase ("presaccade" in memory, "baseline" in trials.csv); kept so old files parse
 OUTCOME_WORDS = {"incorrect": "wrong", "miss": "no_answer"}
 _INVERSE = lambda table: {v: k for k, v in table.items()}  # noqa: E731
 
@@ -292,8 +292,7 @@ def _results_summary(rows: list[TrialResult]) -> dict:
 class ResultLogger:
     """Writes one run of the experiment into its own folder (see module docstring).
 
-    Shared across both phases of a run (baseline + saccade), so the whole run lands in one trials.csv distinguished by
-    the `phase` column - that's what the end-of-run comparison graph reads from.
+    One trials.csv for the whole run; the `phase` column distinguishes saccade rows from rt_test rows (and, in old runs, baseline rows).
     """
 
     def __init__(
@@ -374,11 +373,6 @@ class ResultLogger:
     @property
     def glasses_dir(self) -> Path:
         return self._folder / session_files.GLASSES_DIR
-
-    @property
-    def graph_path(self) -> Path:
-        """The end-of-run comparison graph."""
-        return self._folder / session_files.GRAPH_FILE
 
     def _write_metadata(self) -> None:
         self._metadata["results"]["phases"] = _results_summary(self._rows)

@@ -1,16 +1,8 @@
 """Builds trial sequences/specs: alternating dot/cross sources, practice blocks, and the next dynamically generated trial. Every trial shows a flash."""
 
-from include.experiment.types import FlashTrialSpec, Target, TrialSpec
+from include.experiment.types import Target, TrialSpec
 from src.experiment.trial_mechanics import ShuffledBag
 from src.experiment.trial_mechanics import random_orientation as _random_orientation
-
-
-def build_presaccade_sequence(num_trials: int, num_practice: int) -> list[FlashTrialSpec]:
-    """Phase 1: fixate center only, no saccade - just report the flash's orientation.
-    Practice trials come first, then the real (ZEST-staircased, logged) block."""
-    practice = [FlashTrialSpec(index=index, orientation=_random_orientation(), practice=True) for index in range(num_practice)]
-    real = [FlashTrialSpec(index=index, orientation=_random_orientation()) for index in range(num_trials)]
-    return practice + real
 
 
 def _build_saccade_trials(count: int, practice: bool, start_source: Target) -> tuple[list[TrialSpec], Target]:
@@ -32,7 +24,7 @@ def _build_saccade_trials(count: int, practice: bool, start_source: Target) -> t
 
 
 def build_saccade_sequence(num_practice: int) -> list[TrialSpec]:
-    """Phase 2's practice block: each trial an alternating dot<->cross
+    """The practice block: each trial an alternating dot<->cross
     saccade starting from Target.DOT. The real block is no longer built
     ahead of time here - contrast stays ZEST-adaptive rather than a fixed
     trial count, so ExperimentSession generates it one trial at a time

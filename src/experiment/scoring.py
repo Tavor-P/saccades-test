@@ -1,5 +1,5 @@
 """score_outcome (correct/incorrect/miss) and is_valid_for_saccadic_analysis - the single validity gate for saccade-phase
-flashes (flash_during_saccade AND tracking_ok), shared by live ZEST updates and the end-of-run graph."""
+flashes (flash_during_saccade AND tracking_ok), used by the live ZEST update."""
 
 from include.experiment.types import Side
 
@@ -9,9 +9,8 @@ def score_outcome(
     response_orientation: Side | None,
     actual_orientation: Side | None,
 ) -> str:
-    """Shared scoring used by both phases (outside of the saccade phase's
-    "timeout" case, which its own state machine handles before falling back
-    to this). Every trial flashes a grating and is scored as a 2-alternative
+    """Shared scoring (outside of the saccade phase's "timeout" case, which its
+    own state machine handles before falling back to this). Every trial flashes a grating and is scored as a 2-alternative
     orientation discrimination (correct/incorrect/miss) rather than plain yes/no
     detection - correctly reporting *which* orientation it was rules out a
     lucky guess in a way merely detecting *that* something flashed doesn't.
@@ -24,10 +23,8 @@ def score_outcome(
 
 def is_valid_for_saccadic_analysis(flash_during_saccade: bool | None, tracking_ok: bool | None = None) -> bool:
     """The single validity gate for a saccade-phase, grating-shown trial's
-    flash_during_saccade - shared by both the live in-session ZEST update
-    (ExperimentSession._finish_trial) and the end-of-run analysis
-    (results_graph._exclude_flashes_not_during_saccade), so the two can't
-    silently diverge if this rule ever changes. Only True counts - False
+    flash_during_saccade - applied by the live in-session ZEST update
+    (ExperimentSession._finish_trial). Only True counts - False
     (the flash landed outside the real-time-detected saccade window) and
     None (landing was never confirmed, so validity is genuinely
     undeterminable, not merely invalid) are equally unusable for either
