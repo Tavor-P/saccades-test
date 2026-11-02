@@ -38,6 +38,7 @@ from src.experiment.geometry import Geometry
 from src.experiment.logger import ResultLogger
 from src.experiment.narrator import Narrator
 from src.experiment.pausable_clock import PausableClock
+from src.experiment.run_summary import finish_run_summary
 from src.experiment.session import ExperimentSession
 from src.experiment.space_input import NarrationKeyGate, deliver_space, leaves_complete_screen
 from src.experiment.settings import (
@@ -679,6 +680,18 @@ def prompt_session_info() -> tuple[str, str, int, str, float, bool, bool, bool, 
     )
 
 
+def show_done_screen(win: visual.Window, stimuli: dict, narrator: Narrator, folder) -> None:
+    """Last screen of a run (also after Escape): where the results are; SPACE or ESCAPE closes. Spoken once, without the path."""
+    caption = stimuli["caption"]
+    caption.text = f"Done. Thank you.\nResults saved to {folder}\nPress SPACE to close."
+    caption.opacity = 1.0
+    narrator.speak("Done. Thank you. Results saved. Press SPACE to close.")
+    event.getKeys()  # drop keys pressed before this screen appeared
+    while not event.getKeys(keyList=["space", "escape"]):
+        caption.draw()
+        win.flip()
+
+
 def main() -> None:
     # Let the Neon receiver thread get the interpreter lock within ~0.5 ms instead of the default
     # 5 ms while the render loop is busy: in real sessions gaze delivery steps up ~65 ms late and
@@ -748,8 +761,10 @@ def main() -> None:
             logger.set_calibration(*result.calibration_ratios)
         print(f"Run finished. Analyse it with: scripts/py.ps1 -m src.experiment.analyze_session {logger.folder.name}")
     finally:
-        narrator.stop()
         logger.close()
+        if finish_run_summary(logger.folder) and sys.exc_info()[0] is None and logger.gaze_trace_path.exists():
+            show_done_screen(win, stimuli, narrator, logger.folder)
+        narrator.stop()
         win.close()
 
 
