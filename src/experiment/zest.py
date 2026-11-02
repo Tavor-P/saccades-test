@@ -14,9 +14,7 @@ from include.experiment.constants import (
 
 def psychometric_function(contrast: float, threshold: float, beta: float, guess_rate: float, lapse_rate: float) -> float:
     """Weibull P(detect | contrast), the psychometric function ZEST assumes
-    when narrowing its posterior. Shared with results_graph.py so the fitted
-    curve it plots is exactly the model the staircase used, not a re-derived
-    approximation of it."""
+    when narrowing its posterior."""
     ratio = contrast / threshold
     weibull = 1 - math.exp(-(ratio**beta))
     return guess_rate + (1 - guess_rate - lapse_rate) * weibull

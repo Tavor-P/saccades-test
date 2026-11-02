@@ -3,17 +3,14 @@ experiment; it only reads/writes files via data_access.py."""
 
 from datetime import datetime
 
-from flask import Flask, abort, jsonify, render_template, request, send_file
+from flask import Flask, abort, jsonify, render_template, request
 
 from src.dashboard.data_access import (
     csv_path_for,
     delete_session,
     discover_sessions,
-    graph_cache_path_for,
-    load_session_trials,
     save_participant_info,
 )
-from src.experiment.results_graph import build_comparison_graph
 from src.experiment.settings import (
     MAX_CONTRAST_FLOOR_PERCENT,
     MIN_CONTRAST_FLOOR_PERCENT,
@@ -73,17 +70,6 @@ def remove_session(timestamp: str):
         abort(404)
     delete_session(timestamp)
     return jsonify({"ok": True})
-
-
-@app.get("/sessions/<timestamp>/graph.png")
-def session_graph(timestamp: str):
-    csv_path = csv_path_for(timestamp)
-    if not csv_path.exists():
-        abort(404)
-    output_path = graph_cache_path_for(timestamp)
-    output_path.parent.mkdir(exist_ok=True)
-    build_comparison_graph(load_session_trials(timestamp), output_path=output_path)
-    return send_file(output_path, mimetype="image/png")
 
 
 def main() -> None:

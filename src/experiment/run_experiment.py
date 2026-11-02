@@ -39,10 +39,7 @@ from src.experiment.glasses_video import END_FLASH_COUNT, SYNC_FLASH_COUNT, sync
 from src.experiment.logger import ResultLogger
 from src.experiment.narrator import Narrator
 from src.experiment.pausable_clock import PausableClock
-from src.experiment.presaccade_session import PresaccadeSession
-from src.experiment.results_graph import build_comparison_graph
 from src.experiment.session import ExperimentSession
-from src.experiment.session_schedule import PHASE_BASELINE, PHASE_SACCADE, phase_order
 from src.experiment.space_input import NarrationKeyGate, deliver_space, leaves_complete_screen
 from src.experiment.settings import (
     DEFAULT_SACCADE_CONTRAST_MAX_PERCENT,
@@ -279,7 +276,7 @@ def apply_render_state(state: dict, stimuli: dict, fade_opacities: dict, dt: flo
     fade_step = dt / FADE_DURATION_S
 
     # calibration_center is only present in the saccade phase's render_state()
-    # (the presaccade phase has no gaze calibration) - default it to hidden.
+    # (the tutorial's render_state has none) - default it to hidden.
     for name in ("dot", "cross", "calibration_center"):
         symbol_state = state.get(name, {"visible": False, "x": 0.0, "y": 0.0})
         target_opacity = 1.0 if symbol_state["visible"] else 0.0
@@ -291,8 +288,7 @@ def apply_render_state(state: dict, stimuli: dict, fade_opacities: dict, dt: flo
         stim.opacity = fade_opacities[name]
         stim.pos = ratio_to_pos(symbol_state["x"], symbol_state["y"], aspect)
 
-    # Only the saccade phase's render_state() includes this - presaccade has
-    # no gaze tracking at all. Snaps straight to its target (no fade): it's a
+    # Only the saccade phase's render_state() includes this. Snaps straight to its target (no fade): it's a
     # live cursor, so smoothing it would just make it lag behind real gaze.
     gaze_indicator = stimuli["gaze_indicator"]
     indicator_state = state.get("gaze_indicator")
@@ -413,101 +409,6 @@ def draw_all(stimuli: dict) -> None:
         stimuli[name].draw()
 
 
-def run_presaccade_phase(
-    win: visual.Window,
-    stimuli: dict,
-    logger: ResultLogger,
-    narrator: Narrator,
-    contrast_floor: float | None = None,
-    test_mode: bool = False,
-    gaze_backend: str = BACKEND_NEON,
-    camera_index: int = CAMERA_INDEX,
-    calibration_ratios: tuple[float, float, float] | None = None,
-) -> PresaccadeSession | None:
-    """Phase 1: fixate center, detect flashes. No eye tracking, unless `calibration_ratios` is known (tutorial ran, or the saccade phase went
-    first): then a gaze source is built, calibrated and used only to hold a due flash until gaze is on center (fixation gating - see
-    PresaccadeSession); if it can't start, the baseline runs ungated. Returns the completed
-    session, or None if the participant quit early."""
-    gaze = _start_gating_gaze(win, gaze_backend, camera_index, calibration_ratios)
-    try:
-        return _run_presaccade_loop(win, stimuli, logger, narrator, contrast_floor, test_mode, gaze)
-    finally:
-        if gaze is not None:
-            gaze.stop()
-
-
-def _start_gating_gaze(win, gaze_backend: str, camera_index: int, calibration_ratios):
-    """The calibrated gaze source for baseline fixation gating, or None (ungated baseline) when there is no calibration to classify zones with
-    or the source won't start - gating is a refinement, so a failure here must not cost the participant their session."""
-    if calibration_ratios is None:
-        return None
-    gaze = None
-    try:
-        gaze = build_gaze_source(gaze_backend, camera_index)
-        gaze.start()
-        gaze.calibrate(*calibration_ratios)
-        return gaze
-    except Exception as exc:  # noqa: BLE001 - any hardware/SDK failure falls back to the ungated baseline
-        print(f"WARNING: baseline fixation gating unavailable ({exc!r}); running the baseline ungated", file=sys.stderr)
-        if gaze is not None:
-            try:
-                gaze.stop()
-            except Exception:  # noqa: BLE001
-                pass
-        return None
-
-
-def _run_presaccade_loop(win, stimuli, logger, narrator, contrast_floor, test_mode, gaze) -> PresaccadeSession | None:
-    clock = PausableClock()
-    session = PresaccadeSession(
-        logger=logger, clock=clock, contrast_floor=contrast_floor, test_mode=test_mode, gaze=gaze
-    )
-    fade_opacities = {"dot": 0.0, "cross": 0.0, "calibration_center": 0.0}
-    frame_clock = core.Clock()
-    last_spoken_instructions: str | None = None
-    last_caption = ""
-    last_phase: str | None = None
-
-    try:
-        return _presaccade_frames(
-            win, stimuli, narrator, session, fade_opacities, frame_clock, last_spoken_instructions, last_caption, last_phase
-        )
-    finally:
-        report_space_presses(session, "baseline", logger)
-
-
-def _presaccade_frames(
-    win, stimuli, narrator, session, fade_opacities, frame_clock, last_spoken_instructions, last_caption, last_phase
-) -> PresaccadeSession | None:
-    drain_stale_space(session)
-    while True:
-        keys = event.getKeys(keyList=["space", "escape", *RESPONSE_KEYS])
-        if "escape" in keys:
-            return None
-
-        space_delivered = deliver_space(session, keys.count("space"))  # no-op if already COMPLETE
-        dispatch_response_keys(session, keys)
-
-        session.tick()
-        state = session.render_state()
-
-        if leaves_complete_screen(last_phase, space_delivered):
-            return session  # a space press on the results screen moves on
-        last_phase = state["hud"]["phase"]
-
-        last_spoken_instructions, last_caption = update_caption(
-            narrator, stimuli["caption"], state, last_spoken_instructions, last_caption
-        )
-
-        dt = frame_clock.getTime()
-        frame_clock.reset()
-        apply_render_state(state, stimuli, fade_opacities, dt)
-        stimuli["start_flash"].opacity = 0.0  # unused in this phase
-
-        draw_all(stimuli)
-        win.flip()
-
-
 def run_saccade_phase(
     win: visual.Window,
     stimuli: dict,
@@ -524,7 +425,7 @@ def run_saccade_phase(
     record_video: bool = False,
     saccade_contrasts: tuple[float, ...] | None = None,
 ) -> ExperimentSession | None:
-    """Phase 2: the gaze-contingent saccade test. `precomputed_calibration_ratios`/
+    """The gaze-contingent saccade test. `precomputed_calibration_ratios`/
     `skip_practice_trials`/`precomputed_rt_samples_ms` come from a completed
     TutorialSession (see main()) - when set, this phase reuses that calibration
     and its practice reaction times instead of calibrating, running its own RT
@@ -654,7 +555,7 @@ def run_tutorial_phase(
     gaze_backend: str = BACKEND_NEON,
 ) -> TutorialSession | None:
     """A one-time, narrated on-ramp for first-time participants, run before
-    both real phases (see main()). Unlike the other two phases, no key or
+    the saccade phase (see main()). Unlike that phase, no key or
     tick is forwarded to the session while narrator.is_speaking is true -
     the tutorial holds on the current screen until narration finishes,
     rather than letting a fast participant outrun instructions they haven't
@@ -792,8 +693,8 @@ def prompt_session_info() -> tuple[str, str, int, str, float, bool, bool, bool, 
     opens - also offers a camera picker (a dropdown of every camera index
     that actually opens) so switching between multiple connected cameras
     doesn't require hand-editing CAMERA_INDEX, and the saccade phase's
-    probe-contrast range (min/max fields, see SACCADE_FIXED_CONTRASTS; the baseline
-    staircase floor is the dashboard-configured default in src/experiment/settings.py,
+    probe-contrast range (min/max fields, see SACCADE_FIXED_CONTRASTS; the staircase floor
+    (used only when those are empty) is the dashboard-configured default in src/experiment/settings.py,
     not a dialog field). Also offers a "Show gaze
     indicator" toggle (default No) for the saccade phase's debug gaze dot -
     off by default since it's not something a real participant should see -
@@ -843,7 +744,7 @@ def prompt_session_info() -> tuple[str, str, int, str, float, bool, bool, bool, 
     gaze_backend = info["Gaze source"]
     if gaze_backend in NEON_BACKENDS:
         camera_index, camera_label = CAMERA_INDEX, gaze_backend
-    # No dialog field any more: the baseline staircase's floor is the dashboard-configured default.
+    # No dialog field: the staircase floor (only used when SACCADE_FIXED_CONTRASTS is empty) is the dashboard-configured default.
     contrast_floor_percent = default_contrast_floor_percent
     saccade_contrasts = resolve_saccade_contrasts(info["Saccade contrast min (%)"], info["Saccade contrast max (%)"])
     show_gaze_indicator = _resolve_show_gaze_indicator(info["Show gaze indicator"])
@@ -861,22 +762,6 @@ def prompt_session_info() -> tuple[str, str, int, str, float, bool, bool, bool, 
         test_mode,
         saccade_contrasts,
     )
-
-
-def show_results_graph(win: visual.Window, results: list, output_path=None) -> None:
-    png_path = build_comparison_graph(results) if output_path is None else build_comparison_graph(results, output_path=output_path)
-    # The graph is now a 2x2 panel figure (aspect ~1.2, not the old 2-panel
-    # 2:1) - sized/positioned to match so it isn't stretched.
-    image = visual.ImageStim(win, image=str(png_path), size=(1.02, 0.85), pos=(0, 0.02))
-    text = visual.TextStim(win, text="Press SPACE or ESCAPE to exit", pos=(0, -0.47), color="white", height=0.03)
-
-    while True:
-        keys = event.getKeys(keyList=["space", "escape"])
-        if keys:
-            return
-        image.draw()
-        text.draw()
-        win.flip()
 
 
 def main() -> None:
@@ -938,42 +823,12 @@ def main() -> None:
             saccade_contrasts=saccade_contrasts,
         )
 
-        # Test runs go saccade-first (the phase under development); real runs are counterbalanced by participant ID.
-        order = phase_order(participant_id, test_mode)
-        print(f"Phase order: {' -> '.join(order)} (rows in the results CSV appear in this order, distinguished by the phase column)")
-
-        sessions = {}
-        calibration_ratios = precomputed_calibration_ratios  # known up front only if the tutorial ran
-        for phase_name in order:
-            if phase_name == PHASE_SACCADE:
-                result = saccade_phase(win, stimuli, logger)
-                if result is not None and result.calibration_ratios is not None:
-                    calibration_ratios = result.calibration_ratios
-            else:
-                result = run_presaccade_phase(
-                    win,
-                    stimuli,
-                    logger,
-                    narrator,
-                    contrast_floor=contrast_floor,
-                    test_mode=test_mode,
-                    gaze_backend=gaze_backend,
-                    camera_index=camera_index,
-                    calibration_ratios=calibration_ratios,
-                )
-                if result is not None and result.gated_trials:
-                    print(f"Baseline fixation gating held {result.gated_trials} flash(es); {result.gate_timeouts} fired after timing out.")
-            if result is None:
-                return  # quit early
-            sessions[phase_name] = result
-
-        saccade_session = sessions.get(PHASE_SACCADE)
-        if saccade_session is not None and saccade_session.calibration_ratios is not None:
-            logger.set_calibration(*saccade_session.calibration_ratios)
-
-        all_results = [r for name in (PHASE_BASELINE, PHASE_SACCADE) if name in sessions for r in sessions[name].results]
-        if all_results:
-            show_results_graph(win, all_results, logger.graph_path)
+        result = saccade_phase(win, stimuli, logger)
+        if result is None:
+            return  # quit early
+        if result.calibration_ratios is not None:
+            logger.set_calibration(*result.calibration_ratios)
+        print(f"Run finished. Analyse it with: scripts/py.ps1 -m src.experiment.analyze_session {logger.folder.name}")
     finally:
         narrator.stop()
         logger.close()

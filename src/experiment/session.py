@@ -96,9 +96,8 @@ class ExperimentSession:
     2-alternative forced-choice orientation discrimination (up/down arrow =
     vertical, left/right arrow = horizontal) rather than plain yes/no
     detection. Contrast is picked trial by trial by a ZEST staircase
-    (see src.experiment.zest), the same adaptive procedure the paper used, run
-    independently from the presaccade phase's staircase so each condition
-    converges on its own threshold.
+    (see src.experiment.zest), the same adaptive procedure the paper used
+    (only when SACCADE_FIXED_CONTRASTS is empty; otherwise fixed contrast levels).
 
     Uses a "step" gap/overlap paradigm: the old fixation symbol starts
     fading out the instant the new one appears (both crossfade over
@@ -113,8 +112,7 @@ class ExperimentSession:
     the PsychoPy frame loop, and `render_state()` returns a plain dict the
     runner applies to its stimuli. It owns no camera/tracker state itself
     (that lives in the injected GazeSource) so ticking never blocks on camera
-    IO or MediaPipe inference. Doesn't own the logger either - it's shared
-    with the presaccade phase so both land in one CSV file.
+    IO or MediaPipe inference. Doesn't own the logger either.
     """
 
     def __init__(
@@ -756,9 +754,7 @@ class ExperimentSession:
             # here too, not just "correct"/"incorrect" - a participant who
             # never saw the grating well enough to answer in time is exactly
             # the signal ZEST needs to stop drifting the contrast down further.
-            # Matches what results_graph.py's replay already does from the
-            # logged CSV, so the live in-session estimate and the end-of-run
-            # graph agree. Also requires flash_during_saccade is True now -
+            # Also requires flash_during_saccade is True now -
             # open-loop scheduling makes a missed saccade window structurally
             # common (not rare lag noise like the old gaze-contingent
             # trigger), so feeding those trials in would corrupt the
