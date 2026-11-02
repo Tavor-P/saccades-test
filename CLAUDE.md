@@ -2,7 +2,7 @@
 
 PsychoPy gaze-contingent saccade experiment (Diamond, Ross & Morrone 2000 design): detect a briefly flashed stimulus once
 during a saccade and during fixation (the saccade phase's control and far-from-saccade flashes, sorted post hoc) to measure saccadic suppression. Gaze: Pupil Labs Neon (default,
-Real-Time API) or, picked in the startup dialog, FLIR Blackfly S (`PySpin`) + MediaPipe. Participant-facing docs: [README.md](README.md).
+Real-Time API) or, with `SACCADES_BACKEND=webcam` (no dialog field any more), FLIR Blackfly S (`PySpin`) + MediaPipe. Participant-facing docs: [README.md](README.md).
 
 **This is the `line-stimulus` branch**; `main` has the grating version. Differences from the grating:
 - Flash = thin horizontal line (Braun, Schutz & Gegenfurtner 2021): full screen width, vertical Gaussian (`LINE_SD_DEG` 0.15),
@@ -11,9 +11,11 @@ Real-Time API) or, picked in the startup dialog, FLIR Blackfly S (`PySpin`) + Me
 - `Side.ABOVE/BELOW` replaces `Orientation`. `TrialResult` fields (and old loose-CSV columns) are still `orientation` / `response_orientation`
   (hold 'above'/'below'); `trials.csv` calls them `line_side` / `answer_side`; old 'vertical'/'horizontal' CSVs load via `logger._LEGACY_SIDES` (vertical->above, horizontal->below, arbitrary
   but consistent). The render-state key is still `"grating"` (x/y = line position, `orientation` = side).
-- Geometry: `LINE_*` constants via `SCREEN_HEIGHT_DEG`, right only once `VIEWING_DISTANCE_CM`/`SCREEN_HEIGHT_CM` are the real
-  monitor's. `trial_mechanics.line_position` places the line; `run_experiment.build_stimuli` draws a `GratingStim` with `tex=None`,
-  `'gauss'` mask, size `LINE_WIDTH_SCREENS` x screen width by 6 SD (`contrast` scales a white field = light line).
+- Geometry: the startup dialog asks for screen height and viewing distance; `geometry.Geometry` (immutable, built once in `main`) turns them into the line's offset/SD in
+  screen-height units and is passed to `ExperimentSession`/`TutorialSession` (-> `trial_mechanics.line_position(ref, side, geometry)`) and `build_stimuli(geometry=)`
+  (`GratingStim` with `tex=None`, `'gauss'` mask, size `LINE_WIDTH_SCREENS` x screen width by `geometry.line_height_height_units`; `contrast` scales a white field = light line).
+  `Geometry.default()` = the placeholder constants (`VIEWING_DISTANCE_CM`/`SCREEN_HEIGHT_CM`; the `LINE_*_HEIGHT_UNITS` constants now only mirror them and the simulator's
+  saccade duration still uses them). The geometry used is in `session.json` `settings` and the `analyze_session` header.
 - Tutorial quiz = line above/below a dot (UP/DOWN, 3 in a row); captions say "UP if the line was above ...".
 - **Contrasts are a GUESS**: `SACCADE_FIXED_CONTRASTS` 4/6/8 % (dialog min 4 / max 8, 3 levels). Test-mode 10/15/20 % was at ceiling
   (18/22 correct), old foveal grating threshold ~1.3 %, 2/4/6 % judged too hard. 4-8 % is ~5-10 grey steps on 8-bit
@@ -34,7 +36,7 @@ Real-Time API) or, picked in the startup dialog, FLIR Blackfly S (`PySpin`) + Me
   stage and commit only your own files by name (never `git add -A` / `commit -a`); don't touch other sessions' files (e.g. `src/eye_tracking/neon_*`), tell the user instead.
 - Environment: PowerShell 5.1 has no `&&`; files may be CRLF (keep each file's endings); `.gitignore` has `data/`, which also matches any `data` folder (tests: use `tests/fixtures/`).
 - `data/` is git-ignored runtime output: never commit it, never write to it from tests/simulations (simulator uses an in-memory logger).
-- Report test results truthfully (ran / skipped). Suite: ~500 tests, ~1-2 min, 2 skipped without PySpin/mediapipe (`test_camera.py`, `test_gaze_tracking.py` `importorskip`).
+- Report test results truthfully (ran / skipped). Suite: ~540 tests, ~1-2 min, 2 skipped without PySpin/mediapipe (`test_camera.py`, `test_gaze_tracking.py` `importorskip`).
 
 ## Commands (all through the wrapper)
 
@@ -68,7 +70,7 @@ Real-Time API) or, picked in the startup dialog, FLIR Blackfly S (`PySpin`) + Me
   sharpest in the 50 ms before onset; an earlier 20-80 % session agreed (pooled p<1e-4). Small n; the +-50 ms window was chosen post hoc (gates are now pre-specified).
 - **Known problems**: (1) gaze reaches the PC ~95 ms late (Gotchas) so live `flash_during_saccade` is useless (post-hoc analysis unaffected).
   (2) RT SD ~60-80 ms, only ~1/3 of flashes land near onset (TBI likely worse); live rolling RT helps only with drift (simulation only).
-  (3) `VIEWING_DISTANCE_CM`/`SCREEN_HEIGHT_CM` are placeholders; the user's monitor is small (~12 in wide), 60 Hz: ask for real width/height (cm) and distance.
+  (3) Screen geometry is typed into the startup dialog each run (remembered); until the user measures their small monitor (~12 in wide, 60 Hz) it is the 26 cm / 50 cm placeholder and the dialog says so. Saccade size in degrees also depends on width and distance.
   (4) The separate baseline (foveal) phase was removed (not a like-for-like control, different retinal location): fixation now comes only from the saccade phase's control flashes + flashes >=100 ms from any saccade; the simulator gives ~46 fixation / ~36 saccade flashes per 150 trials (`flash_gates`), so ~15/~12 per contrast level.
 - **Next, in order**: (1) short Test run then full 150-trial Real run with participant ID on glasses, analyse with `analyze_session`; (2) group analysis
   (per-person suppression index + group test or mixed model); (3) one-page grant figure + wording; (4) clinical metadata fields (group, time since injury,
@@ -88,6 +90,9 @@ Paths in this section are checked by `tests/test_docs.py` - keep them real.
 | `src/experiment/session.py` | `ExperimentSession`: saccade phase state machine (core logic) |
 | `src/experiment/tutorial_session.py` | `TutorialSession`: calibration -> quiz -> 8 practice trials yielding the first RT samples |
 | `src/experiment/run_experiment.py` | entry point + PsychoPy rendering; the only PsychoPy-dependent module |
+| `src/experiment/startup_dialog.py` | PyQt6 startup dialog: fields, closed-by-default Advanced section, help bubbles (frameless tool-tip window at the mouse, never a dialog/message box) |
+| `src/experiment/startup_model.py` | Qt-free dialog model: `StartupSettings`, `validate`, `defaults_from_disk`, `suggest_tutorial`, `HELP_TEXTS` |
+| `src/experiment/geometry.py` | `Geometry`: screen height + viewing distance -> degrees and the line's size in screen-height units |
 | `src/experiment/pausable_clock.py` | `PausableClock`: the injected time source (name historical, no longer pauses) |
 | `src/experiment/settings.py` | dashboard-configured default contrast floor (`data/settings.json`) |
 | `src/experiment/scoring.py` | `score_outcome`, `is_valid_for_saccadic_analysis` (the validity gate) |
@@ -137,7 +142,7 @@ Paths in this section are checked by `tests/test_docs.py` - keep them real.
   (`logger.py`: plain name, writer, converter back to old text) or an entry with a reason in `DROPPED_FROM_CSV` (`test_schema_sync.py` fails until each
   field is one or the other) -> `trial_from_row` -> set it where `session.py` builds the `TrialResult` -> test (see `tests/ai-tests/test_tracking_quality.py`). Old CSVs must still load.
 - **Change a tuning constant**: edit in `include/**/constants.py` (read its comment), then `--sweep` in the simulator and pytest.
-- **Add a gaze backend**: implement `GazeSource`, register in `gaze_factory.py` (lazy import!) and the startup dialog in `run_experiment.py`; reuse `GazeMapper`.
+- **Add a gaze backend**: implement `GazeSource`, register in `gaze_factory.py` (lazy import!) and `_selected_backend()` in `run_experiment.py` (env var `SACCADES_BACKEND`; the dialog has no backend field); reuse `GazeMapper`.
 - **Reproduce a bug without hardware**: replay a recorded trace (`record_gaze_trace`, or the fixture) or use a `ParticipantProfile` in the simulator.
 
 ## On-disk contracts

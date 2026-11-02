@@ -49,9 +49,9 @@ Discussion were not checked). In that paper participants (ages 8-78; about 100 a
 | Eye tracker | EyeLink 1000, 1000 Hz | Pupil Labs Neon, ~160-200 Hz, gaze reaches the PC late |
 | Flash trigger | live: 15 ms after online saccade-onset detection | scheduled from the person's average reaction time (+-80 ms offsets), judged **after the fact** from the raw gaze trace |
 | Display | 120 Hz, 8 ms flash | 60 Hz monitor, one frame (~17 ms) |
-| Saccade size | 10 deg target step | about 30-40 deg (dot at 15 % and cross at 85 % of the screen width) |
+| Saccade size | 10 deg target step | depends on the screen width and distance: about 30-40 deg on a large screen (dot at 15 % and cross at 85 % of the screen width) |
 | Thresholds | 1-up/2-down staircase, then a psychometric fit | method of constant stimuli (fixed contrasts, default 4/6/8 %), then a Weibull fit |
-| Viewing | 90 cm, lab setup | chin rest, geometry still to be measured |
+| Viewing | 90 cm, lab setup | chin rest, geometry entered in the startup dialog |
 
 ## Setup
 
@@ -66,8 +66,8 @@ Discussion were not checked). In that paper participants (ages 8-78; about 100 a
    The FLIR Blackfly S + MediaPipe backend additionally needs the Spinnaker SDK (`PySpin`); Neon-only machines do not.
 4. Start the Neon Companion app on the phone. The experiment looks for the Neon at `NEON_DEVICE_ADDRESS` in
    `include/eye_tracking/constants.py` (pinned to a phone IP at the time of writing; set it to your phone's address, or to `None` to auto-discover).
-5. **Measure your screen.** `VIEWING_DISTANCE_CM` and `SCREEN_HEIGHT_CM` in `include/experiment/constants.py` are still placeholders. The line's
-   offset (2 deg) and thickness, and the reported saccade size in degrees, are only right once they match the real monitor and seat distance.
+5. **Measure your screen.** Enter the height of the visible picture (cm) and the eye-to-screen distance (cm) in the startup dialog; the line's
+   offset (2 deg) and thickness follow them. The saccade size in degrees depends on the screen width and distance too. Until you do, the dialog warns that the values are placeholders.
 
 ## Running a session
 
@@ -85,14 +85,16 @@ The startup dialog asks for:
 
 | Field | Meaning |
 |---|---|
+| Participant ID | required for Real; blank in Test becomes `anonymous`; the dialog shows the folder name it will be saved as |
 | Mode | **Real** (full length, needs a participant ID) or **Test** (shortened, debug text shown top-left) |
-| Participant ID | required for Real; blank in Test becomes `anonymous` |
-| Gaze source | Pupil Labs Neon (default) or Blackfly S + MediaPipe |
-| Camera | webcam source only |
-| Saccade contrast min / max (%) | the saccade phase flashes fixed contrasts spaced between these (defaults 4 and 8, three levels: 4, 6, 8) |
-| Show gaze indicator | debug aid |
-| Run tutorial | first-timer on-ramp (below) |
-| Record video | webcam source only |
+| Run tutorial | first-timer on-ramp (below); defaults to Yes for a participant without a folder under `data/`, No for a known one |
+| Screen height (cm) / Viewing distance (cm) | measure them; they size the 2 deg line offset and 0.15 deg thickness and are saved in `session.json` (5-100 cm / 20-300 cm, decimal comma accepted) |
+| *Advanced* (folded by default): Saccade contrast min / max (%) | the saccade phase flashes fixed contrasts spaced between these (defaults 4 and 8, three levels: 4, 6, 8) |
+| *Advanced*: Show gaze indicator | debug aid |
+
+Click a field's name or its **?** for a short help bubble next to the mouse (click anywhere or press Esc to close it). The last values are remembered; an invalid entry
+shows a message in the dialog and keeps everything you typed. The gaze source is always the Neon; set the environment variable `SACCADES_BACKEND=webcam` to use the
+Blackfly S + MediaPipe backend instead.
 
 What happens, in order (`Space` advances everything; `Esc` quits at once):
 1. **Tutorial** (if chosen, narrated aloud and captioned; input is held while it speaks): calibration, a quiz on how to answer (a line above or below a
@@ -198,7 +200,7 @@ Not verified on real footage: whether the scene camera sees the green flash from
   recording and sync flashes, and every contrast level. Covered by the simulator and tests only.
 - **Contrasts are a guess.** 4/6/8 % was set after a test run at 10/15/20 % hit ceiling and an earlier 2/4/6 % guess was judged too hard. On an 8-bit
   display those are only ~5-10 grey steps, so levels are coarse. Re-pilot and adjust in the startup dialog.
-- **Screen geometry is a placeholder** (see Setup), so degrees are approximate.
+- **Screen geometry is only as good as what you type into the startup dialog** (see Setup); the placeholders (26 cm at 50 cm) make degrees approximate. The geometry used is saved in `session.json` and printed in the analysis report.
 - **Gaze reaches the PC ~90-100 ms late** in real sessions (about 16 ms in standalone scripts), so the live `flash_during_saccade` flag is unreliable. Judging after the fact
   from the phone's capture times (`analyze_session`) is unaffected. Cause not found.
 - **Timing is open-loop:** flashes are scheduled, not triggered by the saccade, and reaction times vary (SD ~60-80 ms), so only about a third of flashes land near onset.
