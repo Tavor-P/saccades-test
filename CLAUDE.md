@@ -89,7 +89,8 @@ Paths in this section are checked by `tests/test_docs.py` - keep them real.
 | `include/eye_tracking/interfaces.py` | `GazeSource`, the only gaze interface sessions use |
 | `include/eye_tracking/types.py` | `GazeZone`, `GazeSample` |
 | `src/experiment/session.py` | `ExperimentSession`: saccade phase state machine (core logic) |
-| `src/experiment/tutorial_session.py` | `TutorialSession`: calibration -> quiz -> 8 practice trials yielding the first RT samples |
+| `src/experiment/tutorial_session.py` | `TutorialSession`: intro screens -> calibration -> quiz -> practice intro -> 8 practice trials yielding the first RT samples |
+| `include/experiment/participant_text.py` | every string the participant reads/hears (<=15 words, positional dot names, no "other dot"/"cross"; `tests/ai-tests/test_participant_text.py`) |
 | `src/experiment/run_experiment.py` | entry point + PsychoPy rendering; the only PsychoPy-dependent module |
 | `src/experiment/startup_dialog.py` | PyQt6 startup dialog: fields, closed-by-default Advanced section, help bubbles (frameless tool-tip window at the mouse, never a dialog/message box) |
 | `src/experiment/startup_model.py` | Qt-free dialog model: `StartupSettings`, `validate`, `defaults_from_disk`, `suggest_tutorial`, `HELP_TEXTS` |

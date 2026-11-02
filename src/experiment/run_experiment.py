@@ -21,6 +21,7 @@ from include.experiment.constants import (
     WARNING_TONE_DURATION_S,
     WARNING_TONE_HZ,
 )
+from include.experiment import participant_text
 from include.experiment.types import Side
 from include.eye_tracking.constants import CAMERA_INDEX, FRAME_HEIGHT, FRAME_WIDTH
 from src.eye_tracking.gaze_factory import (
@@ -49,7 +50,7 @@ FADE_DURATION_S = 0.4  # dot/cross opacity fade; softens onset so it doesn't tri
 
 # Full-screen pure-green rectangle: the glasses-video sync flash (run_sync_flashes) - never shown during trials.
 START_FLASH_COLOR = [-1, 1, -1]  # pure green
-SYNC_FLASH_ANNOUNCEMENT = "A green flash will show."  # the only spoken line of the sync step (the flashes themselves are silent)
+SYNC_FLASH_ANNOUNCEMENT = participant_text.SYNC_FLASH  # the only spoken line of the sync step (the flashes themselves are silent)
 SYNC_LEAD_IN_FRAMES = 30  # dark frames after the announcement / before the first flash, so the phone is certainly recording
 
 # Debug camera preview (top-left corner) showing the raw feed the tracker is

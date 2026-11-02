@@ -25,6 +25,7 @@ from include.experiment.constants import (
     ZEST_MIN_VALID_TRIALS_REAL,
     ZEST_MIN_VALID_TRIALS_TEST,
 )
+from include.experiment import participant_text as words
 from include.experiment.types import Side, Target, TrialResult, TrialSpec
 from src.experiment.pausable_clock import PausableClock
 from helpers import NullLogger as _NullLogger
@@ -896,7 +897,7 @@ def test_first_screen_after_the_tutorial_says_to_press_space(fake_gaze):
     session.on_space()  # "Press SPACE to begin"
     state = session.render_state()
     assert state["hud"]["phase"] == "AWAITING_SPACE"
-    assert state["instructions"] == "Press SPACE when you are ready."
+    assert state["instructions"] == words.FIRST_TRIAL
     assert state["hide_caption"] is False
     session.on_space()  # FOREPERIOD: caption (the answer keys) is hidden again from here on
     assert session.render_state()["hide_caption"] is True

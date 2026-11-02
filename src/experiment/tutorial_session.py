@@ -21,6 +21,7 @@ from include.experiment.constants import (
     TUTORIAL_QUIZ_CONTRAST,
     TUTORIAL_QUIZ_STREAK_TARGET,
 )
+from include.experiment import participant_text as words
 from include.experiment.types import Side, Target
 from src.experiment.calibration import CalibrationRounds
 from src.experiment.geometry import Geometry
@@ -33,10 +34,12 @@ from src.experiment.trial_mechanics import zone_for as _zone_for
 
 class Phase(Enum):
     WAITING_TO_START = auto()
+    INTRO = auto()  # a few narrated screens (words.TUTORIAL_INTRO), SPACE advances
     CALIBRATE_LEFT = auto()
     CALIBRATE_CENTER = auto()
     CALIBRATE_RIGHT = auto()
     QUIZ = auto()  # "how to answer": mixed gratings, streak-gated
+    PRACTICE_INTRO = auto()  # "practice lines are clear, real ones fainter"; SPACE starts the first attempt
     PRACTICE_AWAITING_SPACE = auto()  # each attempt waits for SPACE; the foreperiod (500-1000 ms) starts on the press
     PRACTICE_FOREPERIOD = auto()
     PRACTICE_ACTIVE = auto()
@@ -57,6 +60,8 @@ class TutorialSession:
        -> key). The flash fires at the rolling robust average of this stage's own reaction times
        (DEFAULT_REACTION_TIME_MS until there are 3); each trial's onset latency is kept in `rt_samples_ms` to seed
        ExperimentSession's average instead of a separate RT test.
+
+    A short narrated INTRO (what you will see, what to do) runs before the calibration. There is no feedback on answers.
 
     Framework-agnostic like the other sessions; never logs to the results CSV (none of this counts as data).
     """
@@ -81,6 +86,7 @@ class TutorialSession:
         # -- quiz --
         self._quiz_streak = 0
         self._quiz_orientation: Side | None = None
+        self._intro_step = 0
 
         # -- practice trials --
         self._attempt = 0
@@ -114,8 +120,15 @@ class TutorialSession:
 
     def on_space(self) -> None:
         if self._phase is Phase.WAITING_TO_START:
-            self._calibration.start()
-            self._phase = Phase.CALIBRATE_LEFT
+            self._intro_step = 0
+            self._phase = Phase.INTRO
+        elif self._phase is Phase.INTRO:
+            self._intro_step += 1
+            if self._intro_step >= len(words.TUTORIAL_INTRO):
+                self._calibration.start()
+                self._phase = Phase.CALIBRATE_LEFT
+        elif self._phase is Phase.PRACTICE_INTRO:
+            self._begin_attempt()
         elif self._phase in _CALIBRATION_PHASES:
             self._on_calibration(self._calibration.press(self._clock.now(), self.space_tally))
         elif self._phase is Phase.PRACTICE_AWAITING_SPACE:
@@ -134,7 +147,8 @@ class TutorialSession:
 
     def on_response_key(self, orientation: Side) -> None:
         if self._phase is Phase.QUIZ:
-            if orientation == self._quiz_orientation:
+            correct = orientation == self._quiz_orientation
+            if correct:
                 self._quiz_streak += 1
                 if self._quiz_streak >= TUTORIAL_QUIZ_STREAK_TARGET:
                     self._enter_practice()
@@ -164,7 +178,7 @@ class TutorialSession:
         self._source = Target.DOT
         self._dot_visible = True
         self._cross_visible = False
-        self._begin_attempt()
+        self._phase = Phase.PRACTICE_INTRO
 
     def _begin_attempt(self) -> None:
         self._phase = Phase.PRACTICE_AWAITING_SPACE
@@ -272,34 +286,41 @@ class TutorialSession:
 
     # -- rendering -------------------------------------------------------------
 
-    _QUIZ_TEXT = "Press UP if the line is above the dot, DOWN if it is below."
-    _PRACTICE_INTRO = "Press SPACE. Look at the dot, then the other dot. Answer UP or DOWN."
-
     def _instructions(self) -> str:
         if self._phase is Phase.WAITING_TO_START:
-            return "Press SPACE to begin"
+            return words.TUTORIAL_WELCOME
+        if self._phase is Phase.INTRO:
+            return words.TUTORIAL_INTRO[self._intro_step]
         if self._phase in (Phase.CALIBRATE_LEFT, Phase.CALIBRATE_CENTER, Phase.CALIBRATE_RIGHT):
             # Only round 1 is narrated: later rounds would just re-speak the same drill.
             if self._calibration.round > 1:
                 return ""
             return {
-                Phase.CALIBRATE_LEFT: "Look at the dot, then press SPACE.",
-                Phase.CALIBRATE_CENTER: "Look at the middle, then press SPACE.",
-                Phase.CALIBRATE_RIGHT: "Look at the other dot, then press SPACE.",
+                Phase.CALIBRATE_LEFT: words.CALIBRATE_LEFT,
+                Phase.CALIBRATE_CENTER: words.CALIBRATE_CENTER,
+                Phase.CALIBRATE_RIGHT: words.CALIBRATE_RIGHT,
             }[self._phase]
         if self._phase is Phase.QUIZ:
-            return self._QUIZ_TEXT
+            return words.QUIZ
+        if self._phase is Phase.PRACTICE_INTRO:
+            return words.PRACTICE_INTRO
         if self._phase in (Phase.PRACTICE_AWAITING_SPACE, Phase.PRACTICE_FOREPERIOD, Phase.PRACTICE_ACTIVE):
             # Said once, before the first trial; silent afterwards (the narrator re-speaks on every text change).
-            return self._PRACTICE_INTRO if self._attempt == 0 else ""
-        return "Practice done. Press SPACE to continue."
+            return words.RT_TEST_INTRO if self._attempt == 0 else ""
+        return words.PRACTICE_DONE
 
     def _tutorial_text(self) -> tuple[str | None, str]:
         """(text, position) for the larger instructional text stim shown only
         while the participant is learning the answer keys; everywhere else the
         caption (see run_experiment.py's render_caption) carries the words."""
         if self._phase is Phase.QUIZ:
-            return self._QUIZ_TEXT, "bottom"
+            return words.QUIZ, "bottom"
+        if self._phase is Phase.WAITING_TO_START:
+            return words.TUTORIAL_WELCOME, "center"
+        if self._phase is Phase.INTRO:
+            return words.TUTORIAL_INTRO[self._intro_step], "center"
+        if self._phase is Phase.PRACTICE_INTRO:
+            return words.PRACTICE_INTRO, "center"
         return None, "center"
 
     def _symbol_visibility(self) -> tuple[bool, bool, bool]:
@@ -311,7 +332,7 @@ class TutorialSession:
             return False, True, False
         if self._phase is Phase.QUIZ:
             return True, False, False  # the line is shown just above/below the dot
-        if self._phase in (Phase.PRACTICE_AWAITING_SPACE, Phase.PRACTICE_FOREPERIOD, Phase.PRACTICE_ACTIVE):
+        if self._phase in (Phase.PRACTICE_INTRO, Phase.PRACTICE_AWAITING_SPACE, Phase.PRACTICE_FOREPERIOD, Phase.PRACTICE_ACTIVE):
             return self._dot_visible, self._cross_visible, False
         return False, False, False
 
