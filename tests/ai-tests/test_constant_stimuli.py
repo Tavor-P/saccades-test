@@ -25,12 +25,9 @@ from test_session import (
 )
 
 
-def test_the_shipped_defaults_use_fixed_contrasts_and_jitter():
+def test_the_shipped_defaults_use_fixed_contrasts_and_every_level_is_drawn(fake_gaze, fake_time):
     assert SACCADE_FIXED_CONTRASTS and TIMING_JITTER_MS > 0
     assert SACCADE_FIXED_TRIALS_REAL >= SACCADE_FIXED_TRIALS_TEST > 0
-
-
-def test_flash_contrast_comes_from_the_fixed_set(fake_gaze, fake_time):
     session = _make_session(fake_gaze)
     _complete_calibration_and_rt_test(session, fake_gaze, fake_time)
     seen = set()
@@ -42,6 +39,8 @@ def test_flash_contrast_comes_from_the_fixed_set(fake_gaze, fake_time):
         assert session._trial_contrast in SACCADE_FIXED_CONTRASTS
         seen.add(session._trial_contrast)
     assert seen == set(SACCADE_FIXED_CONTRASTS)  # drawn without repeats, so every level shows up
+
+
 
 
 def test_control_flash_time_has_a_random_bounce_within_the_configured_bound(fake_gaze, fake_time):
@@ -91,22 +90,7 @@ def test_bell_curve_flashes_cluster_around_the_average_rt(fake_gaze, fake_time):
     assert all(FLASH_WINDOW_MIN_MS - 1e-6 <= d + center <= FLASH_WINDOW_MAX_MS + 1e-6 for d in delays)
     near = sum(abs(d) <= FLASH_SPREAD_SD_MS for d in delays) / len(delays)
     assert 0.55 < near < 0.8  # about 68 % within one SD, as for a bell curve
-
-
-def test_the_dialog_spread_overrides_the_default_width(fake_gaze, fake_time):
-    """A narrower curve from the startup dialog keeps every flash closer to the average RT than the default would."""
-    session = _make_session(fake_gaze, flash_spread_sd_ms=20)
-    _complete_calibration_and_rt_test(session, fake_gaze, fake_time)
-    assert session._flash_spread_sd_ms == 20
-    label = min(TIMING_OFFSETS_MS)  # the earliest slice: furthest from the centre
-    for index in range(10):
-        _set_single_trial(session, index=index, timing_offset_ms=label)
-        _enter_trial_active(session, fake_time)
-        center = session._avg_reaction_time_ms
-        assert 0 < center - session._trial_scheduled_delay_ms < 4 * 20  # default SD 80 would put this slice far earlier
-
-
-def test_spread_flash_delay_ms_slices():
+def test_spread_flash_delay_ms_slices_and_the_dialog_spread_overrides_the_default_width(fake_gaze, fake_time):
     labels = (-80, 0, 80)
     args = (200.0, 80.0, 0.0, 500.0)
     assert spread_flash_delay_ms(-80, labels, *args, rng=_Edge(True)) == pytest.approx(0.0, abs=1e-6)
@@ -116,13 +100,16 @@ def test_spread_flash_delay_ms_slices():
     assert mid_lo < 200.0 < mid_hi and mid_hi - mid_lo < 100  # the middle third is narrow, around the centre
     assert spread_flash_delay_ms(0, labels, 200.0, 0.0, 0.0, 500.0) == 200.0  # SD 0 = exactly the average RT
 
-
-def test_main_block_stops_by_trial_count_not_by_the_staircase(fake_gaze):
-    session = _make_session(fake_gaze, test_mode=True)
-    session._results = _fake_valid_saccade_results(SACCADE_FIXED_TRIALS_TEST - 1)
-    assert not session._should_stop_main_block()
-    session._results = _fake_valid_saccade_results(SACCADE_FIXED_TRIALS_TEST)
-    assert session._should_stop_main_block()
+    # A narrower curve from the startup dialog keeps every flash closer to the average RT than the default would.
+    session = _make_session(fake_gaze, flash_spread_sd_ms=20)
+    _complete_calibration_and_rt_test(session, fake_gaze, fake_time)
+    assert session._flash_spread_sd_ms == 20
+    label = min(TIMING_OFFSETS_MS)  # the earliest slice: furthest from the centre
+    for index in range(10):
+        _set_single_trial(session, index=index, timing_offset_ms=label)
+        _enter_trial_active(session, fake_time)
+        center = session._avg_reaction_time_ms
+        assert 0 < center - session._trial_scheduled_delay_ms < 4 * 20  # default SD 80 would put this slice far earlier
 
 
 class _SummaryLogger:
@@ -136,20 +123,21 @@ class _SummaryLogger:
         self.summaries[phase] = summary
 
 
-def test_constant_stimuli_report_no_staircase_threshold(fake_gaze):
+def test_constant_stimuli_stop_by_count_and_report_no_staircase_threshold_unlike_staircase_mode(fake_gaze):
     """The staircase is never updated with fixed contrasts, so its 'estimate' is just the prior and must not be reported as a result."""
     session = _make_session(fake_gaze, test_mode=True)
+    session._results = _fake_valid_saccade_results(SACCADE_FIXED_TRIALS_TEST - 1)
+    assert not session._should_stop_main_block()
+    session._results = _fake_valid_saccade_results(SACCADE_FIXED_TRIALS_TEST)
+    assert session._should_stop_main_block()  # by trial count, not by the staircase
     logger = _SummaryLogger()
     session._logger = logger
-    session._results = _fake_valid_saccade_results(SACCADE_FIXED_TRIALS_TEST)
     session._log_phase_summary()
     summary = logger.summaries["saccade"]
     assert summary["threshold_estimate"] is None and summary["credible_interval_68"] is None and summary["threshold_at_grid_bound"] is None
     assert summary["completed_trials"] == SACCADE_FIXED_TRIALS_TEST
     assert "hreshold" not in session._summary()
 
-
-def test_staircase_mode_still_reports_its_threshold(fake_gaze):
     session = _make_session(fake_gaze, test_mode=True, fixed_contrasts=())
     logger = _SummaryLogger()
     session._logger = logger

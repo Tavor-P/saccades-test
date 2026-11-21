@@ -14,7 +14,13 @@ def test_simulation_never_imports_a_graphics_stack():
     assert out == ["False", "False"]
 
 
-def test_simulation_does_not_depend_on_real_time(monkeypatch):
+def test_one_trial_completes_without_real_time_and_restores_the_global_random_state(monkeypatch):
+    import random
+
+    random.seed(123)
+    expected = random.random()
+    random.seed(123)
+
     def boom():
         raise AssertionError("simulation read the real clock")
 
@@ -22,11 +28,8 @@ def test_simulation_does_not_depend_on_real_time(monkeypatch):
     monkeypatch.setattr(timebase, "_wall_clock", boom)
     monkeypatch.setattr(time, "monotonic", boom)
     monkeypatch.setattr(time, "perf_counter", boom)
-    assert simulate_trial(seed=2).saccade_results
-
-
-def test_one_trial_completes_with_a_logged_result():
     sim = simulate_trial(seed=0)
+    assert random.random() == expected
     assert len(sim.saccade_results) == 1
     result = sim.saccade_results[0]
     assert result.outcome in {"correct", "incorrect", "miss", "timeout"}
@@ -34,7 +37,7 @@ def test_one_trial_completes_with_a_logged_result():
     assert any("go-cue" in text for _, text in sim.events)
 
 
-def test_same_seed_is_deterministic_and_different_seeds_differ():
+def test_seeds_are_deterministic_and_profile_reaction_time_and_dropouts_show_up():
     a = simulate_session(max_trials=6, seed=5)
     b = simulate_session(max_trials=6, seed=5)
     c = simulate_session(max_trials=6, seed=6)
@@ -42,35 +45,21 @@ def test_same_seed_is_deterministic_and_different_seeds_differ():
     assert key(a) == key(b)
     assert key(a) != key(c)
 
-
-def test_global_random_state_is_restored():
-    import random
-
-    random.seed(123)
-    expected = random.random()
-    random.seed(123)
-    simulate_trial(seed=9)
-    assert random.random() == expected
-
-
-def test_reaction_latency_tracks_the_participants_reaction_time():
     fast = simulate_session(max_trials=8, seed=1, profile=ParticipantProfile(reaction_ms_mean=180, reaction_ms_sd=5))
     slow = simulate_session(max_trials=8, seed=1, profile=ParticipantProfile(reaction_ms_mean=320, reaction_ms_sd=5))
     mean = lambda s: sum(r.reaction_latency_ms for r in s.saccade_results if r.reaction_latency_ms) / len(s.saccade_results)
     assert mean(slow) - mean(fast) == pytest.approx(140, abs=30)
 
-
-def test_tracking_dropouts_get_flagged_as_not_ok():
     sim = simulate_session(max_trials=25, seed=3, profile=ParticipantProfile(dropout_rate_per_s=4.0))
     assert any(r.tracking_ok is False for r in sim.saccade_results)
     clean = simulate_session(max_trials=25, seed=3)
     assert all(r.tracking_ok is not False for r in clean.saccade_results)
 
 
-@pytest.mark.parametrize("seed", range(6))
-def test_no_catch_trials_every_simulated_trial_flashes(seed):
-    sim = simulate_session(max_trials=12, seed=seed, skip_practice_trials=False)
-    rows = [r for r in sim.saccade_results if r.phase == "saccade"]
-    assert len(rows) >= 12
-    assert all(r.grating_shown for r in rows)
-    assert not any(r.outcome in ("false_alarm", "correct_rejection") for r in rows)
+def test_no_catch_trials_every_simulated_trial_flashes():
+    for seed in range(6):
+        sim = simulate_session(max_trials=12, seed=seed, skip_practice_trials=False)
+        rows = [r for r in sim.saccade_results if r.phase == "saccade"]
+        assert len(rows) >= 12, seed
+        assert all(r.grating_shown for r in rows), seed
+        assert not any(r.outcome in ("false_alarm", "correct_rejection") for r in rows), seed

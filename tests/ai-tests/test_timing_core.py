@@ -54,28 +54,17 @@ def _stamped_gaze(fake_gaze):
     return fake_gaze
 
 
-# -- robust average -----------------------------------------------------------------
+# -- robust average and rolling reaction time ------------------------------------------
 
 
-def test_robust_average_is_the_median_of_plausible_values():
+def test_robust_average_is_the_median_of_plausible_values_and_the_rt_test_uses_it(fake_gaze):
     assert robust_average_ms([200, 210, 220, 230, 240], default=999) == 220
-
-
-def test_robust_average_drops_anticipations_and_slow_outliers():
-    assert robust_average_ms([40, 60, 210, 220, 230, 1400], default=999) == 220
-
-
-def test_robust_average_falls_back_when_nothing_is_plausible():
+    assert robust_average_ms([40, 60, 210, 220, 230, 1400], default=999) == 220  # anticipations and slow outliers dropped
     assert robust_average_ms([], default=225) == 225
-    assert robust_average_ms([30, 50, 80], default=225) == 225
-
-
-def test_robust_average_one_outlier_barely_moves_it():
+    assert robust_average_ms([30, 50, 80], default=225) == 225  # nothing plausible
     clean = robust_average_ms([200, 210, 220, 230, 240], default=0)
     assert robust_average_ms([200, 210, 220, 230, 240, 700], default=0) == pytest.approx(clean, abs=10)
 
-
-def test_rt_test_average_ignores_anticipations_and_slow_outliers(fake_gaze):
     session = _make_session(fake_gaze, test_mode=True)
     _complete_calibration(session)
     for sample in (60.0, 210.0, 220.0, 230.0, 900.0):
@@ -85,42 +74,28 @@ def test_rt_test_average_ignores_anticipations_and_slow_outliers(fake_gaze):
     assert session._avg_reaction_time_ms == pytest.approx(220.0)
 
 
-# -- rolling reaction time -------------------------------------------------------------
-
-
-def test_rolling_rt_falls_back_to_the_default_until_three_plausible_samples():
+def test_rolling_rt_default_until_three_plausible_updates_rolls_drops_and_keeps_last():
     rt = RollingReactionTime(default=225.0)
     assert rt.average == 225.0
     assert rt.add(180.0) == 225.0 and rt.add(190.0) == 225.0 and rt.add(50.0) == 225.0  # 50 ms is an anticipation
     assert rt.add(200.0) == 190.0  # third plausible sample: median of 180, 190, 200
 
-
-def test_rolling_rt_updates_after_every_sample():
     rt = RollingReactionTime(default=225.0)
     averages = [rt.add(s) for s in (200.0, 200.0, 200.0, 300.0, 300.0, 300.0, 300.0)]
-    assert averages == [225.0, 225.0, 200.0, 200.0, 200.0, 250.0, 300.0]
+    assert averages == [225.0, 225.0, 200.0, 200.0, 200.0, 250.0, 300.0]  # updates after every sample
 
-
-def test_rolling_rt_window_rolls():
     rt = RollingReactionTime(default=225.0, window=5)
-    for s in (400.0, 400.0, 400.0, 400.0, 400.0):
-        rt.add(s)
-    assert rt.average == 400.0
-    for s in (200.0, 200.0, 200.0):
+    for s in (400.0,) * 5 + (200.0,) * 3:
         rt.add(s)
     assert rt.samples == [400.0, 400.0, 200.0, 200.0, 200.0] and rt.average == 200.0
     assert rt.total_added == 8
 
-
-def test_rolling_rt_drops_outliers_and_counts_them():
     rt = RollingReactionTime(default=225.0)
     for s in (210.0, 220.0, 230.0, 60.0, 1400.0):
         rt.add(s)
     assert rt.average == 220.0 and rt.n_dropped == 2
     assert RollingReactionTime(default=1.0, seed=[200.0, 210.0, 220.0]).average == 210.0
 
-
-def test_rolling_rt_keeps_the_last_average_when_the_window_turns_implausible():
     rt = RollingReactionTime(default=225.0, window=3, seed=[200.0, 210.0, 220.0])
     for s in (40.0, 50.0, 60.0):
         rt.add(s)
@@ -184,8 +159,9 @@ def test_a_source_with_history_is_consumed_sample_by_sample(fake_gaze, fake_time
     assert session._reaction_latency_ms == pytest.approx(105.0)
 
 
-def test_samples_without_a_usable_timestamp_fall_back_to_tick_time(fake_gaze, fake_time):
+def test_unusable_timestamps_fall_back_to_tick_time_and_latency_is_clamped(fake_gaze, fake_time):
     session = _make_session(fake_gaze)  # FakeGazeSource stamps 0.0 and reports no latency
+    assert session.gaze_latency_ms == 0.0
     _complete_calibration_and_rt_test(session, fake_gaze, fake_time)
     _set_single_trial(session)
     _enter_trial_active(session, fake_time)
@@ -195,10 +171,6 @@ def test_samples_without_a_usable_timestamp_fall_back_to_tick_time(fake_gaze, fa
     session.tick()
     assert session._onset_detector.since == pytest.approx(start + 0.25)
 
-
-def test_gaze_latency_is_clamped_and_defaults_to_zero(fake_gaze):
-    session = _make_session(fake_gaze)
-    assert session.gaze_latency_ms == 0.0
     fake_gaze.gaze_latency_ms = 10_000.0
     assert session.gaze_latency_ms == GAZE_LATENCY_MAX_MS
     fake_gaze.gaze_latency_ms = -5.0
@@ -208,7 +180,7 @@ def test_gaze_latency_is_clamped_and_defaults_to_zero(fake_gaze):
 # -- saccade duration + per-trial timing fields -----------------------------------------
 
 
-def test_saccade_duration_is_landing_minus_onset(fake_gaze, fake_time):
+def test_saccade_duration_is_landing_minus_onset_or_none_without_a_saccade(fake_gaze, fake_time):
     gaze = _stamped_gaze(fake_gaze)
     gaze.gaze_latency_ms = 0.0
     session = _make_session(gaze)
@@ -232,11 +204,8 @@ def test_saccade_duration_is_landing_minus_onset(fake_gaze, fake_time):
     fake_time(RESPONSE_WINDOW_MS / 1000 + 0.5)
     gaze.timestamp = start + 1.0
     session.tick()
-    row = _saccade_results(session)[0]
-    assert row.saccade_duration_ms == pytest.approx(60.0)  # landing 0.26 - onset 0.20
+    assert _saccade_results(session)[0].saccade_duration_ms == pytest.approx(60.0)  # landing 0.26 - onset 0.20
 
-
-def test_saccade_duration_is_none_when_gaze_never_leaves(fake_gaze, fake_time):
     session = _make_session(fake_gaze)
     _complete_calibration_and_rt_test(session, fake_gaze, fake_time)
     _set_single_trial(session)
@@ -245,7 +214,6 @@ def test_saccade_duration_is_none_when_gaze_never_leaves(fake_gaze, fake_time):
     fake_time(SACCADE_TIMEOUT_MS / 1000 + 0.1)
     session.tick()
     assert _saccade_results(session)[0].saccade_duration_ms is None
-
 
 def test_trial_rows_log_the_scheduling_inputs_and_flash_relative_to_onset(fake_gaze, fake_time):
     gaze = _stamped_gaze(fake_gaze)
@@ -266,12 +234,14 @@ def test_trial_rows_log_the_scheduling_inputs_and_flash_relative_to_onset(fake_g
     assert row.flash_relative_to_onset_ms is not None
 
 
-# -- _meta.json ---------------------------------------------------------------------
+
+# -- session.json ---------------------------------------------------------------------
 
 
-def test_meta_has_provenance_and_the_science_relevant_constants(tmp_path, monkeypatch):
+def test_meta_has_provenance_science_constants_and_phase_summaries(tmp_path, monkeypatch):
     monkeypatch.setattr(logger_module, "DATA_DIR", tmp_path)
     log = ResultLogger("p1")
+    log.set_phase_summary("saccade", {"threshold_estimate": 0.1})
     log.close()
     meta = json.loads(next(tmp_path.glob("*/*/session.json")).read_text())
     assert set(meta["run"]["git"]) == {"sha", "dirty"}
@@ -279,14 +249,6 @@ def test_meta_has_provenance_and_the_science_relevant_constants(tmp_path, monkey
     assert "psychopy_version" in meta["run"]
     assert meta["settings"]["saccade_onset_stability_ms"] == 10
     assert meta["hardware"]["display_refresh_hz"] is None
-
-
-def test_meta_records_phase_summaries(tmp_path, monkeypatch):
-    monkeypatch.setattr(logger_module, "DATA_DIR", tmp_path)
-    log = ResultLogger("p1")
-    log.set_phase_summary("saccade", {"threshold_estimate": 0.1})
-    log.close()
-    meta = json.loads(next(tmp_path.glob("*/*/session.json")).read_text())
     assert meta["results"]["saccade_phase_summary"]["threshold_estimate"] == 0.1
 
 
@@ -305,7 +267,7 @@ def _finished_session(fake_gaze, logger):
     return session
 
 
-def test_completing_the_block_writes_a_phase_summary(fake_gaze):
+def test_completing_the_block_writes_a_phase_summary_that_flags_the_grid_bound(fake_gaze):
     summaries = {}
 
     class _Logger(_NullLogger):
@@ -319,20 +281,11 @@ def test_completing_the_block_writes_a_phase_summary(fake_gaze):
     assert summary["final_avg_reaction_time_ms"] == 250.0
     assert summary["threshold_at_grid_bound"] is None
 
-
-def test_phase_summary_flags_an_estimate_at_the_grid_bound(fake_gaze):
-    summaries = {}
-
-    class _Logger(_NullLogger):
-        def set_phase_summary(self, phase, summary):
-            summaries[phase] = summary
-
     session = _finished_session(fake_gaze, _Logger())
     for _ in range(40):
         session._zest.update(0.4, detected=False)  # never seen even at 40% -> piles up at the top
     session._log_phase_summary()
     assert summaries["saccade"]["threshold_at_grid_bound"] == "upper"
-
 
 def test_a_capture_stamped_source_is_not_shifted_by_its_latency_again(fake_gaze, fake_time):
     """Neon (with a clock offset) and trace replay stamp samples with their capture time and still report

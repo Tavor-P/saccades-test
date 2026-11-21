@@ -38,18 +38,20 @@ STILL = (0.0, 0.0, 0.0, 1.0)
 # -- tracker math ---------------------------------------------------------------------------------
 
 
-def test_angle_between_quaternions():
+
+def test_orientation_angle_drift_reference_and_moved_since():
     assert angle_between_deg(STILL, yaw(90)) == pytest.approx(90.0)
     assert angle_between_deg(STILL, STILL) == pytest.approx(0.0)
     assert angle_between_deg(yaw(10), yaw(-10)) == pytest.approx(20.0)
     negated = tuple(-v for v in yaw(30))  # q and -q are the same rotation
     assert angle_between_deg(STILL, negated) == pytest.approx(30.0)
 
-
-def test_speed_is_the_gyro_norm_and_drift_needs_a_reference():
     tracker = HeadMotionTracker()
+    assert not tracker.set_reference()  # no orientation yet: refused
+    tracker.add(0.0, (0, 0, 0), None)  # speed known, orientation unusable
+    assert not tracker.set_reference()
     tracker.add(0.0, (3.0, 4.0, 0.0), yaw(2))
-    assert tracker.speed_dps == pytest.approx(5.0)
+    assert tracker.speed_dps == pytest.approx(5.0)  # the gyro norm
     assert tracker.drift_deg is None  # no reference yet
     assert tracker.set_reference()
     tracker.add(0.1, (0, 0, 0), yaw(7))
@@ -58,15 +60,16 @@ def test_speed_is_the_gyro_norm_and_drift_needs_a_reference():
     assert tracker.drift_deg == pytest.approx(1.0)
     assert tracker.max_drift_deg == pytest.approx(5.0)  # the session maximum, not the current value
 
-
-def test_set_reference_without_orientation_is_refused():
     tracker = HeadMotionTracker()
-    assert not tracker.set_reference()
-    tracker.add(0.0, (0, 0, 0), None)  # speed known, orientation unusable
-    assert not tracker.set_reference()
+    for i, angle in enumerate([0, 0, 1, 2, 4, 4]):
+        tracker.add(i * 0.1, (0, 0, 0), yaw(angle))
+    assert tracker.moved_since(0.0, 0.5, 3.0)  # 0 -> 4 deg
+    assert not tracker.moved_since(0.0, 0.5, 5.0)
+    assert not tracker.moved_since(0.4, 0.5, 1.0)  # already at 4 deg at t0 and still there
+    assert not tracker.moved_since(9.0, 10.0, 0.1)  # nothing buffered
 
 
-def test_max_speed_between_uses_only_the_window():
+def test_speed_windows_ring_buffer_and_unusable_samples():
     tracker = HeadMotionTracker()
     for t, speed in [(0.0, 1.0), (0.1, 50.0), (0.2, 2.0), (0.3, 3.0)]:
         tracker.add(t, (0, 0, speed), STILL)
@@ -77,28 +80,14 @@ def test_max_speed_between_uses_only_the_window():
     assert not tracker.speed_spike_between(0.15, 0.35, 25.0)
     assert not tracker.speed_spike_between(5.0, 6.0, 25.0)  # no data is not a spike
 
-
-def test_moved_since_compares_to_the_orientation_at_t0():
-    tracker = HeadMotionTracker()
-    for i, angle in enumerate([0, 0, 1, 2, 4, 4]):
-        tracker.add(i * 0.1, (0, 0, 0), yaw(angle))
-    assert tracker.moved_since(0.0, 0.5, 3.0)  # 0 -> 4 deg
-    assert not tracker.moved_since(0.0, 0.5, 5.0)
-    assert not tracker.moved_since(0.4, 0.5, 1.0)  # already at 4 deg at t0 and still there
-    assert not tracker.moved_since(9.0, 10.0, 0.1)  # nothing buffered
-
-
-def test_ring_buffer_drops_old_samples_but_keeps_session_summaries():
     tracker = HeadMotionTracker(buffer_s=1.0)
     tracker.add(0.0, (0, 0, 90.0), STILL)
     for i in range(1, 30):
         tracker.add(i * 0.1, (0, 0, 1.0), STILL)
     assert tracker.max_speed_between(0.0, 0.5) is None  # fell out of the buffer
-    assert tracker.summary()["max_speed_dps"] == pytest.approx(90.0)
+    assert tracker.summary()["max_speed_dps"] == pytest.approx(90.0)  # but the session summary keeps it
     assert tracker.summary()["samples"] == 30
 
-
-def test_unusable_samples_are_tolerated():
     tracker = HeadMotionTracker()
     tracker.add(0.0, (float("nan"), 0, 0), STILL)  # skipped
     tracker.add(0.1, None, STILL)  # skipped
@@ -182,8 +171,8 @@ def test_imu_samples_flow_calibration_sets_the_reference_and_summary_and_csv(tmp
     assert device.closed
 
 
-def test_device_without_imu_disables_the_monitor_but_gaze_keeps_flowing(capsys):
-    source = NeonGazeSource(device=FakeNeon(imu="missing"))
+def test_a_missing_raising_silent_or_malformed_imu_switches_the_monitor_off_without_touching_gaze(monkeypatch, capsys):
+    source = NeonGazeSource(device=FakeNeon(imu="missing"))  # an older device object without IMU support
     source.start()
     try:
         assert _wait_for(lambda: source.latest_sample().face_found)
@@ -194,8 +183,6 @@ def test_device_without_imu_disables_the_monitor_but_gaze_keeps_flowing(capsys):
     assert capsys.readouterr().err.count("head-movement monitor off") == 1
     assert not source.write_head_motion_csv("never_written.csv")
 
-
-def test_imu_exceptions_switch_the_monitor_off_once_without_touching_gaze(monkeypatch, capsys):
     monkeypatch.setattr(neon_source, "HEAD_POLL_HZ", 500.0)
     device = FakeNeon(imu="raises")
     source = NeonGazeSource(device=device)
@@ -207,11 +194,8 @@ def test_imu_exceptions_switch_the_monitor_off_once_without_touching_gaze(monkey
     finally:
         source.stop()
     assert "unavailable" in source.head_motion_summary()["status"]
-    assert capsys.readouterr().err.count("head-movement monitor off") == 1
+    assert capsys.readouterr().err.count("head-movement monitor off") == 1  # once
 
-
-def test_silent_imu_is_switched_off_after_the_no_data_timeout(monkeypatch):
-    monkeypatch.setattr(neon_source, "HEAD_POLL_HZ", 500.0)
     monkeypatch.setattr(neon_source, "HEAD_NO_DATA_TIMEOUT_S", 0.05)
     source = NeonGazeSource(device=FakeNeon(imu="silent"))
     source.start()
@@ -221,14 +205,12 @@ def test_silent_imu_is_switched_off_after_the_no_data_timeout(monkeypatch):
         source.stop()
     assert "no IMU data" in source.head_motion_summary()["status"]
 
-
-def test_malformed_imu_datum_is_counted_not_raised():
     device = FakeNeon()
     device.receive_imu_datum = lambda timeout_seconds=None: SimpleNamespace(gyro_data=None)
     source = NeonGazeSource(device=device)
     source.start()
     try:
-        assert _wait_for(lambda: source.quality_summary()["receive_errors"] > 0)
+        assert _wait_for(lambda: source.quality_summary()["receive_errors"] > 0)  # counted, not raised
     finally:
         source.stop()
 
@@ -260,7 +242,7 @@ def _first_trial_with_head(fake_gaze, fake_time):
     return session, fake_gaze.head_motion
 
 
-def test_head_speed_spike_at_the_flash_marks_the_trial_not_ok(fake_gaze, fake_time):
+def test_head_speed_spike_only_at_the_flash_marks_the_trial_not_ok(fake_gaze, fake_time):
     session, tracker = _first_trial_with_head(fake_gaze, fake_time)
     tracker.add(session._flash_scheduled_at, (0, 0, HEAD_MAX_SPEED_DPS * 2), STILL)
     result = _run_valid_saccade(session, fake_gaze, fake_time, lose_tracking_at_flash=False)
@@ -268,23 +250,19 @@ def test_head_speed_spike_at_the_flash_marks_the_trial_not_ok(fake_gaze, fake_ti
     assert session.head_flagged_trials == 1
     assert session._valid_trial_count == 0  # excluded from analysis like a tracking loss
 
-
-def test_head_spike_outside_the_flash_window_is_ignored(fake_gaze, fake_time):
     session, tracker = _first_trial_with_head(fake_gaze, fake_time)
     tracker.add(session._flash_scheduled_at - 3 * TRACKING_LOSS_WINDOW_MS / 1000, (0, 0, 500.0), STILL)
     tracker.add(session._flash_scheduled_at, (0, 0, 1.0), STILL)
     result = _run_valid_saccade(session, fake_gaze, fake_time, lose_tracking_at_flash=False)
-    assert result.tracking_ok is True
+    assert result.tracking_ok is True  # a spike outside the flash window is ignored
     assert session.head_flagged_trials == 0
 
-
-def test_no_tracker_means_no_change(fake_gaze, fake_time):
+    del fake_gaze.head_motion  # no tracker means no change
     session = _session_in_first_trial(fake_gaze, fake_time)
     result = _run_valid_saccade(session, fake_gaze, fake_time, lose_tracking_at_flash=False)
     assert result.tracking_ok is True
     assert "head_drift_deg" not in session.render_state()["hud"]
     assert session.pop_head_warning() is None
-
 
 def test_hud_shows_head_drift_and_warning_is_rate_limited_and_between_trials_only(fake_gaze, fake_time):
     fake_gaze.head_motion = tracker = HeadMotionTracker()
@@ -311,7 +289,7 @@ def test_hud_shows_head_drift_and_warning_is_rate_limited_and_between_trials_onl
 # -- simulator (synthetic head channel, off by default) --------------------------------------------
 
 
-def test_simulated_head_spikes_flag_every_flash_and_default_flags_none():
+def test_simulated_head_spikes_flag_every_flash_default_flags_none_and_session_json_section(tmp_path, monkeypatch):
     quiet = simulate_session(max_trials=8, seed=3)
     assert quiet.session.head_flagged_trials == 0
     assert "head_drift_deg" not in quiet.session.render_state()["hud"]
@@ -321,8 +299,6 @@ def test_simulated_head_spikes_flag_every_flash_and_default_flags_none():
     assert moving.session.head_flagged_trials == len(shown)
     assert moving.session.render_state()["hud"]["head_drift_deg"] is not None
 
-
-def test_session_json_gets_the_head_motion_section(tmp_path, monkeypatch):
     from src.experiment import logger as logger_module
 
     monkeypatch.setattr(logger_module, "DATA_DIR", tmp_path)

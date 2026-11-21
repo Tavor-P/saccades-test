@@ -36,49 +36,52 @@ def _pc_ms(video_times, offset=PC_OFFSET_S, jitter_ms=0.0, seed=1):
 # -- flash pattern --------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("hz, expected", [(60.0, (9, 18)), (120.0, (18, 36)), (144.0, (22, 43)), (None, (9, 18)), (5.0, (9, 18))])
-def test_flash_lengths_are_counted_in_frames_from_the_refresh_rate(hz, expected):
-    assert gv.sync_flash_frames(hz) == expected
+def test_flash_lengths_are_counted_in_frames_from_the_refresh_rate():
+    for hz, expected in [(60.0, (9, 18)), (120.0, (18, 36)), (144.0, (22, 43)), (None, (9, 18)), (5.0, (9, 18))]:
+        assert gv.sync_flash_frames(hz) == expected, hz
 
 
 # -- detector -------------------------------------------------------------------------------------
 
 
-def test_detector_finds_each_flash_onset_within_a_frame():
+def test_detector_finds_green_flashes_only_with_timestamps_or_a_frame_rate():
     found = gv.find_sync_flashes(_frames(), fps=FPS)
     assert len(found) == 4
     for got, want in zip(found, (2.0, 2.45, 2.9, 15.0)):
-        assert abs(got - want) <= 1 / FPS
+        assert abs(got - want) <= 1 / FPS  # each onset within a frame
 
+    assert gv.find_sync_flashes(_frames(flash_onsets=(), distractors=(5.0, 9.0)), fps=FPS) == []  # white flashes, dark room
 
-def test_detector_ignores_white_flashes_and_a_dark_room():
-    assert gv.find_sync_flashes(_frames(flash_onsets=(), distractors=(5.0, 9.0)), fps=FPS) == []
-
-
-def test_detector_accepts_timestamped_frames_and_reports_event_details():
-    frames = _frames(flash_onsets=(4.0,))
-    events = gv.find_sync_flash_events(((i / FPS + 100.0, f) for i, f in enumerate(frames)))
-    (event,) = events
-    assert event.time_s == pytest.approx(104.0, abs=1 / FPS)
-    assert 0.1 <= event.duration_s <= 0.25 and event.frames >= 3
-
-
-def test_detector_survives_a_green_object_that_is_much_weaker_than_the_flash():
     frames = _frames(flash_onsets=(3.0,))
     for i in range(int(8 * FPS), int(8.2 * FPS)):  # a small green patch (3% of the picture) walking past
         frames[i][:2, :32] = (20, 230, 30)
     assert len(gv.find_sync_flashes(frames, fps=FPS)) == 1
 
+    frames = _frames(flash_onsets=(4.0,))
+    (event,) = gv.find_sync_flash_events(((i / FPS + 100.0, f) for i, f in enumerate(frames)))
+    assert event.time_s == pytest.approx(104.0, abs=1 / FPS)
+    assert 0.1 <= event.duration_s <= 0.25 and event.frames >= 3
 
-def test_bare_frames_need_a_frame_rate():
     with pytest.raises(ValueError, match="fps"):
         gv.find_sync_flashes(_frames(duration_s=1))
+
+
+def test_detector_finds_the_flashes_in_a_long_recording_where_they_are_a_tiny_share_of_the_frames():
+    """A real recording is minutes long; 4 flashes of 5 frames are ~0.1 % of its frames, so the strength reference must come from
+    the strongest few frames, not a fixed percentile of all of them."""
+    n = 20000
+    scores = np.zeros(n)
+    onsets = (600, 614, 628, 15000)
+    for start in onsets:
+        scores[start : start + 5] = 0.5
+    events = gv.detect_flash_events(scores, [i / FPS for i in range(n)])
+    assert [round(e.time_s * FPS) for e in events] == list(onsets)
 
 
 # -- offset ---------------------------------------------------------------------------------------
 
 
-def test_offset_recovers_the_clock_difference_and_reports_a_small_residual():
+def test_offset_recovers_the_clock_difference_despite_extra_events_and_a_missed_flash():
     video = [2.0, 2.45, 2.9, 15.0]
     result = gv.compute_offset(video, _pc_ms(video, jitter_ms=15))
     assert result["status"] == "ok" and result["matched"] == 4
@@ -86,24 +89,22 @@ def test_offset_recovers_the_clock_difference_and_reports_a_small_residual():
     assert result["residual_max_ms"] <= 30
     assert gv.video_time_for_pc_unix_ms((2.0 + PC_OFFSET_S) * 1000, result["offset_s"]) == pytest.approx(2.0, abs=0.02)
 
-
-def test_offset_ignores_extra_video_events_by_matching_the_pattern():
-    video_flashes = [2.0, 2.45, 2.9, 15.0]
-    video_seen = sorted(video_flashes + [0.7, 9.1, 9.6])  # a green shirt, lamp flicker...
-    result = gv.compute_offset(video_seen, _pc_ms(video_flashes))
+    seen = sorted(video + [0.7, 9.1, 9.6])  # a green shirt, lamp flicker... matched by pattern
+    result = gv.compute_offset(seen, _pc_ms(video))
     assert result["status"] == "ok" and result["matched"] == 4
     assert result["offset_s"] == pytest.approx(PC_OFFSET_S, abs=0.01)
 
-
-def test_offset_with_a_missed_flash_still_works_but_a_single_match_asks_for_a_check():
-    video = [2.0, 2.45, 2.9, 15.0]
     three = gv.compute_offset(video[:3], _pc_ms(video))
     assert three["matched"] == 3 and three["status"] == "ok"
-    one = gv.compute_offset([2.45], _pc_ms(video))
+
+    drift_video = [2.0, 2.45, 2.9, 602.0]
+    pc = [(v + PC_OFFSET_S + 0.00005 * v) * 1000 for v in drift_video]  # 50 ppm drift: 30 ms over 10 minutes
+    assert gv.compute_offset(drift_video, pc, tolerance_s=0.2)["drift_ms_per_min"] == pytest.approx(3.0, abs=0.5)
+
+
+def test_offset_asks_for_a_manual_check_on_one_match_a_bad_residual_or_missing_inputs():
+    one = gv.compute_offset([2.45], _pc_ms([2.0, 2.45, 2.9, 15.0]))
     assert one["matched"] == 1 and one["status"] == "check manually" and one["notes"]
-
-
-def test_offset_flags_a_bad_residual_and_missing_inputs():
     video = [2.0, 2.45, 2.9]
     pc = _pc_ms(video)
     pc[2] += 130  # the third flash is 130 ms late on the PC: still matched, but not trustworthy
@@ -112,13 +113,6 @@ def test_offset_flags_a_bad_residual_and_missing_inputs():
     assert gv.compute_offset([], pc)["offset_s"] is None
     assert gv.compute_offset(video, [])["status"] == "check manually"
     assert gv.compute_offset([50.0], pc)["status"] == "check manually"  # a lone unrelated event: no real match
-
-
-def test_offset_reports_clock_drift_between_the_start_and_end_flashes():
-    video = [2.0, 2.45, 2.9, 602.0]
-    pc = [(v + PC_OFFSET_S + 0.00005 * v) * 1000 for v in video]  # 50 ppm drift: 30 ms over 10 minutes
-    assert gv.compute_offset(video, pc, tolerance_s=0.2)["drift_ms_per_min"] == pytest.approx(3.0, abs=0.5)
-
 
 # -- the import CLI -------------------------------------------------------------------------------
 
@@ -148,6 +142,8 @@ def test_import_cli_copies_the_video_syncs_it_and_updates_session_json(tmp_path,
     for i, v in enumerate([2.0, 2.45, 2.9]):
         log.add_sync_flash(f"start {i + 1}", (v + PC_OFFSET_S) * 1000)
     log.close()
+    with pytest.raises(SystemExit):  # an old loose-file session has no run folder to import into
+        imp.main(["1792967858", str(tmp_path / "x.mp4"), "--data-dir", str(tmp_path / "old")])
     video = tmp_path / "export.mp4"
     _write_video(video, _frames(duration_s=6.0, flash_onsets=(2.0, 2.45, 2.9)))
 
@@ -158,13 +154,6 @@ def test_import_cli_copies_the_video_syncs_it_and_updates_session_json(tmp_path,
     assert sync["meaning"].startswith("PC unix time")
     meta = json.loads((log.folder / "session.json").read_text())
     assert meta["glasses_video"]["video_file"] == "glasses/export.mp4" and meta["glasses_video"]["sync_status"] == sync["status"]
-
-
-def test_import_cli_refuses_an_old_style_session(tmp_path):
-    from src.experiment import import_glasses_video as imp
-
-    with pytest.raises(SystemExit):
-        imp.main(["1792967858", str(tmp_path / "x.mp4"), "--data-dir", str(tmp_path)])
 
 
 # -- phone recording failure handling -------------------------------------------------------------
@@ -198,7 +187,8 @@ class _FakeDevice:
         self.calls.append("close")
 
 
-def test_recording_start_and_stop_report_their_status():
+
+def test_recording_start_stop_events_and_failures_never_raise(capsys):
     device = _FakeDevice()
     source = NeonGazeSource(device=device)
     started = source.start_recording()
@@ -208,8 +198,12 @@ def test_recording_start_and_stop_report_their_status():
     assert stopped["recording"] == "saved" and device.calls == ["start", ("event", "pc_sync_flashes_done"), "stop"]
     assert source.stop_recording() == {}  # nothing left to stop
 
+    device = _FakeDevice()
+    source = NeonGazeSource(device=device)
+    source.start_recording()
+    source.stop()  # stopping the source stops a recording left running
+    assert device.calls == ["start", "stop", "close"]
 
-def test_a_failing_recording_start_never_raises_and_is_recorded(capsys):
     device = _FakeDevice(fail_start=True)
     source = NeonGazeSource(device=device)
     status = source.start_recording()
@@ -217,31 +211,8 @@ def test_a_failing_recording_start_never_raises_and_is_recorded(capsys):
     assert source.stop_recording() == {} and "stop" not in device.calls  # never stop what never started
     assert "WARNING" in capsys.readouterr().err
 
-
-def test_a_failing_stop_or_event_never_raises():
-    device = _FakeDevice(fail_stop=True, fail_event=True)
-    source = NeonGazeSource(device=device)
+    source = NeonGazeSource(device=_FakeDevice(fail_stop=True, fail_event=True))
     source.start_recording()
     assert source.send_event("x") is False
     assert source.stop_recording()["recording"].startswith("failed to stop/save")
     source.stop()  # the session's cleanup still completes
-
-
-def test_stopping_the_source_stops_a_recording_left_running():
-    device = _FakeDevice()
-    source = NeonGazeSource(device=device)
-    source.start_recording()
-    source.stop()
-    assert device.calls == ["start", "stop", "close"]
-
-
-def test_detector_finds_the_flashes_in_a_long_recording_where_they_are_a_tiny_share_of_the_frames():
-    """A real recording is minutes long; 4 flashes of 5 frames are ~0.1 % of its frames, so the strength reference must come from
-    the strongest few frames, not a fixed percentile of all of them."""
-    n = 20000
-    scores = np.zeros(n)
-    onsets = (600, 614, 628, 15000)
-    for start in onsets:
-        scores[start : start + 5] = 0.5
-    events = gv.detect_flash_events(scores, [i / FPS for i in range(n)])
-    assert [round(e.time_s * FPS) for e in events] == list(onsets)

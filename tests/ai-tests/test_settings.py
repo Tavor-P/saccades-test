@@ -18,37 +18,21 @@ def _isolated_data_dir(tmp_path, monkeypatch):
     monkeypatch.setattr(settings_module, "DATA_DIR", tmp_path)
 
 
-def test_load_falls_back_to_default_when_no_settings_file():
-    assert load_contrast_floor_percent() == DEFAULT_CONTRAST_FLOOR_PERCENT
-
-
-def test_save_then_load_round_trips():
+def test_load_defaults_then_save_round_trips_and_preserves_other_keys(tmp_path):
+    assert load_contrast_floor_percent() == DEFAULT_CONTRAST_FLOOR_PERCENT  # no settings file
     save_contrast_floor_percent(3.5)
     assert load_contrast_floor_percent() == 3.5
-
-
-def test_save_preserves_other_keys_in_the_file(tmp_path):
     (tmp_path / "settings.json").write_text(json.dumps({"unrelated_key": "keep me"}))
     save_contrast_floor_percent(2.0)
-    data = json.loads((tmp_path / "settings.json").read_text())
-    assert data == {"unrelated_key": "keep me", "contrast_floor_percent": 2.0}
+    assert json.loads((tmp_path / "settings.json").read_text()) == {"unrelated_key": "keep me", "contrast_floor_percent": 2.0}
 
 
-def test_validate_rejects_below_the_hardware_floor():
+def test_validate_bounds_and_save_rejects_out_of_range_without_writing(tmp_path):
     with pytest.raises(ValueError):
-        validate_contrast_floor_percent(MIN_CONTRAST_FLOOR_PERCENT / 2)
-
-
-def test_validate_rejects_at_or_above_the_zest_ceiling():
+        validate_contrast_floor_percent(MIN_CONTRAST_FLOOR_PERCENT / 2)  # below the hardware floor
     with pytest.raises(ValueError):
-        validate_contrast_floor_percent(MAX_CONTRAST_FLOOR_PERCENT)
-
-
-def test_validate_accepts_the_hardware_floor_itself():
+        validate_contrast_floor_percent(MAX_CONTRAST_FLOOR_PERCENT)  # at the ZEST ceiling
     assert validate_contrast_floor_percent(MIN_CONTRAST_FLOOR_PERCENT) == MIN_CONTRAST_FLOOR_PERCENT
-
-
-def test_save_rejects_out_of_range_value_without_writing_the_file(tmp_path):
     with pytest.raises(ValueError):
         save_contrast_floor_percent(-1)
     assert not (tmp_path / "settings.json").exists()

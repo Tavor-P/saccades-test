@@ -30,7 +30,7 @@ def _trial(**overrides) -> TrialResult:
     return TrialResult(**values)
 
 
-def test_writes_the_run_folder_with_its_files(tmp_path, monkeypatch):
+def test_writes_the_run_folder_with_its_files_and_the_trial_columns_in_order(tmp_path, monkeypatch):
     log = _make_logger(tmp_path, monkeypatch, participant_id="alice", test_mode=True)
     log.close()
     (participant,) = [p for p in tmp_path.iterdir()]
@@ -42,11 +42,7 @@ def test_writes_the_run_folder_with_its_files(tmp_path, monkeypatch):
     assert log.gaze_trace_path == run / "gaze_trace.csv"
     assert log.analysis_dir == run / "analysis" and log.glasses_dir == run / "glasses"
 
-
-def test_header_is_the_trial_columns_in_order(tmp_path, monkeypatch):
-    log = _make_logger(tmp_path, monkeypatch)
-    log.close()
-    header = next(tmp_path.glob("*/*/trials.csv")).read_text().splitlines()[0]
+    header = (run / "trials.csv").read_text().splitlines()[0]
     assert header.split(",") == FIELDNAMES == [c.name for c in TRIAL_COLUMNS]
     assert FIELDNAMES == [
         "phase", "trial", "contrast_pct", "flash_shown", "flash_during_saccade", "answered", "correct", "outcome",
@@ -55,7 +51,7 @@ def test_header_is_the_trial_columns_in_order(tmp_path, monkeypatch):
     ]
 
 
-def test_session_json_has_named_sections(tmp_path, monkeypatch):
+def test_session_json_sections_and_what_the_setters_record(tmp_path, monkeypatch):
     log = _make_logger(tmp_path, monkeypatch, participant_id="alice")
     log.close()
     meta = _meta(tmp_path)
@@ -65,38 +61,33 @@ def test_session_json_has_named_sections(tmp_path, monkeypatch):
     assert "viewing_distance_cm" in meta["settings"] and meta["settings"]["calibration"] is None
     assert "constants" not in meta  # the giant constants snapshot is gone
 
-
-def test_metadata_records_which_camera_was_used(tmp_path, monkeypatch):
-    log = _make_logger(tmp_path, monkeypatch, camera_label="Camera 2")
-    log.close()
-    assert _meta(tmp_path)["settings"]["gaze_source"] == "Camera 2"
-
-
-def test_metadata_records_test_mode(tmp_path, monkeypatch):
-    log = _make_logger(tmp_path, monkeypatch, test_mode=True)
-    log.close()
-    assert _meta(tmp_path)["run"]["mode"] == "test"
-
-
-def test_set_calibration_updates_metadata(tmp_path, monkeypatch):
-    log = _make_logger(tmp_path, monkeypatch)
+    other = tmp_path / "other"
+    log = _make_logger(other, monkeypatch, camera_label="Camera 2", test_mode=True)
     log.set_calibration(0.3, 0.5, 0.7)
-    log.close()
-    assert _meta(tmp_path)["settings"]["calibration"] == {"left_ratio": 0.3, "center_ratio": 0.5, "right_ratio": 0.7}
-
-
-def test_saccade_contrasts_are_stored_as_percent(tmp_path, monkeypatch):
-    log = _make_logger(tmp_path, monkeypatch)
     log.set_saccade_contrasts((0.10, 0.15, 0.20))
+    log.set_gaze_quality({"samples": 10, "latency_ms_median": 16.0})
+    log.update_glasses_video(recording="started", recording_id="abc")
+    log.add_sync_flash("start 1", 1_700_000_000_000.04)
+    log.add_sync_flash("start 2", 1_700_000_000_450.0)
     log.close()
-    assert _meta(tmp_path)["settings"]["saccade_contrasts_pct"] == [10.0, 15.0, 20.0]
+    meta = _meta(other)
+    assert meta["settings"]["gaze_source"] == "Camera 2"
+    assert meta["run"]["mode"] == "test"
+    assert meta["settings"]["calibration"] == {"left_ratio": 0.3, "center_ratio": 0.5, "right_ratio": 0.7}
+    assert meta["settings"]["saccade_contrasts_pct"] == [10.0, 15.0, 20.0]
+    assert meta["gaze_quality"] == {"samples": 10, "latency_ms_median": 16.0}
+    block = meta["glasses_video"]
+    assert block["recording"] == "started" and block["recording_id"] == "abc"
+    assert block["sync_flashes"] == [{"label": "start 1", "pc_unix_ms": 1_700_000_000_000.0}, {"label": "start 2", "pc_unix_ms": 1_700_000_000_450.0}]
 
 
-def test_log_writes_plain_words_and_units(tmp_path, monkeypatch):
+def test_log_writes_plain_words_and_units_for_saccade_rt_test_and_timeout_rows(tmp_path, monkeypatch):
     log = _make_logger(tmp_path, monkeypatch)
     log.log(_trial(timing_offset_ms=-40, scheduled_delay_ms=185.04, reaction_latency_ms=210.5, grating_shown_at_unix_ms=1_700_000_000_123.46, flash_during_saccade=True, tracking_ok=True))
+    log.log(_trial(index=1, phase="rt_test", grating_shown=False, contrast=None, orientation=None, responded=False, response_orientation=None, response_time_ms=None, outcome="detected", reaction_latency_ms=210.5))
+    log.log(_trial(index=2, grating_shown=False, contrast=None, orientation=None, responded=False, response_orientation=None, outcome="timeout"))
     log.close()
-    (row,) = _rows(tmp_path)
+    row, rt_row, timeout_row = _rows(tmp_path)
     assert row["phase"] == "saccade" and row["trial"] == "0"
     assert "from" not in row and "to" not in row  # direction = trial parity, so source/target are not written
     assert row["flash_shown"] == "yes" and row["contrast_pct"] == "5.0"
@@ -106,26 +97,26 @@ def test_log_writes_plain_words_and_units(tmp_path, monkeypatch):
     assert row["answered"] == "yes" and row["answer_ms"] == "250.0"
     assert row["outcome"] == "correct" and row["correct"] == "yes"
     assert row["tracking_ok"] == "yes" and row["flash_during_saccade"] == "yes"
+    assert rt_row["phase"] == "rt_test" and rt_row["reaction_ms"] == "210.5" and rt_row["outcome"] == "detected"
+    assert timeout_row["outcome"] == "timeout" and timeout_row["correct"] == ""  # a timeout has no correct value
 
 
-def test_baseline_phase_and_outcome_words(tmp_path, monkeypatch):
+def test_outcome_words_and_old_baseline_and_catch_trial_rows_still_write_and_load(tmp_path, monkeypatch):
+    # Sessions recorded before the baseline phase / catch trials were removed hold presaccade, false_alarm, correct_rejection rows.
     log = _make_logger(tmp_path, monkeypatch)
     log.log(_trial(phase="presaccade", source=None, target=None, outcome="miss", responded=False, response_orientation=None))
     log.log(_trial(index=1, outcome="incorrect", response_orientation=Side.BELOW))
     log.log(_trial(index=2, grating_shown=False, contrast=None, orientation=None, outcome="correct_rejection", responded=False, response_orientation=None))
+    log.log(_trial(index=3, grating_shown=False, contrast=None, orientation=None, outcome="false_alarm"))
     log.close()
-    first, second, third = _rows(tmp_path)
+    first, second, third, fourth = _rows(tmp_path)
     assert first["phase"] == "baseline" and first["outcome"] == "no_answer" and first["correct"] == "no"
     assert second["outcome"] == "wrong" and second["correct"] == "no"
     assert third["outcome"] == "correct_rejection" and third["correct"] == "yes" and third["flash_shown"] == "no"
-
-
-def test_log_writes_rt_test_phase_rows(tmp_path, monkeypatch):
-    log = _make_logger(tmp_path, monkeypatch)
-    log.log(_trial(phase="rt_test", grating_shown=False, contrast=None, orientation=None, responded=False, response_orientation=None, response_time_ms=None, outcome="detected", reaction_latency_ms=210.5))
-    log.close()
-    (row,) = _rows(tmp_path)
-    assert row["phase"] == "rt_test" and row["reaction_ms"] == "210.5" and row["outcome"] == "detected"
+    rows = logger_module.read_trials(next(tmp_path.glob("*/*/trials.csv")))
+    assert [r.outcome for r in rows] == ["miss", "incorrect", "correct_rejection", "false_alarm"]
+    assert rows[0].phase == "presaccade"
+    assert not any(r.grating_shown for r in rows[2:])
 
 
 def test_results_summary_and_dropped_diagnostics_go_to_session_json(tmp_path, monkeypatch):
@@ -138,40 +129,3 @@ def test_results_summary_and_dropped_diagnostics_go_to_session_json(tmp_path, mo
     assert saccade["median_saccade_duration_ms_live"] == 90.0 and saccade["median_onset_detection_lag_ms_live"] == 14.0
     assert saccade["median_reaction_ms"] == 210.0
 
-
-def test_metadata_records_gaze_quality(tmp_path, monkeypatch):
-    log = _make_logger(tmp_path, monkeypatch)
-    log.set_gaze_quality({"samples": 10, "latency_ms_median": 16.0})
-    log.close()
-    assert _meta(tmp_path)["gaze_quality"] == {"samples": 10, "latency_ms_median": 16.0}
-
-
-def test_glasses_video_block_records_recording_and_sync_flashes(tmp_path, monkeypatch):
-    log = _make_logger(tmp_path, monkeypatch)
-    log.update_glasses_video(recording="started", recording_id="abc")
-    log.add_sync_flash("start 1", 1_700_000_000_000.04)
-    log.add_sync_flash("start 2", 1_700_000_000_450.0)
-    log.close()
-    block = _meta(tmp_path)["glasses_video"]
-    assert block["recording"] == "started" and block["recording_id"] == "abc"
-    assert block["sync_flashes"] == [{"label": "start 1", "pc_unix_ms": 1_700_000_000_000.0}, {"label": "start 2", "pc_unix_ms": 1_700_000_000_450.0}]
-
-
-def test_old_catch_trial_outcome_words_still_load(tmp_path, monkeypatch):
-    # Sessions recorded before catch trials were removed hold false_alarm / correct_rejection rows.
-    log = _make_logger(tmp_path, monkeypatch)
-    log.log(_trial(index=0, grating_shown=False, contrast=None, orientation=None, outcome="false_alarm"))
-    log.log(_trial(index=1, grating_shown=False, contrast=None, orientation=None, outcome="correct_rejection", responded=False, response_orientation=None))
-    log.close()
-    run = next(tmp_path.glob("*/*/trials.csv"))
-    rows = logger_module.read_trials(run)
-    assert [r.outcome for r in rows] == ["false_alarm", "correct_rejection"]
-    assert not any(r.grating_shown for r in rows)
-
-
-def test_a_timeout_row_has_no_correct_value(tmp_path, monkeypatch):
-    log = _make_logger(tmp_path, monkeypatch)
-    log.log(_trial(grating_shown=False, contrast=None, orientation=None, responded=False, response_orientation=None, outcome="timeout"))
-    log.close()
-    (row,) = _rows(tmp_path)
-    assert row["outcome"] == "timeout" and row["correct"] == ""

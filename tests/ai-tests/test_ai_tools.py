@@ -12,7 +12,7 @@ from include.experiment import constants as exp_constants
 HERE = Path(__file__).resolve().parent
 
 
-def test_override_constants_patches_every_importer_and_restores():
+def test_override_constants_patches_every_importer_restores_rejects_typos_and_changes_behaviour():
     original = exp_constants.SACCADE_ONSET_STABILITY_MS
     from src.experiment import trial_mechanics
 
@@ -21,36 +21,24 @@ def test_override_constants_patches_every_importer_and_restores():
         assert trial_mechanics.SACCADE_ONSET_STABILITY_MS == 5  # module that copied it by name
     assert exp_constants.SACCADE_ONSET_STABILITY_MS == original
     assert trial_mechanics.SACCADE_ONSET_STABILITY_MS == original
-
-
-def test_override_of_an_unknown_constant_is_an_error():
     with pytest.raises(KeyError):
         with sim_tools.override_constants({"SACCADE_ONSET_STABILTY_MS": 5}):  # typo
             pass
-
-
-def test_override_actually_changes_session_behaviour():
     _, fast = sim_tools.run(trials=10, seed=1, constants={"SACCADE_ONSET_STABILITY_MS": 5})
     _, slow = sim_tools.run(trials=10, seed=1, constants={"SACCADE_ONSET_STABILITY_MS": 80})
     assert slow["mean_onset_detection_lag_ms"] > fast["mean_onset_detection_lag_ms"] + 30
 
 
-def test_unknown_scenario_and_profile_field_are_errors():
+def test_profiles_summary_and_sweep():
     with pytest.raises(KeyError):
         sim_tools.make_profile("nope")
     with pytest.raises(KeyError):
         sim_tools.make_profile("default", not_a_field=1)
-
-
-def test_summary_has_ground_truth_and_is_json_serialisable():
     _, summary = sim_tools.run(trials=15, seed=2)
-    json.dumps(summary)
+    json.dumps(summary)  # JSON-serialisable
     assert summary["trials"] == 15
-    assert summary["flashes_truly_in_saccade"] <= summary["flashes"]
+    assert summary["flashes_truly_in_saccade"] <= summary["flashes"]  # ground truth recorded
     assert summary["valid_flashes"] <= summary["flashes"]
-
-
-def test_sweep_returns_a_row_per_value():
     rows = sim_tools.sweep("SACCADE_ONSET_STABILITY_MS", [10, 40], trials=8, seeds=2)
     assert [r["SACCADE_ONSET_STABILITY_MS"] for r in rows] == [10, 40]
 

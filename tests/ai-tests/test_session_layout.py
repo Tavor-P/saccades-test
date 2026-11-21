@@ -22,44 +22,26 @@ FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "old_layout"
 # -- naming ---------------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "raw, expected",
-    [
-        ("p01", "p01"),
-        ("", "anonymous"),
-        ("   ", "anonymous"),
-        (None, "anonymous"),
-        ("Ana María", "Ana_María"),
-        ('a/b\\c:d*e?f"g<h>i|j', "a_b_c_d_e_f_g_h_i_j"),
-        ("trailing dot.", "trailing_dot"),
-        ("..", "anonymous"),
-        ("CON", "CON_"),
-        ("nul.txt", "nul.txt_"),
-        ("x" * 200, "x" * 60),
-    ],
-)
-def test_participant_ids_become_safe_folder_names(raw, expected):
-    assert session_files.sanitize_participant_id(raw) == expected
-
-
-def test_folder_name_is_local_time_with_test_suffix():
+def test_run_folder_naming_safe_ids_local_time_test_suffix_and_same_second_runs(tmp_path, monkeypatch):
     import time
+
+    for raw, expected in [
+        ("p01", "p01"), ("", "anonymous"), ("   ", "anonymous"), (None, "anonymous"), ("Ana María", "Ana_María"),
+        ('a/b\\c:d*e?f"g<h>i|j', "a_b_c_d_e_f_g_h_i_j"), ("trailing dot.", "trailing_dot"), ("..", "anonymous"),
+        ("CON", "CON_"), ("nul.txt", "nul.txt_"), ("x" * 200, "x" * 60),
+    ]:
+        assert session_files.sanitize_participant_id(raw) == expected, raw
 
     ts = time.mktime((2026, 10, 25, 14, 3, 11, 0, 0, -1))
     assert session_files.session_folder_name(ts) == "2026-10-25_14-03-11"
     assert session_files.session_folder_name(ts, test_mode=True) == "2026-10-25_14-03-11_test"
 
-
-def test_two_runs_in_the_same_second_get_separate_folders(tmp_path):
     a = session_files.create_session_folder(tmp_path, "p", 1_800_000_000, False)
     b = session_files.create_session_folder(tmp_path, "p", 1_800_000_000, False)
     assert a != b and a.parent == b.parent and b.name.endswith("_2")
 
-
-def test_blank_participant_in_test_mode_is_anonymous(tmp_path, monkeypatch):
     monkeypatch.setattr(logger_module, "DATA_DIR", tmp_path)
-    log = ResultLogger("anonymous", test_mode=True)
-    log.close()
+    ResultLogger("anonymous", test_mode=True).close()
     assert (tmp_path / "anonymous").is_dir()
 
 
@@ -73,50 +55,39 @@ def _new_run(tmp_path, monkeypatch, participant="p1", **kwargs):
     return log
 
 
-def test_find_session_by_key_folder_name_and_path(tmp_path, monkeypatch):
+def test_find_session_by_any_identifier_newest_across_layouts_and_key_without_session_json(tmp_path, monkeypatch):
+    shutil.copytree(FIXTURES, tmp_path, dirs_exist_ok=True)  # old sessions from 2026-10-22
     log = _new_run(tmp_path, monkeypatch)
     key, folder = str(log._timestamp), log.folder
     for ident in (key, folder.name, f"p1/{folder.name}", str(folder), str(folder / "trials.csv")):
         ref = session_files.find_session(tmp_path, ident)
-        assert ref is not None and ref.folder == folder and ref.key == key
+        assert ref is not None and ref.folder == folder and ref.key == key, ident
     assert session_files.find_session(tmp_path, "999") is None
 
-
-def test_session_key_survives_a_lost_session_json(tmp_path, monkeypatch):
-    log = _new_run(tmp_path, monkeypatch)
-    (log.folder / "session.json").unlink()
-    assert session_files.find_session(tmp_path, log.folder.name).key == str(log._timestamp)
-
-
-def test_newest_session_considers_both_layouts(tmp_path, monkeypatch):
-    shutil.copytree(FIXTURES, tmp_path, dirs_exist_ok=True)  # old sessions from 2026-10-22
-    log = _new_run(tmp_path, monkeypatch)
     refs = session_files.list_sessions(tmp_path)
-    assert refs[0].key == str(log._timestamp) and not refs[0].is_legacy
+    assert refs[0].key == key and not refs[0].is_legacy
     assert {r.key for r in refs} >= {"1792967858", "1792712654"}
-    legacy_only = session_files.newest_session(tmp_path, lambda r: r.is_legacy)
-    assert legacy_only.key == "1792967858"
+    assert session_files.newest_session(tmp_path, lambda r: r.is_legacy).key == "1792967858"
+
+    (folder / "session.json").unlink()
+    assert session_files.find_session(tmp_path, folder.name).key == key  # the key survives a lost session.json
 
 
 # -- old sessions still load ----------------------------------------------------------------------
 
 
-def test_old_layout_fixture_loads_in_the_dashboard(tmp_path, monkeypatch):
+def test_old_layout_grating_and_line_rows_load_and_unknown_values_read_as_none(tmp_path, monkeypatch):
     shutil.copytree(FIXTURES, tmp_path, dirs_exist_ok=True)
     monkeypatch.setattr(data_access, "DATA_DIR", tmp_path)
     sessions = {s.timestamp: s for s in data_access.discover_sessions()}
     assert set(sessions) == {"1792967858", "1792712654"}
     assert sessions["1792967858"].trial_counts == {"rt_test": 6, "saccade": sessions["1792967858"].trial_counts["saccade"]}
     assert sessions["1792712654"].metadata["participant_id"] is None  # no meta file at all
-    shown = [t for t in data_access.load_session_trials("1792712654") if t.grating_shown]
-    assert [t.orientation for t in shown[:3]] == [Side.BELOW, Side.BELOW, Side.ABOVE]  # old 'horizontal'/'vertical' grating values: the branch's documented relabel
     trials = data_access.load_session_trials("1792712654")
+    shown = [t for t in trials if t.grating_shown]
+    assert [t.orientation for t in shown[:3]] == [Side.BELOW, Side.BELOW, Side.ABOVE]  # old 'horizontal'/'vertical' values: the documented relabel
     assert trials[0].source is Target.DOT
 
-
-def test_old_line_rows_load_and_unknown_values_read_as_none_not_a_crash(tmp_path, monkeypatch):
-    shutil.copytree(FIXTURES, tmp_path, dirs_exist_ok=True)
-    monkeypatch.setattr(data_access, "DATA_DIR", tmp_path)
     flashes = [t for t in data_access.load_session_trials("1792967858") if t.grating_shown]
     assert [t.orientation for t in flashes[:2]] == [Side.ABOVE, Side.BELOW]
     assert flashes[0].outcome == "miss" and flashes[0].contrast == pytest.approx(0.02)
@@ -125,7 +96,7 @@ def test_old_line_rows_load_and_unknown_values_read_as_none_not_a_crash(tmp_path
     assert data_access.load_session_trials("1792967858")[6].orientation is None
 
 
-def test_dashboard_lists_new_and_old_sessions_and_edits_either(tmp_path, monkeypatch):
+def test_dashboard_lists_edits_and_deletes_new_and_old_sessions(tmp_path, monkeypatch):
     shutil.copytree(FIXTURES, tmp_path, dirs_exist_ok=True)
     log = _new_run(tmp_path, monkeypatch, participant="alice", test_mode=True)
     monkeypatch.setattr(data_access, "DATA_DIR", tmp_path)
@@ -139,12 +110,8 @@ def test_dashboard_lists_new_and_old_sessions_and_edits_either(tmp_path, monkeyp
     data_access.save_participant_info("1792967858", "Old", "", "")
     assert json.loads((tmp_path / "results_1792967858_meta.json").read_text())["name"] == "Old"
 
-
-def test_deleting_a_new_session_removes_its_whole_folder(tmp_path, monkeypatch):
-    log = _new_run(tmp_path, monkeypatch, participant="alice")
     (log.glasses_dir / "video.mp4").write_bytes(b"x")
-    monkeypatch.setattr(data_access, "DATA_DIR", tmp_path)
-    data_access.delete_session(str(log._timestamp))
+    data_access.delete_session(key)  # a new-layout delete removes the whole run folder, glasses video included
     assert not log.folder.exists() and not (tmp_path / "alice").exists()
 
 

@@ -48,15 +48,17 @@ SESSIONS = pytest.mark.parametrize("make", [_make_experiment, _make_tutorial], i
 
 
 @SESSIONS
-def test_press_before_the_window_fills_completes_the_step_once_it_fills(make, fake_gaze):
+def test_press_before_the_window_fills_is_latched_restarts_the_window_and_completes_one_step(make, fake_gaze):
     session = make(fake_gaze)
     _begin(session)  # WAITING_TO_START -> CALIBRATE_LEFT
+    begun = fake_gaze.calibration_samples_begun
     fake_gaze.calibration_window_full = False
 
     session.on_space()  # on the dot, but the window is still filling
+    assert fake_gaze.calibration_samples_begun == begun + 1  # restarted: holds only post-press samples
     assert _phase(session) == "CALIBRATE_LEFT"
     assert session.render_state()["hud"]["calibration_wait_s"] is not None  # visible in the test-mode HUD
-
+    session.on_space()  # a second press while waiting is counted, not chained
     session.tick()
     assert _phase(session) == "CALIBRATE_LEFT"  # still waiting, nothing lost
 
@@ -66,6 +68,10 @@ def test_press_before_the_window_fills_completes_the_step_once_it_fills(make, fa
     assert session.render_state()["hud"]["calibration_wait_s"] is None
     session.tick()
     assert _phase(session) == "CALIBRATE_CENTER"  # the press was consumed, it does not keep advancing
+    assert session.space_tally.as_dict() == {"CALIBRATE_LEFT: already waiting for gaze samples": 1}
+
+    session.on_space()  # with a full window a press still advances immediately
+    assert _phase(session) == "CALIBRATE_RIGHT"
 
 
 @SESSIONS
@@ -88,37 +94,6 @@ def test_one_press_per_target_walks_all_rounds(make, fake_gaze):
     assert fake_gaze.calibrated == (0.5, 0.5, 0.5)
 
 
-@SESSIONS
-def test_a_second_press_while_waiting_is_counted_not_chained(make, fake_gaze):
-    session = make(fake_gaze)
-    _begin(session)
-    fake_gaze.calibration_window_full = False
-    session.on_space()
-    session.on_space()
-    fake_gaze.calibration_window_full = True
-    session.tick()
-    assert _phase(session) == "CALIBRATE_CENTER"
-    assert session.space_tally.as_dict() == {"CALIBRATE_LEFT: already waiting for gaze samples": 1}
-
-
-@SESSIONS
-def test_a_latched_press_restarts_the_window_so_it_holds_only_post_press_samples(make, fake_gaze):
-    session = make(fake_gaze)
-    _begin(session)
-    begun = fake_gaze.calibration_samples_begun
-    fake_gaze.calibration_window_full = False
-    session.on_space()
-    assert fake_gaze.calibration_samples_begun == begun + 1
-
-
-@SESSIONS
-def test_press_with_a_full_window_still_advances_immediately(make, fake_gaze):
-    session = make(fake_gaze)
-    _begin(session)
-    session.on_space()
-    assert _phase(session) == "CALIBRATE_CENTER"
-
-
 def test_latch_waits_visibly_when_tracking_is_lost(fake_gaze, fake_time):
     session = _make_experiment(fake_gaze)
     session.on_space()
@@ -130,36 +105,33 @@ def test_latch_waits_visibly_when_tracking_is_lost(fake_gaze, fake_time):
     assert session.render_state()["hud"]["calibration_wait_s"] == pytest.approx(5.0)
 
 
-# -- tutorial narration -----------------------------------------------------------------------------------------------------
+# -- tutorial narration, same-frame presses, COMPLETE screen ----------------------------------------------------------------
 
 
-def test_space_during_narration_is_delivered_after_it():
+def test_narration_gate_holds_space_until_speech_ends_and_drops_response_keys():
     gate = NarrationKeyGate()
     assert gate.route(["space"], speaking=True) == (False, [], 0)
     assert gate.route([], speaking=True) == (False, [], 0)  # still held
     assert gate.route([], speaking=False) == (True, [], 0)  # delivered when speech ends
     assert gate.route([], speaking=False) == (False, [], 0)  # exactly once
 
+    assert NarrationKeyGate().route(["space", "up"], speaking=False) == (True, ["up"], 0)  # after narration: straight through
+    assert NarrationKeyGate().route([], speaking=False) == (False, [], 0)  # nothing pressed, nothing delivered
 
-def test_space_after_narration_passes_straight_through_with_response_keys():
-    assert NarrationKeyGate().route(["space", "up"], speaking=False) == (True, ["up"], 0)
-
-
-def test_response_keys_during_narration_are_dropped_but_space_is_kept():
     gate = NarrationKeyGate()
-    assert gate.route(["up", "space"], speaking=True) == (False, [], 0)
+    assert gate.route(["up", "space"], speaking=True) == (False, [], 0)  # response key dropped, SPACE kept
     assert gate.route([], speaking=False) == (True, [], 0)
 
-
-def test_repeated_presses_collapse_to_one_and_are_counted():
-    gate = NarrationKeyGate()
+    gate = NarrationKeyGate()  # repeats collapse to one and are counted
     assert gate.route(["space", "space"], speaking=True) == (False, [], 1)
     assert gate.route(["space"], speaking=True) == (False, [], 1)  # pending already
     assert gate.route(["space"], speaking=False) == (True, [], 1)  # pending + this one = one delivery, one duplicate
 
-
-def test_nothing_is_delivered_when_nothing_was_pressed():
-    assert NarrationKeyGate().route([], speaking=False) == (False, [], 0)
+    # The COMPLETE screen needs a frame of its own: a press meant for the last trial must not dismiss it.
+    assert leaves_complete_screen("COMPLETE", True)
+    assert not leaves_complete_screen("COMPLETE", False)
+    assert not leaves_complete_screen("TRIAL_ACTIVE", True)
+    assert not leaves_complete_screen(None, True)
 
 
 def test_same_frame_presses_are_delivered_as_one(fake_gaze):
@@ -168,14 +140,6 @@ def test_same_frame_presses_are_delivered_as_one(fake_gaze):
     assert _phase(session) == "CALIBRATE_LEFT"  # not CENTER: the second press did not chain a stage
     assert session.space_tally.as_dict() == {"CALIBRATE_LEFT: duplicate press in the same frame": 1}
     assert deliver_space(session, 0) is False
-
-
-def test_complete_screen_needs_a_frame_of_its_own():
-    assert leaves_complete_screen("COMPLETE", True)
-    assert not leaves_complete_screen("COMPLETE", False)
-    assert not leaves_complete_screen("TRIAL_ACTIVE", True)  # a press meant for the last trial
-    assert not leaves_complete_screen(None, True)
-
 
 # -- real-run rules: saccade phase ------------------------------------------------------------------------------------------
 
@@ -261,7 +225,7 @@ def test_tutorial_space_in_quiz_is_counted(fake_gaze):
 # -- tally -------------------------------------------------------------------------------------------------------------------
 
 
-def test_tally_summary_names_phase_and_reason():
+def test_tally_summary_names_phase_and_reason_and_the_logger_stores_it(tmp_path, monkeypatch):
     tally = SpaceTally(lambda: "FOREPERIOD")
     assert "no ignored" in tally.summary("saccade")
     tally.record("during foreperiod", 2)
@@ -270,8 +234,6 @@ def test_tally_summary_names_phase_and_reason():
     assert tally.as_dict() == {"(start-up): pressed before the phase started": 1, "FOREPERIOD: during foreperiod": 2}
     assert "3 ignored SPACE press(es)" in tally.summary("saccade")
 
-
-def test_logger_stores_ignored_space_presses(tmp_path, monkeypatch):
     from src.experiment import logger as logger_module
 
     monkeypatch.setattr(logger_module, "DATA_DIR", tmp_path, raising=False)

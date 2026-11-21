@@ -11,17 +11,17 @@ from src.experiment import simulation
 from src.experiment.simulation import ParticipantProfile, simulate_session
 
 
-@pytest.mark.parametrize("name", sorted(EXTREME_PROFILES))
-def test_hostile_participants_terminate_cleanly_with_valid_rows(name):
-    sim = simulate_session(max_trials=10, profile=ParticipantProfile(**EXTREME_PROFILES[name]), seed=1)
-    assert check_session(sim) == []
+def test_hostile_participants_terminate_cleanly_with_valid_rows():
+    for name in sorted(EXTREME_PROFILES):
+        sim = simulate_session(max_trials=10, profile=ParticipantProfile(**EXTREME_PROFILES[name]), seed=1)
+        assert check_session(sim) == [], name
 
 
-@pytest.mark.parametrize("seed", range(12))
-def test_random_participants_produce_valid_rows(seed):
-    rng = random.Random(1000 + seed)
-    sim = simulate_session(max_trials=10, profile=ParticipantProfile(**random_profile(rng)), seed=seed)
-    assert check_session(sim) == []
+def test_random_participants_produce_valid_rows():
+    for seed in range(12):
+        rng = random.Random(1000 + seed)
+        sim = simulate_session(max_trials=10, profile=ParticipantProfile(**random_profile(rng)), seed=seed)
+        assert check_session(sim) == [], f"seed {seed}"
 
 
 def test_a_completely_dead_tracker_waits_for_signal_instead_of_crashing(monkeypatch):

@@ -16,9 +16,8 @@ PROFILES = [
 ]
 
 
-@pytest.mark.parametrize("profile", PROFILES, ids=["default", "dropouts", "low_latency"])
-@pytest.mark.parametrize("seed", [0, 1, 2])
-def test_live_zest_feed_matches_the_validity_gate(monkeypatch, profile, seed):
+def check_live_feed(monkeypatch, profile, seed) -> None:
+    """Asserts that the contrasts the live session fed ZEST are exactly the flashed, answered-or-missed, valid trials."""
     fed: list[float] = []
     original_update = ZestStaircase.update
 
@@ -27,10 +26,7 @@ def test_live_zest_feed_matches_the_validity_gate(monkeypatch, profile, seed):
         return original_update(self, contrast, detected)
 
     monkeypatch.setattr(ZestStaircase, "update", spy)
-    sim = simulate_session(max_trials=25, profile=profile, seed=seed)
-    rows = sim.saccade_results
-
-    # What the live session should have fed ZEST: flashed, answered-or-missed, valid trials.
+    rows = simulate_session(max_trials=25, profile=profile, seed=seed).saccade_results
     expected = [
         r.contrast
         for r in rows
@@ -38,7 +34,13 @@ def test_live_zest_feed_matches_the_validity_gate(monkeypatch, profile, seed):
         and r.outcome in ("correct", "incorrect", "miss")
         and is_valid_for_saccadic_analysis(r.flash_during_saccade, r.tracking_ok)
     ]
-    assert fed == expected
+    assert fed == expected, seed
+
+
+def test_live_zest_feed_matches_the_validity_gate(monkeypatch):
+    for profile in PROFILES:
+        for seed in (0, 1, 2):
+            check_live_feed(monkeypatch, profile, seed)
 
 
 def test_the_scenarios_above_actually_exercise_both_valid_and_invalid_flashes():
