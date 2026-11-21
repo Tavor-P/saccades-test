@@ -333,6 +333,11 @@ def _loglik_grid(contrasts: np.ndarray, n: np.ndarray, k: np.ndarray) -> np.ndar
 def _fit_pair(contrasts_s, n_s, k_s, contrasts_f, n_f, k_f) -> tuple[float, float, bool]:
     """Maximum-likelihood thresholds (saccade, fixation) with a slope shared by the two conditions.
     The last value is True when either threshold sits on the edge of the search grid (not identified)."""
+    return fit_pair_with_slope(contrasts_s, n_s, k_s, contrasts_f, n_f, k_f)[:3]
+
+
+def fit_pair_with_slope(contrasts_s, n_s, k_s, contrasts_f, n_f, k_f) -> tuple[float, float, bool, float]:
+    """`_fit_pair` plus the shared Weibull slope it chose (for drawing the fitted curves)."""
     ll_s, ll_f = _loglik_grid(contrasts_s, n_s, k_s), _loglik_grid(contrasts_f, n_f, k_f)
     best_s, best_f = ll_s.argmax(axis=1), ll_f.argmax(axis=1)
     rows = np.arange(len(_SLOPES))
@@ -343,7 +348,7 @@ def _fit_pair(contrasts_s, n_s, k_s, contrasts_f, n_f, k_f) -> tuple[float, floa
     # chance or all near ceiling).
     for t, c in ((ts, contrasts_s), (tf, contrasts_f)):
         edge = edge or t > _EXTRAPOLATION * c.max() or t < c.min() / _EXTRAPOLATION
-    return ts, tf, bool(edge)
+    return ts, tf, bool(edge), float(_SLOPES[b])
 
 
 def suppression_index(
@@ -534,6 +539,75 @@ def latest_timestamp(data_dir: Path) -> str:
     return ref.key
 
 
+@dataclass
+class RunAnalysis:
+    """One session's per-flash pipeline, before any file is written: saccades from the raw trace, every flash placed
+    against its nearest onset and labelled by the pre-specified gates (each run is gated against its OWN trace and median
+    saccade amplitude, so pooling several runs means concatenating these, never re-gating the combined data)."""
+
+    ref: session_files.SessionRef
+    meta: dict
+    t: np.ndarray
+    x: np.ndarray
+    saccades: list[Saccade]
+    placed: list[Placed]
+    gates: list
+    summary: dict  # summarize() plus "gates" and "suppression"
+    suppression: dict
+    geometry_line: str | None
+
+    @property
+    def stamp(self) -> str:
+        return self.ref.key if self.ref.is_legacy else self.ref.label
+
+
+def analyze_run(
+    ref: session_files.SessionRef,
+    clock_offset_ms: float | None = None,
+    flash_delay_ms: float = 0.0,
+    min_amplitude: float = MIN_AMPLITUDE,
+    near_ms: float | None = None,
+    far_ms: float | None = None,
+) -> RunAnalysis:
+    """The analysis numbers for one session (no files written). Raises ValueError when the meta file has no clock
+    offset and none is given, OSError when a file is missing."""
+    offset_history = None
+    meta: dict = {}
+    if clock_offset_ms is None:
+        meta = json.loads(ref.meta_path.read_text())
+        quality = meta.get("gaze_quality") or {}
+        clock_offset_ms = quality.get("clock_offset_ms")
+        offset_history = quality.get("clock_offset_history")
+        if clock_offset_ms is None:
+            raise ValueError("this session has no clock_offset_ms in its meta file; pass --offset-ms")
+    t, x = load_trace(ref.gaze_trace_path, clock_offset_ms / 1000, offset_history)
+    saccades = detect_saccades(t, x, min_amplitude=min_amplitude)
+    flashes = load_flashes(ref.trials_path)
+    placed = place_flashes(flashes, saccades, flash_delay_ms)
+    summary = summarize(placed, saccades)
+    gates = classify_flashes(placed, saccades, t, x, flash_delay_ms, [p.flash.go_cue for p in placed])
+    summary["gates"] = summarize_gates(placed, gates)
+    suppression = suppression_index(placed, near_ms, far_ms, gates=gates)
+    summary["suppression"] = suppression
+    try:
+        meta = json.loads(ref.meta_path.read_text())
+        geometry_line = format_geometry(meta.get("settings"))
+    except (OSError, ValueError, AttributeError, KeyError):
+        geometry_line = None
+    return RunAnalysis(ref, meta if isinstance(meta, dict) else {}, t, x, saccades, placed, gates, summary, suppression, geometry_line)
+
+
+def write_flash_rows(path: Path, placed: list[Placed], gates: list, extra: dict[str, list] | None = None) -> Path:
+    """The per-flash CSV; `extra` columns (name -> one value per flash) go first (the participant analysis adds the run)."""
+    extra = extra or {}
+    with Path(path).open("w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow([*extra, "trial", "contrast", "orientation", "outcome", "flash_rel_onset_ms", "inside_saccade", "condition", "gate_reason"])
+        for i, (p, g) in enumerate(zip(placed, gates)):
+            writer.writerow([*(values[i] for values in extra.values()), p.flash.trial, p.flash.contrast, p.flash.orientation, p.flash.outcome, "" if p.rel_ms is None else round(p.rel_ms, 1), p.inside, g.condition, g.reason])
+    return Path(path)
+
+
 def analyze(
     timestamp: str | None = None,
     data_dir: Path = DATA_DIR,
@@ -552,40 +626,15 @@ def analyze(
     ref = session_files.find_session(data_dir, timestamp or latest_timestamp(data_dir))
     if ref is None:
         raise FileNotFoundError(f"no session {timestamp!r} found in {data_dir}")
-    stamp = ref.key if ref.is_legacy else ref.label
-    offset_history = None
-    if clock_offset_ms is None:
-        meta = json.loads(ref.meta_path.read_text())
-        quality = meta.get("gaze_quality") or {}
-        clock_offset_ms = quality.get("clock_offset_ms")
-        offset_history = quality.get("clock_offset_history")
-        if clock_offset_ms is None:
-            raise ValueError("this session has no clock_offset_ms in its meta file; pass --offset-ms")
-    t, x = load_trace(ref.gaze_trace_path, clock_offset_ms / 1000, offset_history)
-    saccades = detect_saccades(t, x, min_amplitude=min_amplitude)
-    flashes = load_flashes(ref.trials_path)
-    placed = place_flashes(flashes, saccades, flash_delay_ms)
-    summary = summarize(placed, saccades)
-    gates = classify_flashes(placed, saccades, t, x, flash_delay_ms, [p.flash.go_cue for p in placed])
-    summary["gates"] = summarize_gates(placed, gates)
-    suppression = suppression_index(placed, near_ms, far_ms, gates=gates)
-    summary["suppression"] = suppression
-    try:
-        geometry_line = format_geometry(json.loads(ref.meta_path.read_text()).get("settings"))
-    except (OSError, ValueError, AttributeError, KeyError):
-        geometry_line = None
-    report = format_report(summary, label=f"(session {stamp})", geometry=geometry_line) + "\n" + format_gate_report(summary["gates"]) + "\n" + format_suppression(suppression)
+    run = analyze_run(ref, clock_offset_ms, flash_delay_ms, min_amplitude, near_ms, far_ms)
+    stamp, summary, suppression, placed, gates = run.stamp, run.summary, run.suppression, run.placed, run.gates
+    report = format_report(summary, label=f"(session {stamp})", geometry=run.geometry_line) + "\n" + format_gate_report(summary["gates"]) + "\n" + format_suppression(suppression)
 
     out_dir = Path(out_dir) if out_dir is not None else ref.analysis_dir
     out_dir.mkdir(parents=True, exist_ok=True)
     name = lambda plain, legacy: out_dir / (legacy.format(ts=ref.key) if ref.is_legacy else plain)  # noqa: E731
-    png = plot_report(placed, saccades, summary, name("plot.png", "analysis_{ts}.png"), title=f"Session {stamp}")
-    csv_path = name("flashes.csv", "analysis_{ts}_flashes.csv")
-    with csv_path.open("w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(["trial", "contrast", "orientation", "outcome", "flash_rel_onset_ms", "inside_saccade", "condition", "gate_reason"])
-        for p, g in zip(placed, gates):
-            writer.writerow([p.flash.trial, p.flash.contrast, p.flash.orientation, p.flash.outcome, "" if p.rel_ms is None else round(p.rel_ms, 1), p.inside, g.condition, g.reason])
+    png = plot_report(placed, run.saccades, summary, name("plot.png", "analysis_{ts}.png"), title=f"Session {stamp}")
+    csv_path = write_flash_rows(name("flashes.csv", "analysis_{ts}_flashes.csv"), placed, gates)
     json_path = name("suppression.json", "analysis_{ts}_suppression.json")
     json_path.write_text(json.dumps(suppression, indent=2))
     report_path = name("report.txt", "analysis_{ts}_report.txt")

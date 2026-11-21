@@ -37,7 +37,7 @@ Real-Time API) or, with `SACCADES_BACKEND=webcam` (no dialog field any more), FL
 - Environment: PowerShell 5.1 has no `&&`; files may be CRLF (keep each file's endings); `.gitignore` has `data/`, which also matches any `data` folder (tests: use `tests/fixtures/`).
 - `data/` is git-ignored runtime output: never commit it, never write to it from tests/simulations (simulator uses an in-memory logger).
 - Participant data (trials, gaze trace, glasses video) is personal data: never commit it, never print it in reports, never copy real sessions into `tests/fixtures/` (only anonymous recordings belong there).
-- Report test results truthfully (ran / skipped). Suite: ~580 tests, ~1-2 min, 2 skipped without PySpin/mediapipe (`test_camera.py`, `test_gaze_tracking.py` `importorskip`).
+- Report test results truthfully (ran / skipped). Suite: ~590 tests, ~1-2 min, 2 skipped without PySpin/mediapipe (`test_camera.py`, `test_gaze_tracking.py` `importorskip`).
 
 ## Commands (all through the wrapper)
 
@@ -47,9 +47,10 @@ Real-Time API) or, with `SACCADES_BACKEND=webcam` (no dialog field any more), FL
 .\scripts\py.ps1 -m src.experiment.simulation                   # headless simulated trial timeline (AI-safe)
 .\scripts\py.ps1 tests/ai-tests/run_sim.py --help               # sim runner: --scenario --set --profile --sweep --sweep-profile --seeds --timeline --json --real --list
 .\scripts\py.ps1 -m src.experiment.run_experiment               # REAL experiment (human only)
-# double-click launchers in the repo root: run_experiment.bat, analyze_latest.bat, run_tests.bat (extra args pass through; fine from cmd)
+# double-click launchers in the repo root: run_experiment.bat, analyze_latest.bat, analyze_participant.bat (asks for the ID), run_tests.bat (extra args pass through; fine from cmd)
 .\scripts\py.ps1 -m src.dashboard.app                           # dashboard, localhost:5000 (human)
 .\scripts\py.ps1 -m src.experiment.analyze_session [session] [--data-dir D]  # newest session by default (unix ts, run folder name or path); writes <run>/analysis/
+.\scripts\py.ps1 -m src.experiment.analyze_participant <participant-id> [--data-dir D] [--include-test]  # pools all compatible runs; writes data/<participant>/analysis/
 .\scripts\py.ps1 -m src.experiment.import_glasses_video <run-folder> <exported.mp4>  # attach + sync the phone's glasses video
 .\scripts\py.ps1 -m src.eye_tracking.neon_fixation_test [secs]  # Neon jitter check (human)
 .\scripts\py.ps1 -m src.eye_tracking.latency_test               # Neon vs webcam latency (human)
@@ -73,8 +74,8 @@ Real-Time API) or, with `SACCADES_BACKEND=webcam` (no dialog field any more), FL
   (2) RT SD ~60-80 ms, only ~2/7 of flashes land within +-50 ms of onset (TBI likely worse); live rolling RT helps only with drift (simulation only).
   (3) Screen geometry is typed into the startup dialog each run (remembered); until the user measures their small monitor (~12 in wide, 60 Hz) it is the 26 cm / 50 cm placeholder and the dialog says so. Saccade size in degrees also depends on width and distance.
   (4) The separate baseline (foveal) phase was removed (not a like-for-like control, different retinal location): fixation now comes only from the saccade phase's control flashes + flashes >=100 ms from any saccade; the simulator gives ~55 fixation / ~31 saccade flashes per 150 trials (`flash_gates`; ~43 within +-50 ms of onset), so ~18/~10 per contrast level (SD 60: ~51/~37; SD 100: ~59/~30; old +-90 uniform: ~46/~36).
-- **Next, in order**: (1) short Test run then full 150-trial Real run with participant ID on glasses, analyse with `analyze_session`; (2) group analysis
-  (per-person suppression index + group test or mixed model); (3) one-page grant figure + wording; (4) clinical metadata fields (group, time since injury,
+- **Next, in order**: (1) short Test run then full 150-trial Real run with participant ID on glasses, analyse with `analyze_session`, several runs per person pooled by `analyze_participant`; (2) group analysis
+  (per-person pooled index done in `analyze_participant`; next a dashboard results page, then a comparison engine: 1-vs-1, group-vs-group Mann-Whitney on the per-person indices, 1-vs-group); (3) one-page grant figure + wording; (4) clinical metadata fields (group, time since injury,
   severity, symptoms, medication; needs IRB) in the dashboard; (5) find the ~95 ms delay cause (e.g. Neon in its own process); (6) update geometry constants.
 
 ## Repo map
@@ -108,7 +109,10 @@ Paths in this section are checked by `tests/test_docs.py` - keep them real.
 | `src/experiment/session_files.py` | run-folder naming (`sanitize_participant_id`, `create_session_folder`), `SessionRef`, `list_sessions`/`find_session`/`newest_session` (a session's key is its unix start time) |
 | `src/experiment/glasses_video.py` | no PsychoPy: sync-flash frame counts, `find_sync_flashes`, `compute_offset` (residual, ok/check manually) |
 | `src/experiment/import_glasses_video.py` | CLI: copies exported video to `<run>/glasses/`, writes `video_sync.json` + `flash_video_times.csv` |
-| `src/experiment/analyze_session.py` | post-hoc analysis: saccades from the raw gaze trace (phone capture times), flashes placed against nearest onset; report + plot + per-flash CSV |
+| `src/experiment/analyze_session.py` | post-hoc analysis: saccades from the raw gaze trace (phone capture times), flashes placed against nearest onset; report + plot + per-flash CSV; `analyze_run()` = the per-run pipeline without writing files |
+| `src/experiment/analyze_participant.py` | pooled per-participant index: `analyze_participant()` runs `analyze_run` per run folder (test runs only with `--include-test`, old loose files ignored), pools the largest set with equal `saccade_contrasts_pct` + geometry (others listed with the reason), same `suppression_index`; writes `data/<participant>/analysis/` incl. summary.json (`SUMMARY_KEYS`, `schema_version` 1: the comparison module's input) |
+| `analyze_participant.bat` | double-click launcher for the pooled analysis (prompts for the participant ID) |
+| `tests/ai-tests/synthetic_runs.py` | `write_run()`: anonymous synthetic run folders (real trials.csv writers, known saccades and Weibull answers) for analysis tests |
 | `src/experiment/run_summary.py` | end-of-run plain-language summary (RUN_SUMMARY.txt in the run folder + console, never raises; CLI `-m src.experiment.run_summary [session]`); `run_experiment` shows a final "Done" screen after it
 | `src/experiment/flash_gates.py` | pre-specified gates (Braun 2021): `saccade` (eye fast at flash, latency 100-500 ms, amplitude 0.5-1.5x median), `fixation` (>=100 ms from any saccade, no tracking gap), else `excluded`; controls from `CONTROL_OFFSETS_MS` |
 | `src/experiment/simulation.py` | headless simulator (simulated participant, clock, gaze) |
