@@ -26,11 +26,8 @@ def test_every_string_is_short_and_uses_plain_words():
         assert not re.search(r"other dot|cross", text, re.IGNORECASE), text
 
 
-def test_the_sync_step_line_says_what_is_coming():
-    assert run_experiment.SYNC_FLASH_ANNOUNCEMENT == words.SYNC_FLASH
-    assert "green" in words.SYNC_FLASH and "normal" in words.SYNC_FLASH
-
-
-def test_dots_are_named_by_position():
+def test_dots_are_named_by_position_and_the_sync_step_line_says_what_is_coming():
     assert "left" in words.CALIBRATE_LEFT and "right" in words.CALIBRATE_RIGHT and "middle" in words.CALIBRATE_CENTER
     assert "left" in words.RT_TEST_INTRO
+    assert run_experiment.SYNC_FLASH_ANNOUNCEMENT == words.SYNC_FLASH
+    assert "green" in words.SYNC_FLASH and "normal" in words.SYNC_FLASH

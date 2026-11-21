@@ -13,42 +13,28 @@ SACC = Saccade(onset=1.0, offset=1.07, x0=0.1, x1=0.8, peak_speed=10.0)
 GO_CUE = 0.75  # latency 250 ms
 
 
-def test_flash_during_the_movement_is_a_saccade_flash():
+def test_flash_during_the_movement_is_a_saccade_flash_and_long_after_landing_is_fixation():
     r = classify_flash(1.035, [SACC], T, X, GO_CUE, 0.7)
     assert r.condition == SACCADE and r.latency_ms == 250
+    assert classify_flash(1.5, [SACC], T, X, GO_CUE, 0.7).condition == FIXATION
 
 
-def test_flash_long_after_landing_is_fixation():
-    r = classify_flash(1.5, [SACC], T, X, GO_CUE, 0.7)
-    assert r.condition == FIXATION
-
-
-def test_flash_just_before_onset_is_excluded_not_fixation():
-    """Within +-100 ms of a saccade but the eye is still: neither a clean control nor a saccade flash."""
+def test_still_eye_near_onset_anticipations_and_odd_amplitudes_are_excluded():
+    # Within +-100 ms of a saccade but the eye is still: neither a clean control nor a saccade flash.
     r = classify_flash(0.95, [SACC], T, X, GO_CUE, 0.7)
     assert r.condition == EXCLUDED and "not moving" in r.reason
-
-
-def test_anticipation_latency_is_excluded():
     r = classify_flash(1.035, [SACC], T, X, go_cue=0.95, median_amplitude=0.7)  # 50 ms latency
     assert r.condition == EXCLUDED and "latency" in r.reason
-
-
-def test_odd_amplitude_is_excluded():
     r = classify_flash(1.035, [SACC], T, X, GO_CUE, median_amplitude=2.0)  # this one is 0.35x the median
     assert r.condition == EXCLUDED and "amplitude" in r.reason
 
 
-def test_tracking_gap_excludes_a_fixation_flash():
+def test_a_tracking_gap_or_no_saccades_excludes_the_flash():
     keep = (T < 1.4) | (T > 1.6)  # 200 ms hole around t = 1.5
     t, x = T[keep], X[keep]
     assert has_tracking_gap(t, 1.5)
     assert classify_flash(1.5, [SACC], t, x, GO_CUE, 0.7).condition == EXCLUDED
-
-
-def test_no_saccades_excludes_everything():
     assert classify_flash(1.0, [], T, X).condition == EXCLUDED
-
 
 def test_control_offsets_are_late_enough_to_follow_the_saccade():
     """Typical reaction ~250 ms + a ~75 ms saccade + the 100 ms fixation exclusion, with an SD of ~70 ms of slack."""

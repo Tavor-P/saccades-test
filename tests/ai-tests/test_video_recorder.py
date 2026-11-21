@@ -45,29 +45,18 @@ def _make_recorder(tmp_path, fake_writer):
     return recorder, video_path, timestamps_path
 
 
-def test_write_one_frame_sends_a_bgr_frame_to_the_writer(tmp_path, fake_writer):
+def test_written_frames_become_bgr_get_a_timestamp_row_and_are_counted(tmp_path, fake_writer):
     recorder, _, timestamps_path = _make_recorder(tmp_path, fake_writer)
     recorder.start()
     try:
         gray_frame = np.zeros((4, 4), dtype=np.uint8)
-        recorder._write_one_frame(gray_frame, now_ms=1234.5)
-        assert len(fake_writer.frames_written) == 1
-        written = fake_writer.frames_written[0]
-        assert written.shape == (4, 4, 3)  # converted to 3-channel BGR
-    finally:
-        recorder.stop()
-
-
-def test_write_one_frame_logs_a_timestamp_row(tmp_path, fake_writer):
-    recorder, _, timestamps_path = _make_recorder(tmp_path, fake_writer)
-    recorder.start()
-    try:
-        gray_frame = np.zeros((4, 4), dtype=np.uint8)
+        assert recorder.frames_written == 0
         recorder._write_one_frame(gray_frame, now_ms=1234.5)
         recorder._write_one_frame(gray_frame, now_ms=1267.8)
+        assert recorder.frames_written == 2
+        assert fake_writer.frames_written[0].shape == (4, 4, 3)  # converted to 3-channel BGR
     finally:
         recorder.stop()
-
     with timestamps_path.open(newline="") as f:
         rows = list(csv.DictReader(f))
     assert [r["frame_index"] for r in rows] == ["0", "1"]
@@ -75,55 +64,25 @@ def test_write_one_frame_logs_a_timestamp_row(tmp_path, fake_writer):
     assert rows[1]["unix_time_ms"] == "1267.800"
 
 
-def test_frames_written_counts_written_frames(tmp_path, fake_writer):
-    recorder, _, _ = _make_recorder(tmp_path, fake_writer)
+def test_start_warns_only_when_the_writer_fails_to_open_and_stop_releases_everything(tmp_path, fake_writer, capsys):
+    recorder, _, timestamps_path = _make_recorder(tmp_path, fake_writer)
     recorder.start()
-    try:
-        gray_frame = np.zeros((2, 2), dtype=np.uint8)
-        assert recorder.frames_written == 0
-        recorder._write_one_frame(gray_frame, now_ms=0.0)
-        recorder._write_one_frame(gray_frame, now_ms=1.0)
-        assert recorder.frames_written == 2
-    finally:
-        recorder.stop()
+    assert capsys.readouterr().err == ""
+    recorder.stop()
+    assert fake_writer.released is True
+    with timestamps_path.open(newline="") as f:  # closed, header only, still readable
+        assert list(csv.DictReader(f)) == []
 
-
-def test_start_warns_on_stderr_when_the_writer_fails_to_open(tmp_path, capsys):
-    video_path = tmp_path / "video.mp4"
-    timestamps_path = tmp_path / "timestamps.csv"
-    broken_writer = _FakeWriter(opened=False)
+    video_path = tmp_path / "broken.mp4"
     recorder = VideoRecorder(
-        video_path, timestamps_path, frame_source=_FakeFrameSource([]), writer_factory=lambda: broken_writer
+        video_path, tmp_path / "broken.csv", frame_source=_FakeFrameSource([]), writer_factory=lambda: _FakeWriter(opened=False)
     )
     recorder.start()
     try:
-        captured = capsys.readouterr()
-        assert "WARNING" in captured.err
-        assert str(video_path) in captured.err
+        err = capsys.readouterr().err
+        assert "WARNING" in err and str(video_path) in err  # cv2.VideoWriter fails silently otherwise
     finally:
         recorder.stop()
-
-
-def test_start_does_not_warn_when_the_writer_opens_successfully(tmp_path, fake_writer, capsys):
-    recorder, _, _ = _make_recorder(tmp_path, fake_writer)
-    recorder.start()
-    try:
-        captured = capsys.readouterr()
-        assert captured.err == ""
-    finally:
-        recorder.stop()
-
-
-def test_stop_releases_the_writer_and_closes_the_timestamps_file(tmp_path, fake_writer):
-    recorder, _, timestamps_path = _make_recorder(tmp_path, fake_writer)
-    recorder.start()
-    recorder.stop()
-    assert fake_writer.released is True
-    # File is closed but its contents (just the header, no frames written) are
-    # still readable from disk.
-    with timestamps_path.open(newline="") as f:
-        rows = list(csv.DictReader(f))
-    assert rows == []
 
 
 def test_loop_polls_the_frame_source_in_the_background(tmp_path, fake_writer):
