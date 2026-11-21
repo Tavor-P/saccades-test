@@ -13,7 +13,8 @@ tests, not yet on real glasses with a person** (see [Known limitations](#known-l
 **Which part do you need?**
 - Setting up a PC for the first time: [First-time setup](#first-time-setup).
 - Running a participant: [Run day](#run-day-experimenter-quick-start) (printable: [docs/experimenter_checklist.md](docs/experimenter_checklist.md)).
-- Reading the results: [Output](#output), [Analysing a session](#analysing-a-session), [Comparing participants](#comparing-participants), [Study summary](#study-summary).
+- Reading the results, the quick way (no programming): [Analysing your data in 3 clicks](#analysing-your-data-in-3-clicks) and [How to read the numbers](#how-to-read-the-numbers).
+- Reading the results, the details: [Output](#output), [Analysing a session](#analysing-a-session), [Comparing participants](#comparing-participants), [Study summary](#study-summary), [Dashboard](#dashboard).
 - Why it is built this way: [Research background](#research-background).
 
 ## Words used in this document
@@ -30,6 +31,11 @@ tests, not yet on real glasses with a person** (see [Known limitations](#known-l
 | Threshold | The contrast at which the participant starts to see the line reliably, from a curve fitted to the answers (pure guessing gives 50 % correct). |
 | Open-loop timing | Flashes are scheduled from the person's average reaction time rather than triggered when the eye starts to move, because gaze reaches the PC late. Whether a flash really hit the saccade is judged afterwards. |
 | Tutorial | An optional narrated first-timer on-ramp: instructions, calibration, a how-to-answer quiz, 8 practice trials. |
+| Pooled analysis | One person's runs combined into a single analysis (one suppression index from all their flashes); only runs with the same contrasts and screen geometry are pooled. |
+| Group label | Free text attached to a participant (e.g. `TBI`, `control`) in `data/participants.json`; it only picks who is compared with whom, no clinical details. |
+| Set A / Set B | The two sides of a comparison: each is a list of people, a whole group (`group:TBI`) or `all`. |
+| Mann-Whitney test | The test used for group vs group: it compares the people's indices by rank and gives a p-value (see [How to read the numbers](#how-to-read-the-numbers)). |
+| Percentile | Where one person falls among a group: "20th percentile" = about a fifth of the group have a lower index. |
 
 ## First-time setup
 
@@ -64,7 +70,7 @@ Command Prompt, the Run box or Explorer opens the .ps1 file in an editor instead
 5. At the end the console and `RUN_SUMMARY.txt` in the run folder show what happened and the next commands; SPACE closes the window.
 6. Export the scene video from the phone (see [Glasses video](#glasses-video)), then attach it:
    `.\scripts\py.ps1 -m src.experiment.import_glasses_video data\<participant>\<run folder> <video.mp4>`
-7. Analyse: double-click `analyze_latest.bat` (newest run). After several runs of the same person, double-click `analyze_participant.bat` and type the Participant ID.
+7. Analyse: open the dashboard and click **Analyse**, or double-click `analyze_latest.bat` (newest run); after several runs of the same person, `analyze_participant.bat` (asks for the ID). Details: [Analysing your data in 3 clicks](#analysing-your-data-in-3-clicks).
 
 > **Participant script.** "Look at the dot and press SPACE when you are ready. After a moment, with a beep, it jumps to the other side of the screen: look at it as fast as you can.
 > Around then a very faint thin line flashes for an instant above or below it. Press UP if it was above, DOWN if below, and guess if you are not sure.
@@ -136,7 +142,16 @@ data/<participant id>/<YYYY-MM-DD_HH-MM-SS>[_test]/
   glasses/             the phone's video + video_sync.json + flash_video_times.csv (written by import_glasses_video)
 data/<participant id>/analysis/
                        report.txt, plot.png, flashes.csv, summary.json for all runs pooled (written by analyze_participant)
+data/participants.json group labels (written by `participants` / the dashboard's Group box)
+data/study_summary.csv one row per participant, plus study_summary.txt (written by study_summary)
+data/comparisons/<date-time>_<A>_vs_<B>/
+                       report.txt, comparison.csv, comparison.json, plot.png (written by compare)
+data/comparisons/dashboard/<id of the selection>/
+                       the same four files, written by the dashboard's Compare page (overwritten when the same selection is reopened)
 ```
+
+Test-mode runs have `_test` on the folder name and are left out of every pooled analysis, comparison and study summary unless you ask for them
+(`--include-test`, or the **Include test runs** box in the dashboard).
 
 `trials.csv` columns (booleans are `yes`/`no`; practice trials are not written): `phase` (saccade / rt_test; `baseline` only in old runs), `trial`, `contrast_pct`,
 `flash_shown`, `flash_during_saccade` (the live, unreliable judgement), `answered`, `correct`, `outcome` (correct / wrong / no_answer / detected),
@@ -148,6 +163,49 @@ the trial's parity within its phase. The code-side schema is `TRIAL_COLUMNS` in 
 `glasses_video` (recording state and sync-flash times).
 
 Older sessions (loose `data/results_<timestamp>.csv`, `_meta.json`, and `vertical`/`horizontal` sides from the grating version) are never rewritten and are still read.
+
+## Analysing your data in 3 clicks
+
+For anyone who does not program. The numbers are exploratory (a feasibility pilot, see the top of this page); this section only says where to click.
+
+1. **Start the dashboard.** Open a terminal in the project folder and run `.\scripts\py.ps1 -m src.dashboard.app`, then open <http://localhost:5000> in a browser.
+   It runs only on this computer (Ctrl+C in the terminal closes it).
+2. **Click Analyse.** Each run has an **Analyse** button, and the **Participants** table has one per person: that gives the **pooled result** of all their runs (one run alone has
+   too few flashes for a stable index). Tick **Include test runs** only if you really want test-mode runs counted. The page stays blank for a few seconds while it works.
+3. **Read the page.** At the top is the result in one sentence, then the plot, then the **data-quality box**: a green / amber / red light per check with its rule written next to it
+   (see [How to read the numbers](#how-to-read-the-numbers)). `flashes.csv`, `summary.json` and `report.txt` can be downloaded from there.
+
+**Comparing people** (needs two or more participants):
+1. In the **Participants** table type a **Group** for each person (e.g. `TBI` or `control`); it saves when you click out of the box.
+2. Open **Compare** (top link). Tick people in **Set A** and **Set B**, or use the quick picks (**all in group X**, **all**, **clear**), and press **Compare**.
+   One person vs one person, one person vs a group and group vs group are chosen automatically from who is ticked. Someone can be on one side only.
+3. Open **Study summary** (top link) for one row per participant and a download of `study_summary.csv`, ready for Excel, SPSS or R.
+
+**Without the dashboard**: double-click the launchers in the project folder:
+
+| Launcher | Does | Output |
+|---|---|---|
+| `analyze_latest.bat` | analyses the newest run | `analysis/` inside that run folder |
+| `analyze_participant.bat` | asks for a participant ID, pools all their runs | `data/<participant id>/analysis/` |
+| `compare.bat` | asks for Set A and Set B (e.g. `P01` and `group:control`; set group labels first with `participants set`, see [Comparing participants](#comparing-participants)) | `data/comparisons/<date-time>_<A>_vs_<B>/` |
+| `study_summary.bat` | the one-CSV overview | `data/study_summary.csv` |
+
+### How to read the numbers
+
+- **Suppression index (0 to 1).** `1 - threshold(fixation) / threshold(saccade)`. 0 = the line is seen as well during a saccade as during fixation (no suppression); 1 = never seen
+  during saccades; negative = better during saccades. It is per person.
+- **95 % CI** (confidence interval): the range the true number plausibly lies in, found by resampling the person's flashes (for groups, the people). Wide = uncertain. For a
+  difference, a CI that does not include 0 means the data show a difference; one that includes 0 means the data cannot tell them apart.
+- **p-value** (group vs group only, Mann-Whitney test): the chance of a difference at least this large if the two groups really did not differ. Below 0.05 is the usual "evidence of a difference";
+  a large p does not show the groups are the same. **Every comparison with fewer than 10 people per side is marked "exploratory"**: this is a feasibility pilot, so treat results as a
+  first look, not a conclusion; with so few people the CIs are rough and a p-value means little.
+- **Why 1 vs group has no p-value**: a test compares the gap between groups with how much people within a group differ, and one person gives no estimate of that. You get the person's
+  percentile in the group and whether the group's median lies inside the person's own CI instead.
+- **"Accuracy-based (fallback)"**: when a condition has too few flashes or contrasts for the threshold fit (fewer than 12 flashes), the index is replaced by the simpler
+  accuracy difference (fixation minus saccade). It is on a different scale, so a fallback index is not compared with a threshold index.
+- **Quality lights.** Green = the check passes. **Amber** = usable but weaker: some pooled runs left out, only the fallback method, 5-11 flashes in the smaller condition, a long gaze delay or
+  tracking pause, or head movement flagged (those trials are already excluded). **Red** = no number: fewer than 5 flashes in a condition, or no run could be pooled.
+  Grey = not recorded. The exact limits are printed next to each light.
 
 ## Analysing a session
 
@@ -167,7 +225,7 @@ the nearest saccade onset, and writes accuracy vs time-from-onset. It labels eve
 `1 - CS_saccade / CS_fixation = 1 - threshold_fixation / threshold_saccade` (CS = contrast sensitivity = 1 / threshold), with a bootstrap 95 % CI. 0 means no suppression, 1 means
 flashes are never seen during saccades, negative means better during saccades. If the fit is not possible (fewer than 12 flashes in a condition, fewer than 2 contrasts, or accuracy
 at ceiling/floor so no threshold is identified) it falls back to a clearly labelled **accuracy difference** (fixation minus saccade) with a Wilson-based CI; if
-either condition has too few flashes (or both are at ceiling or fixation accuracy is near chance) the report says "cannot be computed" with the reason. Options: `--offset-ms`,
+either condition has fewer than 5 flashes (or both are at ceiling or fixation accuracy is near chance) the report says "cannot be computed" with the reason. Options: `--offset-ms`,
 `--flash-delay-ms`, `--min-amplitude`, `--index-near-ms`, `--index-far-ms` (see `--help`).
 
 ### All runs of one participant
@@ -195,7 +253,7 @@ First give people a group (any text; only used to pick who is compared with whom
 .\scripts\py.ps1 -m src.experiment.participants list
 ```
 
-The labels live in `data/participants.json`. Then compare two sets (or double-click `compare.bat`, which asks for both):
+The labels live in `data/participants.json` (the dashboard's Group box edits the same file). Then compare two sets (or double-click `compare.bat`, which asks for both):
 
 ```
 .\scripts\py.ps1 -m src.experiment.compare "P01" "P07"
@@ -221,7 +279,7 @@ geometry than the majority (never mixed), or (groups) when their index came from
 group has fewer than 3 people or a person has fewer than 12 flashes per condition, and **every result with fewer than 10 people per side is marked
 exploratory**: this is a feasibility pilot, not a group result. With so few people the CIs are rough and a non-small p means little.
 
-The results go to `data/comparisons/<date-time>_<A>_vs_<B>/` (printed at the end): `report.txt` (one-sentence result first), `comparison.csv` (one row
+The results go to `data/comparisons/<date-time>_<A>_vs_<B>/` (printed at the end; the dashboard uses `data/comparisons/dashboard/`): `report.txt` (one-sentence result first), `comparison.csv` (one row
 per person: ID, group, set, index, CI, method, flashes, used or not and why), `comparison.json` (all numbers) and `plot.png` (1 vs 1: both people's
 accuracy vs time from saccade onset; groups: one dot per person with the medians; 1 vs group: the group's dots with the person highlighted).
 
@@ -257,46 +315,30 @@ Not verified on real footage: whether the scene camera sees the green flash from
 ```
 
 [http://localhost:5000](http://localhost:5000) lists past sessions (both layouts): label, filter, adjust the default contrast floor (used only when the saccade phase runs the staircase instead of fixed contrasts), delete. Old runs' baseline rows are listed too.
+The click-by-click route is in [Analysing your data in 3 clicks](#analysing-your-data-in-3-clicks); this section says what each page does.
 
-**Analysing without the command line**: each run has an **Analyse** button, and the **Participants** table has one per person (tick
-**Include test runs** to add test-mode runs; a person with only test runs needs it). The button opens a results page that runs the same analysis as
-`analyze_session` / `analyze_participant` (the page stays blank while it works: about 7 s for one 150-trial run and 10 s for a person
-with three, measured on synthetic data; reopening a saved analysis is instant) and shows:
-
-- the result in one sentence, with what the number means;
-- the plot;
-- a **data-quality box** with a green / amber / red light per check, each rule written next to it: gaze delay (green up to 150 ms; the
-  usual ~95 ms is fine because the analysis uses the phone's own times), tracking gaps (green up to 150 ms), head movement (if the run recorded it),
-  flashes per condition (green 12 or more each, amber 5-11, red under 5: the limits the analysis itself uses), which method gave the result,
-  and, for a participant, the runs left out of the pooling with the reason;
-- for a participant, a table of every run;
-- download links for `flashes.csv`, `summary.json` / `suppression.json` and `report.txt`.
+**Results pages** (**Analyse** on a run or a participant) run the same analysis as `analyze_session` / `analyze_participant` (about 7 s for one 150-trial run and 10 s for a person with three,
+measured on synthetic data; reopening a saved analysis is instant) and show the one-sentence result, the plot, the data-quality box, for a participant a table of every run, and download links
+for `flashes.csv`, `summary.json` / `suppression.json` and `report.txt`. The quality box has one light per check, each rule written next to it:
+- gaze delay (green up to 150 ms; the usual ~95 ms is fine because the analysis uses the phone's own times) and tracking gaps (green up to 150 ms): these never turn red;
+- head movement (if the run recorded it);
+- flashes per condition (green 12 or more each, amber 5-11, red under 5: the limits the analysis itself uses) and which method gave the result;
+- for a participant, the runs left out of the pooling with the reason.
 
 A saved analysis is shown again (with "Analysed at ...") while it is newer than every run file; otherwise, or after **Re-analyse**, it runs again.
 Deleting a run also deletes that participant's pooled analysis (it no longer matches) and the participant folder once it is empty. Problems
 (no gaze recording, no clock offset, only test runs) are shown as a sentence on the page.
 
-**Labelling groups**: the **Participants** table has a **Group** box (free text with suggestions, e.g. TBI or control) and a **Note** box per
-person; they save when you click out of the box. The labels go to `data/participants.json`, the same file the command line uses, and only
-decide who can be picked together on the Compare page (no clinical details: they need IRB approval). Empty both boxes to remove a label.
+**Group labels:** the **Participants** table has a **Group** box (free text with suggestions) and a **Note** box per person. They go to `data/participants.json`, the same file the command
+line uses, and only decide who can be picked together on the Compare page (no clinical details: they need IRB approval). Empty both boxes to remove a label.
 
-**Compare** (top link, `/compare`): two columns, **Set A** and **Set B**, each listing every participant with their group and run count. Tick any
-number of people on each side, or use the quick picks (**all in group X**, **all**, **clear**), tick **Include test runs** if wanted, and press
-**Compare**. One person vs one person, one vs a group, and group vs group are chosen automatically from how many usable people each side has.
-A person may be on one side only. The result shows:
-- the headline sentence;
-- the mode in words, with a "how to read this" line (for example, why 1 vs group has no p-value);
-- the plot;
-- a table of every person: set, group, index, CI, method, flashes, and used or left out with the reason;
-- the warnings in an amber box: every result is exploratory at pilot sizes;
-- downloads: `comparison.csv`, `comparison.json`, `report.txt` and `plot.png`.
+**Compare** (`/compare`): the **Set A** / **Set B** columns list every participant with their group and run count. The result shows the headline sentence, the mode in words with a
+"how to read this" line, the plot, a table of every person (set, group, index, CI, method, flashes, used or left out with the reason), the warnings in an amber box and downloads of
+`comparison.csv`, `comparison.json`, `report.txt` and `plot.png`. What the three modes mean is in [Comparing participants](#comparing-participants).
+The address bar holds only the selection (e.g. `/compare?a=P01,P02&b=group:control`), so a bookmark re-opens the same comparison; a `group:` pick follows the group's members at the time you open it.
+The page stays blank while it works: a person without a fresh saved analysis is analysed first, plus the bootstrap (not timed on real data).
 
-The address bar holds only the selection (e.g. `/compare?a=P01,P02&b=group:control`), so a bookmark re-opens the same comparison. A
-`group:` pick follows the group's members at the time you open it. The files are written to `data/comparisons/dashboard/` and overwritten
-when the same selection is opened again. The page stays blank while it works: a person without a fresh saved analysis is analysed first (as on their results page), plus the bootstrap (not timed on real data).
-
-**Study summary** (top link, `/study`): the `study_summary` table, one row per participant with a link to their results page, plus a
-download of `study_summary.csv`. Opening the page rewrites `data/study_summary.csv` / `.txt`.
+**Study summary** (`/study`): the [study summary](#study-summary) table with a link to each person's results page and a download of `study_summary.csv`. Opening the page rewrites `data/study_summary.csv` / `.txt`.
 
 ## Data and privacy
 
@@ -381,14 +423,14 @@ flashes 50-300 ms away; small numbers and a window chosen after seeing the first
 - **No separate baseline phase any more.** It was removed because foveal fixation is not a like-for-like control (a different retinal location). The fixation condition of the
   suppression index now comes only from the saccade phase: control flashes and flashes at least 100 ms from any saccade, so it depends on enough of them landing
   (150 trials give roughly 31 saccade-condition and 55 fixation-condition flashes in the simulator; real data may differ).
-- A single participant so far; no group analysis exists.
+- A single participant so far: the group tools (pooled analysis, comparison, study summary, dashboard pages) are built and tested on synthetic data only, so no real group result exists. The dashboard pages have not been opened in a real browser.
 
 ## For developers
 
 [CLAUDE.md](CLAUDE.md) describes the architecture, the repo map and the gotchas. All logic can be run without hardware:
 
 ```
-.\scripts\py.ps1 -m pytest -q                 # about 285 tests in ~3 min, no glasses or window needed
+.\scripts\py.ps1 -m pytest -q                 # 293 tests pass (+2 skipped without PySpin/mediapipe), about 4 min, no glasses or window needed
 .\scripts\py.ps1 -m src.experiment.simulation # headless simulated trial; see tests/ai-tests/README.md for run_sim.py
 ```
 

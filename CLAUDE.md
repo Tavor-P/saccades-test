@@ -37,7 +37,7 @@ Real-Time API) or, with `SACCADES_BACKEND=webcam` (no dialog field any more), FL
 - Environment: PowerShell 5.1 has no `&&`; files may be CRLF (keep each file's endings); `.gitignore` has `data/`, which also matches any `data` folder (tests: use `tests/fixtures/`).
 - `data/` is git-ignored runtime output: never commit it, never write to it from tests/simulations (simulator uses an in-memory logger).
 - Participant data (trials, gaze trace, glasses video) is personal data: never commit it, never print it in reports, never copy real sessions into `tests/fixtures/` (only anonymous recordings belong there).
-- Report test results truthfully (ran / skipped). Suite: ~295 tests (merged from ~590 in Nov 2026: one test per behaviour, cases looped inside; ~55 more since for analysis, dashboard results, comparison and the dashboard compare/study pages), ~3 min, 2 skipped without PySpin/mediapipe (`test_camera.py`, `test_gaze_tracking.py` `importorskip`).
+- Report test results truthfully (ran / skipped). Suite: 293 tests pass + 2 skipped without PySpin/mediapipe (`test_camera.py`, `test_gaze_tracking.py` `importorskip`), ~4 min.
 
 ## Commands (all through the wrapper)
 
@@ -77,8 +77,7 @@ Real-Time API) or, with `SACCADES_BACKEND=webcam` (no dialog field any more), FL
   (2) RT SD ~60-80 ms, only ~2/7 of flashes land within +-50 ms of onset (TBI likely worse); live rolling RT helps only with drift (simulation only).
   (3) Screen geometry is typed into the startup dialog each run (remembered); until the user measures their small monitor (~12 in wide, 60 Hz) it is the 26 cm / 50 cm placeholder and the dialog says so. Saccade size in degrees also depends on width and distance.
   (4) The separate baseline (foveal) phase was removed (not a like-for-like control, different retinal location): fixation now comes only from the saccade phase's control flashes + flashes >=100 ms from any saccade; the simulator gives ~55 fixation / ~31 saccade flashes per 150 trials (`flash_gates`; ~43 within +-50 ms of onset), so ~18/~10 per contrast level (SD 60: ~51/~37; SD 100: ~59/~30; old +-90 uniform: ~46/~36).
-- **Next, in order**: (1) short Test run then full 150-trial Real run with participant ID on glasses, analyse with `analyze_session`, several runs per person pooled by `analyze_participant`; (2) group analysis
-  (per-person pooled index done in `analyze_participant`; comparison engine `compare.py` + group labels + study summary done (CLI/.bat and dashboard: results, `/compare`, `/study`, group boxes on the index page; dashboard pages untested in a real browser)); (3) one-page grant figure + wording; (4) clinical metadata fields (group, time since injury,
+- **Next, in order**: (1) short Test run then full 150-trial Real run with participant ID on glasses, analyse with `analyze_session`, several runs per person pooled by `analyze_participant`; (2) DONE (untested on real data/browser): per-person pooled index (`analyze_participant`), comparison engine `compare.py`, group labels, study summary, and the dashboard results, `/compare` and `/study` pages; what remains is running real participants through them and the docs pass is done (README "Analysing your data in 3 clicks"); (3) one-page grant figure + wording; (4) clinical metadata fields (group, time since injury,
   severity, symptoms, medication; needs IRB) in the dashboard; (5) find the ~95 ms delay cause (e.g. Neon in its own process); (6) update geometry constants.
 
 ## Repo map
