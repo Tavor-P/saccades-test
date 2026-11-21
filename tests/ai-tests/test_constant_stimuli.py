@@ -93,6 +93,19 @@ def test_bell_curve_flashes_cluster_around_the_average_rt(fake_gaze, fake_time):
     assert 0.55 < near < 0.8  # about 68 % within one SD, as for a bell curve
 
 
+def test_the_dialog_spread_overrides_the_default_width(fake_gaze, fake_time):
+    """A narrower curve from the startup dialog keeps every flash closer to the average RT than the default would."""
+    session = _make_session(fake_gaze, flash_spread_sd_ms=20)
+    _complete_calibration_and_rt_test(session, fake_gaze, fake_time)
+    assert session._flash_spread_sd_ms == 20
+    label = min(TIMING_OFFSETS_MS)  # the earliest slice: furthest from the centre
+    for index in range(10):
+        _set_single_trial(session, index=index, timing_offset_ms=label)
+        _enter_trial_active(session, fake_time)
+        center = session._avg_reaction_time_ms
+        assert 0 < center - session._trial_scheduled_delay_ms < 4 * 20  # default SD 80 would put this slice far earlier
+
+
 def test_spread_flash_delay_ms_slices():
     labels = (-80, 0, 80)
     args = (200.0, 80.0, 0.0, 500.0)

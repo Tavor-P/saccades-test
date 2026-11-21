@@ -4,7 +4,7 @@ Everything here is unit-tested without a display."""
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 
-from include.experiment.constants import HARDWARE_CONTRAST_FLOOR, SCREEN_HEIGHT_CM, VIEWING_DISTANCE_CM
+from include.experiment.constants import FLASH_SPREAD_SD_MS, HARDWARE_CONTRAST_FLOOR, SCREEN_HEIGHT_CM, VIEWING_DISTANCE_CM
 from src.experiment import session_files
 from src.experiment.geometry import Geometry
 from src.experiment.settings import (
@@ -20,6 +20,7 @@ MODE_TEST = "Test"
 
 SCREEN_HEIGHT_RANGE_CM = (5.0, 100.0)
 VIEWING_DISTANCE_RANGE_CM = (20.0, 300.0)
+FLASH_SPREAD_RANGE_MS = (10.0, 250.0)
 
 PLACEHOLDER_NOTE = "Placeholder values: please measure your screen."
 
@@ -32,6 +33,7 @@ FIELD_LABELS = {
     "viewing_distance_cm": "Viewing distance (cm)",
     "contrast_min_percent": "Saccade contrast min (%)",
     "contrast_max_percent": "Saccade contrast max (%)",
+    "flash_spread_sd_ms": "Flash timing spread (ms)",
     "show_gaze_indicator": "Show gaze indicator",
 }
 _CONTRAST_HELP = (
@@ -47,6 +49,10 @@ HELP_TEXTS = {
     "viewing_distance_cm": "From the participant's eyes to the screen in cm (chin rest distance).",
     "contrast_min_percent": _CONTRAST_HELP,
     "contrast_max_percent": _CONTRAST_HELP,
+    "flash_spread_sd_ms": (
+        f"Width of the bell curve of flash times around the average reaction time (SD, default {FLASH_SPREAD_SD_MS:g}). "
+        "Smaller = more flashes near the saccade start, fewer near 0 and 500 ms."
+    ),
     "show_gaze_indicator": "Debug only: shows where the tracker thinks you look.",
 }
 
@@ -62,6 +68,7 @@ class StartupSettings:
     viewing_distance_cm: float = VIEWING_DISTANCE_CM
     contrast_min_percent: float = DEFAULT_SACCADE_CONTRAST_MIN_PERCENT
     contrast_max_percent: float = DEFAULT_SACCADE_CONTRAST_MAX_PERCENT
+    flash_spread_sd_ms: float = float(FLASH_SPREAD_SD_MS)
     show_gaze_indicator: bool = False
 
     @property
@@ -98,6 +105,7 @@ def validate(
     contrast_min_text: str,
     contrast_max_text: str,
     show_gaze_indicator: bool,
+    flash_spread_text: str = f"{FLASH_SPREAD_SD_MS:g}",
 ) -> StartupSettings:
     """The dialog's raw field values -> StartupSettings, or ValueError with a message for the status line."""
     if mode == MODE_REAL and not participant_id.strip():
@@ -109,6 +117,7 @@ def validate(
     cmax = _number_in(contrast_max_text, "Contrast max", low, MAX_SACCADE_CONTRAST_PERCENT, "%")
     if not cmin < cmax:
         raise ValueError("Contrast min must be smaller than max")
+    spread = _number_in(flash_spread_text, "Flash timing spread", *FLASH_SPREAD_RANGE_MS, "ms")
     return StartupSettings(
         participant_id=participant_id.strip(),
         test_mode=mode == MODE_TEST,
@@ -117,6 +126,7 @@ def validate(
         viewing_distance_cm=distance,
         contrast_min_percent=cmin,
         contrast_max_percent=cmax,
+        flash_spread_sd_ms=spread,
         show_gaze_indicator=bool(show_gaze_indicator),
     )
 

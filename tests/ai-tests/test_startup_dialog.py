@@ -68,6 +68,7 @@ def test_validate_real_needs_an_id_but_test_does_not():
         ("screen_height_text", "4"), ("screen_height_text", "101"), ("screen_height_text", "abc"), ("screen_height_text", ""),
         ("viewing_distance_text", "19"), ("viewing_distance_text", "301"), ("viewing_distance_text", "nan"),
         ("contrast_min_text", "0.1"), ("contrast_max_text", "101"), ("contrast_max_text", "x"),
+        ("flash_spread_text", "9"), ("flash_spread_text", "251"), ("flash_spread_text", "wide"),
     ],
 )
 def test_validate_rejects_out_of_range_and_non_numbers(field, value):
@@ -85,6 +86,19 @@ def test_validate_contrast_min_must_be_below_max():
         valid(contrast_min_text="8", contrast_max_text="8")
     with pytest.raises(ValueError, match="smaller"):
         valid(contrast_min_text="9", contrast_max_text="8")
+
+
+def test_flash_spread_defaults_to_the_constant_and_accepts_typed_values():
+    from include.experiment.constants import FLASH_SPREAD_SD_MS
+
+    assert valid().flash_spread_sd_ms == FLASH_SPREAD_SD_MS == StartupSettings().flash_spread_sd_ms
+    assert valid(flash_spread_text="60,5").flash_spread_sd_ms == 60.5
+    assert valid(flash_spread_text="10").flash_spread_sd_ms == 10 and valid(flash_spread_text="250").flash_spread_sd_ms == 250
+
+
+def test_defaults_remember_the_flash_spread(data_dir):
+    settings.save_last_startup({"flash_spread_sd_ms": 60})
+    assert defaults_from_disk(data_dir).flash_spread_sd_ms == 60.0
 
 
 def test_parse_number_comma():
@@ -232,7 +246,7 @@ def test_field_order_and_labels(dialog, qapp):
     order = list(dialog.help_labels)
     assert order == [
         "participant_id", "mode", "run_tutorial", "screen_height_cm", "viewing_distance_cm",
-        "contrast_min_percent", "contrast_max_percent", "show_gaze_indicator",
+        "contrast_min_percent", "contrast_max_percent", "flash_spread_sd_ms", "show_gaze_indicator",
     ]
     ys = [dialog.help_labels[k].mapTo(dialog, QtCore.QPoint(0, 0)).y() for k in order[:5]]
     assert ys == sorted(ys)
@@ -341,6 +355,20 @@ def test_start_returns_the_settings_and_cancel_returns_none(dialog, qapp):
     assert dialog.result() == QtWidgets.QDialog.DialogCode.Accepted
 
 
+def test_flash_spread_field_is_advanced_and_reaches_the_settings(dialog, qapp):
+    assert not dialog.flash_spread.isVisible()
+    dialog.set_advanced_visible(True)
+    qapp.processEvents()
+    assert dialog.flash_spread.isVisible() and dialog.help_labels["flash_spread_sd_ms"].text() == "Flash timing spread (ms)"
+    dialog.participant.setText("p9")
+    dialog.flash_spread.setText("5")
+    dialog.start_button.click()
+    assert dialog.result_settings is None and "Flash timing spread" in dialog.status.text()
+    dialog.flash_spread.setText("60")
+    dialog.start_button.click()
+    assert dialog.result_settings is not None and dialog.result_settings.flash_spread_sd_ms == 60.0
+
+
 def test_cancel_button_rejects(qapp, data_dir):
     d = StartupDialog(StartupSettings(participant_id="x"), data_dir)
     d.show()
@@ -423,3 +451,16 @@ def test_logger_records_the_geometry_in_session_json(tmp_path, monkeypatch):
         log.close()
     assert meta["screen_height_cm"] == 19.5 and meta["viewing_distance_cm"] == 60 and meta["geometry_is_placeholder"] is False
     assert meta["line_offset_height_units"] == pytest.approx(LINE_OFFSET_DEG / meta["screen_height_deg"], rel=1e-3)
+
+
+def test_logger_records_the_flash_spread_in_session_json(tmp_path, monkeypatch):
+    from src.experiment import logger as logger_module
+
+    monkeypatch.setattr(logger_module, "DATA_DIR", tmp_path)
+    log = logger_module.ResultLogger("spread", test_mode=True)
+    try:
+        log.set_flash_spread_sd_ms(60)
+        meta = json.loads((log.folder / "session.json").read_text())["settings"]
+    finally:
+        log.close()
+    assert meta["flash_spread_sd_ms"] == 60.0

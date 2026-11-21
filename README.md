@@ -79,6 +79,7 @@ Command Prompt, the Run box or Explorer opens the .ps1 file in an editor instead
 | Run tutorial | first-timer on-ramp (below); defaults to Yes for a participant without a folder under `data/`, No for a known one |
 | Screen height (cm) / Viewing distance (cm) | measure them; they size the 2 deg line offset and 0.15 deg thickness and are saved in `session.json` (5-100 cm / 20-300 cm, decimal comma accepted) |
 | *Advanced* (folded by default): Saccade contrast min / max (%) | the saccade phase flashes fixed contrasts spaced between these (defaults 4 and 8, three levels: 4, 6, 8) |
+| *Advanced*: Flash timing spread (ms) | width (SD) of the bell curve of flash times around the average reaction time, default 80 (10-250); smaller = more flashes near the saccade start |
 | *Advanced*: Show gaze indicator | debug aid |
 
 Click a field's name or its **?** for a short help bubble next to the mouse (click anywhere or press Esc to close it). The last values are remembered; an invalid entry

@@ -433,6 +433,7 @@ def run_saccade_phase(
     record_video: bool = False,
     saccade_contrasts: tuple[float, ...] | None = None,
     geometry: Geometry | None = None,
+    flash_spread_sd_ms: float | None = None,
 ) -> ExperimentSession | None:
     """The gaze-contingent saccade test. `precomputed_calibration_ratios`/
     `skip_practice_trials`/`precomputed_rt_samples_ms` come from a completed
@@ -470,6 +471,7 @@ def run_saccade_phase(
             precomputed_rt_samples_ms=precomputed_rt_samples_ms,
             fixed_contrasts=saccade_contrasts,
             geometry=geometry,
+            flash_spread_sd_ms=flash_spread_sd_ms,
         )
         go_cue_tone = build_go_cue_tone()
 
@@ -671,7 +673,7 @@ def prompt_session_info() -> tuple[str, str, int, str, float, bool, bool, bool, 
     phase's contrast range (min/max, see SACCADE_FIXED_CONTRASTS; the staircase floor, used only when those are empty, comes from src/experiment/settings.py)
     and the Show gaze indicator toggle. Invalid input keeps the dialog open with a message. The gaze backend is Neon unless $SACCADES_BACKEND=webcam.
     Returns (participant_id, gaze_backend, camera_index, camera_label, contrast_floor_percent, show_gaze_indicator, run_tutorial, record_video,
-    test_mode, saccade_contrasts, geometry), or None if the dialog was cancelled."""
+    test_mode, saccade_contrasts, geometry, flash_spread_sd_ms), or None if the dialog was cancelled."""
     from src.experiment.startup_dialog import prompt_startup_settings
 
     gui.ensureQtApp()  # PsychoPy's own QApplication (Fusion style), shared with the dialog so the PsychoPy window created afterwards keeps working
@@ -699,6 +701,7 @@ def prompt_session_info() -> tuple[str, str, int, str, float, bool, bool, bool, 
         chosen.test_mode,
         saccade_contrast_levels(chosen.contrast_min_percent, chosen.contrast_max_percent),
         chosen.geometry,
+        chosen.flash_spread_sd_ms,
     )
 
 
@@ -734,6 +737,7 @@ def main() -> None:
         test_mode,
         saccade_contrasts,
         geometry,
+        flash_spread_sd_ms,
     ) = session_info
     contrast_floor = contrast_floor_percent / 100
 
@@ -742,6 +746,7 @@ def main() -> None:
     )
     logger.set_saccade_contrasts(saccade_contrasts)
     logger.set_geometry(geometry)
+    logger.set_flash_spread_sd_ms(flash_spread_sd_ms)
     win = build_window(fullscreen=True)
     logger.set_display_refresh_hz(measure_refresh_hz(win))
     stimuli = build_stimuli(win, show_hud=test_mode, geometry=geometry)
@@ -774,6 +779,7 @@ def main() -> None:
             record_video=record_video,
             saccade_contrasts=saccade_contrasts,
             geometry=geometry,
+            flash_spread_sd_ms=flash_spread_sd_ms,
         )
 
         result = saccade_phase(win, stimuli, logger)

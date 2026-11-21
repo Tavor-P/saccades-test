@@ -125,6 +125,7 @@ class StartupDialog(QtWidgets.QDialog):
         self.viewing_distance = QtWidgets.QLineEdit(f"{self._initial.viewing_distance_cm:g}")
         self.contrast_min = QtWidgets.QLineEdit(f"{self._initial.contrast_min_percent:g}")
         self.contrast_max = QtWidgets.QLineEdit(f"{self._initial.contrast_max_percent:g}")
+        self.flash_spread = QtWidgets.QLineEdit(f"{self._initial.flash_spread_sd_ms:g}")
         self.gaze_indicator = QtWidgets.QCheckBox()
         self.gaze_indicator.setChecked(self._initial.show_gaze_indicator)
 
@@ -155,7 +156,8 @@ class StartupDialog(QtWidgets.QDialog):
         advanced.setColumnMinimumWidth(1, 200)
         self._add_row(advanced, 0, "contrast_min_percent", self.contrast_min)
         self._add_row(advanced, 1, "contrast_max_percent", self.contrast_max)
-        self._add_row(advanced, 2, "show_gaze_indicator", self.gaze_indicator)
+        self._add_row(advanced, 2, "flash_spread_sd_ms", self.flash_spread)
+        self._add_row(advanced, 3, "show_gaze_indicator", self.gaze_indicator)
         outer.addWidget(self.advanced_box)
         self.set_advanced_visible(False)
 
@@ -179,7 +181,7 @@ class StartupDialog(QtWidgets.QDialog):
 
         self.participant.textChanged.connect(self._on_participant_changed)
         self.tutorial.activated.connect(self._on_tutorial_touched)
-        for edit in (self.participant, self.screen_height, self.viewing_distance, self.contrast_min, self.contrast_max):
+        for edit in (self.participant, self.screen_height, self.viewing_distance, self.contrast_min, self.contrast_max, self.flash_spread):
             edit.textChanged.connect(self._clear_error)
         for edit in (self.screen_height, self.viewing_distance):
             edit.textChanged.connect(self._refresh_note)
@@ -309,6 +311,7 @@ class StartupDialog(QtWidgets.QDialog):
                 self.contrast_min.text(),
                 self.contrast_max.text(),
                 self.gaze_indicator.isChecked(),
+                self.flash_spread.text(),
             )
         except ValueError as error:
             self.set_status(str(error), error=True)
@@ -335,6 +338,7 @@ def prompt_startup_settings(data_dir: Path | None = None) -> StartupSettings | N
             "viewing_distance_cm": chosen.viewing_distance_cm,
             "contrast_min_percent": chosen.contrast_min_percent,
             "contrast_max_percent": chosen.contrast_max_percent,
+            "flash_spread_sd_ms": chosen.flash_spread_sd_ms,
             "show_gaze_indicator": chosen.show_gaze_indicator,
         }
     )

@@ -119,8 +119,11 @@ class ExperimentSession:
         gaze_latency_ms: float | None = None,
         fixed_contrasts: tuple[float, ...] | None = None,
         geometry: Geometry | None = None,
+        flash_spread_sd_ms: float | None = None,
     ) -> None:
         self._gaze = gaze_source
+        # Bell-curve width for the flash times (startup dialog, Advanced); None = the FLASH_SPREAD_SD_MS default.
+        self._flash_spread_sd_ms = FLASH_SPREAD_SD_MS if flash_spread_sd_ms is None else float(flash_spread_sd_ms)
         self._geometry = geometry or Geometry.default()  # sizes the line's offset (screen height / viewing distance)
         self._gaze_latency_fallback_ms = gaze_latency_ms
         # Snapshot of gaze_latency_ms taken at each RT attempt / trial start, so the
@@ -529,7 +532,7 @@ class ExperimentSession:
         if trial.timing_offset_ms is not None and trial.timing_offset_ms in TIMING_OFFSETS_MS:
             self._trial_scheduled_delay_ms = spread_flash_delay_ms(
                 trial.timing_offset_ms, TIMING_OFFSETS_MS, self._avg_reaction_time_ms,
-                FLASH_SPREAD_SD_MS, FLASH_WINDOW_MIN_MS, FLASH_WINDOW_MAX_MS,
+                self._flash_spread_sd_ms, FLASH_WINDOW_MIN_MS, FLASH_WINDOW_MAX_MS,
             )
         else:
             jitter_ms = random.uniform(-TIMING_JITTER_MS, TIMING_JITTER_MS) if TIMING_JITTER_MS else 0.0

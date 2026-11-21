@@ -59,7 +59,7 @@ Real-Time API) or, with `SACCADES_BACKEND=webcam` (no dialog field any more), FL
 ## Status and next steps (2026-10-25)
 
 - **Goal**: grant to test saccadic suppression in TBI vs non-TBI. Present as a *feasibility pilot (n=1)*, never a group result.
-- **Shipped setup**: flash times on a bell curve centred on the average RT (SD `FLASH_SPREAD_SD_MS` 80, cut to 0-500 ms after the go cue, 9 equal-probability slices), controls at avg RT +400/+500 +/-10 ms; go-cue beep at volume 0.5; fixed saccade contrasts; sharp go-cue; dot/cross at
+- **Shipped setup**: flash times on a bell curve centred on the average RT (SD `FLASH_SPREAD_SD_MS` 80, changeable in the dialog's Advanced section as "Flash timing spread", saved in `session.json` settings `flash_spread_sd_ms`; cut to 0-500 ms after the go cue, 9 equal-probability slices), controls at avg RT +400/+500 +/-10 ms; go-cue beep at volume 0.5; fixed saccade contrasts; sharp go-cue; dot/cross at
   15 %/85 % of the screen; plain Neon, still head (chin rest). Onboarding: calibration -> how-to-answer quiz -> 8 practice trials seeding the RT average.
   Every trial waits for SPACE. Control flashes (+400/+500 ms after average RT) + pre-specified gates give `analyze_session` a per-person suppression index.
 - **Results layout and glasses video** (untested on glasses): a run writes `data/<participant>/<YYYY-MM-DD_HH-MM-SS>[_test]/` (`trials.csv`,

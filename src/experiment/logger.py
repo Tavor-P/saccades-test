@@ -416,6 +416,11 @@ class ResultLogger:
         self._metadata["settings"]["saccade_contrasts_pct"] = [round(float(c) * 100, 4) for c in levels]
         self._write_metadata()
 
+    def set_flash_spread_sd_ms(self, sd_ms: float) -> None:
+        """The bell-curve width (SD, ms) of the flash times this run used (startup dialog; FLASH_SPREAD_SD_MS is the default)."""
+        self._metadata["settings"]["flash_spread_sd_ms"] = float(sd_ms)
+        self._write_metadata()
+
     def set_display_refresh_hz(self, hz: float | None) -> None:
         self._metadata["hardware"]["display_refresh_hz"] = None if hz is None else round(float(hz), 2)
         self._write_metadata()
