@@ -123,9 +123,8 @@ def test_suggest_tutorial_only_without_runs_and_placeholder_detection(data_dir):
 # -- geometry ------------------------------------------------------------------------------------
 
 
-def test_geometry_default_scaling_settings_record_and_analysis_header():
+def test_geometry_default_scaling_and_settings_record():
     import include.experiment.constants as c
-    from src.experiment.analyze_session import format_geometry
 
     g = Geometry.default()
     assert g.is_placeholder
@@ -146,10 +145,14 @@ def test_geometry_default_scaling_settings_record_and_analysis_header():
     assert rec["screen_height_cm"] == 13 and rec["viewing_distance_cm"] == 40 and rec["geometry_is_placeholder"] is False
     assert rec["line_offset_height_units"] == pytest.approx(LINE_OFFSET_DEG / rec["screen_height_deg"], rel=1e-3)
 
+
+def test_analyze_header_line_from_the_recorded_geometry():
+    from src.experiment.analyze_session import format_geometry
+
     assert format_geometry(None) is None and format_geometry({"viewing_distance_cm": 50}) is None  # old sessions
     line = format_geometry(Geometry(19.5, 60).as_settings())
     assert "19.5 cm high at 60 cm" in line and "PLACEHOLDER" not in line
-    assert "PLACEHOLDER" in format_geometry(g.as_settings())
+    assert "PLACEHOLDER" in format_geometry(Geometry.default().as_settings())
 
 
 def test_logger_records_the_geometry_and_flash_spread_in_session_json(tmp_path, monkeypatch):

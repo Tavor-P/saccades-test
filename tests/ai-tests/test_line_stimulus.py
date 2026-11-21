@@ -82,17 +82,6 @@ def test_saccade_phase_line_sits_next_to_the_target_not_the_source_at_the_sessio
 
 
 def test_answer_keys_scoring_and_instructions_are_up_down_only(fake_gaze, fake_time):
-    run_experiment = pytest.importorskip("src.experiment.run_experiment")
-    assert sorted(run_experiment.RESPONSE_KEYS) == ["down", "up"]
-    seen = []
-
-    class _Session:
-        def on_response_key(self, side):
-            seen.append(side)
-
-    run_experiment.dispatch_response_keys(_Session(), ["up", "left", "right", "down", "x"])
-    assert seen == [Side.ABOVE, Side.BELOW]
-
     assert score_outcome(True, Side.ABOVE, Side.ABOVE) == "correct"
     assert score_outcome(True, Side.BELOW, Side.ABOVE) == "incorrect"
     assert score_outcome(False, None, Side.BELOW) == "miss"
@@ -105,6 +94,18 @@ def test_answer_keys_scoring_and_instructions_are_up_down_only(fake_gaze, fake_t
     assert "UP" in text and "DOWN" in text
     assert "LEFT" not in text and "RIGHT" not in text and "grating" not in text.lower()
     assert len(text.split()) <= 15
+
+    # Last: skipped where run_experiment (PsychoPy) cannot be imported.
+    run_experiment = pytest.importorskip("src.experiment.run_experiment")
+    assert sorted(run_experiment.RESPONSE_KEYS) == ["down", "up"]
+    seen = []
+
+    class _Session:
+        def on_response_key(self, side):
+            seen.append(side)
+
+    run_experiment.dispatch_response_keys(_Session(), ["up", "left", "right", "down", "x"])
+    assert seen == [Side.ABOVE, Side.BELOW]
 
 
 def test_tutorial_quiz_line_is_above_or_below_the_dot_at_the_geometry_and_practice_line_follows_the_target(fake_gaze, fake_time):
