@@ -36,6 +36,13 @@
   .settings-box .hint { color: #8b8c99; font-size: 0.8rem; }
   .status-message.error { color: #d9534f; }
   .status-message.success { color: #4caf82; }
+  a.btn-link { background: #3a5bd9; color: white; border-radius: 4px; padding: 0.4rem 0.75rem; text-decoration: none; }
+  a.btn-link:hover { background: #4a6bf0; }
+  button.btn-analyse { background: #3a5bd9; border: none; color: white; border-radius: 4px; padding: 0.4rem 0.75rem; cursor: pointer; }
+  button.btn-analyse:hover { background: #4a6bf0; }
+  .participant-form { display: flex; gap: 0.75rem; align-items: center; margin: 0; }
+  .participant-form label { white-space: nowrap; }
+  h2 { font-weight: 600; font-size: 1.1rem; margin-top: 1.5rem; }
 </style>
 </head>
 <body>
@@ -50,6 +57,33 @@
     <span class="hint">Pre-fills the "Contrast floor" field in the experiment's startup dialog - editable per-run there too. Must stay between {{ '%.2f' % contrast_floor_min }}% (the lowest an 8-bit display can render) and {{ '%.0f' % contrast_floor_max }}%.</span>
     <span id="contrast-floor-status" class="status-message"></span>
   </div>
+
+  {% if participants %}
+  <h2>Participants</h2>
+  <p class="muted">Analyse pools every run of one person into one suppression index (runs with other contrasts or screen settings are left out, with the reason).</p>
+  <table class="participants">
+    <thead>
+      <tr><th>Participant</th><th>Real runs</th><th>Test runs</th><th>Last analysed</th><th>Analyse</th></tr>
+    </thead>
+    <tbody>
+      {% for p in participants %}
+      <tr data-participant="{{ p.id }}">
+        <td>{{ p.id }}</td>
+        <td class="muted">{{ p.n_real }}</td>
+        <td class="muted">{{ p.n_test }}{% if p.only_test %} (only test runs: tick the box to analyse them){% endif %}</td>
+        <td class="muted">{{ p.analysed_at or "never" }}</td>
+        <td>
+          <form class="participant-form" method="get" action="{{ url_for('participant_results', pid=p.id) }}">
+            <label><input type="checkbox" name="include_test" value="1" {% if p.only_test or p.analysed_with_test %}checked{% endif %}> Include test runs</label>
+            <button type="submit" class="btn-analyse">Analyse</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <h2>Runs</h2>
+  {% endif %}
 
   {% if not sessions %}
     <p class="empty">No sessions logged yet in data/ - run the experiment first.</p>
@@ -87,7 +121,7 @@
         <th>Gender</th>
         <th>Age</th>
         <th>Trials</th>
-        <th>Graph</th>
+        <th>Actions</th>
       </tr>
     </thead>
     <tbody>
@@ -104,6 +138,7 @@
         </td>
         <td>
           <div class="row-actions">
+            <a class="btn-link analyse-run" href="{{ url_for('run_results', timestamp=session.timestamp) }}">Analyse</a>
             <button class="btn-danger delete-session" type="button">Delete</button>
           </div>
         </td>
@@ -183,7 +218,6 @@ document.querySelectorAll("tr[data-timestamp]").forEach((row) => {
     });
   });
 
-});
 });
 
 const filterName = document.getElementById("filter-name");
