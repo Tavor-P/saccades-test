@@ -261,7 +261,8 @@ def analyze_participant(
     tests = [e for e in entries if e.mode == "test"]
     candidates = entries if include_test else [e for e in entries if e.mode != "test"]
     if not candidates:
-        raise NoRunsError(f"Participant '{pid}' has only test runs ({len(tests)}); add --include-test to analyse them.")
+        raise NoRunsError(f"Participant '{pid}' has only test runs ({len(tests)}). To analyse them, run: "
+                         f"analyze_participant.bat {pid} --include-test  (or: .\\scripts\\py.ps1 -m src.experiment.analyze_participant {pid} --include-test)")
     for e in candidates:
         _analyse_entry(e, flash_delay_ms, min_amplitude)
 
@@ -362,6 +363,16 @@ def headline(summary: dict) -> str:
     return f"Suppression index cannot be computed yet {source}: {reason}."
 
 
+def meaning(summary: dict) -> str | None:
+    """How to read the index's scale, which differs between the threshold ratio and the accuracy fallback."""
+    if summary["method"] == "psychometric":
+        return "What it means: 0 = no suppression, 1 = the line is never seen during saccades, negative = seen better during saccades."
+    if summary["method"] == "accuracy":
+        return ("What it means: the difference in proportion correct (fixation minus saccade). 0 = no difference; about 0.5 = guessing "
+                "during saccades while fixation is perfect (it cannot reach 1, because guessing still gives 50 % correct).")
+    return None
+
+
 def _run_index_text(record: dict) -> str:
     if record.get("index") is None:
         return "n/a"
@@ -374,8 +385,9 @@ def _num(v, fmt="{:.0f}") -> str:
 
 def format_participant_report(result: ParticipantResult) -> str:
     s = result.summary
-    lines = [f"Participant {s['participant']}: pooled saccadic-suppression analysis", "", headline(s),
-             "What it means: 0 = no suppression, 1 = the line is never seen during saccades, negative = seen better during saccades."]
+    lines = [f"Participant {s['participant']}: pooled saccadic-suppression analysis", "", headline(s)]
+    if meaning(s):
+        lines.append(meaning(s))
     skipped = s["analysis"]["test_runs_skipped"]
     if s["runs_excluded"]:
         lines += ["", f"NOT POOLED: {_plural(len(s['runs_excluded']), 'run')} left out:"]

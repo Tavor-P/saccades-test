@@ -62,7 +62,7 @@ def test_test_runs_are_skipped_unless_asked_for(tmp_path, pooled):
 
     for i in range(2):
         sr.write_run(tmp_path, "T", START + i * DAY, n_trials=20, seed=i, test_mode=True)
-    with pytest.raises(ap.NoRunsError, match="--include-test"):
+    with pytest.raises(ap.NoRunsError, match=r"analyze_participant.bat T --include-test"):
         ap.analyze_participant("T", tmp_path, write=False)
     with_tests = ap.analyze_participant("T", tmp_path, include_test=True, write=False, n_boot=50)
     assert [r["mode"] for r in with_tests.summary["runs_used"]] == ["test", "test"]
@@ -149,5 +149,7 @@ def test_headline_covers_every_outcome():
         "Suppression index 0.50 (95 % CI -0.10 to 0.80) from 1 run, 5 saccade and 30 fixation flashes.")
     acc = ap.headline({**base, "method": "accuracy", "index": 0.3, "notes": ["psychometric index not computed: fewer than 12 flashes per condition (5 saccade, 30 fixation)"]})
     assert acc.startswith("Accuracy-based suppression index 0.30 (95 % CI not available)") and "not a threshold ratio" in acc and "fewer than 12" in acc
+    assert "0.5 = guessing" in ap.meaning({"method": "accuracy"}) and "1 = the line is never seen" in ap.meaning({"method": "psychometric"})
+    assert ap.meaning({"method": None}) is None
     none = ap.headline({**base, "method": None, "index": None, "notes": ["cannot compute: 0 saccade flashes, 30 fixation flashes"]})
     assert none.startswith("Suppression index cannot be computed yet from 1 run") and none.endswith("0 saccade flashes, 30 fixation flashes.")
