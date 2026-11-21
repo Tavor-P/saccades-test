@@ -88,60 +88,67 @@ def _run_timeout_attempt(session, fake_gaze, fake_time) -> None:
     session.tick()
 
 
-def test_calibration_discards_round_one_and_averages_rounds_two_and_three(fake_gaze):
-    round_ratios = [
-        (0.1, 0.1, 0.1),  # round 1 - discarded
-        (0.2, 0.5, 0.8),  # round 2
-        (0.4, 0.5, 0.6),  # round 3
-    ]
+def test_intro_screens_then_calibration_then_a_quiz_that_explains_the_keys_in_short_strings(fake_gaze):
+    round_ratios = [(0.1, 0.1, 0.1), (0.2, 0.5, 0.8), (0.4, 0.5, 0.6)]  # round 1 discarded
     calls = iter(ratio for triple in round_ratios for ratio in triple)
     fake_gaze.average_recent_ratio = lambda: next(calls)
-
     session = _make_session(fake_gaze)
-    _complete_calibration(session)
+    assert session.render_state()["instructions"] == words.TUTORIAL_WELCOME
+    texts = [session.render_state()["instructions"]]
+    shown = []
+    for _ in range(len(words.TUTORIAL_INTRO)):
+        session.on_space()  # each intro screen needs its own SPACE
+        state = session.render_state()
+        assert state["hud"]["phase"] == "INTRO"
+        assert state["tutorial_text"]["visible"] and state["tutorial_text"]["text"] == state["instructions"]
+        assert not state["dot"]["visible"] and not state["grating"]["visible"]
+        shown.append(state["instructions"])
+    assert tuple(shown) == words.TUTORIAL_INTRO
+    texts += shown
+    session.on_space()
+    assert session.render_state()["hud"]["phase"] == "CALIBRATE_LEFT"
+    for _ in range(3 * CALIBRATION_ROUNDS):
+        texts.append(session.render_state()["instructions"])
+        session.on_space()
 
     expected = ((0.2 + 0.4) / 2, (0.5 + 0.5) / 2, (0.8 + 0.6) / 2)
     assert session.calibration_ratios == pytest.approx(expected)
     assert fake_gaze.calibrated == pytest.approx(expected)
-    assert session.render_state()["hud"]["phase"] == "QUIZ"
+    state = session.render_state()
+    assert state["hud"]["phase"] == "QUIZ"
+    assert "UP" in state["instructions"] and "DOWN" in state["instructions"]
+    assert "LEFT" not in state["instructions"] and "RIGHT" not in state["instructions"]
+    assert state["dot"]["visible"] and state["tutorial_text"]["visible"] and state["grating"]["visible"]  # line above/below the dot
+    texts.append(state["instructions"])
+    _win_quiz(session)
+    texts.append(session.render_state()["instructions"])
+    assert all(len(t.split()) <= 15 for t in texts)  # short enough to narrate
 
 
-def test_quiz_passes_after_three_in_a_row_and_a_miss_resets_the_streak(fake_gaze):
+def test_quiz_passes_after_three_in_a_row_a_miss_resets_and_the_practice_intro_says_fainter(fake_gaze):
     assert TUTORIAL_QUIZ_STREAK_TARGET == 3
     session = _make_session(fake_gaze)
     _complete_calibration(session)
-
     session.on_response_key(session._quiz_orientation)
     session.on_response_key(session._quiz_orientation)
     assert session._quiz_streak == 2
-
     wrong = Side.BELOW if session._quiz_orientation is Side.ABOVE else Side.ABOVE
     session.on_response_key(wrong)
     assert session._quiz_streak == 0
     assert session.render_state()["hud"]["phase"] == "QUIZ"
-
     for _ in range(TUTORIAL_QUIZ_STREAK_TARGET - 1):
         session.on_response_key(session._quiz_orientation)
         assert session.render_state()["hud"]["phase"] == "QUIZ"
     session.on_response_key(session._quiz_orientation)
-    assert session.render_state()["hud"]["phase"] == "PRACTICE_INTRO"
-
-
-def test_quiz_explains_the_keys_once(fake_gaze):
-    session = _make_session(fake_gaze)
-    _complete_calibration(session)
     state = session.render_state()
-    assert "UP" in state["instructions"] and "DOWN" in state["instructions"]
-    assert "LEFT" not in state["instructions"] and "RIGHT" not in state["instructions"]
-    assert state["dot"]["visible"]  # the line is shown just above/below the dot
-    assert state["tutorial_text"]["visible"]
-    assert state["grating"]["visible"]
+    assert state["hud"]["phase"] == "PRACTICE_INTRO"
+    assert state["instructions"] == words.PRACTICE_INTRO and "fainter" in words.PRACTICE_INTRO
+    assert not state["grating"]["visible"]
 
 
-def test_practice_runs_fixed_attempts_regardless_of_outcome(fake_gaze, fake_time):
+def test_practice_runs_fixed_attempts_regardless_of_outcome_then_says_the_real_test_starts(fake_gaze, fake_time):
     session = _make_session(fake_gaze)
     _reach_practice(session)
-
     for attempt in range(TUTORIAL_PRACTICE_ATTEMPTS):
         # Alternate a good trial, a wrong answer and a timeout - the count advances either way.
         kind = attempt % 3
@@ -153,38 +160,29 @@ def test_practice_runs_fixed_attempts_regardless_of_outcome(fake_gaze, fake_time
             _run_timeout_attempt(session, fake_gaze, fake_time)
         expected = "COMPLETE" if attempt == TUTORIAL_PRACTICE_ATTEMPTS - 1 else "PRACTICE_AWAITING_SPACE"
         assert session.render_state()["hud"]["phase"] == expected
+    state = session.render_state()
+    assert state["instructions"] == words.PRACTICE_DONE and "SPACE" in state["instructions"]
+    assert not state["dot"]["visible"]
 
-
-def test_practice_produces_one_reaction_time_sample_per_trial_with_a_saccade(fake_gaze, fake_time):
-    session = _make_session(fake_gaze)
-    _reach_practice(session)
-    assert session.rt_samples_ms == []
-
-    for _ in range(3):
-        _run_attempt(session, fake_gaze, fake_time, reaction_time_s=0.18)
-    assert session.rt_samples_ms == pytest.approx([180.0] * 3)
-
-    _run_timeout_attempt(session, fake_gaze, fake_time)  # no saccade, no sample
-    assert len(session.rt_samples_ms) == 3
-
-
-def test_practice_with_no_saccades_gives_no_samples(fake_gaze, fake_time):
     session = _make_session(fake_gaze)
     _reach_practice(session)
     for _ in range(TUTORIAL_PRACTICE_ATTEMPTS):
         _run_timeout_attempt(session, fake_gaze, fake_time)
     assert session.render_state()["hud"]["phase"] == "COMPLETE"
-    assert session.rt_samples_ms == []
+    assert session.rt_samples_ms == []  # no saccades, no samples
 
 
-def test_practice_flash_follows_the_measured_reaction_time(fake_gaze, fake_time):
+def test_practice_gives_one_reaction_time_per_saccade_and_flashes_at_the_measured_time(fake_gaze, fake_time):
     session = _make_session(fake_gaze)
     _reach_practice(session)
+    assert session.rt_samples_ms == []
     for _ in range(3):
         _run_attempt(session, fake_gaze, fake_time, reaction_time_s=0.16)
+    assert session.rt_samples_ms == pytest.approx([160.0] * 3)
+    _run_timeout_attempt(session, fake_gaze, fake_time)  # no saccade, no sample
+    assert len(session.rt_samples_ms) == 3
     _start_attempt(session, fake_time)
     assert session._flash_scheduled_at - session._trial_start == pytest.approx(0.16)
-
 
 def test_practice_average_updates_after_each_trial_and_carries_into_the_saccade_session(fake_gaze, fake_time):
     from include.experiment.constants import DEFAULT_REACTION_TIME_MS
@@ -221,20 +219,11 @@ def test_practice_average_updates_after_each_trial_and_carries_into_the_saccade_
     assert seeded._avg_reaction_time_ms == pytest.approx(session._rt.average)
 
 
-def test_practice_flash_is_clearly_visible_and_oriented(fake_gaze, fake_time):
+def test_practice_waits_for_space_swaps_500_to_1000_ms_later_flashes_clearly_and_speaks_its_intro_once(fake_gaze, fake_time):
     session = _make_session(fake_gaze)
     _reach_practice(session)
-    _start_attempt(session, fake_time)
-    fake_time(1.0)
-    session.tick()  # the scheduled flash fires
-    grating = session.render_state()["grating"]
-    assert grating["visible"] and grating["contrast"] >= 0.5
-    assert grating["orientation"] is session._orientation
-
-
-def test_practice_attempt_waits_for_space_then_swaps_500_to_1000_ms_later(fake_gaze, fake_time):
-    session = _make_session(fake_gaze)
-    _reach_practice(session)
+    intro = session.render_state()["instructions"]
+    assert intro == words.RT_TEST_INTRO
     fake_time(60.0)
     session.tick()
     assert session.render_state()["hud"]["phase"] == "PRACTICE_AWAITING_SPACE"  # never starts on its own
@@ -245,75 +234,15 @@ def test_practice_attempt_waits_for_space_then_swaps_500_to_1000_ms_later(fake_g
     fake_time(FOREPERIOD_MAX_MS / 1000 + 0.01)
     session.tick()
     assert session.render_state()["hud"]["phase"] == "PRACTICE_ACTIVE"
-
-
-def test_practice_intro_is_spoken_once_and_later_trials_are_silent(fake_gaze, fake_time):
-    session = _make_session(fake_gaze)
-    _reach_practice(session)
-    intro = session.render_state()["instructions"]
-    assert intro == words.RT_TEST_INTRO
-
-    _start_attempt(session, fake_time)
     assert session.render_state()["instructions"] == intro  # unchanged through the trial: not re-spoken
-    _run_timeout_attempt(session, fake_gaze, fake_time)
+
+    fake_time(1.0)
+    session.tick()  # the scheduled flash fires
+    grating = session.render_state()["grating"]
+    assert grating["visible"] and grating["contrast"] >= 0.5
+    assert grating["orientation"] is session._orientation
+
+    fake_time(SACCADE_TIMEOUT_MS / 1000)
+    session.tick()
     assert session.render_state()["hud"]["phase"] == "PRACTICE_AWAITING_SPACE"
-    assert session.render_state()["instructions"] == ""
-
-
-def test_tutorial_strings_are_short_enough_to_narrate(fake_gaze, fake_time):
-    session = _make_session(fake_gaze)
-    texts = [session.render_state()["instructions"]]
-    for _ in range(len(words.TUTORIAL_INTRO) + 1):
-        session.on_space()
-        texts.append(session.render_state()["instructions"])
-    for _ in range(CALIBRATION_ROUNDS):
-        for _ in range(3):
-            session.on_space()
-            texts.append(session.render_state()["instructions"])
-    texts.append(session.render_state()["instructions"])
-    _win_quiz(session)
-    texts.append(session.render_state()["instructions"])
-    assert all(len(t.split()) <= 15 for t in texts)
-
-
-def test_complete_state_asks_for_space_to_continue(fake_gaze, fake_time):
-    session = _make_session(fake_gaze)
-    _reach_practice(session)
-    for _ in range(TUTORIAL_PRACTICE_ATTEMPTS):
-        _run_timeout_attempt(session, fake_gaze, fake_time)
-    assert "SPACE" in session.render_state()["instructions"]
-    assert not session.render_state()["dot"]["visible"]
-
-
-def test_intro_screens_come_first_and_each_needs_a_space(fake_gaze):
-    session = _make_session(fake_gaze)
-    assert session.render_state()["instructions"] == words.TUTORIAL_WELCOME
-    shown = []
-    for _ in range(len(words.TUTORIAL_INTRO)):
-        session.on_space()
-        state = session.render_state()
-        assert state["hud"]["phase"] == "INTRO"
-        assert state["tutorial_text"]["visible"] and state["tutorial_text"]["text"] == state["instructions"]
-        assert not state["dot"]["visible"] and not state["grating"]["visible"]
-        shown.append(state["instructions"])
-    assert tuple(shown) == words.TUTORIAL_INTRO
-    session.on_space()
-    assert session.render_state()["hud"]["phase"] == "CALIBRATE_LEFT"
-
-
-def test_practice_intro_screen_tells_that_real_lines_are_fainter(fake_gaze):
-    session = _make_session(fake_gaze)
-    _complete_calibration(session)
-    _win_quiz(session)
-    state = session.render_state()
-    assert state["hud"]["phase"] == "PRACTICE_INTRO"
-    assert state["instructions"] == words.PRACTICE_INTRO and "fainter" in words.PRACTICE_INTRO
-    assert not state["grating"]["visible"]
-
-
-def test_complete_state_says_the_real_test_starts_now(fake_gaze, fake_time):
-    session = _make_session(fake_gaze)
-    _reach_practice(session)
-    for _ in range(TUTORIAL_PRACTICE_ATTEMPTS):
-        _run_timeout_attempt(session, fake_gaze, fake_time)
-    assert session.render_state()["instructions"] == words.PRACTICE_DONE
+    assert session.render_state()["instructions"] == ""  # later trials are silent

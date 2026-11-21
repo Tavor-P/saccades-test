@@ -37,18 +37,13 @@ pytestmark = pytest.mark.usefixtures("staircase_no_jitter")
 
 
 
-def test_side_enum_is_above_and_below_only():
+def test_side_enum_constants_and_line_position_shifted_up_or_down_with_the_geometry():
     assert {s.value for s in Side} == {"above", "below"}
     assert {random_orientation() for _ in range(200)} == {Side.ABOVE, Side.BELOW}
-
-
-def test_offset_and_sd_are_converted_with_the_screen_geometry():
     assert LINE_OFFSET_DEG == 2.0 and LINE_SD_DEG == 0.15
     assert LINE_OFFSET_HEIGHT_UNITS == pytest.approx(LINE_OFFSET_DEG / SCREEN_HEIGHT_DEG)
     assert LINE_SD_HEIGHT_UNITS == pytest.approx(LINE_SD_DEG / SCREEN_HEIGHT_DEG)
 
-
-def test_line_position_is_shifted_up_or_down_from_the_reference():
     x_a, y_a = line_position(DOT_POSITION, Side.ABOVE)
     x_b, y_b = line_position(DOT_POSITION, Side.BELOW)
     assert x_a == x_b == DOT_POSITION[0]
@@ -56,47 +51,37 @@ def test_line_position_is_shifted_up_or_down_from_the_reference():
     assert y_b == pytest.approx(DOT_POSITION[1] + LINE_OFFSET_HEIGHT_UNITS)
     assert y_a < DOT_POSITION[1] < y_b
 
+    g = Geometry(13, 40)
+    assert line_position(DOT_POSITION, Side.ABOVE, g)[1] == pytest.approx(DOT_POSITION[1] - g.line_offset_height_units)
+    assert line_position(DOT_POSITION, Side.BELOW) == line_position(DOT_POSITION, Side.BELOW, Geometry.default())
 
-@pytest.mark.parametrize(
-    "source,target,expected", [(Target.DOT, Target.CROSS, CROSS_POSITION), (Target.CROSS, Target.DOT, DOT_POSITION)]
-)
-@pytest.mark.parametrize("side", [Side.ABOVE, Side.BELOW])
-def test_saccade_phase_line_sits_next_to_the_target_not_the_source(fake_gaze, fake_time, source, target, expected, side):
-    session = _make_session(fake_gaze)
+
+def _flashed_line(fake_gaze, fake_time, source, target, side, **kwargs):
+    session = _make_session(fake_gaze, **kwargs)
     _complete_calibration_and_rt_test(session, fake_gaze, fake_time, reaction_time_s=0.2)
     _set_single_trial(session, source=source, target=target, orientation=side)
     _enter_trial_active(session, fake_time)
     fake_time(0.201)
     session.tick()  # the scheduled flash fires
-    line = session.render_state()["grating"]
-    assert line["visible"] is True
-    assert (line["x"], line["y"]) == pytest.approx(line_position(expected, side))
-    assert line["orientation"] is side
-    assert (line["y"] < expected[1]) == (side is Side.ABOVE)
+    return session.render_state()["grating"]
 
 
-def test_saccade_phase_line_offset_follows_the_session_geometry(fake_gaze, fake_time):
+def test_saccade_phase_line_sits_next_to_the_target_not_the_source_at_the_session_geometry(fake_gaze, fake_time):
+    for source, target, expected in [(Target.DOT, Target.CROSS, CROSS_POSITION), (Target.CROSS, Target.DOT, DOT_POSITION)]:
+        for side in (Side.ABOVE, Side.BELOW):
+            line = _flashed_line(fake_gaze, fake_time, source, target, side)
+            assert line["visible"] is True
+            assert (line["x"], line["y"]) == pytest.approx(line_position(expected, side)), (target, side)
+            assert line["orientation"] is side
+            assert (line["y"] < expected[1]) == (side is Side.ABOVE)
+
     geometry = Geometry(screen_height_cm=13.0, viewing_distance_cm=40.0)
-    session = _make_session(fake_gaze, geometry=geometry)
-    _complete_calibration_and_rt_test(session, fake_gaze, fake_time, reaction_time_s=0.2)
-    _set_single_trial(session, source=Target.DOT, target=Target.CROSS, orientation=Side.ABOVE)
-    _enter_trial_active(session, fake_time)
-    fake_time(0.201)
-    session.tick()
-    line = session.render_state()["grating"]
+    line = _flashed_line(fake_gaze, fake_time, Target.DOT, Target.CROSS, Side.ABOVE, geometry=geometry)
     assert line["y"] == pytest.approx(CROSS_POSITION[1] - LINE_OFFSET_DEG / geometry.height_deg)
     assert line["y"] != pytest.approx(CROSS_POSITION[1] - LINE_OFFSET_HEIGHT_UNITS)
 
 
-def test_tutorial_quiz_line_offset_follows_the_geometry(fake_gaze):
-    geometry = Geometry(screen_height_cm=13.0, viewing_distance_cm=40.0)
-    session = TutorialSession(fake_gaze, PausableClock(), geometry=geometry)
-    _complete_calibration(session)
-    line = session.render_state()["grating"]
-    assert abs(line["y"] - DOT_POSITION[1]) == pytest.approx(LINE_OFFSET_DEG / geometry.height_deg)
-
-
-def test_answer_keys_are_up_and_down_only():
+def test_answer_keys_scoring_and_instructions_are_up_down_only(fake_gaze, fake_time):
     run_experiment = pytest.importorskip("src.experiment.run_experiment")
     assert sorted(run_experiment.RESPONSE_KEYS) == ["down", "up"]
     seen = []
@@ -108,14 +93,10 @@ def test_answer_keys_are_up_and_down_only():
     run_experiment.dispatch_response_keys(_Session(), ["up", "left", "right", "down", "x"])
     assert seen == [Side.ABOVE, Side.BELOW]
 
-
-def test_scoring_above_below():
     assert score_outcome(True, Side.ABOVE, Side.ABOVE) == "correct"
     assert score_outcome(True, Side.BELOW, Side.ABOVE) == "incorrect"
     assert score_outcome(False, None, Side.BELOW) == "miss"
 
-
-def test_instructions_name_up_and_down_and_no_other_keys(fake_gaze, fake_time):
     session = _make_session(fake_gaze)
     _complete_calibration_and_rt_test(session, fake_gaze, fake_time)
     _set_single_trial(session)
@@ -126,7 +107,7 @@ def test_instructions_name_up_and_down_and_no_other_keys(fake_gaze, fake_time):
     assert len(text.split()) <= 15
 
 
-def test_tutorial_quiz_shows_a_line_above_or_below_the_dot_and_needs_a_streak(fake_gaze):
+def test_tutorial_quiz_line_is_above_or_below_the_dot_at_the_geometry_and_practice_line_follows_the_target(fake_gaze, fake_time):
     session = _make_tutorial(fake_gaze)
     _complete_calibration(session)
     for _ in range(TUTORIAL_QUIZ_STREAK_TARGET):
@@ -141,8 +122,12 @@ def test_tutorial_quiz_shows_a_line_above_or_below_the_dot_and_needs_a_streak(fa
         session.on_response_key(line["orientation"])
     assert session.render_state()["hud"]["phase"] == "PRACTICE_INTRO"
 
+    geometry = Geometry(screen_height_cm=13.0, viewing_distance_cm=40.0)
+    session = TutorialSession(fake_gaze, PausableClock(), geometry=geometry)
+    _complete_calibration(session)
+    line = session.render_state()["grating"]
+    assert abs(line["y"] - DOT_POSITION[1]) == pytest.approx(LINE_OFFSET_DEG / geometry.height_deg)
 
-def test_tutorial_practice_line_follows_the_target(fake_gaze, fake_time):
     session = _make_tutorial(fake_gaze)
     _reach_practice(session)
     _start_attempt(session, fake_time)
