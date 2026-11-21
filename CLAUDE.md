@@ -37,7 +37,7 @@ Real-Time API) or, with `SACCADES_BACKEND=webcam` (no dialog field any more), FL
 - Environment: PowerShell 5.1 has no `&&`; files may be CRLF (keep each file's endings); `.gitignore` has `data/`, which also matches any `data` folder (tests: use `tests/fixtures/`).
 - `data/` is git-ignored runtime output: never commit it, never write to it from tests/simulations (simulator uses an in-memory logger).
 - Participant data (trials, gaze trace, glasses video) is personal data: never commit it, never print it in reports, never copy real sessions into `tests/fixtures/` (only anonymous recordings belong there).
-- Report test results truthfully (ran / skipped). Suite: ~240 tests (merged from ~590 in Nov 2026: one test per behaviour, cases looped inside), ~2 min, 2 skipped without PySpin/mediapipe (`test_camera.py`, `test_gaze_tracking.py` `importorskip`).
+- Report test results truthfully (ran / skipped). Suite: ~285 tests (merged from ~590 in Nov 2026: one test per behaviour, cases looped inside; ~45 more since for analysis, dashboard results and comparison), ~3 min, 2 skipped without PySpin/mediapipe (`test_camera.py`, `test_gaze_tracking.py` `importorskip`).
 
 ## Commands (all through the wrapper)
 
