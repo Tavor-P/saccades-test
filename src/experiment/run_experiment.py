@@ -20,6 +20,7 @@ from include.experiment.constants import (
     LINE_WIDTH_SCREENS,
     WARNING_TONE_DURATION_S,
     WARNING_TONE_HZ,
+    WARNING_TONE_VOLUME,
 )
 from include.experiment import participant_text
 from include.experiment.types import Side
@@ -121,7 +122,7 @@ def render_caption(caption_stim, text: str, last_caption: str) -> str:
 
 def build_go_cue_tone() -> sound.Sound:
     """The go-cue beep, played the instant the target/cross appears: it anchors the reaction-time measurement (see WARNING_TONE_HZ)."""
-    return sound.Sound(value=WARNING_TONE_HZ, secs=WARNING_TONE_DURATION_S)
+    return sound.Sound(value=WARNING_TONE_HZ, secs=WARNING_TONE_DURATION_S, volume=WARNING_TONE_VOLUME)
 
 
 def phase_just_became_active(phase: str, last_phase: str | None, active_phases: frozenset[str]) -> bool:

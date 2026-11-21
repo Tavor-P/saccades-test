@@ -259,7 +259,8 @@ def test_trial_rows_log_the_scheduling_inputs_and_flash_relative_to_onset(fake_g
     row = _saccade_results(session)[0]
     # The RT test measured 0.2 s of arrival time, minus the source's 20 ms latency.
     assert row.avg_rt_used_ms == pytest.approx(180.0)
-    assert row.scheduled_delay_ms == pytest.approx(220.0)
+    # Offset 40 is the 7th of 9 bins tiling 0 .. 180 + 80 (+ jitter, 0 in these tests) ms after the go cue.
+    assert 6 / 9 * 260.0 - 1e-6 <= row.scheduled_delay_ms <= 7 / 9 * 260.0 + 1e-6
     assert row.gaze_latency_ms == pytest.approx(20.0)
     assert row.flash_relative_to_onset_ms is not None
 

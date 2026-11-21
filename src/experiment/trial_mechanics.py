@@ -209,6 +209,15 @@ class ShuffledBag(Generic[_T]):
         return self._remaining.popleft()
 
 
+def spread_flash_delay_ms(label: int, labels: Sequence[int], window_end_ms: float, rng=random) -> float:
+    """Delay from the go cue (ms) for a spread flash: `labels` (TIMING_OFFSETS_MS) name len(labels) equal-width bins
+    tiling [0, window_end_ms]; the i-th smallest label is the i-th bin and the flash lands uniformly inside it."""
+    ordered = sorted(labels)
+    width = max(window_end_ms, 0.0) / len(ordered)
+    start = ordered.index(label) * width
+    return rng.uniform(start, start + width)
+
+
 def sample_capture_time(sample, now: float, latency_s: float, from_perf_counter) -> float:
     """When the eye was where `sample` says, on the session clock: the sample's own timestamp (converted by
     `from_perf_counter`) minus the gaze latency. Falls back to the tick time `now` for a missing/non-positive timestamp or a

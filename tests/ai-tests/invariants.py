@@ -16,6 +16,7 @@ from include.experiment.constants import (
     PRACTICE_CONTRAST,
     SACCADE_FIXED_CONTRASTS,
     CONTROL_OFFSETS_MS,
+    TIMING_JITTER_MS,
     TIMING_OFFSETS_MS,
     ZEST_LOG_CONTRAST_MAX,
 )
@@ -95,6 +96,15 @@ def check_session(sim: SimulationResult, max_trials_cap: int = MAX_SACCADE_TRIAL
         allowed_offsets = TIMING_OFFSETS_MS + CONTROL_OFFSETS_MS
         if r.timing_offset_ms is not None and r.timing_offset_ms not in allowed_offsets:
             v.append(f"{tag}: timing_offset_ms {r.timing_offset_ms} not one of {allowed_offsets}")
+        if r.timing_offset_ms in TIMING_OFFSETS_MS and r.scheduled_delay_ms is not None and r.avg_rt_used_ms is not None:
+            # Spread flash: its bin of [0, avg RT + max offset + jitter] after the go cue.
+            n, i = len(TIMING_OFFSETS_MS), sorted(TIMING_OFFSETS_MS).index(r.timing_offset_ms)
+            end = r.avg_rt_used_ms + max(TIMING_OFFSETS_MS) + TIMING_JITTER_MS
+            if not i * end / n - 1e-6 <= r.scheduled_delay_ms <= (i + 1) * end / n + 1e-6:
+                v.append(f"{tag}: scheduled_delay_ms {r.scheduled_delay_ms:.1f} outside bin {i} of 0..{end:.1f} ms")
+        if r.timing_offset_ms in CONTROL_OFFSETS_MS and r.scheduled_delay_ms is not None and r.avg_rt_used_ms is not None:
+            if abs(r.scheduled_delay_ms - r.avg_rt_used_ms - r.timing_offset_ms) > TIMING_JITTER_MS + 1e-6:
+                v.append(f"{tag}: control flash scheduled_delay_ms {r.scheduled_delay_ms:.1f} not avg RT + {r.timing_offset_ms} +/- jitter")
         for name in ("flash_during_saccade", "tracking_ok"):
             val = getattr(r, name)
             if val is not None and not isinstance(val, bool):

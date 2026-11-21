@@ -1,12 +1,16 @@
 """Scheduled mode with its default saccade-phase setup: fixed probe contrasts (no live staircase),
-a random +/-TIMING_JITTER_MS bounce on every trial's flash time, and a fixed trial count."""
+spread flashes tiling 0 ms .. avg RT + max offset + jitter after the go cue, a random
++/-TIMING_JITTER_MS bounce on the control flashes, and a fixed trial count."""
 
 from include.experiment.constants import (
     SACCADE_FIXED_CONTRASTS,
     SACCADE_FIXED_TRIALS_REAL,
     SACCADE_FIXED_TRIALS_TEST,
+    CONTROL_OFFSETS_MS,
     TIMING_JITTER_MS,
+    TIMING_OFFSETS_MS,
 )
+from src.experiment.trial_mechanics import spread_flash_delay_ms
 from test_session import (
     _complete_calibration_and_rt_test,
     _enter_trial_active,
@@ -35,10 +39,10 @@ def test_flash_contrast_comes_from_the_fixed_set(fake_gaze, fake_time):
     assert seen == set(SACCADE_FIXED_CONTRASTS)  # drawn without repeats, so every level shows up
 
 
-def test_flash_time_has_a_random_bounce_within_the_configured_bound(fake_gaze, fake_time):
+def test_control_flash_time_has_a_random_bounce_within_the_configured_bound(fake_gaze, fake_time):
     session = _make_session(fake_gaze)
     _complete_calibration_and_rt_test(session, fake_gaze, fake_time)
-    nominal_offset = 20
+    nominal_offset = CONTROL_OFFSETS_MS[0]
     delays = []
     for index in range(40):
         _set_single_trial(session, index=index, timing_offset_ms=nominal_offset)
@@ -46,6 +50,34 @@ def test_flash_time_has_a_random_bounce_within_the_configured_bound(fake_gaze, f
         delays.append(session._trial_scheduled_delay_ms - session._avg_reaction_time_ms - nominal_offset)
     assert all(abs(d) <= TIMING_JITTER_MS + 1e-9 for d in delays)
     assert max(delays) - min(delays) > TIMING_JITTER_MS / 2  # actually random, not a constant
+
+
+def test_spread_flashes_tile_zero_to_the_old_maximum_after_the_go_cue(fake_gaze, fake_time):
+    """Each TIMING_OFFSETS_MS label is one equal-width bin of [0, avg RT + max offset + jitter] after the go cue."""
+    session = _make_session(fake_gaze)
+    _complete_calibration_and_rt_test(session, fake_gaze, fake_time)
+    labels = sorted(TIMING_OFFSETS_MS)
+    by_label = {label: [] for label in labels}
+    for index in range(20 * len(labels)):
+        label = labels[index % len(labels)]
+        _set_single_trial(session, index=index, timing_offset_ms=label)
+        _enter_trial_active(session, fake_time)
+        end = session._avg_reaction_time_ms + max(TIMING_OFFSETS_MS) + TIMING_JITTER_MS
+        by_label[label].append((session._trial_scheduled_delay_ms, end))
+    n = len(labels)
+    for i, label in enumerate(labels):
+        assert all(i * end / n - 1e-9 <= d <= (i + 1) * end / n + 1e-9 for d, end in by_label[label]), label
+        delays = [d for d, _ in by_label[label]]
+        assert max(delays) - min(delays) > by_label[label][0][1] / n / 4  # uniform inside the bin, not a spike
+    first_end = by_label[labels[0]][0][1]
+    assert min(d for d, _ in by_label[labels[0]]) < first_end / n  # starts at the go cue, not near the average RT
+
+
+def test_spread_flash_delay_ms_bins():
+    labels = (-80, 0, 80)
+    assert spread_flash_delay_ms(-80, labels, 300, rng=type("R", (), {"uniform": staticmethod(lambda a, b: a)})) == 0
+    assert spread_flash_delay_ms(80, labels, 300, rng=type("R", (), {"uniform": staticmethod(lambda a, b: b)})) == 300
+    assert 100 <= spread_flash_delay_ms(0, labels, 300) <= 200
 
 
 def test_main_block_stops_by_trial_count_not_by_the_staircase(fake_gaze):

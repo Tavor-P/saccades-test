@@ -221,11 +221,21 @@ CALIBRATION_ROUNDS = 3
 # some trials' flashes landing outside the actual saccade window entirely
 # (see flash_during_saccade in include/experiment/types.py) - expected and
 # handled by only feeding valid trials to ZEST (see ExperimentSession).
+#
+# Spread flashes (since 2026-11): the values no longer add to the average RT directly. Each one
+# names one of len(TIMING_OFFSETS_MS) equal-width bins (the i-th smallest value = the i-th bin)
+# that tile the window from 0 ms after the go cue up to
+# avg_reaction_time_ms + max(TIMING_OFFSETS_MS) + TIMING_JITTER_MS (~315 ms at a 225 ms RT),
+# and the flash lands uniformly inside its bin (trial_mechanics.spread_flash_delay_ms). So the
+# flashes cover the whole window evenly (stratified by the shuffled bag), including the early
+# part where the eye is still fixating the source. timing_offset_ms holds the nominal bin label
+# (one of these values); the real delay from the go cue is scheduled_delay_ms
+# (flash_ms_after_go_cue in trials.csv). Before this change the flash was avg RT + value +/- jitter
+# (-90..+90 ms around the average RT); old sessions keep the same labels.
 TIMING_OFFSETS_MS = (-80, -60, -40, -20, 0, 20, 40, 60, 80)
-# Random "bounce" added on top of each trial's offset (uniform +/- this many ms, drawn per
-# trial) so flash times form a continuous spread instead of nine fixed spikes - together with
-# the offsets above it sweeps the flash across roughly -90..+90 ms around the average reaction
-# time, which with a sharp go-cue should put a good share of flashes in or near the saccade.
+# Random "bounce" (uniform +/- this many ms, drawn per trial) on the CONTROL flashes below, so
+# they form a spread instead of two fixed spikes; for spread flashes it only extends the window's
+# upper end (the uniform draw inside a bin already gives a continuous spread).
 # The jitter is part of the logged scheduled_delay_ms; timing_offset_ms stays the nominal draw.
 # 0 disables it.
 TIMING_JITTER_MS = 10
@@ -354,6 +364,8 @@ MAX_SACCADE_TRIALS_REAL = 200
 # NUM_RT_TEST_TRIALS_REAL above).
 WARNING_TONE_HZ = 880
 WARNING_TONE_DURATION_S = 0.5
+# PsychoPy sound volume 0-1 (1 = full scale); 0.5 is about -6 dB, "a bit quieter" than before.
+WARNING_TONE_VOLUME = 0.5
 
 # First-timer tutorial (see src/experiment/tutorial_session.py), offered as a
 # yes/no dialog toggle before a real saccade-phase session: calibration ->

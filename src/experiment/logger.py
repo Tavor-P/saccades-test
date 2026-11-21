@@ -214,6 +214,10 @@ _SETTINGS_CONSTANTS = {
     "include.experiment.constants": (
         "TIMING_OFFSETS_MS",
         "TIMING_JITTER_MS",
+        "CONTROL_OFFSETS_MS",
+        "WARNING_TONE_HZ",
+        "WARNING_TONE_DURATION_S",
+        "WARNING_TONE_VOLUME",
         "DEFAULT_REACTION_TIME_MS",
         "SACCADE_FIXED_TRIALS_TEST",
         "SACCADE_FIXED_TRIALS_REAL",
