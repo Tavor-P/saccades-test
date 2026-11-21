@@ -22,13 +22,12 @@ def test_timing_windows_are_ordered():
 
 
 def test_no_flash_can_be_scheduled_before_the_trial_starts():
-    """Spread flashes tile [0, avg RT + max offset + jitter] after the go cue (never before it, by construction);
-    control flashes are avg RT + offset +/- jitter, so even for a fast reactor they must land after the target appears,
-    and they must stay later than the whole spread window."""
-    assert MIN_PLAUSIBLE_REACTION_MS + max(c.TIMING_OFFSETS_MS) + c.TIMING_JITTER_MS > 0
+    """Bell-curve flashes are cut to [FLASH_WINDOW_MIN_MS, FLASH_WINDOW_MAX_MS] after the go cue (never before it);
+    control flashes are avg RT + offset +/- jitter, so even for a fast reactor they must land after the target appears."""
+    assert 0 <= c.FLASH_WINDOW_MIN_MS < c.DEFAULT_REACTION_TIME_MS < c.FLASH_WINDOW_MAX_MS
+    assert c.FLASH_SPREAD_SD_MS > 0
     assert MIN_PLAUSIBLE_REACTION_MS + min(c.CONTROL_OFFSETS_MS) - c.TIMING_JITTER_MS > 0
-    assert min(c.CONTROL_OFFSETS_MS) - c.TIMING_JITTER_MS > max(c.TIMING_OFFSETS_MS) + c.TIMING_JITTER_MS
-    assert len(set(c.TIMING_OFFSETS_MS)) == len(c.TIMING_OFFSETS_MS)  # each label names one bin
+    assert len(set(c.TIMING_OFFSETS_MS)) == len(c.TIMING_OFFSETS_MS)  # each label names one slice
 
 
 def test_trial_count_limits_are_consistent():

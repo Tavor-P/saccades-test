@@ -209,13 +209,21 @@ class ShuffledBag(Generic[_T]):
         return self._remaining.popleft()
 
 
-def spread_flash_delay_ms(label: int, labels: Sequence[int], window_end_ms: float, rng=random) -> float:
-    """Delay from the go cue (ms) for a spread flash: `labels` (TIMING_OFFSETS_MS) name len(labels) equal-width bins
-    tiling [0, window_end_ms]; the i-th smallest label is the i-th bin and the flash lands uniformly inside it."""
+def spread_flash_delay_ms(
+    label: int, labels: Sequence[int], center_ms: float, sd_ms: float, lo_ms: float, hi_ms: float, rng=random
+) -> float:
+    """Delay from the go cue (ms) for a bell-curve flash: a normal curve (mean `center_ms`, SD `sd_ms`) cut to
+    [lo_ms, hi_ms] is split into len(labels) slices of equal probability; the i-th smallest label is the i-th slice
+    (earliest first) and the flash is drawn from the curve inside it (inverse-CDF of a uniform draw)."""
     ordered = sorted(labels)
-    width = max(window_end_ms, 0.0) / len(ordered)
-    start = ordered.index(label) * width
-    return rng.uniform(start, start + width)
+    n, i = len(ordered), ordered.index(label)
+    if sd_ms <= 0 or hi_ms <= lo_ms:
+        return min(max(center_ms, lo_ms), hi_ms)
+    curve = statistics.NormalDist(center_ms, sd_ms)
+    p_lo, p_hi = curve.cdf(lo_ms), curve.cdf(hi_ms)
+    u = rng.uniform(i / n, (i + 1) / n)
+    p = min(max(p_lo + u * (p_hi - p_lo), 1e-12), 1 - 1e-12)
+    return min(max(curve.inv_cdf(p), lo_ms), hi_ms)
 
 
 def sample_capture_time(sample, now: float, latency_s: float, from_perf_counter) -> float:

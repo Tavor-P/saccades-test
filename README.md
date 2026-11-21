@@ -97,8 +97,8 @@ Blackfly S + MediaPipe backend instead.
    aligned to the PC clock, see [Glasses video](#glasses-video).
 4. **Trials** (150 in Real, 30 in Test). The participant presses **SPACE** to start each trial (the wait between trials is their break). A dot and a cross sit at the left and
    right; 0.5-1 s after the press the dot swaps to the cross (a go cue with a beep) and the participant looks to it as fast as they can.
-   A thin line flashes for one frame 2 deg above or below the symbol being looked at, at a random time spread evenly from 0 ms after the dot moves up to the average reaction time + 90 ms
-   (~315 ms at a 225 ms reaction time), plus some control flashes (about 2 in 11) at +400/+500 ms (+-10 ms) after the average reaction time, when the eye has already landed. The participant presses **Up** (line above) or **Down** (below) within 1 s;
+   A thin line flashes for one frame 2 deg above or below the symbol being looked at, at a random time on a bell curve centred on the average reaction time (SD 80 ms, never before the dot moves or later
+   than 500 ms after it): most flashes come near the reaction time, few near the ends, plus some control flashes (about 2 in 11) at +400/+500 ms (+-10 ms) after the average reaction time, when the eye has already landed. The participant presses **Up** (line above) or **Down** (below) within 1 s;
    a missed flash is still guessed. Every trial shows a flash; there are no catch trials. In real trials the caption is hidden and silent.
 5. **End.** The console prints a plain-language summary and the `analyze_session` command to run. Fixation data come from the control flashes and the
    far-from-saccade flashes of the same trials, sorted after the fact (see [Analysing a session](#analysing-a-session)).
@@ -249,7 +249,7 @@ Discussion were not checked). In that paper participants (ages 8-78; about 100 a
 | | Braun et al. 2021 | This experiment |
 |---|---|---|
 | Eye tracker | EyeLink 1000, 1000 Hz | Pupil Labs Neon, ~160-200 Hz, gaze reaches the PC late |
-| Flash trigger | live: 15 ms after online saccade-onset detection | scheduled evenly from 0 ms after the go cue to the person's average reaction time + 90 ms, judged **after the fact** from the raw gaze trace |
+| Flash trigger | live: 15 ms after online saccade-onset detection | scheduled on a bell curve around the person's average reaction time (SD 80 ms, 0-500 ms after the go cue), judged **after the fact** from the raw gaze trace |
 | Display | 120 Hz, 8 ms flash | 60 Hz monitor, one frame (~17 ms) |
 | Saccade size | 10 deg target step | depends on the screen width and distance: about 30-40 deg on a large screen (dot at 15 % and cross at 85 % of the screen width) |
 | Thresholds | 1-up/2-down staircase, then a psychometric fit | method of constant stimuli (fixed contrasts, default 4/6/8 %), then a Weibull fit |
@@ -268,12 +268,11 @@ flashes 50-300 ms away; small numbers and a window chosen after seeing the first
 - **Gaze reaches the PC ~90-100 ms late** in real sessions (about 16 ms in standalone scripts), so the live `flash_during_saccade` flag is unreliable. Judging after the fact
   from the phone's capture times (`analyze_session`) is unaffected. Cause not found.
 - **Head monitor unvalidated:** the IMU monitor's thresholds, real rate and clock alignment with gaze have not been checked on glasses (see Head movement).
-- **Timing is open-loop:** flashes are scheduled, not triggered by the saccade, and reaction times vary (SD ~60-80 ms), so only a minority of flashes land near onset (the spread from 0 ms puts many before the saccade, as fixation data:
-  in the simulator ~29 of 150 within +-50 ms of onset, ~19 pass the saccade gate).
+- **Timing is open-loop:** flashes are scheduled, not triggered by the saccade, and reaction times vary (SD ~60-80 ms), so only a minority of flashes land near onset (in the simulator ~43 of 150 within +-50 ms of onset, ~31 pass the saccade gate).
   People with TBI may vary more.
 - **No separate baseline phase any more.** It was removed because foveal fixation is not a like-for-like control (a different retinal location). The fixation condition of the
   suppression index now comes only from the saccade phase: control flashes and flashes at least 100 ms from any saccade, so it depends on enough of them landing
-  (150 trials give roughly 19 saccade-condition and 83 fixation-condition flashes in the simulator; real data may differ).
+  (150 trials give roughly 31 saccade-condition and 55 fixation-condition flashes in the simulator; real data may differ).
 - A single participant so far; no group analysis exists.
 
 ## For developers

@@ -10,6 +10,9 @@ from include.eye_tracking.constants import HEAD_DRIFT_WARN_DEG, HEAD_MAX_SPEED_D
 from include.eye_tracking.interfaces import GazeSource
 from include.experiment.constants import (
     CONTROL_OFFSETS_MS,
+    FLASH_SPREAD_SD_MS,
+    FLASH_WINDOW_MAX_MS,
+    FLASH_WINDOW_MIN_MS,
     CENTER_POSITION,
     CROSS_POSITION,
     DEFAULT_REACTION_TIME_MS,
@@ -516,16 +519,18 @@ class ExperimentSession:
         self._last_sample_ts = self._gaze.latest_sample().timestamp
         self._onset_detector = OnsetDetector(zone_for(trial.source))
         # Open-loop: the flash fires at a fixed delay from this instant, not when the gaze classifier detects onset. The
-        # average is always set here: the RT test (or seeded samples) comes first. A TIMING_OFFSETS_MS label picks a bin of
-        # [0, avg RT + max offset + jitter] after the go cue (see the constant); a control offset (or a practice trial's
-        # None = 0) is average RT + offset + jitter.
+        # average is always set here: the RT test (or seeded samples) comes first. A TIMING_OFFSETS_MS label picks a slice of
+        # a bell curve centred on the average RT (see the constant); a control offset (or a practice trial's None = 0) is
+        # average RT + offset + jitter.
         offset_ms = trial.timing_offset_ms if trial.timing_offset_ms is not None else 0  # 0 is itself a valid offset
         self._trial_gaze_latency_ms = self.gaze_latency_ms
         self._latency_s = self._timestamp_latency_s(self._trial_gaze_latency_ms)
         self._trial_avg_rt_ms = self._avg_reaction_time_ms
         if trial.timing_offset_ms is not None and trial.timing_offset_ms in TIMING_OFFSETS_MS:
-            window_end_ms = self._avg_reaction_time_ms + max(TIMING_OFFSETS_MS) + TIMING_JITTER_MS
-            self._trial_scheduled_delay_ms = spread_flash_delay_ms(trial.timing_offset_ms, TIMING_OFFSETS_MS, window_end_ms)
+            self._trial_scheduled_delay_ms = spread_flash_delay_ms(
+                trial.timing_offset_ms, TIMING_OFFSETS_MS, self._avg_reaction_time_ms,
+                FLASH_SPREAD_SD_MS, FLASH_WINDOW_MIN_MS, FLASH_WINDOW_MAX_MS,
+            )
         else:
             jitter_ms = random.uniform(-TIMING_JITTER_MS, TIMING_JITTER_MS) if TIMING_JITTER_MS else 0.0
             self._trial_scheduled_delay_ms = self._avg_reaction_time_ms + offset_ms + jitter_ms

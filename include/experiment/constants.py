@@ -222,20 +222,23 @@ CALIBRATION_ROUNDS = 3
 # (see flash_during_saccade in include/experiment/types.py) - expected and
 # handled by only feeding valid trials to ZEST (see ExperimentSession).
 #
-# Spread flashes (since 2026-11): the values no longer add to the average RT directly. Each one
-# names one of len(TIMING_OFFSETS_MS) equal-width bins (the i-th smallest value = the i-th bin)
-# that tile the window from 0 ms after the go cue up to
-# avg_reaction_time_ms + max(TIMING_OFFSETS_MS) + TIMING_JITTER_MS (~315 ms at a 225 ms RT),
-# and the flash lands uniformly inside its bin (trial_mechanics.spread_flash_delay_ms). So the
-# flashes cover the whole window evenly (stratified by the shuffled bag), including the early
-# part where the eye is still fixating the source. timing_offset_ms holds the nominal bin label
-# (one of these values); the real delay from the go cue is scheduled_delay_ms
-# (flash_ms_after_go_cue in trials.csv). Before this change the flash was avg RT + value +/- jitter
-# (-90..+90 ms around the average RT); old sessions keep the same labels.
+# Bell-curve flashes (since 2026-11-21): the values no longer add to the average RT directly. Each
+# non-control flash is drawn from a normal curve centred on the average reaction time (the moment
+# the saccade should start) with SD FLASH_SPREAD_SD_MS, cut off at FLASH_WINDOW_MIN_MS and
+# FLASH_WINDOW_MAX_MS after the go cue: most flashes land near the average RT, few near the ends.
+# Each value names one of len(TIMING_OFFSETS_MS) equal-PROBABILITY slices of that curve (the i-th
+# smallest value = the i-th slice, earliest first; trial_mechanics.spread_flash_delay_ms), so the
+# shuffled bag still stratifies: over 150 trials every part of the curve gets its share.
+# timing_offset_ms holds that nominal slice label (one of these values); the real delay from the go
+# cue is scheduled_delay_ms (flash_ms_after_go_cue in trials.csv). History: originally avg RT +
+# value +/- jitter (-90..+90 ms around the average RT); briefly uniform over 0 .. avg RT + 90 ms.
 TIMING_OFFSETS_MS = (-80, -60, -40, -20, 0, 20, 40, 60, 80)
+# The bell curve's width and cut-offs (ms after the go cue; the curve's centre = average RT).
+FLASH_SPREAD_SD_MS = 80
+FLASH_WINDOW_MIN_MS = 0
+FLASH_WINDOW_MAX_MS = 500
 # Random "bounce" (uniform +/- this many ms, drawn per trial) on the CONTROL flashes below, so
-# they form a spread instead of two fixed spikes; for spread flashes it only extends the window's
-# upper end (the uniform draw inside a bin already gives a continuous spread).
+# they form a spread instead of two fixed spikes (the bell-curve flashes are continuous already).
 # The jitter is part of the logged scheduled_delay_ms; timing_offset_ms stays the nominal draw.
 # 0 disables it.
 TIMING_JITTER_MS = 10

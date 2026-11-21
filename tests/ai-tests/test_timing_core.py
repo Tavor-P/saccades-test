@@ -7,6 +7,7 @@ import pytest
 
 from include.eye_tracking.types import GazeSample, GazeZone
 from include.experiment.constants import (
+    FLASH_SPREAD_SD_MS,
     GAZE_LANDING_STABILITY_MS,
     GAZE_LATENCY_MAX_MS,
     RESPONSE_WINDOW_MS,
@@ -259,8 +260,8 @@ def test_trial_rows_log_the_scheduling_inputs_and_flash_relative_to_onset(fake_g
     row = _saccade_results(session)[0]
     # The RT test measured 0.2 s of arrival time, minus the source's 20 ms latency.
     assert row.avg_rt_used_ms == pytest.approx(180.0)
-    # Offset 40 is the 7th of 9 bins tiling 0 .. 180 + 80 (+ jitter, 0 in these tests) ms after the go cue.
-    assert 6 / 9 * 260.0 - 1e-6 <= row.scheduled_delay_ms <= 7 / 9 * 260.0 + 1e-6
+    # Offset 40 is the 7th of 9 equal-probability slices of the bell curve around the 180 ms average: just after it.
+    assert 180.0 < row.scheduled_delay_ms < 180.0 + FLASH_SPREAD_SD_MS
     assert row.gaze_latency_ms == pytest.approx(20.0)
     assert row.flash_relative_to_onset_ms is not None
 

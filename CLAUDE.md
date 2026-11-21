@@ -59,7 +59,7 @@ Real-Time API) or, with `SACCADES_BACKEND=webcam` (no dialog field any more), FL
 ## Status and next steps (2026-10-25)
 
 - **Goal**: grant to test saccadic suppression in TBI vs non-TBI. Present as a *feasibility pilot (n=1)*, never a group result.
-- **Shipped setup**: flashes spread evenly from 0 ms after the go cue to average RT + 90 ms (9 bins), controls at avg RT +400/+500 +/-10 ms; go-cue beep at volume 0.5; fixed saccade contrasts; sharp go-cue; dot/cross at
+- **Shipped setup**: flash times on a bell curve centred on the average RT (SD `FLASH_SPREAD_SD_MS` 80, cut to 0-500 ms after the go cue, 9 equal-probability slices), controls at avg RT +400/+500 +/-10 ms; go-cue beep at volume 0.5; fixed saccade contrasts; sharp go-cue; dot/cross at
   15 %/85 % of the screen; plain Neon, still head (chin rest). Onboarding: calibration -> how-to-answer quiz -> 8 practice trials seeding the RT average.
   Every trial waits for SPACE. Control flashes (+400/+500 ms after average RT) + pre-specified gates give `analyze_session` a per-person suppression index.
 - **Results layout and glasses video** (untested on glasses): a run writes `data/<participant>/<YYYY-MM-DD_HH-MM-SS>[_test]/` (`trials.csv`,
@@ -70,9 +70,9 @@ Real-Time API) or, with `SACCADES_BACKEND=webcam` (no dialog field any more), FL
   when fixating the dot/cross (~15 deg off), 10-20 % seen. Flashes within +-50 ms of onset: 3/12 correct vs 12/13 at 50-300 ms away (Fisher p=0.001),
   sharpest in the 50 ms before onset; an earlier 20-80 % session agreed (pooled p<1e-4). Small n; the +-50 ms window was chosen post hoc (gates are now pre-specified).
 - **Known problems**: (1) gaze reaches the PC ~95 ms late (Gotchas) so live `flash_during_saccade` is useless (post-hoc analysis unaffected).
-  (2) RT SD ~60-80 ms, only ~1/5 of flashes land within +-50 ms of onset since the 0 ms spread (TBI likely worse); live rolling RT helps only with drift (simulation only).
+  (2) RT SD ~60-80 ms, only ~2/7 of flashes land within +-50 ms of onset (TBI likely worse); live rolling RT helps only with drift (simulation only).
   (3) Screen geometry is typed into the startup dialog each run (remembered); until the user measures their small monitor (~12 in wide, 60 Hz) it is the 26 cm / 50 cm placeholder and the dialog says so. Saccade size in degrees also depends on width and distance.
-  (4) The separate baseline (foveal) phase was removed (not a like-for-like control, different retinal location): fixation now comes only from the saccade phase's control flashes + flashes >=100 ms from any saccade; the simulator gives ~83 fixation / ~19 saccade flashes per 150 trials (`flash_gates`; ~29 within +-50 ms of onset), so ~28/~6 per contrast level (was ~46/~36 before the 0 ms spread, 2026-11-21).
+  (4) The separate baseline (foveal) phase was removed (not a like-for-like control, different retinal location): fixation now comes only from the saccade phase's control flashes + flashes >=100 ms from any saccade; the simulator gives ~55 fixation / ~31 saccade flashes per 150 trials (`flash_gates`; ~43 within +-50 ms of onset), so ~18/~10 per contrast level (SD 60: ~51/~37; SD 100: ~59/~30; old +-90 uniform: ~46/~36).
 - **Next, in order**: (1) short Test run then full 150-trial Real run with participant ID on glasses, analyse with `analyze_session`; (2) group analysis
   (per-person suppression index + group test or mixed model); (3) one-page grant figure + wording; (4) clinical metadata fields (group, time since injury,
   severity, symptoms, medication; needs IRB) in the dashboard; (5) find the ~95 ms delay cause (e.g. Neon in its own process); (6) update geometry constants.
@@ -178,8 +178,8 @@ Paths in this section are checked by `tests/test_docs.py` - keep them real.
 
 ## Experiment design (why it is built this way)
 
-- **Flash timing is open-loop (`"scheduled"`)**, because live gaze is ~95 ms late: each trial draws from a bag of `TIMING_OFFSETS_MS` + `CONTROL_OFFSETS_MS`; an offset label is one of 9 equal bins tiling
-  0 .. avg RT + max offset + `TIMING_JITTER_MS` (~315 ms) after target onset, uniform inside the bin (`trial_mechanics.spread_flash_delay_ms`); a control is avg RT + 400/500 +/-10 ms. The real delay is `scheduled_delay_ms`; `timing_offset_ms` keeps the label. The live classifier only measures `reaction_latency_ms` and computes `flash_during_saccade` post hoc
+- **Flash timing is open-loop (`"scheduled"`)**, because live gaze is ~95 ms late: each trial draws from a bag of `TIMING_OFFSETS_MS` + `CONTROL_OFFSETS_MS`; an offset label is one of 9 equal-probability slices of a normal curve
+  (mean avg RT, SD `FLASH_SPREAD_SD_MS`, cut to `FLASH_WINDOW_MIN_MS`..`FLASH_WINDOW_MAX_MS` = 0..500 ms after target onset), drawn by inverse CDF inside the slice (`trial_mechanics.spread_flash_delay_ms`); a control is avg RT + 400/500 +/-10 ms. The real delay is `scheduled_delay_ms`; `timing_offset_ms` keeps the label. The live classifier only measures `reaction_latency_ms` and computes `flash_during_saccade` post hoc
   (scheduled time inside `[_onset_detector.since, _target_landed_since]`); it is `True`/`False`/`None` (`None` = landing never confirmed). ZEST requires exactly `True`.
   Real judgement is `analyze_session` on the raw trace's phone capture times (accuracy vs flash time relative to saccade onset).
 - **Constant stimuli**: `SACCADE_FIXED_CONTRASTS` (evenly spaced between the dialog's min/max, logged as `saccade_contrasts`) and a fixed count `SACCADE_FIXED_TRIALS_*`; no live ZEST in the saccade phase.

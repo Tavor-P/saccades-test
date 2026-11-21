@@ -1,12 +1,17 @@
 """Scheduled mode with its default saccade-phase setup: fixed probe contrasts (no live staircase),
-spread flashes tiling 0 ms .. avg RT + max offset + jitter after the go cue, a random
+bell-curve flash times centred on the average RT (cut to the flash window), a random
 +/-TIMING_JITTER_MS bounce on the control flashes, and a fixed trial count."""
+
+import pytest
 
 from include.experiment.constants import (
     SACCADE_FIXED_CONTRASTS,
     SACCADE_FIXED_TRIALS_REAL,
     SACCADE_FIXED_TRIALS_TEST,
     CONTROL_OFFSETS_MS,
+    FLASH_SPREAD_SD_MS,
+    FLASH_WINDOW_MAX_MS,
+    FLASH_WINDOW_MIN_MS,
     TIMING_JITTER_MS,
     TIMING_OFFSETS_MS,
 )
@@ -52,32 +57,51 @@ def test_control_flash_time_has_a_random_bounce_within_the_configured_bound(fake
     assert max(delays) - min(delays) > TIMING_JITTER_MS / 2  # actually random, not a constant
 
 
-def test_spread_flashes_tile_zero_to_the_old_maximum_after_the_go_cue(fake_gaze, fake_time):
-    """Each TIMING_OFFSETS_MS label is one equal-width bin of [0, avg RT + max offset + jitter] after the go cue."""
+class _Edge:
+    """rng stub: uniform(a, b) returns a (low=True) or b, to get a slice's edges."""
+
+    def __init__(self, low: bool):
+        self.low = low
+
+    def uniform(self, a, b):
+        return a if self.low else b
+
+
+def _slice_ms(label, center):
+    args = (label, TIMING_OFFSETS_MS, center, FLASH_SPREAD_SD_MS, FLASH_WINDOW_MIN_MS, FLASH_WINDOW_MAX_MS)
+    return spread_flash_delay_ms(*args, rng=_Edge(True)), spread_flash_delay_ms(*args, rng=_Edge(False))
+
+
+def test_bell_curve_flashes_cluster_around_the_average_rt(fake_gaze, fake_time):
+    """Each TIMING_OFFSETS_MS label is one equal-probability slice of a normal curve centred on the average RT, cut to
+    the flash window; the middle slices are narrow (dense) and the outer ones wide (sparse)."""
     session = _make_session(fake_gaze)
     _complete_calibration_and_rt_test(session, fake_gaze, fake_time)
     labels = sorted(TIMING_OFFSETS_MS)
-    by_label = {label: [] for label in labels}
-    for index in range(20 * len(labels)):
+    delays = []
+    for index in range(30 * len(labels)):
         label = labels[index % len(labels)]
         _set_single_trial(session, index=index, timing_offset_ms=label)
         _enter_trial_active(session, fake_time)
-        end = session._avg_reaction_time_ms + max(TIMING_OFFSETS_MS) + TIMING_JITTER_MS
-        by_label[label].append((session._trial_scheduled_delay_ms, end))
-    n = len(labels)
-    for i, label in enumerate(labels):
-        assert all(i * end / n - 1e-9 <= d <= (i + 1) * end / n + 1e-9 for d, end in by_label[label]), label
-        delays = [d for d, _ in by_label[label]]
-        assert max(delays) - min(delays) > by_label[label][0][1] / n / 4  # uniform inside the bin, not a spike
-    first_end = by_label[labels[0]][0][1]
-    assert min(d for d, _ in by_label[labels[0]]) < first_end / n  # starts at the go cue, not near the average RT
+        center = session._avg_reaction_time_ms
+        lo, hi = _slice_ms(label, center)
+        d = session._trial_scheduled_delay_ms
+        assert lo - 1e-6 <= d <= hi + 1e-6, (label, lo, d, hi)
+        delays.append(d - center)
+    assert all(FLASH_WINDOW_MIN_MS - 1e-6 <= d + center <= FLASH_WINDOW_MAX_MS + 1e-6 for d in delays)
+    near = sum(abs(d) <= FLASH_SPREAD_SD_MS for d in delays) / len(delays)
+    assert 0.55 < near < 0.8  # about 68 % within one SD, as for a bell curve
 
 
-def test_spread_flash_delay_ms_bins():
+def test_spread_flash_delay_ms_slices():
     labels = (-80, 0, 80)
-    assert spread_flash_delay_ms(-80, labels, 300, rng=type("R", (), {"uniform": staticmethod(lambda a, b: a)})) == 0
-    assert spread_flash_delay_ms(80, labels, 300, rng=type("R", (), {"uniform": staticmethod(lambda a, b: b)})) == 300
-    assert 100 <= spread_flash_delay_ms(0, labels, 300) <= 200
+    args = (200.0, 80.0, 0.0, 500.0)
+    assert spread_flash_delay_ms(-80, labels, *args, rng=_Edge(True)) == pytest.approx(0.0, abs=1e-6)
+    assert spread_flash_delay_ms(80, labels, *args, rng=_Edge(False)) == pytest.approx(500.0, abs=1e-6)
+    mid_lo = spread_flash_delay_ms(0, labels, *args, rng=_Edge(True))
+    mid_hi = spread_flash_delay_ms(0, labels, *args, rng=_Edge(False))
+    assert mid_lo < 200.0 < mid_hi and mid_hi - mid_lo < 100  # the middle third is narrow, around the centre
+    assert spread_flash_delay_ms(0, labels, 200.0, 0.0, 0.0, 500.0) == 200.0  # SD 0 = exactly the average RT
 
 
 def test_main_block_stops_by_trial_count_not_by_the_staircase(fake_gaze):

@@ -16,13 +16,27 @@ from include.experiment.constants import (
     PRACTICE_CONTRAST,
     SACCADE_FIXED_CONTRASTS,
     CONTROL_OFFSETS_MS,
+    FLASH_SPREAD_SD_MS,
+    FLASH_WINDOW_MAX_MS,
+    FLASH_WINDOW_MIN_MS,
     TIMING_JITTER_MS,
     TIMING_OFFSETS_MS,
     ZEST_LOG_CONTRAST_MAX,
 )
 from src.experiment.simulation import FRAME_HZ, SimulationResult
+from src.experiment.trial_mechanics import spread_flash_delay_ms
 
 FRAME_MS = 1000 / FRAME_HZ
+
+
+class _Edge:
+    """rng stub for spread_flash_delay_ms: uniform(a, b) returns an edge, giving a slice's bounds."""
+
+    def __init__(self, low: bool):
+        self.low = low
+
+    def uniform(self, a, b):
+        return a if self.low else b
 SACCADE_OUTCOMES = {"correct", "incorrect", "miss", "timeout"}
 RT_OUTCOMES = {"detected", "timeout"}
 
@@ -97,11 +111,14 @@ def check_session(sim: SimulationResult, max_trials_cap: int = MAX_SACCADE_TRIAL
         if r.timing_offset_ms is not None and r.timing_offset_ms not in allowed_offsets:
             v.append(f"{tag}: timing_offset_ms {r.timing_offset_ms} not one of {allowed_offsets}")
         if r.timing_offset_ms in TIMING_OFFSETS_MS and r.scheduled_delay_ms is not None and r.avg_rt_used_ms is not None:
-            # Spread flash: its bin of [0, avg RT + max offset + jitter] after the go cue.
-            n, i = len(TIMING_OFFSETS_MS), sorted(TIMING_OFFSETS_MS).index(r.timing_offset_ms)
-            end = r.avg_rt_used_ms + max(TIMING_OFFSETS_MS) + TIMING_JITTER_MS
-            if not i * end / n - 1e-6 <= r.scheduled_delay_ms <= (i + 1) * end / n + 1e-6:
-                v.append(f"{tag}: scheduled_delay_ms {r.scheduled_delay_ms:.1f} outside bin {i} of 0..{end:.1f} ms")
+            # Bell-curve flash: inside its slice of the curve around the average RT, inside the flash window.
+            edges = [
+                spread_flash_delay_ms(r.timing_offset_ms, TIMING_OFFSETS_MS, r.avg_rt_used_ms, FLASH_SPREAD_SD_MS,
+                                      FLASH_WINDOW_MIN_MS, FLASH_WINDOW_MAX_MS, rng=_Edge(low))
+                for low in (True, False)
+            ]
+            if not edges[0] - 1e-6 <= r.scheduled_delay_ms <= edges[1] + 1e-6:
+                v.append(f"{tag}: scheduled_delay_ms {r.scheduled_delay_ms:.1f} outside its slice {edges[0]:.1f}..{edges[1]:.1f} ms")
         if r.timing_offset_ms in CONTROL_OFFSETS_MS and r.scheduled_delay_ms is not None and r.avg_rt_used_ms is not None:
             if abs(r.scheduled_delay_ms - r.avg_rt_used_ms - r.timing_offset_ms) > TIMING_JITTER_MS + 1e-6:
                 v.append(f"{tag}: control flash scheduled_delay_ms {r.scheduled_delay_ms:.1f} not avg RT + {r.timing_offset_ms} +/- jitter")
