@@ -144,6 +144,21 @@ def test_participant_analysis_reused_when_fresh_and_rerun_when_include_test_flip
     assert calls == [True]
 
 
+def test_participant_analyse_post_runs_and_redirects_keeping_include_test(client, data):
+    response = client.post(f"/participants/{PID}/analyse", data={"include_test": "1"})
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith(f"/participants/{PID}/results?include_test=1")
+    assert json.loads((data / PID / "analysis" / "summary.json").read_text())["include_test"] is True
+
+
+def test_analyse_posts_with_problems_render_the_friendly_page(client):
+    response = client.post("/participants/SYN-TEST/analyse")
+    page = _html(response)
+    assert response.status_code == 422 and "only test runs" in page and "Analyse including test runs" in page and "Traceback" not in page
+    response = client.post(f"/runs/{NO_TRACE}/analyse")
+    assert response.status_code == 422 and "no gaze recording" in _html(response)
+
+
 def test_participant_with_only_test_runs_gets_a_friendly_message_then_include_test_works(client):
     response = client.get("/participants/SYN-TEST/results")
     page = _html(response)

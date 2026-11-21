@@ -210,7 +210,8 @@ Not verified on real footage: whether the scene camera sees the green flash from
 
 **Analysing without the command line**: each run has an **Analyse** button, and the **Participants** table has one per person (tick
 **Include test runs** to add test-mode runs; a person with only test runs needs it). The button opens a results page that runs the same analysis as
-`analyze_session` / `analyze_participant` (a participant analysis can take several seconds) and shows:
+`analyze_session` / `analyze_participant` (the page stays blank while it works: about 7 s for one 150-trial run and 10 s for a person
+with three, measured on synthetic data; reopening a saved analysis is instant) and shows:
 
 - the result in one sentence, with what the number means;
 - the plot;
