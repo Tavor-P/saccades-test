@@ -28,22 +28,23 @@ def _imported_modules(tree: ast.AST) -> set[str]:
     return names
 
 
-@pytest.mark.parametrize("module", LOGIC_MODULES)
-def test_session_logic_does_not_import_a_graphics_or_hardware_stack(module):
+
+def test_session_logic_does_not_import_a_graphics_or_hardware_stack():
     """Why: the simulator/tests run these without a window or camera."""
-    imported = _imported_modules(_tree(ROOT / "src" / "experiment" / f"{module}.py"))
-    assert not imported & {"psychopy", "pyglet", "cv2", "PySpin", "mediapipe", "pupil_labs"}, imported
+    for module in LOGIC_MODULES:
+        imported = _imported_modules(_tree(ROOT / "src" / "experiment" / f"{module}.py"))
+        assert not imported & {"psychopy", "pyglet", "cv2", "PySpin", "mediapipe", "pupil_labs"}, (module, imported)
 
 
-@pytest.mark.parametrize("module", ["session", "tutorial_session", "trial_mechanics"])
-def test_session_logic_reads_time_only_through_the_injected_clock(module):
+def test_session_logic_reads_time_only_through_the_injected_clock():
     """Why: a direct time.perf_counter()/sleep() makes the logic untestable and breaks the simulated
     clock (and pausing). Wall-clock stamps come from clock.unix_ms() too."""
     forbidden = []
-    for node in ast.walk(_tree(ROOT / "src" / "experiment" / f"{module}.py")):
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name):
-            if node.func.value.id == "time" and node.func.attr in {"monotonic", "sleep", "perf_counter", "time"}:
-                forbidden.append(f"time.{node.func.attr} at line {node.lineno}")
+    for module in ["session", "tutorial_session", "trial_mechanics"]:
+        for node in ast.walk(_tree(ROOT / "src" / "experiment" / f"{module}.py")):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name):
+                if node.func.value.id == "time" and node.func.attr in {"monotonic", "sleep", "perf_counter", "time"}:
+                    forbidden.append(f"{module}: time.{node.func.attr} at line {node.lineno}")
     assert not forbidden, forbidden
 
 
@@ -61,21 +62,14 @@ def test_only_the_timebase_reads_the_coarse_or_raw_clocks():
     assert not forbidden, forbidden
 
 
-def test_timebase_uses_a_fine_resolution_clock():
+def test_timebase_uses_a_fine_resolution_clock_and_its_anchor_gives_sub_tick_unix_time():
+    """The unix time derived from the perf counter must advance smoothly (not in 15.6 ms steps) and agree with the system clock."""
     import time
 
     from src import timebase
 
     assert timebase._clock is time.perf_counter
     assert time.get_clock_info("perf_counter").resolution <= 1e-6  # 100 ns on Windows; the others are 15.6 ms there
-
-
-def test_timebase_anchor_gives_sub_tick_unix_time():
-    """The unix time derived from the perf counter must advance smoothly (not in 15.6 ms steps) and agree with the system clock."""
-    import time
-
-    from src import timebase
-
     stamps = {timebase.unix_now() for _ in range(2000)}
     assert len(stamps) > 1000
     assert abs(timebase.unix_now() - time.time()) < 0.05
@@ -101,25 +95,22 @@ def test_only_run_experiment_needs_psychopy_among_experiment_modules():
     assert not offenders, offenders
 
 
-@pytest.mark.parametrize(
-    "module,forbidden",
-    [
+def test_backends_are_imported_lazily():
+    """Why: a machine with only one backend installed (Neon-only, no Spinnaker SDK) must still run.
+    Checked in a fresh interpreter per module so other tests' imports can't mask a violation."""
+    for module, forbidden in [
         ("src.eye_tracking.gaze_factory", {"PySpin", "mediapipe", "cv2", "pupil_labs"}),
         ("src.eye_tracking.neon_source", {"PySpin", "mediapipe", "psychopy"}),
         ("src.eye_tracking.gaze_trace", {"PySpin", "mediapipe", "psychopy", "cv2"}),
         ("src.experiment.simulation", {"PySpin", "mediapipe", "psychopy", "pyglet", "cv2"}),
-    ],
-)
-def test_backends_are_imported_lazily(module, forbidden):
-    """Why: a machine with only one backend installed (Neon-only, no Spinnaker SDK) must still run.
-    Checked in a fresh interpreter so other tests' imports can't mask a violation."""
-    code = (
-        "import sys, importlib; importlib.import_module(%r); "
-        "print(sorted(m for m in %r if m in sys.modules))" % (module, sorted(forbidden))
-    )
-    out = subprocess.run([sys.executable, "-c", code], cwd=ROOT, capture_output=True, text=True)
-    assert out.returncode == 0, out.stderr[-500:]
-    assert out.stdout.strip() == "[]", f"{module} eagerly imported {out.stdout.strip()}"
+    ]:
+        code = (
+            "import sys, importlib; importlib.import_module(%r); "
+            "print(sorted(m for m in %r if m in sys.modules))" % (module, sorted(forbidden))
+        )
+        out = subprocess.run([sys.executable, "-c", code], cwd=ROOT, capture_output=True, text=True)
+        assert out.returncode == 0, (module, out.stderr[-500:])
+        assert out.stdout.strip() == "[]", f"{module} eagerly imported {out.stdout.strip()}"
 
 
 def test_test_fixtures_are_not_swallowed_by_gitignore():
