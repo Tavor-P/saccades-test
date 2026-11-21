@@ -32,7 +32,8 @@ def _synthetic_saccade_trace() -> list[TraceRow]:
     return rows
 
 
-def test_writer_and_loader_round_trip(tmp_path):
+
+def test_writer_loader_round_trip_and_neon_source_records_a_trace(tmp_path):
     path = tmp_path / "trace.csv"
     w = GazeTraceWriter(path)
     w.write(1.5, 1700000000.25, 800.0, True)
@@ -42,98 +43,6 @@ def test_writer_and_loader_round_trip(tmp_path):
     assert rows[0] == TraceRow(1.5, 1700000000.25, 800.0, True)
     assert rows[1].x_px is None and rows[1].worn is False and rows[1].device_unix_s is None
 
-
-def test_replay_follows_the_recorded_timeline():
-    clock = _Clock()
-    source = ReplayGazeSource(_synthetic_saccade_trace(), time_fn=clock)
-    source.start()
-    clock.t += 0.3
-    assert source.latest_sample().zone is GazeZone.CENTER
-    clock.t += 0.3  # t=0.6 s, after the jump
-    assert source.latest_sample().zone is GazeZone.RIGHT
-
-
-def test_polling_rate_does_not_change_what_the_mapper_sees():
-    """The same trace polled rarely vs often must give the same final sample
-    (every row is fed through the mapper in order either way)."""
-    results = []
-    for step in (0.001, 0.2):
-        clock = _Clock()
-        source = ReplayGazeSource(_synthetic_saccade_trace(), time_fn=clock)
-        source.start()
-        for _ in range(int(0.9 / step)):
-            clock.t += step
-            sample = source.latest_sample()
-        results.append((sample.position, sample.smoothed_position))
-    assert results[0] == pytest.approx(results[1], abs=1e-6)  # position and smoothed_position
-
-
-def test_onset_detector_fires_on_replayed_saccade_after_the_debounce():
-    clock = _Clock()
-    source = ReplayGazeSource(_synthetic_saccade_trace(), time_fn=clock)
-    source.start()
-    detector = OnsetDetector(GazeZone.CENTER)
-    fired_at = None
-    for _ in range(900):
-        clock.t += 0.001
-        if detector.update(source.latest_sample(), clock.t - 100.0):
-            fired_at = clock.t - 100.0
-            break
-    assert fired_at is not None
-    # The jump happens at 0.5 s; confirmation needs >= SACCADE_ONSET_STABILITY_MS after that.
-    assert 0.5 + SACCADE_ONSET_STABILITY_MS / 1000 <= fired_at < 0.5 + SACCADE_ONSET_STABILITY_MS / 1000 + 0.02
-
-
-def test_calibration_applies_to_replay():
-    clock = _Clock()
-    source = ReplayGazeSource(_synthetic_saccade_trace(), time_fn=clock)
-    source.calibrate(0.2, 0.5, 0.8)  # ratio 0.8 is now the right target
-    source.start()
-    clock.t += 0.9
-    assert source.latest_sample().position == pytest.approx(1.0, abs=0.02)
-
-
-def test_not_worn_rows_report_lost_track():
-    clock = _Clock()
-    source = ReplayGazeSource([TraceRow(0.0, None, 800.0, True), TraceRow(0.1, None, None, False)], time_fn=clock)
-    source.start()
-    clock.t += 0.15
-    assert not source.latest_sample().face_found
-
-
-def test_trace_end_reports_lost_track_like_a_stalled_live_stream():
-    clock = _Clock()
-    source = ReplayGazeSource(_synthetic_saccade_trace(), time_fn=clock)
-    source.start()
-    clock.t += 0.95
-    assert source.latest_sample().face_found
-    clock.t += NEON_STALE_TIMEOUT_S + 1
-    assert not source.latest_sample().face_found
-    assert source.finished
-
-
-def test_empty_trace_is_rejected():
-    with pytest.raises(ValueError):
-        ReplayGazeSource([])
-
-
-def test_real_recorded_trace_loads_and_replays():
-    trace = load_trace(SAMPLE_TRACE)
-    assert len(trace) > 500
-    assert all(r.worn for r in trace)
-    clock = _Clock()
-    source = ReplayGazeSource(trace, time_fn=clock)
-    source.start()
-    duration = trace[-1].t_s - trace[0].t_s
-    seen = 0
-    while source.elapsed_s < duration - 0.05:
-        clock.t += 0.016  # a 60 Hz frame loop
-        sample = source.latest_sample()
-        seen += sample.face_found
-    assert seen > 0.9 * (duration / 0.016)
-
-
-def test_neon_source_can_record_a_trace_that_replays(tmp_path):
     path = tmp_path / "rec.csv"
     source = NeonGazeSource(device=SimpleNamespace(close=lambda: None), trace_path=path)
     source._ingest(800.0, True, 1000.0)
@@ -145,19 +54,77 @@ def test_neon_source_can_record_a_trace_that_replays(tmp_path):
     assert rows[0].x_px == 800.0 and rows[0].device_unix_s == 1000.0
     source.stop()  # idempotent
 
+    with pytest.raises(ValueError):
+        ReplayGazeSource([])  # an empty trace is rejected
 
-def test_replay_stamps_samples_with_smooth_capture_times_before_arrival():
+
+def test_replay_follows_the_timeline_independent_of_polling_with_calibration_lost_track_and_onset():
+    clock = _Clock()
+    source = ReplayGazeSource(_synthetic_saccade_trace(), time_fn=clock)
+    source.start()
+    clock.t += 0.3
+    assert source.latest_sample().zone is GazeZone.CENTER
+    clock.t += 0.3  # t=0.6 s, after the jump
+    assert source.latest_sample().zone is GazeZone.RIGHT
+    clock.t += 0.35
+    assert source.latest_sample().face_found
+    clock.t += NEON_STALE_TIMEOUT_S + 1  # the trace end reports lost track like a stalled live stream
+    assert not source.latest_sample().face_found
+    assert source.finished
+
+    # Polled rarely vs often, every row is fed through the mapper in order: same final sample.
+    results = []
+    for step in (0.001, 0.2):
+        clock = _Clock()
+        source = ReplayGazeSource(_synthetic_saccade_trace(), time_fn=clock)
+        source.start()
+        for _ in range(int(0.9 / step)):
+            clock.t += step
+            sample = source.latest_sample()
+        results.append((sample.position, sample.smoothed_position))
+    assert results[0] == pytest.approx(results[1], abs=1e-6)
+
+    clock = _Clock()
+    source = ReplayGazeSource(_synthetic_saccade_trace(), time_fn=clock)
+    source.calibrate(0.2, 0.5, 0.8)  # ratio 0.8 is now the right target
+    source.start()
+    clock.t += 0.9
+    assert source.latest_sample().position == pytest.approx(1.0, abs=0.02)
+
+    clock = _Clock()
+    source = ReplayGazeSource([TraceRow(0.0, None, 800.0, True), TraceRow(0.1, None, None, False)], time_fn=clock)
+    source.start()
+    clock.t += 0.15
+    assert not source.latest_sample().face_found  # not-worn rows
+
+    clock = _Clock()
+    source = ReplayGazeSource(_synthetic_saccade_trace(), time_fn=clock)
+    source.start()
+    detector = OnsetDetector(GazeZone.CENTER)
+    fired_at = None
+    for _ in range(900):
+        clock.t += 0.001
+        if detector.update(source.latest_sample(), clock.t - 100.0):
+            fired_at = clock.t - 100.0
+            break
+    # The jump happens at 0.5 s; confirmation needs >= SACCADE_ONSET_STABILITY_MS after that.
+    assert fired_at is not None
+    assert 0.5 + SACCADE_ONSET_STABILITY_MS / 1000 <= fired_at < 0.5 + SACCADE_ONSET_STABILITY_MS / 1000 + 0.02
+
+
+def test_real_recorded_trace_replays_with_smooth_capture_times_or_arrival_without_device_stamps():
     """The recorded trace's arrival stamps are quantised to 15.6 ms (many rows share one t_s); the replayed samples are
     stamped from the phone's device timestamps instead: ~5 ms apart, strictly increasing, never after their arrival."""
     trace = load_trace(SAMPLE_TRACE)
+    assert len(trace) > 500
+    assert all(r.worn for r in trace)
     clock = _Clock()
     source = ReplayGazeSource(trace, time_fn=clock)
     assert source.timestamps_are_capture_time and source.gaze_latency_ms == 16.0
     source.start()
     clock.t += 3.0  # every row of the first 3 s has arrived
     source.latest_sample()
-    samples = source.samples_since(None)
-    stamps = [s.timestamp for s in samples]
+    stamps = [s.timestamp for s in source.samples_since(None)]
     assert len(stamps) > 100
     assert all(b > a for a, b in zip(stamps, stamps[1:]))
     gaps = sorted(b - a for a, b in zip(stamps, stamps[1:]))
@@ -165,8 +132,16 @@ def test_replay_stamps_samples_with_smooth_capture_times_before_arrival():
     assert source.samples_since(stamps[-1]) == []
     assert [s.timestamp for s in source.samples_since(stamps[-3])] == stamps[-2:]
 
+    clock = _Clock()
+    source = ReplayGazeSource(trace, time_fn=clock)
+    source.start()
+    duration = trace[-1].t_s - trace[0].t_s
+    seen = 0
+    while source.elapsed_s < duration - 0.05:
+        clock.t += 0.016  # a 60 Hz frame loop
+        seen += source.latest_sample().face_found
+    assert seen > 0.9 * (duration / 0.016)
 
-def test_replay_without_device_timestamps_stamps_with_arrival():
     clock = _Clock()
     source = ReplayGazeSource([TraceRow(0.0, None, 800.0, True), TraceRow(0.1, None, 800.0, True)], time_fn=clock)
     assert not source.timestamps_are_capture_time and source.gaze_latency_ms is None
