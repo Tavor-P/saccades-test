@@ -293,7 +293,7 @@ A person may be on one side only. The result shows:
 
 The address bar holds only the selection (e.g. `/compare?a=P01,P02&b=group:control`), so a bookmark re-opens the same comparison. A
 `group:` pick follows the group's members at the time you open it. The files are written to `data/comparisons/dashboard/` and overwritten
-when the same selection is opened again. The first comparison of a person can take a minute, because their runs are analysed first.
+when the same selection is opened again. The page stays blank while it works: a person without a fresh saved analysis is analysed first (as on their results page), plus the bootstrap (not timed on real data).
 
 **Study summary** (top link, `/study`): the `study_summary` table, one row per participant with a link to their results page, plus a
 download of `study_summary.csv`. Opening the page rewrites `data/study_summary.csv` / `.txt`.
