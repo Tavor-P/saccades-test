@@ -64,7 +64,7 @@ Command Prompt, the Run box or Explorer opens the .ps1 file in an editor instead
 5. At the end the console and `RUN_SUMMARY.txt` in the run folder show what happened and the next commands; SPACE closes the window.
 6. Export the scene video from the phone (see [Glasses video](#glasses-video)), then attach it:
    `.\scripts\py.ps1 -m src.experiment.import_glasses_video data\<participant>\<run folder> <video.mp4>`
-7. Analyse: double-click `analyze_latest.bat` (newest run).
+7. Analyse: double-click `analyze_latest.bat` (newest run). After several runs of the same person, double-click `analyze_participant.bat` and type the Participant ID.
 
 > **Participant script.** "Look at the dot and press SPACE when you are ready. After a moment, with a beep, it jumps to the other side of the screen: look at it as fast as you can.
 > Around then a very faint thin line flashes for an instant above or below it. Press UP if it was above, DOWN if below, and guess if you are not sure.
@@ -133,6 +133,8 @@ data/<participant id>/<YYYY-MM-DD_HH-MM-SS>[_test]/
   RUN_SUMMARY.txt      plain-language end-of-run summary
   analysis/            report.txt, plot.png, flashes.csv, suppression.json (written by analyze_session)
   glasses/             the phone's video + video_sync.json + flash_video_times.csv (written by import_glasses_video)
+data/<participant id>/analysis/
+                       report.txt, plot.png, flashes.csv, summary.json for all runs pooled (written by analyze_participant)
 ```
 
 `trials.csv` columns (booleans are `yes`/`no`; practice trials are not written): `phase` (saccade / rt_test; `baseline` only in old runs), `trial`, `contrast_pct`,
@@ -166,6 +168,21 @@ flashes are never seen during saccades, negative means better during saccades. I
 at ceiling/floor so no threshold is identified) it falls back to a clearly labelled **accuracy difference** (fixation minus saccade) with a Wilson-based CI; if
 either condition has too few flashes (or both are at ceiling or fixation accuracy is near chance) the report says "cannot be computed" with the reason. Options: `--offset-ms`,
 `--flash-delay-ms`, `--min-amplitude`, `--index-near-ms`, `--index-far-ms` (see `--help`).
+
+### All runs of one participant
+
+One run gives only about 19 saccade flashes, too few for a stable index, so each person does several runs and they are pooled:
+
+```
+.\scripts\py.ps1 -m src.experiment.analyze_participant <participant id> [--data-dir DIR] [--include-test]
+```
+
+(or double-click `analyze_participant.bat`, which asks for the ID). Every run folder of that person is analysed exactly as above, then the flashes are
+pooled and one suppression index is fitted the same way. Test-mode runs are skipped unless `--include-test` is given; old loose `results_<ts>.csv` files are ignored.
+Only runs with the **same saccade contrasts and the same screen geometry** are pooled: the largest such set is used, and every other run is listed near the top
+of the report with the reason. The results go to `data/<participant>/analysis/`: `report.txt` (a one-sentence result first, then a table of the runs with their
+own flash counts, index and gaze delay), `plot.png` (accuracy vs time from saccade onset, and accuracy by contrast with the fitted curves), `flashes.csv` (every
+pooled flash with its run) and `summary.json` (the same numbers for programs; later comparisons between people read this file).
 
 ## Glasses video
 
@@ -281,7 +298,7 @@ flashes 50-300 ms away; small numbers and a window chosen after seeing the first
 [CLAUDE.md](CLAUDE.md) describes the architecture, the repo map and the gotchas. All logic can be run without hardware:
 
 ```
-.\scripts\py.ps1 -m pytest -q                 # about 580 tests in ~2 min, no glasses or window needed
+.\scripts\py.ps1 -m pytest -q                 # about 590 tests in ~2 min, no glasses or window needed
 .\scripts\py.ps1 -m src.experiment.simulation # headless simulated trial; see tests/ai-tests/README.md for run_sim.py
 ```
 
