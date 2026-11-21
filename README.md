@@ -13,7 +13,7 @@ tests, not yet on real glasses with a person** (see [Known limitations](#known-l
 **Which part do you need?**
 - Setting up a PC for the first time: [First-time setup](#first-time-setup).
 - Running a participant: [Run day](#run-day-experimenter-quick-start) (printable: [docs/experimenter_checklist.md](docs/experimenter_checklist.md)).
-- Reading the results: [Output](#output), [Analysing a session](#analysing-a-session).
+- Reading the results: [Output](#output), [Analysing a session](#analysing-a-session), [Comparing participants](#comparing-participants), [Study summary](#study-summary).
 - Why it is built this way: [Research background](#research-background).
 
 ## Words used in this document
@@ -184,6 +184,56 @@ Only runs with the **same saccade contrasts and the same screen geometry** are p
 of the report with the reason. The results go to `data/<participant>/analysis/`: `report.txt` (a one-sentence result first, then a table of the runs with their
 own flash counts, index and gaze delay), `plot.png` (accuracy vs time from saccade onset, and accuracy by contrast with the fitted curves), `flashes.csv` (every
 pooled flash with its run) and `summary.json` (the same numbers for programs; later comparisons between people read this file).
+
+## Comparing participants
+
+First give people a group (any text; only used to pick who is compared with whom, **no clinical details**, which need IRB approval):
+
+```
+.\scripts\py.ps1 -m src.experiment.participants set P01 TBI
+.\scripts\py.ps1 -m src.experiment.participants set P07 control --note "pilot"
+.\scripts\py.ps1 -m src.experiment.participants list
+```
+
+The labels live in `data/participants.json`. Then compare two sets (or double-click `compare.bat`, which asks for both):
+
+```
+.\scripts\py.ps1 -m src.experiment.compare "P01" "P07"
+.\scripts\py.ps1 -m src.experiment.compare "group:TBI" "group:control"
+.\scripts\py.ps1 -m src.experiment.compare "P01,P02,P03" "group:control" [--include-test]
+```
+
+A set is comma-separated IDs, `group:<label>` (upper/lower case does not matter) or `all`. Everyone's pooled analysis (see above) is used, and it is
+redone first if it is missing or older than their runs. What you get depends on how many usable people each side has:
+- **1 vs 1:** both people's indices with their CIs and the difference A - B with a 95 % CI (from resampling each person's flashes and refitting).
+  If the CI does not include 0 the two differ in these data; if it does, the data cannot tell them apart. Two people whose indices come from different
+  methods (threshold ratio vs the accuracy fallback) are reported as not comparable: the numbers are on different scales.
+- **Group vs group** (2 or more each): one index per person. Each group's median and range, the difference in medians with a 95 % CI (from resampling
+  the people), a Mann-Whitney test p-value and an effect size. **p** is the chance of seeing a difference this large if the two groups really did not
+  differ: below 0.05 is the usual "evidence of a difference"; a large p does not show the groups are the same, only that these data cannot tell. The
+  **effect size** (rank-biserial r, -1 to +1) is said in words: e.g. r = +0.6 means a randomly picked person from group A has the higher index 80 % of the time.
+- **1 vs group:** where the person falls among the group ("below 4 of 5 members, 20th percentile"), the group's median and range, and whether the group's
+  median lies inside the person's own CI. **There is no p-value**: a test compares the gap between groups with how much people within a group differ,
+  and a single person gives no estimate of that, so nothing could be tested.
+
+People are left out, and listed with the reason, when their index cannot be computed, when their runs used other contrasts or another screen
+geometry than the majority (never mixed), or (groups) when their index came from a different method than most people's. There are warnings when a
+group has fewer than 3 people or a person has fewer than 12 flashes per condition, and **every result with fewer than 10 people per side is marked
+exploratory**: this is a feasibility pilot, not a group result. With so few people the CIs are rough and a non-small p means little.
+
+The results go to `data/comparisons/<date-time>_<A>_vs_<B>/` (printed at the end): `report.txt` (one-sentence result first), `comparison.csv` (one row
+per person: ID, group, set, index, CI, method, flashes, used or not and why), `comparison.json` (all numbers) and `plot.png` (1 vs 1: both people's
+accuracy vs time from saccade onset; groups: one dot per person with the medians; 1 vs group: the group's dots with the person highlighted).
+
+## Study summary
+
+```
+.\scripts\py.ps1 -m src.experiment.study_summary [--include-test]
+```
+
+(or double-click `study_summary.bat`). Writes `data/study_summary.csv`, one row per participant (group, runs used/left out, index, CI, method,
+flashes per condition, gaze delay and tracking gaps, flags) ready to open in Excel, SPSS or R, and `data/study_summary.txt`, a short overview per group.
+The "gaze delay > 50 ms" flag is the known open delay problem: it affects only the live classification, not these post-hoc numbers.
 
 ## Glasses video
 
