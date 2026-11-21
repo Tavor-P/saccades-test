@@ -67,18 +67,19 @@ def test_full_result_round_trips_through_trials_csv_and_dashboard_loader(tmp_pat
 _OPTIONAL = {f.name for f in dataclasses.fields(TrialResult) if f.default is None}
 
 
-@pytest.mark.parametrize("column", [c for c in TRIAL_COLUMNS if c.field in _OPTIONAL], ids=lambda c: c.name)
-def test_a_file_without_an_optional_column_still_loads(tmp_path, monkeypatch, column):
-    """A trials.csv missing an optional column (older/other writer) loads with that field = None, never crashes."""
-    monkeypatch.setattr(logger_module, "DATA_DIR", tmp_path)
-    monkeypatch.setattr(data_access, "DATA_DIR", tmp_path)
-    log = ResultLogger("p")
-    log.log(_full_result())
-    log.close()
-    csv_path = next(tmp_path.glob("*/*/trials.csv"))
-    header, row = [line.split(",") for line in csv_path.read_text().splitlines()[:2]]
-    drop = header.index(column.name)
-    del header[drop], row[drop]
-    csv_path.write_text(",".join(header) + "\n" + ",".join(row) + "\n")
-    (loaded,) = data_access.load_session_trials(str(log._timestamp))
-    assert getattr(loaded, column.field) is None
+def test_a_file_without_an_optional_column_still_loads(tmp_path, monkeypatch):
+    """A trials.csv missing any one optional column (older/other writer) loads with that field = None, never crashes."""
+    for column in [c for c in TRIAL_COLUMNS if c.field in _OPTIONAL]:
+        folder = tmp_path / column.name
+        monkeypatch.setattr(logger_module, "DATA_DIR", folder)
+        monkeypatch.setattr(data_access, "DATA_DIR", folder)
+        log = ResultLogger("p")
+        log.log(_full_result())
+        log.close()
+        csv_path = next(folder.glob("*/*/trials.csv"))
+        header, row = [line.split(",") for line in csv_path.read_text().splitlines()[:2]]
+        drop = header.index(column.name)
+        del header[drop], row[drop]
+        csv_path.write_text(",".join(header) + "\n" + ",".join(row) + "\n")
+        (loaded,) = data_access.load_session_trials(str(log._timestamp))
+        assert getattr(loaded, column.field) is None, column.name
