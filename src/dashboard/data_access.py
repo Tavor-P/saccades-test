@@ -93,14 +93,16 @@ def save_participant_info(timestamp: str, name: str, gender: str, age: str) -> N
 
 def delete_session(timestamp: str) -> None:
     """Removes a session permanently (no trash/undo): an old session's CSV and metadata sidecar; a
-    new-layout session's WHOLE run folder (trials, session.json, gaze trace, analysis and the glasses video), and its
-    participant folder if that is now empty."""
+    new-layout session's WHOLE run folder (trials, session.json, gaze trace, analysis and the glasses video). The
+    participant's pooled analysis (data/<participant>/analysis/) included that run, so it is removed too (the results
+    page re-runs it on the next open), and then the participant folder if nothing else is left in it."""
     ref = _ref(timestamp)
     if ref.is_legacy:
         ref.trials_path.unlink(missing_ok=True)
         ref.meta_path.unlink(missing_ok=True)
     else:
         shutil.rmtree(ref.folder, ignore_errors=True)
+        shutil.rmtree(ref.folder.parent / session_files.ANALYSIS_DIR, ignore_errors=True)
         try:
             ref.folder.parent.rmdir()  # only succeeds when empty
         except OSError:
@@ -112,6 +114,7 @@ class SessionSummary:
     timestamp: str
     metadata: dict
     trial_counts: dict[str, int] = field(default_factory=dict)
+    participant: str | None = None  # the participant folder name (new layout); None for an old loose-file session
 
 
 def discover_sessions() -> list[SessionSummary]:
@@ -124,5 +127,6 @@ def discover_sessions() -> list[SessionSummary]:
                 trial_counts[trial.phase] = trial_counts.get(trial.phase, 0) + 1
         except (OSError, ValueError, KeyError):  # a damaged trials file: list the session without counts
             pass
-        sessions.append(SessionSummary(timestamp=ref.key, metadata=load_metadata(ref.key), trial_counts=trial_counts))
+        sessions.append(SessionSummary(timestamp=ref.key, metadata=load_metadata(ref.key), trial_counts=trial_counts,
+                                       participant=ref.participant))
     return sessions

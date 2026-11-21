@@ -46,6 +46,8 @@ SPEED_LOW = 0.7
 MIN_AMPLITUDE = 0.12
 NEAR_ONSET_MS = 50.0  # "near onset" = flash within this many ms of a saccade onset
 FAR_MS = 300.0  # flashes at least this far from every onset are the fixation control
+MIN_FIT_TRIALS = 12  # suppression_index: fewer flashes than this in a condition -> no threshold fit (the dashboard's quality box reads it)
+MIN_ACCURACY_TRIALS = 5  # ... and fewer than this -> not even the accuracy fallback
 BIN_EDGES_MS = (-200, -150, -100, -50, 0, 50, 100, 150, 200)
 
 
@@ -355,8 +357,8 @@ def suppression_index(
     placed: list[Placed],
     near_ms: float | None = None,
     far_ms: float | None = None,
-    min_fit_trials: int = 12,
-    min_accuracy_trials: int = 5,
+    min_fit_trials: int = MIN_FIT_TRIALS,
+    min_accuracy_trials: int = MIN_ACCURACY_TRIALS,
     n_boot: int = 1000,
     seed: int = 0,
     gates: list | None = None,

@@ -37,7 +37,7 @@ Real-Time API) or, with `SACCADES_BACKEND=webcam` (no dialog field any more), FL
 - Environment: PowerShell 5.1 has no `&&`; files may be CRLF (keep each file's endings); `.gitignore` has `data/`, which also matches any `data` folder (tests: use `tests/fixtures/`).
 - `data/` is git-ignored runtime output: never commit it, never write to it from tests/simulations (simulator uses an in-memory logger).
 - Participant data (trials, gaze trace, glasses video) is personal data: never commit it, never print it in reports, never copy real sessions into `tests/fixtures/` (only anonymous recordings belong there).
-- Report test results truthfully (ran / skipped). Suite: ~590 tests, ~1-2 min, 2 skipped without PySpin/mediapipe (`test_camera.py`, `test_gaze_tracking.py` `importorskip`).
+- Report test results truthfully (ran / skipped). Suite: ~610 tests, ~2 min, 2 skipped without PySpin/mediapipe (`test_camera.py`, `test_gaze_tracking.py` `importorskip`).
 
 ## Commands (all through the wrapper)
 
@@ -123,7 +123,9 @@ Paths in this section are checked by `tests/test_docs.py` - keep them real.
 | `src/eye_tracking/gaze_factory.py` | `build_gaze_source()` backend picker (lazy imports) |
 | `src/eye_tracking/gaze_trace.py` | raw gaze recording + `ReplayGazeSource` |
 | `src/eye_tracking/webcam_source.py` | Blackfly S + MediaPipe backend (alternative) |
-| `src/dashboard/app.py` | Flask dashboard (separate process; `data_access.py` reads/writes `data/`) |
+| `src/dashboard/app.py` | Flask dashboard (separate process, `127.0.0.1` only; `data_access.py` reads/writes `data/`; deleting a run also removes `data/<participant>/analysis/` and an emptied participant folder) |
+| `src/dashboard/results.py` | one-click results: calls `analyze_session.analyze` / `analyze_participant.analyze_participant` (no numbers of its own), freshness check (outputs newer than every run file, same run set and `include_test`), traffic-light quality rules, `FriendlyError` messages; routes `/runs/<key>/results`, `/participants/<id>/results` (+ `/analyse` POST, `/files/<kind>`) |
+| `tests/ai-tests/test_dashboard_results.py` | results pages via Flask's test client on `synthetic_runs` copies in tmp_path |
 | `tests/conftest.py` | `FakeGazeSource`, `fake_time` fixture |
 | `tests/helpers.py` | `NullLogger` for session tests |
 | `tests/ai-tests/test_line_stimulus.py` | line branch: placement above/below target, UP/DOWN only, quiz, old-CSV loading |

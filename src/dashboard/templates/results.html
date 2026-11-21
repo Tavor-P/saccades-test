@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% if page %}{{ page.title }}{% elif kind == 'participant' %}Participant {{ key }}{% else %}Run results{% endif %}</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 2rem; background: #1e1f26; color: #e8e8ec; max-width: 70rem; }
+  a { color: #8fa8ff; }
+  h1 { font-weight: 600; margin-bottom: 0.25rem; }
+  h2 { font-weight: 600; font-size: 1.1rem; margin-top: 2rem; }
+  .muted { color: #8b8c99; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; margin: 1rem 0; }
+  .toolbar form { display: flex; gap: 0.5rem; align-items: center; margin: 0; }
+  button { background: #3a5bd9; border: none; color: white; border-radius: 4px; padding: 0.45rem 0.9rem; cursor: pointer; font-size: 0.95rem; }
+  button:hover { background: #4a6bf0; }
+  .headline { background: #24252e; border-left: 4px solid #3a5bd9; border-radius: 6px; padding: 1rem 1.25rem; font-size: 1.2rem; line-height: 1.5; }
+  .headline .meaning { font-size: 0.95rem; color: #c3c4cf; margin-top: 0.5rem; }
+  .error { background: #3a2226; border-left: 4px solid #d9534f; border-radius: 6px; padding: 1rem 1.25rem; font-size: 1.05rem; line-height: 1.5; }
+  img.plot { max-width: 100%; border-radius: 6px; background: white; margin-top: 1rem; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { padding: 0.45rem 0.6rem; border-bottom: 1px solid #3a3b45; text-align: left; vertical-align: top; }
+  th { color: #9a9ba8; font-weight: 500; font-size: 0.8rem; text-transform: uppercase; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .light { display: inline-flex; align-items: center; gap: 0.4rem; font-weight: 600; white-space: nowrap; }
+  .dot { width: 0.85rem; height: 0.85rem; border-radius: 50%; display: inline-block; }
+  .light-green .dot { background: #4caf82; } .light-green { color: #7fd6a8; }
+  .light-amber .dot { background: #e0a030; } .light-amber { color: #f0c060; }
+  .light-red .dot { background: #d9534f; } .light-red { color: #f08a87; }
+  .light-grey .dot { background: #6b6c78; } .light-grey { color: #a0a1ad; }
+  .quality { background: #24252e; border-radius: 8px; padding: 0.75rem 1rem; }
+  .quality .rule { font-size: 0.85rem; color: #9a9ba8; }
+  .left-out { color: #f0c060; }
+  ul.downloads { padding-left: 1.25rem; line-height: 1.8; }
+  details pre { background: #15161b; padding: 1rem; border-radius: 6px; overflow-x: auto; font-size: 0.85rem; }
+  @media (max-width: 640px) { body { margin: 1rem; } th, td { padding: 0.35rem; } }
+</style>
+</head>
+<body>
+  <p><a href="{{ url_for('index') }}">&larr; All sessions</a></p>
+
+  {% if error %}
+    <h1>{% if kind == 'participant' %}Participant {{ key }}{% else %}Run results{% endif %}</h1>
+    <div class="error" role="alert">{{ error.message }}</div>
+    {% if error.include_test_hint %}
+    <div class="toolbar">
+      <form method="get" action="{{ url_for('participant_results', pid=key) }}">
+        <input type="hidden" name="include_test" value="1">
+        <button type="submit">Analyse including test runs</button>
+      </form>
+    </div>
+    {% endif %}
+  {% else %}
+    <h1>{{ page.title }}</h1>
+    {% if page.kind == 'run' and page.participant %}
+      <p class="muted">Participant {{ page.participant_label }} &middot; <a href="{{ url_for('participant_results', pid=page.participant) }}">all runs of this participant pooled</a></p>
+    {% endif %}
+
+    <div class="toolbar">
+      <span class="muted">Analysed at {{ page.analysed_at }} (newer than every run file{% if page.kind == 'participant' %} of this participant{% endif %}).</span>
+      {% if page.kind == 'run' %}
+      <form method="post" action="{{ url_for('run_analyse', timestamp=page.key) }}">
+        <button type="submit">Re-analyse</button>
+      </form>
+      {% else %}
+      <form method="post" action="{{ url_for('participant_analyse', pid=page.key) }}">
+        <label><input type="checkbox" name="include_test" value="1" {% if page.include_test %}checked{% endif %}> Include test runs</label>
+        <button type="submit">Re-analyse</button>
+      </form>
+      {% endif %}
+    </div>
+
+    <div class="headline">
+      <div>{{ page.headline }}</div>
+      {% if page.meaning %}<div class="meaning">{{ page.meaning }}</div>{% endif %}
+    </div>
+
+    {% set plot_url = url_for('run_file', timestamp=page.key, kind='plot') if page.kind == 'run' else url_for('participant_file', pid=page.key, kind='plot') %}
+    {% if 'plot' in page.downloads %}<img class="plot" src="{{ plot_url }}" alt="Accuracy against flash time and contrast">{% endif %}
+
+    <h2>Data quality: <span class="light light-{{ page.quality.overall }}"><span class="dot"></span>{{ {'green': 'all OK', 'amber': 'check the amber rows', 'red': 'problem', 'grey': 'not recorded'}[page.quality.overall] }}</span></h2>
+    <div class="quality">
+      <table>
+        <thead><tr><th>Check</th><th>Light</th><th>This analysis</th><th>Rule</th></tr></thead>
+        <tbody>
+        {% for rule in page.quality.rules %}
+          <tr class="quality-row" data-light="{{ rule.light }}">
+            <td>{{ rule.name }}</td>
+            <td><span class="light light-{{ rule.light }}"><span class="dot"></span>{{ rule.word }}</span></td>
+            <td>{{ rule.value }}</td>
+            <td class="rule">{{ rule.rule }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if page.runs is not none %}
+    <h2>Runs</h2>
+    <table>
+      <thead><tr><th>Run</th><th>Date</th><th>Mode</th><th>Saccade</th><th>Fixation</th><th>Excluded</th><th>Run index</th><th>Gaze delay</th><th>Longest gap</th><th>Pooled?</th></tr></thead>
+      <tbody>
+      {% for r in page.runs %}
+        <tr>
+          <td>{% if r.run_key %}<a href="{{ url_for('run_results', timestamp=r.run_key) }}">{{ r.run }}</a>{% else %}{{ r.run }}{% endif %}</td>
+          <td>{{ r.date }}</td>
+          <td>{{ r.mode }}</td>
+          <td class="num">{{ r.n_saccade if r.n_saccade is not none else '-' }}</td>
+          <td class="num">{{ r.n_fixation if r.n_fixation is not none else '-' }}</td>
+          <td class="num">{{ r.n_excluded if r.n_excluded is not none else '-' }}</td>
+          <td class="num">{{ r.index_text }}</td>
+          <td class="num">{{ '%.0f ms' % r.gaze_latency_ms_median if r.gaze_latency_ms_median is not none else '-' }}</td>
+          <td class="num">{{ '%.0f ms' % r.longest_gap_ms if r.longest_gap_ms is not none else '-' }}</td>
+          <td>{% if r.pooled %}yes{% else %}<span class="left-out">left out: {{ r.reason }}</span>{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <p class="muted">Run index = that run alone (usually too few flashes to be reliable); n/a = cannot be computed from one run. Click a run for its own page.</p>
+    {% endif %}
+
+    <h2>Downloads</h2>
+    <ul class="downloads">
+      {% for kind_ in page.downloads %}
+        <li><a href="{{ url_for('run_file', timestamp=page.key, kind=kind_) if page.kind == 'run' else url_for('participant_file', pid=page.key, kind=kind_) }}">{{ labels[kind_] }}</a></li>
+      {% endfor %}
+    </ul>
+
+    {% if page.report_text %}
+    <details>
+      <summary>Full text report</summary>
+      <pre>{{ page.report_text }}</pre>
+    </details>
+    {% endif %}
+  {% endif %}
+</body>
+</html>

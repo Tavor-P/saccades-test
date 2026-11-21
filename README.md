@@ -208,6 +208,23 @@ Not verified on real footage: whether the scene camera sees the green flash from
 
 [http://localhost:5000](http://localhost:5000) lists past sessions (both layouts): label, filter, adjust the default contrast floor (used only when the saccade phase runs the staircase instead of fixed contrasts), delete. Old runs' baseline rows are listed too.
 
+**Analysing without the command line**: each run has an **Analyse** button, and the **Participants** table has one per person (tick
+**Include test runs** to add test-mode runs; a person with only test runs needs it). The button opens a results page that runs the same analysis as
+`analyze_session` / `analyze_participant` (a participant analysis can take several seconds) and shows:
+
+- the result in one sentence, with what the number means;
+- the plot;
+- a **data-quality box** with a green / amber / red light per check, each rule written next to it: gaze delay (green up to 150 ms; the
+  usual ~95 ms is fine because the analysis uses the phone's own times), tracking gaps (green up to 150 ms), head movement (if the run recorded it),
+  flashes per condition (green 12 or more each, amber 5-11, red under 5: the limits the analysis itself uses), which method gave the result,
+  and, for a participant, the runs left out of the pooling with the reason;
+- for a participant, a table of every run;
+- download links for `flashes.csv`, `summary.json` / `suppression.json` and `report.txt`.
+
+A saved analysis is shown again (with "Analysed at ...") while it is newer than every run file; otherwise, or after **Re-analyse**, it runs again.
+Deleting a run also deletes that participant's pooled analysis (it no longer matches) and the participant folder once it is empty. Problems
+(no gaze recording, no clock offset, only test runs) are shown as a sentence on the page.
+
 ## Data and privacy
 
 Participants (people with traumatic brain injury and controls) produce personal data. What this software does and does not do:
