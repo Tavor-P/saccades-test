@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Study summary</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 2rem; background: #1e1f26; color: #e8e8ec; }
+  a { color: #8fa8ff; }
+  h1 { font-weight: 600; margin-bottom: 0.25rem; }
+  h2 { font-weight: 600; font-size: 1.1rem; margin-top: 2rem; }
+  .muted { color: #8b8c99; }
+  button { background: #3a5bd9; border: none; color: white; border-radius: 4px; padding: 0.45rem 0.9rem; cursor: pointer; font-size: 0.95rem; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; margin: 1rem 0; }
+  .toolbar form { display: flex; gap: 0.5rem; align-items: center; margin: 0; }
+  .error { background: #3a2226; border-left: 4px solid #d9534f; border-radius: 6px; padding: 1rem 1.25rem; font-size: 1.05rem; }
+  .amber { background: #3a3122; border-left: 4px solid #e0a030; border-radius: 6px; padding: 0.75rem 1.25rem; line-height: 1.5; }
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+  th, td { padding: 0.4rem 0.55rem; border-bottom: 1px solid #3a3b45; text-align: left; vertical-align: top; white-space: nowrap; }
+  td.flags { white-space: normal; min-width: 14rem; color: #f0c060; }
+  th { color: #9a9ba8; font-weight: 500; font-size: 0.75rem; text-transform: uppercase; }
+  details pre { background: #15161b; padding: 1rem; border-radius: 6px; overflow-x: auto; font-size: 0.85rem; white-space: pre-wrap; }
+  @media (max-width: 640px) { body { margin: 1rem; } }
+</style>
+</head>
+<body>
+  {% include "_nav.html" %}
+  <h1>Study summary</h1>
+  <p class="muted">One row per participant: their suppression index pooled over all their compatible runs (analysed first when needed, so the first open can take a while).
+    Click a participant for their own results page.</p>
+  <div class="toolbar">
+    <form method="get" action="{{ url_for('study_page') }}">
+      <label><input type="checkbox" name="include_test" value="1" {% if include_test %}checked{% endif %}> Include test runs</label>
+      <button type="submit">Refresh</button>
+    </form>
+    {% if page %}<a href="{{ url_for('study_csv') }}">Download study_summary.csv (as shown here)</a>{% endif %}
+  </div>
+
+  {% if error %}
+    <div class="error" role="alert">{{ error.message }}</div>
+  {% elif not page.rows %}
+    <div class="error" role="alert">There are no participants yet. Run the experiment first.</div>
+  {% else %}
+    <div class="amber">Exploratory: group overviews at this size are a feasibility pilot, not a group result. Psychometric and accuracy-method indices are on different scales; never mix them.</div>
+    <div class="table-wrap" style="margin-top:1rem;">
+    <table>
+      <thead><tr>
+        <th>Participant</th><th>Group</th><th>Note</th><th>Status</th><th>Runs used</th><th>Runs left out</th><th>Index</th><th>95 % CI</th><th>Method</th>
+        <th>Saccade flashes</th><th>Fixation flashes</th><th>Contrasts %</th><th>Gaze delay (median ms)</th><th>Longest gap (ms)</th><th>Flags</th>
+      </tr></thead>
+      <tbody>
+      {% for r in page.rows %}
+        <tr class="study-row" data-participant="{{ r.participant }}">
+          <td>{% if r.has_page %}<a href="{{ url_for('participant_results', pid=r.participant, include_test=1 if include_test else None) }}">{{ r.participant }}</a>{% else %}{{ r.participant }}{% endif %}</td>
+          <td>{{ r.group or '-' }}</td>
+          <td>{{ r.note }}</td>
+          <td>{{ r.status }}</td>
+          <td>{{ r.runs_used }}</td>
+          <td>{{ r.runs_excluded }}</td>
+          <td>{{ '%.2f' % (r['index']|float) if r['index'] else 'n/a' }}</td>
+          <td>{% if r.ci_low %}{{ '%.2f' % (r.ci_low|float) }} to {{ '%.2f' % (r.ci_high|float) }}{% else %}-{% endif %}</td>
+          <td>{{ r.method or '-' }}</td>
+          <td>{{ r.n_saccade }}</td>
+          <td>{{ r.n_fixation }}</td>
+          <td>{{ r.contrasts_pct }}</td>
+          <td>{{ r.gaze_delay_ms_median or '-' }}</td>
+          <td>{{ r.longest_gap_ms_max or '-' }}</td>
+          <td class="flags">{{ r.flags }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <details style="margin-top:1rem;">
+      <summary>Group overview (text)</summary>
+      <pre>{{ page.overview }}</pre>
+    </details>
+  {% endif %}
+</body>
+</html>

@@ -5,7 +5,7 @@ from datetime import datetime
 
 from flask import Flask, abort, jsonify, redirect, render_template, request, send_file, url_for
 
-from src.dashboard import results
+from src.dashboard import comparison, results
 from src.dashboard.data_access import (
     csv_path_for,
     delete_session,
@@ -32,7 +32,8 @@ def index():
     return render_template(
         "index.html",
         sessions=discover_sessions(),
-        participants=results.overview(),
+        participants=comparison.overview_with_labels(),
+        groups=comparison.group_names(),
         contrast_floor_percent=load_contrast_floor_percent(),
         contrast_floor_min=MIN_CONTRAST_FLOOR_PERCENT,
         contrast_floor_max=MAX_CONTRAST_FLOOR_PERCENT,
@@ -144,6 +145,69 @@ def participant_file(pid: str, kind: str):
     if not path.exists():
         abort(404)
     return send_file(path, as_attachment=kind != "plot", download_name=f"{pid}_{path.name}")
+
+
+# -- group labels, comparison, study summary (numbers from compare.py / study_summary.py via comparison.py) ------------
+
+
+@app.post("/participants/<pid>/label")
+def participant_label(pid: str):
+    body = request.get_json(silent=True)  # no force: only a real application/json request (another website cannot send one without CORS)
+    if not isinstance(body, dict):
+        return jsonify({"ok": False, "error": "expected a JSON body with group and note"}), 400
+    try:
+        entry = comparison.save_label(pid, body.get("group"), body.get("note"))
+    except results.FriendlyError as error:
+        return jsonify({"ok": False, "error": error.message}), error.status
+    return jsonify({"ok": True, "group": entry.get("group", ""), "note": entry.get("note", "")})
+
+
+def _selection() -> tuple[list[str], list[str]]:
+    return comparison.tokens(request.args.getlist("a")), comparison.tokens(request.args.getlist("b"))
+
+
+@app.get("/compare")
+def compare_page():
+    """Pickers for set A and set B; with ?a=..&b=.. (participant IDs, group:<label>, all) it also runs the comparison."""
+    a_tokens, b_tokens = _selection()
+    include_test = _include_test()
+    result, error = None, None
+    if a_tokens or b_tokens:
+        try:
+            result = comparison.run_comparison(a_tokens, b_tokens, include_test)
+        except results.FriendlyError as exc:
+            error = exc
+    context = dict(people=comparison.picker_rows(), groups=comparison.group_names(), a_tokens=a_tokens, b_tokens=b_tokens,
+                   include_test=include_test, result=result, error=error, labels=comparison.DOWNLOAD_LABELS)
+    return render_template("compare.html", **context), (error.status if error else 200)
+
+
+@app.get("/compare/files/<kind>")
+def compare_file(kind: str):
+    """One file of the comparison named by the same query (?a=..&b=..&include_test=..); only the four whitelisted kinds."""
+    a_tokens, b_tokens = _selection()
+    path = comparison.output_file(a_tokens, b_tokens, _include_test(), kind)
+    if path is None:
+        abort(404)
+    return send_file(path, as_attachment=kind != "plot", download_name=path.name)
+
+
+@app.get("/study")
+def study_page():
+    include_test = _include_test()
+    try:
+        page, error = comparison.study_page(include_test), None
+    except results.FriendlyError as exc:
+        page, error = None, exc
+    return render_template("study.html", page=page, error=error, include_test=include_test), (error.status if error else 200)
+
+
+@app.get("/study/study_summary.csv")
+def study_csv():
+    path = comparison.study_csv()
+    if path is None:
+        abort(404)
+    return send_file(path, as_attachment=True, download_name=path.name)
 
 
 def main() -> None:

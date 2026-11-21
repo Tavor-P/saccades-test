@@ -37,7 +37,7 @@
 </style>
 </head>
 <body>
-  <p><a href="{{ url_for('index') }}">&larr; All sessions</a></p>
+  {% include "_nav.html" %}
 
   {% if error %}
     <h1>{% if kind == 'participant' %}Participant {{ key }}{% else %}Run results{% endif %}</h1>

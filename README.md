@@ -276,6 +276,28 @@ A saved analysis is shown again (with "Analysed at ...") while it is newer than 
 Deleting a run also deletes that participant's pooled analysis (it no longer matches) and the participant folder once it is empty. Problems
 (no gaze recording, no clock offset, only test runs) are shown as a sentence on the page.
 
+**Labelling groups**: the **Participants** table has a **Group** box (free text with suggestions, e.g. TBI or control) and a **Note** box per
+person; they save when you click out of the box. The labels go to `data/participants.json`, the same file the command line uses, and only
+decide who can be picked together on the Compare page (no clinical details: they need IRB approval). Empty both boxes to remove a label.
+
+**Compare** (top link, `/compare`): two columns, **Set A** and **Set B**, each listing every participant with their group and run count. Tick any
+number of people on each side, or use the quick picks (**all in group X**, **all**, **clear**), tick **Include test runs** if wanted, and press
+**Compare**. One person vs one person, one vs a group, and group vs group are chosen automatically from how many usable people each side has.
+A person may be on one side only. The result shows:
+- the headline sentence;
+- the mode in words, with a "how to read this" line (for example, why 1 vs group has no p-value);
+- the plot;
+- a table of every person: set, group, index, CI, method, flashes, and used or left out with the reason;
+- the warnings in an amber box: every result is exploratory at pilot sizes;
+- downloads: `comparison.csv`, `comparison.json`, `report.txt` and `plot.png`.
+
+The address bar holds only the selection (e.g. `/compare?a=P01,P02&b=group:control`), so a bookmark re-opens the same comparison. A
+`group:` pick follows the group's members at the time you open it. The files are written to `data/comparisons/dashboard/` and overwritten
+when the same selection is opened again. The first comparison of a person can take a minute, because their runs are analysed first.
+
+**Study summary** (top link, `/study`): the `study_summary` table, one row per participant with a link to their results page, plus a
+download of `study_summary.csv`. Opening the page rewrites `data/study_summary.csv` / `.txt`.
+
 ## Data and privacy
 
 Participants (people with traumatic brain injury and controls) produce personal data. What this software does and does not do:

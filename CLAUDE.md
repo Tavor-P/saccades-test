@@ -37,7 +37,7 @@ Real-Time API) or, with `SACCADES_BACKEND=webcam` (no dialog field any more), FL
 - Environment: PowerShell 5.1 has no `&&`; files may be CRLF (keep each file's endings); `.gitignore` has `data/`, which also matches any `data` folder (tests: use `tests/fixtures/`).
 - `data/` is git-ignored runtime output: never commit it, never write to it from tests/simulations (simulator uses an in-memory logger).
 - Participant data (trials, gaze trace, glasses video) is personal data: never commit it, never print it in reports, never copy real sessions into `tests/fixtures/` (only anonymous recordings belong there).
-- Report test results truthfully (ran / skipped). Suite: ~285 tests (merged from ~590 in Nov 2026: one test per behaviour, cases looped inside; ~45 more since for analysis, dashboard results and comparison), ~3 min, 2 skipped without PySpin/mediapipe (`test_camera.py`, `test_gaze_tracking.py` `importorskip`).
+- Report test results truthfully (ran / skipped). Suite: ~295 tests (merged from ~590 in Nov 2026: one test per behaviour, cases looped inside; ~55 more since for analysis, dashboard results, comparison and the dashboard compare/study pages), ~3 min, 2 skipped without PySpin/mediapipe (`test_camera.py`, `test_gaze_tracking.py` `importorskip`).
 
 ## Commands (all through the wrapper)
 
@@ -78,7 +78,7 @@ Real-Time API) or, with `SACCADES_BACKEND=webcam` (no dialog field any more), FL
   (3) Screen geometry is typed into the startup dialog each run (remembered); until the user measures their small monitor (~12 in wide, 60 Hz) it is the 26 cm / 50 cm placeholder and the dialog says so. Saccade size in degrees also depends on width and distance.
   (4) The separate baseline (foveal) phase was removed (not a like-for-like control, different retinal location): fixation now comes only from the saccade phase's control flashes + flashes >=100 ms from any saccade; the simulator gives ~55 fixation / ~31 saccade flashes per 150 trials (`flash_gates`; ~43 within +-50 ms of onset), so ~18/~10 per contrast level (SD 60: ~51/~37; SD 100: ~59/~30; old +-90 uniform: ~46/~36).
 - **Next, in order**: (1) short Test run then full 150-trial Real run with participant ID on glasses, analyse with `analyze_session`, several runs per person pooled by `analyze_participant`; (2) group analysis
-  (per-person pooled index done in `analyze_participant`; comparison engine `compare.py` + group labels + study summary done (CLI/.bat only); next a dashboard results page, then a dashboard comparison page on `compare()`); (3) one-page grant figure + wording; (4) clinical metadata fields (group, time since injury,
+  (per-person pooled index done in `analyze_participant`; comparison engine `compare.py` + group labels + study summary done (CLI/.bat and dashboard: results, `/compare`, `/study`, group boxes on the index page; dashboard pages untested in a real browser)); (3) one-page grant figure + wording; (4) clinical metadata fields (group, time since injury,
   severity, symptoms, medication; needs IRB) in the dashboard; (5) find the ~95 ms delay cause (e.g. Neon in its own process); (6) update geometry constants.
 
 ## Repo map
@@ -134,6 +134,9 @@ Paths in this section are checked by `tests/test_docs.py` - keep them real.
 | `src/dashboard/app.py` | Flask dashboard (separate process, `127.0.0.1` only; `data_access.py` reads/writes `data/`; deleting a run also removes `data/<participant>/analysis/` and an emptied participant folder) |
 | `src/dashboard/results.py` | one-click results: calls `analyze_session.analyze` / `analyze_participant.analyze_participant` (no numbers of its own), freshness check (outputs newer than every run file, same run set and `include_test`), traffic-light quality rules, `FriendlyError` messages; routes `/runs/<key>/results`, `/participants/<id>/results` (+ `/analyse` POST, `/files/<kind>`) |
 | `tests/ai-tests/test_dashboard_results.py` | results pages via Flask's test client on `synthetic_runs` copies in tmp_path |
+| `src/dashboard/comparison.py` | compare / labels / study pages: selection tokens (IDs checked against `results.participant_ids()`, `group:<existing label>`, `all`; same person on both sides = error), `run_comparison` (`compare.compare` + `write_comparison` under `results._LOCK` into `data/comparisons/dashboard/<sha1 of selection>/`, overwritten on reopen; downloads re-resolve the query, whitelist `FILES`), `save_label` (`participants.set_label`), `study_page` (`study_summary.write_study_summary`); routes `/compare` (`?a=..&b=..&include_test=1`), `/compare/files/<kind>`, `/participants/<id>/label` (POST JSON), `/study` (+ its CSV download route). Always passes `data_dir=results._data_dir()` |
+| `src/dashboard/templates/compare.html` | Set A / Set B checkbox columns + quick picks (JS builds `?a=P01,P02` or `group:X`), result: headline, mode + how to read, amber warnings, plot, people table, downloads |
+| `tests/ai-tests/test_dashboard_compare.py` | labels round trip, the 3 modes, group tokens, selection errors, everyone excluded, downloads whitelist, study page |
 | `tests/conftest.py` | `FakeGazeSource`, `fake_time` fixture |
 | `tests/helpers.py` | `NullLogger` for session tests |
 | `tests/ai-tests/test_line_stimulus.py` | line branch: placement above/below target, UP/DOWN only, quiz, old-CSV loading |

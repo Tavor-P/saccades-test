@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Compare participants</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 2rem; background: #1e1f26; color: #e8e8ec; max-width: 75rem; }
+  a { color: #8fa8ff; }
+  h1 { font-weight: 600; margin-bottom: 0.25rem; }
+  h2 { font-weight: 600; font-size: 1.1rem; margin-top: 2rem; }
+  .muted { color: #8b8c99; }
+  button { background: #3a5bd9; border: none; color: white; border-radius: 4px; padding: 0.45rem 0.9rem; cursor: pointer; font-size: 0.95rem; }
+  button:hover { background: #4a6bf0; }
+  button.small { background: #454654; padding: 0.25rem 0.6rem; font-size: 0.85rem; }
+  button.small:hover { background: #565768; }
+  .sides { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+  .side { background: #24252e; border-radius: 8px; padding: 0.75rem 1rem; min-width: 0; }
+  .side h3 { margin: 0.25rem 0 0.5rem; font-weight: 600; }
+  .quick { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.5rem; }
+  .side label.person { display: flex; gap: 0.5rem; align-items: center; padding: 0.25rem 0; border-bottom: 1px solid #33343e; }
+  .side label.person .id { font-weight: 600; min-width: 6rem; }
+  .side-token { font-size: 0.85rem; color: #f0c060; min-height: 1.2em; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; margin: 1rem 0; }
+  .headline { background: #24252e; border-left: 4px solid #3a5bd9; border-radius: 6px; padding: 1rem 1.25rem; font-size: 1.35rem; line-height: 1.5; }
+  .mode { margin-top: 0.75rem; font-size: 1rem; }
+  .how { font-size: 0.95rem; color: #c3c4cf; margin-top: 0.35rem; }
+  .error { background: #3a2226; border-left: 4px solid #d9534f; border-radius: 6px; padding: 1rem 1.25rem; font-size: 1.05rem; line-height: 1.5; }
+  .amber { background: #3a3122; border-left: 4px solid #e0a030; border-radius: 6px; padding: 0.75rem 1.25rem; line-height: 1.5; }
+  .amber ul { margin: 0.25rem 0; padding-left: 1.25rem; }
+  img.plot { max-width: 100%; border-radius: 6px; background: white; margin-top: 1rem; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { padding: 0.45rem 0.6rem; border-bottom: 1px solid #3a3b45; text-align: left; vertical-align: top; }
+  th { color: #9a9ba8; font-weight: 500; font-size: 0.8rem; text-transform: uppercase; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .left-out { color: #f0c060; }
+  ul.downloads { padding-left: 1.25rem; line-height: 1.8; }
+  details pre { background: #15161b; padding: 1rem; border-radius: 6px; overflow-x: auto; font-size: 0.85rem; white-space: pre-wrap; }
+  .table-wrap { overflow-x: auto; }
+  @media (max-width: 720px) { body { margin: 1rem; } .sides { grid-template-columns: 1fr; } th, td { padding: 0.35rem; } }
+</style>
+</head>
+<body>
+  {% include "_nav.html" %}
+  <h1>Compare participants</h1>
+  <p class="muted">Tick any number of people in set A and in set B (a person can be on one side only). One person against one person, one against a group,
+    and group against group are all chosen automatically from how many people each side has. Group labels are set on the <a href="{{ url_for('index') }}">sessions page</a>.
+    Every result here is <strong>exploratory</strong>: this is a feasibility pilot with very few people.</p>
+
+  {% if not people %}
+    <div class="error" role="alert">There are no participants with runs in the data folder yet. Run the experiment first.</div>
+  {% else %}
+  {% set checked_a = result.resolved_a if result else a_tokens %}
+  {% set checked_b = result.resolved_b if result else b_tokens %}
+  <form id="compare-form" method="get" action="{{ url_for('compare_page') }}">
+    <div class="sides">
+      {% for side, checked, tokens in (('a', checked_a, a_tokens), ('b', checked_b, b_tokens)) %}
+      <div class="side" data-side="{{ side }}" data-initial-token="{{ tokens[0] if tokens|length == 1 and (tokens[0].lower().startswith('group:') or tokens[0].lower() == 'all') else '' }}">
+        <h3>Set {{ side|upper }}</h3>
+        <div class="quick">
+          {% for g in groups %}<button type="button" class="small pick-group" data-group="{{ g }}">all in group {{ g }}</button>{% endfor %}
+          <button type="button" class="small pick-all">all</button>
+          <button type="button" class="small pick-clear">clear</button>
+        </div>
+        <div class="side-token"></div>
+        {% for p in people %}
+        <label class="person">
+          <input type="checkbox" name="{{ side }}" value="{{ p.id }}" data-group="{{ p.group }}" {% if p.id in checked %}checked{% endif %}>
+          <span class="id">{{ p.id }}</span>
+          <span class="muted">{{ p.group or "no group" }}</span>
+          <span class="muted">&middot; {{ p.n_real }} real run{{ '' if p.n_real == 1 else 's' }}{% if p.n_test %}, {{ p.n_test }} test{% endif %}</span>
+        </label>
+        {% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+    <div class="toolbar">
+      <label><input type="checkbox" name="include_test" value="1" {% if include_test %}checked{% endif %}> Include test runs</label>
+      <button type="submit">Compare</button>
+      <span class="muted">The first comparison of a person may take a minute (their runs are analysed first).</span>
+    </div>
+  </form>
+  {% endif %}
+
+  {% if error %}
+    <div class="error" role="alert">{{ error.message }}</div>
+  {% endif %}
+
+  {% if result %}
+    {% set q = {'a': ','.join(a_tokens), 'b': ','.join(b_tokens), 'include_test': 1 if include_test else None} %}
+    <h2>Result</h2>
+    <div class="headline">
+      <div class="headline-text">{{ result.headline }}</div>
+      <div class="mode">Comparison: <strong>{{ result.mode_words }}</strong>{% if result.mode and result.requested_words and result.requested_words != result.mode_words %} (asked for {{ result.requested_words }}; some people were left out){% endif %}
+        &middot; set A = {{ result.name_a }}, set B = {{ result.name_b }}</div>
+      <div class="how"><strong>How to read this:</strong> {{ result.how_to_read }}</div>
+    </div>
+
+    {% if result.everyone_excluded %}
+      <div class="error" role="alert" style="margin-top:1rem;">Everyone was left out, so nothing could be compared. The table below gives each person's reason
+        (often: too few flashes, only test runs without the box ticked, or no gaze recording).</div>
+    {% endif %}
+
+    <div class="amber" style="margin-top:1rem;">
+      <strong>Before you read anything into this</strong>
+      <ul>
+        {% if result.exploratory %}<li>Exploratory: very few people per side. This is a feasibility pilot, not a group result.</li>{% endif %}
+        {% for w in result.warnings %}<li>{{ w }}</li>{% endfor %}
+      </ul>
+    </div>
+
+    {% if 'plot' in result.downloads %}
+      <img class="plot" src="{{ url_for('compare_file', kind='plot', **q) }}" alt="Suppression index per person and accuracy against flash time, set A vs set B">
+    {% endif %}
+
+    <h2>People</h2>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Set</th><th>Participant</th><th>Group</th><th>Index</th><th>95 % CI</th><th>Method</th><th>Saccade flashes</th><th>Fixation flashes</th><th>Runs</th><th>Used?</th></tr></thead>
+      <tbody>
+      {% for p in result.people %}
+        <tr class="person-row" data-participant="{{ p.participant }}" data-included="{{ 'yes' if p.included else 'no' }}">
+          <td>{{ p.set }}</td>
+          <td>{% if p.has_page %}<a href="{{ url_for('participant_results', pid=p.participant, include_test=1 if include_test else None) }}">{{ p.participant }}</a>{% else %}{{ p.participant }}{% endif %}</td>
+          <td>{{ p.group or '-' }}</td>
+          <td class="num">{{ p.index }}</td>
+          <td class="num">{{ p.ci or '-' }}</td>
+          <td>{{ p.method }}</td>
+          <td class="num">{{ p.n_saccade }}</td>
+          <td class="num">{{ p.n_fixation }}</td>
+          <td class="num">{{ p.runs_used }}</td>
+          <td>{% if p.included %}yes{% for w in p.warnings %}<div class="left-out">{{ w }}</div>{% endfor %}{% else %}<span class="left-out">left out: {{ p.reason }}</span>{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <p class="muted">Index: 0 = no suppression, 1 = the line is never seen during saccades (accuracy-method indices are on another scale; the comparison never mixes the two).</p>
+
+    <h2>Details</h2>
+    <ul>{% for d in result.details %}<li>{{ d }}</li>{% endfor %}</ul>
+
+    <h2>Downloads</h2>
+    <ul class="downloads">
+      {% for kind in result.downloads %}
+        <li><a href="{{ url_for('compare_file', kind=kind, **q) }}">{{ labels[kind] }}</a></li>
+      {% endfor %}
+    </ul>
+    <p class="muted">Computed {{ result.generated_at }}. Bookmark this page to re-open the same comparison (the link holds only participant IDs and group names).</p>
+
+    <details>
+      <summary>Full text report</summary>
+      <pre>{{ result.report_text }}</pre>
+    </details>
+  {% endif %}
+
+<script>
+// Quick picks: "all in group X" / "all" tick the boxes and remember the pick, so the link says group:X (it then follows
+// the group's current members when re-opened). Ticking a box by hand turns the side back into a plain list of IDs.
+const sides = {};
+document.querySelectorAll(".side").forEach((el) => {
+  const side = el.dataset.side;
+  const boxes = Array.from(el.querySelectorAll("input[type=checkbox]"));
+  const tokenLine = el.querySelector(".side-token");
+  const state = { token: el.dataset.initialToken || "", boxes };
+  const show = () => { tokenLine.textContent = state.token ? `Picked: ${state.token}` : ""; };
+  const tick = (test, token) => { boxes.forEach((b) => { b.checked = test(b); }); state.token = token; show(); };
+  el.querySelectorAll(".pick-group").forEach((btn) => btn.addEventListener("click", () => {
+    const g = btn.dataset.group.toLowerCase();
+    tick((b) => b.dataset.group.trim().toLowerCase() === g, `group:${btn.dataset.group}`);
+  }));
+  el.querySelector(".pick-all").addEventListener("click", () => tick(() => true, "all"));
+  el.querySelector(".pick-clear").addEventListener("click", () => tick(() => false, ""));
+  boxes.forEach((b) => b.addEventListener("change", () => { state.token = ""; show(); }));
+  show();
+  sides[side] = state;
+});
+
+const form = document.getElementById("compare-form");
+if (form) {
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const params = new URLSearchParams();
+    for (const side of ["a", "b"]) {
+      const s = sides[side];
+      const ids = s.boxes.filter((b) => b.checked).map((b) => b.value);
+      const value = s.token || ids.join(",");
+      if (value) params.set(side, value);
+    }
+    if (form.querySelector("input[name=include_test]").checked) params.set("include_test", "1");
+    window.location.search = params.toString();
+  });
+}
+</script>
+</body>
+</html>

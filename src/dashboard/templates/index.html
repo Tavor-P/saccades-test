@@ -46,6 +46,7 @@
 </style>
 </head>
 <body>
+  {% include "_nav.html" %}
   <h1>Saccade sessions</h1>
 
   <div class="settings-box">
@@ -60,15 +61,23 @@
 
   {% if participants %}
   <h2>Participants</h2>
-  <p class="muted">Analyse pools every run of one person into one suppression index (runs with other contrasts or screen settings are left out, with the reason).</p>
+  <p class="muted">Analyse pools every run of one person into one suppression index (runs with other contrasts or screen settings are left out, with the reason).
+    Group: type a label such as TBI or control (saved when you leave the box); it is only used to pick people on the <a href="{{ url_for('compare_page') }}" style="color:#8fa8ff;">Compare</a> page. Leave group and note empty to remove the label.</p>
+  <datalist id="group-suggestions">
+    {% for g in groups %}<option value="{{ g }}">{% endfor %}
+    {% if 'TBI' not in groups %}<option value="TBI">{% endif %}
+    {% if 'control' not in groups %}<option value="control">{% endif %}
+  </datalist>
   <table class="participants">
     <thead>
-      <tr><th>Participant</th><th>Real runs</th><th>Test runs</th><th>Last analysed</th><th>Analyse</th></tr>
+      <tr><th>Participant</th><th>Group</th><th>Note</th><th>Real runs</th><th>Test runs</th><th>Last analysed</th><th>Analyse</th></tr>
     </thead>
     <tbody>
       {% for p in participants %}
       <tr data-participant="{{ p.id }}">
         <td>{{ p.id }}</td>
+        <td><input type="text" class="label-field group" list="group-suggestions" maxlength="40" value="{{ p.group }}" placeholder="-" aria-label="Group of {{ p.id }}"></td>
+        <td><input type="text" class="label-field note" maxlength="200" value="{{ p.note }}" placeholder="-" aria-label="Note for {{ p.id }}"></td>
         <td class="muted">{{ p.n_real }}</td>
         <td class="muted">{{ p.n_test }}{% if p.only_test %} (only test runs: tick the box to analyse them){% endif %}</td>
         <td class="muted">{{ p.analysed_at or "never" }}</td>
@@ -176,6 +185,28 @@ if (saveContrastFloorButton) {
     }
   });
 }
+
+document.querySelectorAll("tr[data-participant]").forEach((row) => {
+  const pid = row.dataset.participant;
+  row.querySelectorAll("input.label-field").forEach((input) => {
+    input.addEventListener("change", async () => {
+      input.classList.remove("saved", "error");
+      input.title = "";
+      try {
+        const response = await fetch(`/participants/${encodeURIComponent(pid)}/label`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ group: row.querySelector(".group").value, note: row.querySelector(".note").value }),
+        });
+        const body = await response.json();
+        input.classList.add(response.ok ? "saved" : "error");
+        if (!response.ok) { input.title = body.error || "Couldn't save."; alert(input.title); }
+      } catch (err) {
+        input.classList.add("error");
+      }
+    });
+  });
+});
 
 async function deleteSessionByTimestamp(timestamp) {
   const response = await fetch(`/sessions/${timestamp}`, { method: "DELETE" });
