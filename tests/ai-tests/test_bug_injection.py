@@ -81,7 +81,7 @@ def test_would_have_caught_the_clock_offset_sign_bug(monkeypatch):
 
     monkeypatch.setattr(NeonGazeSource, "_estimate_clock_offset", wrong_sign)
     with pytest.raises(AssertionError):
-        test_neon_source.test_latency_uses_clock_offset_with_correct_sign(monkeypatch)
+        test_neon_source.test_samples_are_stamped_with_capture_time_using_the_offset_with_the_right_sign(monkeypatch)
 
 
 def test_would_have_caught_a_live_gate_that_forgets_tracking_ok(monkeypatch):
@@ -90,6 +90,6 @@ def test_would_have_caught_a_live_gate_that_forgets_tracking_ok(monkeypatch):
 
     monkeypatch.setattr(session_module, "is_valid_for_saccadic_analysis", lambda flash, tracking_ok=None: flash is True)
     with pytest.raises(AssertionError):
-        test_validity_lockstep.test_live_zest_feed_matches_the_validity_gate(
+        test_validity_lockstep.check_live_feed(
             monkeypatch, ParticipantProfile(dropout_rate_per_s=2.0), 4
         )
