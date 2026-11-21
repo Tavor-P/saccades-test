@@ -29,7 +29,7 @@ import math
 import re
 import sys
 from collections import Counter
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 
@@ -369,7 +369,7 @@ def _side_name(side: str, people: list) -> str:
 def _ci_text(ci, signed: bool = False) -> str:
     if ci is None:
         return "95 % CI not available"
-    lo, hi = ci
+    lo, hi = (0.0 if round(v, 2) == 0 else v for v in ci)  # no "-0.00"
     fmt = "{:+.2f}" if signed else "{:.2f}"
     return f"95 % CI {fmt.format(lo)} to {fmt.format(hi)}" if (signed or lo < 0) else f"95 % CI {lo:.2f}-{hi:.2f}"
 
@@ -452,8 +452,9 @@ def compare(set_a: list[str], set_b: list[str], data_dir: Path = DATA_DIR, inclu
 
 
 def compare_people(people: list, n_boot: int = N_BOOT, seed: int = 0, include_test: bool = False) -> ComparisonResult:
-    """The comparison itself, on already loaded Person objects (side "A"/"B" set; see compare()). Marks exclusions on
-    the Person objects it is given."""
+    """The comparison itself, on already loaded Person objects (side "A"/"B" set; see compare()). Works on copies, so
+    cached Person objects can be reused for several comparisons; the result's `people` hold the exclusions."""
+    people = [replace(p, warnings=list(p.warnings)) for p in people]
     a_ids = [p.participant for p in people if p.side == "A"]
     b_ids = [p.participant for p in people if p.side == "B"]
     if not a_ids or not b_ids:
