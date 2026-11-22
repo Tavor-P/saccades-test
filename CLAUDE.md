@@ -37,7 +37,7 @@ Real-Time API) or, with `SACCADES_BACKEND=webcam` (no dialog field any more), FL
 - Environment: PowerShell 5.1 has no `&&`; files may be CRLF (keep each file's endings); `.gitignore` has `data/`, which also matches any `data` folder (tests: use `tests/fixtures/`).
 - `data/` is git-ignored runtime output: never commit it, never write to it from tests/simulations (simulator uses an in-memory logger).
 - Participant data (trials, gaze trace, glasses video) is personal data: never commit it, never print it in reports, never copy real sessions into `tests/fixtures/` (only anonymous recordings belong there).
-- Report test results truthfully (ran / skipped). Suite: 293 tests pass + 2 skipped without PySpin/mediapipe (`test_camera.py`, `test_gaze_tracking.py` `importorskip`), ~4 min.
+- Report test results truthfully (ran / skipped). Suite: 292 tests pass + 2 skipped without PySpin/mediapipe (`test_camera.py`, `test_gaze_tracking.py` `importorskip`), ~4 min.
 
 ## Commands (all through the wrapper)
 
@@ -180,7 +180,7 @@ Paths in this section are checked by `tests/test_docs.py` - keep them real.
 - **Sessions are PsychoPy-free state machines.** `ExperimentSession` (saccade phase) exposes `on_space()`/`on_response_key()`/`tick()`/`render_state()`;
   the `run_experiment.py` frame loops (shared `FramePresenter` for caption/fades/frame clock, `deliver_keys`) call `tick()` + `render_state()` once per frame and apply the plain dict
   (`apply_render_state()`/`draw_all()`). Test mode (short counts) is a runtime choice:
-  `_resolve_test_mode()` reads the startup Mode dropdown; Real needs a non-empty Participant ID. A run is tutorial (optional) -> saccade phase -> a console line naming the `analyze_session` command.
+  the startup dialog's Mode dropdown decides it (`startup_model.validate`: Real needs a non-empty Participant ID). A run is tutorial (optional) -> saccade phase -> a console line naming the `analyze_session` command.
   There is no pause menu, rest break, session cap or mid-session recalibration, and no baseline phase (removed; old `baseline` rows still load via `PHASE_WORDS`). `ExperimentSession` uses `SACCADE_FIXED_TRIALS_*`.
 - **Gaze is behind `GazeSource`.** `NeonGazeSource` polls `receive_gaze_datum()` on a thread, turns scene gaze x / `NEON_SCENE_WIDTH` into a 0-1 ratio; `GazeMapper` does calibration fit, dead zone, smoothing.
   `build_gaze_source()` imports lazily so a machine missing `PySpin`/`mediapipe`/`pupil-labs-realtime-api` still runs the others. `IOHubGazeSource` is an untested placeholder. `WebcamGazeSource` = `Camera` (own thread, keeps only the newest Mono8 frame, intentionally) + `GazeTracker` (MediaPipe on a frame downscaled to `TRACKING_FRAME_WIDTH`).

@@ -623,44 +623,6 @@ def _resolve_camera_choice(camera_indices: list[int], camera_labels: list[str], 
     return camera_indices[position], camera_labels[position]
 
 
-def _resolve_show_gaze_indicator(selected_label: str) -> bool:
-    return selected_label == "Yes"
-
-
-MODE_TEST = "Test"
-MODE_REAL = "Real"
-
-
-def _resolve_test_mode(mode_label: str) -> bool:
-    """The startup dialog's Mode dropdown decides this explicitly: Test is a
-    quick smoke run (fewer trials, saccade phase first); Real is a data-collection session."""
-    return mode_label == MODE_TEST
-
-
-def _session_info_error(mode_label: str, raw_participant_id: str) -> str | None:
-    """A real run must be attributable to a participant, so it needs a
-    non-empty ID; a test run may leave it blank (saved as "anonymous")."""
-    if mode_label == MODE_REAL and not raw_participant_id.strip():
-        return "Real mode needs a Participant ID"
-    return None
-
-
-def _selected_first(options: list[str], selected: str | None) -> list[str]:
-    """A DlgFromDict choice list with `selected` moved to the front (its
-    default), used to restore the picks when the dialog is re-shown."""
-    if selected is None or selected not in options:
-        return list(options)
-    return [selected] + [o for o in options if o != selected]
-
-
-def _resolve_run_tutorial(selected_label: str) -> bool:
-    return selected_label == "Yes"
-
-
-def _resolve_record_video(selected_label: str) -> bool:
-    return selected_label == "Yes"
-
-
 BACKEND_ENV_VAR = "SACCADES_BACKEND"  # set to "webcam" to use the Blackfly S + MediaPipe backend (no dialog field any more; Neon is the default)
 
 

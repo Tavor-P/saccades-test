@@ -11,7 +11,6 @@ from test_session import (  # the session-driving helpers live with the session 
     _enter_trial_active,
     _make_session,
     _set_single_trial,
-    _trigger_onset_and_landing,
 )
 
 from include.eye_tracking.types import GazeZone

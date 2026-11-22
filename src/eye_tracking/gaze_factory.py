@@ -1,12 +1,10 @@
-"""build_gaze_source(backend, ...): picks the GazeSource for the startup dialog's choice, importing the backend lazily so a machine without PySpin/
+"""build_gaze_source(backend, ...): picks the GazeSource for the selected backend ($SACCADES_BACKEND, see run_experiment._selected_backend), importing the backend lazily so a machine without PySpin/
 mediapipe (or without pupil-labs-realtime-api) can still run the other backends."""
 
 from include.eye_tracking.interfaces import GazeSource
 
 BACKEND_NEON = "Pupil Labs Neon (still head)"
 BACKEND_WEBCAM = "Blackfly S + MediaPipe"
-# Startup dialog choices (first = default).
-BACKENDS = [BACKEND_NEON, BACKEND_WEBCAM]
 NEON_BACKENDS = (BACKEND_NEON,)
 
 

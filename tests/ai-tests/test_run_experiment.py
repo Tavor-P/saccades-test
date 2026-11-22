@@ -4,11 +4,6 @@ from include.eye_tracking.constants import CAMERA_INDEX
 from src.experiment.run_experiment import (
     _camera_labels,
     _resolve_camera_choice,
-    _resolve_record_video,
-    _resolve_show_gaze_indicator,
-    _resolve_test_mode,
-    _selected_first,
-    _session_info_error,
     _second_monitor_screen_index,
     camera_preview_enabled,
     narrate_if_changed,
@@ -40,19 +35,6 @@ def test_second_monitor_screen_index_picks_the_second_screen_or_falls_back():
         assert _second_monitor_screen_index() == 1
     with _patch_screens(1):
         assert _second_monitor_screen_index() == 0
-
-
-def test_dropdown_resolvers_and_participant_id_rule():
-    assert _resolve_show_gaze_indicator("Yes") is True and _resolve_show_gaze_indicator("No") is False
-    assert _resolve_record_video("Yes") is True and _resolve_record_video("No") is False
-    assert _resolve_test_mode("Test") is True and _resolve_test_mode("Real") is False  # the dropdown, not the ID
-    assert _session_info_error("Real", "") is not None
-    assert _session_info_error("Real", "   ") is not None  # whitespace-only counts as blank
-    assert _session_info_error("Real", " p001 ") is None
-    assert _session_info_error("Test", "") is None
-    assert _selected_first(["Real", "Test"], "Test") == ["Test", "Real"]
-    assert _selected_first(["Real", "Test"], None) == ["Real", "Test"]
-    assert _selected_first(["Real", "Test"], "gone") == ["Real", "Test"]
 
 
 def test_narrate_if_changed_speaks_only_new_non_blank_text():

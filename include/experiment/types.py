@@ -1,5 +1,5 @@
 """Dataclasses/enums for experiment data: Target, Side, trial specs, and TrialResult (one logged CSV row per trial).
-Adding a TrialResult field means touching: this file, logger.FIELDNAMES + ResultLogger.log, dashboard data_access parsing, and tests."""
+Adding a TrialResult field: see CLAUDE.md "Recipes" (this file, logger.TRIAL_COLUMNS or DROPPED_FROM_CSV, trial_from_row, session.py, tests)."""
 
 from dataclasses import dataclass
 from enum import Enum

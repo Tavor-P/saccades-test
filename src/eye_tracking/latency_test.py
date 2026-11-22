@@ -85,7 +85,6 @@ class NeonRecorder:
         self._file = path.open("w", newline="")
         self._writer = csv.writer(self._file)
         self._writer.writerow(["arrival_unix_s", "device_unix_s", "x", "y", "worn"])
-        self.device = self._device
         self.recording_id: str | None = None
         self.latest: tuple[float, float, bool, float] | None = None  # (x, y, worn, PC arrival time) of the newest sample
         self._running = True

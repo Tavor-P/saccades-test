@@ -430,7 +430,7 @@ flashes 50-300 ms away; small numbers and a window chosen after seeing the first
 [CLAUDE.md](CLAUDE.md) describes the architecture, the repo map and the gotchas. All logic can be run without hardware:
 
 ```
-.\scripts\py.ps1 -m pytest -q                 # 293 tests pass (+2 skipped without PySpin/mediapipe), about 4 min, no glasses or window needed
+.\scripts\py.ps1 -m pytest -q                 # 292 tests pass (+2 skipped without PySpin/mediapipe), about 4 min, no glasses or window needed
 .\scripts\py.ps1 -m src.experiment.simulation # headless simulated trial; see tests/ai-tests/README.md for run_sim.py
 ```
 

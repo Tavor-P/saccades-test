@@ -10,10 +10,6 @@ import math
 DOT_POSITION = (0.15, 0.5)
 CROSS_POSITION = (0.85, 0.5)
 CENTER_POSITION = (0.5, 0.5)  # the calibration step's centre target
-GRATING_POSITION = (
-    (DOT_POSITION[0] + CROSS_POSITION[0]) / 2,
-    (DOT_POSITION[1] + CROSS_POSITION[1]) / 2,
-)
 
 # Sizes as a fraction of window height (resolution-independent); the PsychoPy
 # runner converts these + the positions above into its 'height' unit system.
@@ -30,7 +26,7 @@ VIEWING_DISTANCE_CM = 50.0
 SCREEN_HEIGHT_CM = 26.0
 SCREEN_HEIGHT_DEG = 2 * math.degrees(math.atan((SCREEN_HEIGHT_CM / 2) / VIEWING_DISTANCE_CM))
 
-# LINE-STIMULUS BRANCH: the flash is NOT the grating below but a thin horizontal line (Braun, Schutz &
+# LINE-STIMULUS BRANCH: the flash is NOT a grating but a thin horizontal line (Braun, Schutz &
 # Gegenfurtner 2021, J Vis): full screen width, a vertical Gaussian luminance profile, 2 deg above or below
 # the saccade target (the symbol the eye is moving to), and the
 # participant says which side with UP / DOWN. Their values: SD 0.15 deg, offset 2 deg, one frame at 120 Hz.
@@ -40,38 +36,10 @@ SCREEN_HEIGHT_DEG = 2 * math.degrees(math.atan((SCREEN_HEIGHT_CM / 2) / VIEWING_
 LINE_OFFSET_DEG = 2.0  # distance of the line's centre above/below the target
 LINE_SD_DEG = 0.15  # vertical standard deviation of the Gaussian profile
 LINE_WIDTH_SCREENS = 24.0  # drawn this many screen widths wide so the horizontal Gaussian edge-fade is invisible (~1 % at the screen edge)
-# The grating constants below are kept (the grating code path still exists on feature/saccade-flash-analysis and
-# the grating values are written to the meta file) but nothing on this branch draws a grating.
-
-# The paper's probe: a horizontal sinusoidal luminance grating (bars parallel
-# to the saccade direction, so the saccade's own motion doesn't smear the
-# pattern into a spurious signal) windowed by a Gaussian envelope, flashed for
-# a single frame.
-#
-# At the paper's literal 0.04 cpd, fewer than 1.2 full cycles fit inside the
-# Gaussian-windowed patch (cycles = GRATING_SPATIAL_FREQUENCY_CPD *
-# GRATING_ENVELOPE_SIGMA_DEG * 6, independent of screen size) - so instead of
-# a grating, the patch looks like a single lopsided light/dark gradient, which
-# is trivially visible in peripheral vision even at low contrast (peripheral
-# acuity is far coarser than foveal, but a single gradient has no fine detail
-# to lose). Bumped up so multiple cycles fit in the patch instead - fine
-# enough that peripheral vision blurs it toward flat gray, resolvable mainly
-# with foveal acuity - but pulled back from an earlier, more aggressive value
-# (0.35 cpd, ~10 cycles) that made the ZEST-driven low-contrast trials come
-# back essentially invisible even to a directly-fixating eye. This is still a
-# deviation from the paper's own value, and its correctness depends on
-# VIEWING_DISTANCE_CM/SCREEN_HEIGHT_CM above actually matching your physical
-# setup - adjust further if it's still too faint or too easy.
-GRATING_SPATIAL_FREQUENCY_CPD = 0.12  # cycles/degree, ~3.5 cycles across the patch
-GRATING_ENVELOPE_SIGMA_DEG = 4.8  # Gaussian envelope space constant
-GRATING_DURATION_FRAMES = 1  # a single frame, exactly as in the paper (their 120Hz CRT -> ~8ms;
+# The flash is drawn for this many frames (named before the line replaced the grating; the grating's own constants live on
+# the `grating` branch). A single frame, exactly as in the paper (their 120Hz CRT -> ~8ms;
 # on a typical 60Hz display this is ~16.7ms instead - still "one frame", just a longer one)
-
-GRATING_SF_CYCLES_PER_HEIGHT_UNIT = GRATING_SPATIAL_FREQUENCY_CPD * SCREEN_HEIGHT_DEG
-GRATING_ENVELOPE_SIGMA_HEIGHT_UNITS = GRATING_ENVELOPE_SIGMA_DEG / SCREEN_HEIGHT_DEG
-# PsychoPy's 'gauss' mask tapers to ~0 by the edge of `size`, at a standard
-# deviation of size/6 - so size = 6 * sigma reproduces the paper's space constant.
-GRATING_SIZE_HEIGHT_UNITS = GRATING_ENVELOPE_SIGMA_HEIGHT_UNITS * 6
+GRATING_DURATION_FRAMES = 1
 
 LINE_OFFSET_HEIGHT_UNITS = LINE_OFFSET_DEG / SCREEN_HEIGHT_DEG  # = offset as a fraction of the screen height
 LINE_SD_HEIGHT_UNITS = LINE_SD_DEG / SCREEN_HEIGHT_DEG
@@ -80,8 +48,7 @@ LINE_HEIGHT_HEIGHT_UNITS = LINE_SD_HEIGHT_UNITS * 6
 
 # Whether a session is a quick test/smoke run (fewer trials) or a real
 # data-collection session is a runtime decision, not a constant to edit here
-# - see run_experiment.py's _resolve_test_mode(): leaving the startup
-# dialog's Participant ID blank means test, entering one means real.
+# - the startup dialog's Mode dropdown (src/experiment/startup_model.py: Real needs a Participant ID).
 
 # A few throwaway trials before the real block, so a participant
 # doesn't learn the response mapping on data that counts. Fixed at a high,
