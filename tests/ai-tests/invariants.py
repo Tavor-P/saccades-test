@@ -7,21 +7,16 @@ When an invariant fails, first decide whether the *invariant* is wrong or the
 (include/experiment/types.py) and ExperimentSession, not implementation details.
 """
 
-import math
-
 from include.experiment.constants import (
-    MAX_SACCADE_TRIALS_TEST,
     RESPONSE_WINDOW_MS,
     SACCADE_ONSET_STABILITY_MS,
     PRACTICE_CONTRAST,
-    SACCADE_FIXED_CONTRASTS,
     CONTROL_OFFSETS_MS,
     FLASH_SPREAD_SD_MS,
     FLASH_WINDOW_MAX_MS,
     FLASH_WINDOW_MIN_MS,
     TIMING_JITTER_MS,
     TIMING_OFFSETS_MS,
-    ZEST_LOG_CONTRAST_MAX,
 )
 from src.experiment.simulation import FRAME_HZ, SimulationResult
 from src.experiment.trial_mechanics import spread_flash_delay_ms
@@ -41,8 +36,11 @@ SACCADE_OUTCOMES = {"correct", "incorrect", "miss", "timeout"}
 RT_OUTCOMES = {"detected", "timeout"}
 
 
-def check_session(sim: SimulationResult, max_trials_cap: int = MAX_SACCADE_TRIALS_TEST) -> list[str]:
+def check_session(sim: SimulationResult, max_trials_cap: int | None = None) -> list[str]:
+    """max_trials_cap defaults to the session's own fixed trial count (SACCADE_FIXED_TRIALS_*)."""
     v: list[str] = []
+    if max_trials_cap is None:
+        max_trials_cap = sim.session._fixed_trials
     saccade_rows = [r for r in sim.results if r.phase == "saccade"]
     rt_rows = [r for r in sim.results if r.phase == "rt_test"]
 
@@ -66,11 +64,9 @@ def check_session(sim: SimulationResult, max_trials_cap: int = MAX_SACCADE_TRIAL
             v.append(f"{tag}: unknown outcome {r.outcome!r}")
 
         if r.grating_shown:
-            # Fixed-contrast mode draws from SACCADE_FIXED_CONTRASTS (may exceed the staircase's
-            # ceiling); the practice contrast is always allowed; otherwise the ZEST range applies.
-            fixed_mode = sim.session._fixed_contrast_bag is not None
-            allowed = fixed_mode and (r.contrast in SACCADE_FIXED_CONTRASTS or r.contrast == PRACTICE_CONTRAST)
-            if r.contrast is None or not (allowed or 0 < r.contrast <= 10**ZEST_LOG_CONTRAST_MAX + 1e-9):
+            # Every flash uses one of the session's fixed probe contrasts (or the practice contrast).
+            allowed = r.contrast in sim.session._fixed_contrast_bag._pool or r.contrast == PRACTICE_CONTRAST
+            if r.contrast is None or not allowed:
                 v.append(f"{tag}: flashed contrast out of range ({r.contrast})")
             if r.orientation is None:
                 v.append(f"{tag}: grating shown but no orientation logged")
@@ -132,11 +128,6 @@ def check_session(sim: SimulationResult, max_trials_cap: int = MAX_SACCADE_TRIAL
         v.append(f"duplicate saccade trial indices: {indices}")
     if len(saccade_rows) > max_trials_cap:
         v.append(f"{len(saccade_rows)} saccade trials exceed the safety cap {max_trials_cap}")
-
-    # The staircase must stay a valid estimate no matter what was fed to it.
-    estimate = sim.session._zest.threshold_estimate
-    if not math.isfinite(estimate) or not (0 < estimate <= 10**ZEST_LOG_CONTRAST_MAX + 1e-9):
-        v.append(f"ZEST threshold estimate invalid: {estimate}")
 
     phase = sim.session.render_state()["hud"]["phase"]
     if phase == "COMPLETE":

@@ -1,11 +1,7 @@
 ﻿from unittest.mock import MagicMock, Mock, patch
 
-from include.eye_tracking.constants import CAMERA_INDEX
 from src.experiment.run_experiment import (
-    _camera_labels,
-    _resolve_camera_choice,
     _second_monitor_screen_index,
-    camera_preview_enabled,
     narrate_if_changed,
     phase_just_became_active,
     render_caption,
@@ -17,17 +13,6 @@ def _patch_screens(count: int):
     display = MagicMock()
     display.get_screens.return_value = [MagicMock() for _ in range(count)]
     return patch("src.experiment.run_experiment.pyglet.canvas.get_display", return_value=display)
-
-
-def test_webcam_helpers_camera_labels_choice_and_preview_on_trial_zero_only():
-    labels = _camera_labels([CAMERA_INDEX, CAMERA_INDEX + 1])
-    assert labels == [f"Camera {CAMERA_INDEX} (default)", f"Camera {CAMERA_INDEX + 1}"]
-    assert _camera_labels([CAMERA_INDEX + 1]) == [f"Camera {CAMERA_INDEX + 1}"]
-    indices = [0, 2, 5]
-    labels = _camera_labels(indices)
-    assert _resolve_camera_choice(indices, labels, labels[1]) == (2, labels[1])
-    assert camera_preview_enabled(0) is True
-    assert camera_preview_enabled(1) is False and camera_preview_enabled(24) is False
 
 
 def test_second_monitor_screen_index_picks_the_second_screen_or_falls_back():
@@ -125,7 +110,7 @@ def test_apply_render_state_snaps_or_fades_symbols_and_draws_the_hud_only_in_tes
 
 
 def test_a_failure_while_setting_up_the_saccade_phase_still_stops_the_gaze_source():
-    """The phone recording is started before the main loop; if building the session (or the tone, preview...) raises, the gaze
+    """The phone recording is started before the main loop; if building the session (or the tone...) raises, the gaze
     source - whose stop() ends the recording - must still be stopped."""
     import pytest
 
@@ -133,7 +118,6 @@ def test_a_failure_while_setting_up_the_saccade_phase_still_stops_the_gaze_sourc
 
     gaze = MagicMock()
     gaze.start_recording.return_value = {"recording": "started"}
-    del gaze.latest_frame  # Neon: no camera frames
     logger = MagicMock()
     with patch.object(run_experiment, "build_gaze_source", return_value=gaze), patch.object(
         run_experiment, "ExperimentSession", side_effect=RuntimeError("boom")

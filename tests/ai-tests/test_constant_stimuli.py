@@ -1,4 +1,4 @@
-"""Scheduled mode with its default saccade-phase setup: fixed probe contrasts (no live staircase),
+"""Scheduled mode with its default saccade-phase setup: fixed probe contrasts,
 bell-curve flash times centred on the average RT (cut to the flash window), a random
 +/-TIMING_JITTER_MS bounce on the control flashes, and a fixed trial count."""
 
@@ -123,24 +123,20 @@ class _SummaryLogger:
         self.summaries[phase] = summary
 
 
-def test_constant_stimuli_stop_by_count_and_report_no_staircase_threshold_unlike_staircase_mode(fake_gaze):
-    """The staircase is never updated with fixed contrasts, so its 'estimate' is just the prior and must not be reported as a result."""
+def test_constant_stimuli_stop_by_count_and_write_the_count_to_the_summary(fake_gaze):
     session = _make_session(fake_gaze, test_mode=True)
     session._results = _fake_valid_saccade_results(SACCADE_FIXED_TRIALS_TEST - 1)
     assert not session._should_stop_main_block()
     session._results = _fake_valid_saccade_results(SACCADE_FIXED_TRIALS_TEST)
-    assert session._should_stop_main_block()  # by trial count, not by the staircase
+    assert session._should_stop_main_block()
     logger = _SummaryLogger()
     session._logger = logger
     session._log_phase_summary()
     summary = logger.summaries["saccade"]
-    assert summary["threshold_estimate"] is None and summary["credible_interval_68"] is None and summary["threshold_at_grid_bound"] is None
-    assert summary["completed_trials"] == SACCADE_FIXED_TRIALS_TEST
+    assert summary["completed_trials"] == summary["valid_trials"] == SACCADE_FIXED_TRIALS_TEST
     assert "hreshold" not in session._summary()
 
-    session = _make_session(fake_gaze, test_mode=True, fixed_contrasts=())
-    logger = _SummaryLogger()
-    session._logger = logger
-    session._log_phase_summary()
-    assert 0 < logger.summaries["saccade"]["threshold_estimate"] < 1
-    assert "Threshold estimate" in session._summary()
+
+def test_an_empty_contrast_set_is_refused(fake_gaze):
+    with pytest.raises(ValueError):
+        _make_session(fake_gaze, test_mode=True, fixed_contrasts=())

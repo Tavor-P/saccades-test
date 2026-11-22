@@ -12,12 +12,6 @@ from src.dashboard.data_access import (
     discover_sessions,
     save_participant_info,
 )
-from src.experiment.settings import (
-    MAX_CONTRAST_FLOOR_PERCENT,
-    MIN_CONTRAST_FLOOR_PERCENT,
-    load_contrast_floor_percent,
-    save_contrast_floor_percent,
-)
 
 app = Flask(__name__)
 
@@ -34,20 +28,7 @@ def index():
         sessions=discover_sessions(),
         participants=comparison.overview_with_labels(),
         groups=comparison.group_names(),
-        contrast_floor_percent=load_contrast_floor_percent(),
-        contrast_floor_min=MIN_CONTRAST_FLOOR_PERCENT,
-        contrast_floor_max=MAX_CONTRAST_FLOOR_PERCENT,
     )
-
-
-@app.post("/settings")
-def update_settings():
-    body = request.get_json(force=True)
-    try:
-        save_contrast_floor_percent(float(body.get("contrast_floor_percent")))
-    except (TypeError, ValueError) as error:
-        return jsonify({"ok": False, "error": str(error) or "contrast floor must be a number"}), 400
-    return jsonify({"ok": True})
 
 
 @app.post("/sessions/<timestamp>")

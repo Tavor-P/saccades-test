@@ -1,5 +1,4 @@
-"""GazeSource: the one interface the experiment uses to get gaze. Implemented by NeonGazeSource, WebcamGazeSource, IOHubGazeSource (untested),
-and the test/simulation doubles (tests/conftest.FakeGazeSource, src/experiment/simulation.SimulatedGazeSource, src/eye_tracking/gaze_trace.ReplayGazeSource)."""
+"""GazeSource: the one interface the experiment uses to get gaze. Implemented by NeonGazeSource and the test/simulation doubles (tests/conftest.FakeGazeSource, src/experiment/simulation.SimulatedGazeSource, src/eye_tracking/gaze_trace.ReplayGazeSource)."""
 
 from abc import ABC, abstractmethod
 
@@ -8,9 +7,8 @@ from include.eye_tracking.types import GazeSample
 
 class GazeSource(ABC):
     """Common interface the experiment loop uses to get gaze data, regardless of
-    whether it comes from the MediaPipe webcam tracker (today) or a future ioHub
-    hardware eye tracker such as Tobii/EyeLink/GazePoint (once real hardware is
-    built). The experiment code only ever talks to this interface."""
+    whether it comes from the Neon glasses or a test/simulation double. The
+    experiment code only ever talks to this interface."""
 
     @abstractmethod
     def start(self) -> None: ...
@@ -30,13 +28,9 @@ class GazeSource(ABC):
     def calibrate(self, left_ratio: float, center_ratio: float, right_ratio: float) -> None:
         """Set the left/center/right reference points used to classify gaze zone.
 
-        The webcam source takes these as literal iris-position ratios and fits
-        a ratio->position mapping across all three, rather than assuming
-        center sits exactly at the left/right midpoint. A future ioHub-backed
-        source would more likely ignore the arguments and run its own vendor
-        calibration routine (e.g. `tracker.runSetupProcedure()`) instead - this
-        method exists on the interface as the "do a 3-point calibration now"
-        trigger, not a strict shared data contract.
+        The Neon source takes these as literal gaze ratios and fits a
+        ratio->position mapping across all three (GazeMapper), rather than
+        assuming center sits exactly at the left/right midpoint.
         """
 
     @abstractmethod

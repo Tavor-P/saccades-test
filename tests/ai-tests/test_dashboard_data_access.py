@@ -4,6 +4,7 @@ import json
 import pytest
 
 from src.dashboard import data_access
+from src.experiment.logger import read_trials
 
 _FIELDNAMES = [
     "trial_index",
@@ -47,10 +48,10 @@ def _row(phase="presaccade", **overrides):
     return row
 
 
-def test_load_session_trials_round_trips_rows_and_reads_missing_newer_columns_as_none(tmp_path, monkeypatch):
+def test_trials_csv_round_trips_rows_and_reads_missing_newer_columns_as_none(tmp_path, monkeypatch):
     monkeypatch.setattr(data_access, "DATA_DIR", tmp_path)
     _write_session(tmp_path, "111", rows=[_row()])  # _FIELDNAMES omits newer columns: a session logged before they existed
-    (trial,) = data_access.load_session_trials("111")
+    (trial,) = read_trials(data_access.csv_path_for("111"))
     assert trial.grating_shown is True and trial.contrast == 0.05 and trial.source is None and trial.outcome == "hit"
     assert trial.flash_during_saccade is None and trial.timing_offset_ms is None
 
@@ -61,7 +62,7 @@ def test_load_session_trials_round_trips_rows_and_reads_missing_newer_columns_as
         writer.writerow(_row(flash_during_saccade="True", timing_offset_ms="-40"))
         writer.writerow(_row(trial_index="1", flash_during_saccade="False", timing_offset_ms="40"))
         writer.writerow(_row(trial_index="2", flash_during_saccade="", timing_offset_ms=""))
-    trials = data_access.load_session_trials("222")
+    trials = read_trials(data_access.csv_path_for("222"))
     assert [t.flash_during_saccade for t in trials] == [True, False, None]
     assert [t.timing_offset_ms for t in trials] == [-40, 40, None]
 

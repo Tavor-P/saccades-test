@@ -22,9 +22,8 @@ from include.eye_tracking.types import GazeSample, GazeZone
 class GazeMapper:
     """Turns a raw horizontal gaze ratio (0-1, from any tracker) into the
     calibrated position / zone / smoothed position a GazeSample carries -
-    the same calibration fit, dead-zone classification and display smoothing
-    GazeTracker applies to webcam iris ratios, without its MediaPipe
-    dependency, so sources like NeonGazeSource can reuse the behaviour."""
+    the calibration fit, dead-zone classification and display smoothing
+    NeonGazeSource (and the simulator) share."""
 
     def __init__(self, default_span: tuple[float, float, float] = (0.4, 0.5, 0.6)) -> None:
         self._ratio_history: deque[float] = deque(maxlen=CALIBRATION_SAMPLE_WINDOW)

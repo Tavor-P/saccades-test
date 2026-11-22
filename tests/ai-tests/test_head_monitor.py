@@ -24,7 +24,7 @@ from src.eye_tracking import neon_source
 from src.eye_tracking.head_monitor import HeadMotionTracker, angle_between_deg
 from src.eye_tracking.neon_source import NeonGazeSource
 
-pytestmark = pytest.mark.usefixtures("staircase_no_jitter")
+pytestmark = pytest.mark.usefixtures("no_flash_jitter")
 
 
 def yaw(deg: float):

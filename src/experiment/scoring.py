@@ -1,5 +1,5 @@
 """score_outcome (correct/incorrect/miss) and is_valid_for_saccadic_analysis - the single validity gate for saccade-phase
-flashes (flash_during_saccade AND tracking_ok), used by the live ZEST update."""
+flashes (flash_during_saccade AND tracking_ok), behind the session's valid-trial count."""
 
 from include.experiment.types import Side
 
@@ -23,8 +23,8 @@ def score_outcome(
 
 def is_valid_for_saccadic_analysis(flash_during_saccade: bool | None, tracking_ok: bool | None = None) -> bool:
     """The single validity gate for a saccade-phase, grating-shown trial's
-    flash_during_saccade - applied by the live in-session ZEST update
-    (ExperimentSession._finish_trial). Only True counts - False
+    flash_during_saccade - applied by the session's valid-trial count
+    (ExperimentSession._valid_trial_count). Only True counts - False
     (the flash landed outside the real-time-detected saccade window) and
     None (landing was never confirmed, so validity is genuinely
     undeterminable, not merely invalid) are equally unusable for either

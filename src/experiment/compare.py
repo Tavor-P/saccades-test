@@ -50,7 +50,7 @@ from src.experiment.analyze_participant import (
 )
 from src.experiment.analyze_session import BIN_EDGES_MS, CHANCE, DATA_DIR, _fit_pair, wilson
 from src.experiment.flash_gates import FIXATION, SACCADE
-from src.experiment.participants import all_participants, list_labels, participants_in_group, resolve_set  # noqa: F401 (re-exported)
+from src.experiment.participants import list_labels, resolve_set
 
 ONE_VS_ONE = "one_vs_one"
 ONE_VS_GROUP = "one_vs_group"
@@ -209,16 +209,6 @@ def _cells(by_contrast: list, condition: str) -> tuple[np.ndarray, np.ndarray, n
     rows = sorted((r for r in by_contrast if r["condition"] == condition and r["n"] > 0), key=lambda r: r["contrast_pct"])
     return (np.asarray([r["contrast_pct"] / 100 for r in rows], dtype=float), np.asarray([r["n"] for r in rows], dtype=float),
             np.asarray([r["correct"] for r in rows], dtype=float))
-
-
-def index_from_counts(by_contrast: list) -> float | None:
-    """The psychometric index refitted from the pooled by_contrast counts (equals summary.json's index); None if unidentified."""
-    cs, ns, ks = _cells(by_contrast, SACCADE)
-    cf, nf, kf = _cells(by_contrast, FIXATION)
-    if len(cs) < 2 or len(cf) < 2:
-        return None
-    ts, tf, edge = _fit_pair(cs, ns, ks, cf, nf, kf)
-    return None if edge else 1 - tf / ts
 
 
 def bootstrap_index(person: Person, method: str, n_boot: int, rng: np.random.Generator) -> np.ndarray:

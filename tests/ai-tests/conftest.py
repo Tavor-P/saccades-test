@@ -15,9 +15,6 @@ import pytest  # noqa: E402
 
 
 @pytest.fixture
-def staircase_no_jitter(monkeypatch):
-    """The plain legacy details of the scheduled flashes: no random bounce on the offsets and the
-    live staircase (not the fixed probe contrasts). Tests that drive the staircase or need exact
-    flash times opt in."""
+def no_flash_jitter(monkeypatch):
+    """No random bounce on the control-flash offsets, for tests that need exact flash times."""
     monkeypatch.setattr("src.experiment.session.TIMING_JITTER_MS", 0)
-    monkeypatch.setattr("src.experiment.session.SACCADE_FIXED_CONTRASTS", ())

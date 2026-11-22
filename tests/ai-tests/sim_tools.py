@@ -134,7 +134,6 @@ def summarize(sim: SimulationResult) -> dict:
         "timeouts": sum(r.outcome == "timeout" for r in rows),
         "mean_reaction_latency_ms": _mean([r.reaction_latency_ms for r in rows]),
         "mean_onset_detection_lag_ms": _mean([r.onset_detection_lag_ms for r in rows]),
-        "zest_threshold_estimate": round(sim.session._zest.threshold_estimate, 4),
         # Ground truth (only the simulator knows): of the flashes the experiment
         # calls valid, how many REALLY hit the simulated saccade (precision), and
         # of the flashes that really hit it, how many the experiment kept (recall).
@@ -163,7 +162,7 @@ def run(scenario: str = "default", trials: int = 30, seed: int = 0, profile: dic
 
 SWEEP_METRICS = (
     "valid_flash_rate", "valid_precision", "valid_recall", "mean_reaction_latency_ms",
-    "mean_onset_detection_lag_ms", "zest_threshold_estimate", "tracking_not_ok", "timeouts",
+    "mean_onset_detection_lag_ms", "tracking_not_ok", "timeouts",
     "avg_rt_bias_ms", "avg_rt_abs_err_ms", "avg_rt_abs_err_vs_trial_ms",
 )
 

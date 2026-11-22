@@ -10,6 +10,7 @@ import pytest
 from include.eye_tracking.constants import NEON_SCENE_WIDTH
 from include.experiment.types import Side, Target, TrialResult
 from src.dashboard import data_access
+from src.experiment.logger import read_trials
 from src.experiment import analyze_session as an
 from src.experiment import logger as logger_module
 from src.experiment import session_files
@@ -83,17 +84,17 @@ def test_old_layout_grating_and_line_rows_load_and_unknown_values_read_as_none(t
     assert set(sessions) == {"1792967858", "1792712654"}
     assert sessions["1792967858"].trial_counts == {"rt_test": 6, "saccade": sessions["1792967858"].trial_counts["saccade"]}
     assert sessions["1792712654"].metadata["participant_id"] is None  # no meta file at all
-    trials = data_access.load_session_trials("1792712654")
+    trials = read_trials(data_access.csv_path_for("1792712654"))
     shown = [t for t in trials if t.grating_shown]
     assert [t.orientation for t in shown[:3]] == [Side.BELOW, Side.BELOW, Side.ABOVE]  # old 'horizontal'/'vertical' values: the documented relabel
     assert trials[0].source is Target.DOT
 
-    flashes = [t for t in data_access.load_session_trials("1792967858") if t.grating_shown]
+    flashes = [t for t in read_trials(data_access.csv_path_for("1792967858")) if t.grating_shown]
     assert [t.orientation for t in flashes[:2]] == [Side.ABOVE, Side.BELOW]
     assert flashes[0].outcome == "miss" and flashes[0].contrast == pytest.approx(0.02)
     path = tmp_path / "results_1792967858.csv"
     path.write_text(path.read_text().replace(",above,", ",diagonal,", 1))  # a value no version of the experiment writes
-    assert data_access.load_session_trials("1792967858")[6].orientation is None
+    assert read_trials(data_access.csv_path_for("1792967858"))[6].orientation is None
 
 
 def test_dashboard_lists_edits_and_deletes_new_and_old_sessions(tmp_path, monkeypatch):

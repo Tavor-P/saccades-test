@@ -8,6 +8,7 @@ import pytest
 
 from include.experiment.types import Side, Target, TrialResult
 from src.dashboard import data_access
+from src.experiment.logger import read_trials
 from src.experiment import logger as logger_module
 from src.experiment.logger import DROPPED_FROM_CSV, FIELDNAMES, TRIAL_COLUMNS, ResultLogger
 
@@ -56,7 +57,7 @@ def test_full_result_round_trips_through_trials_csv_and_dashboard_loader(tmp_pat
     log = ResultLogger("p")
     log.log(original)
     log.close()
-    (loaded,) = data_access.load_session_trials(str(log._timestamp))
+    (loaded,) = read_trials(data_access.csv_path_for(str(log._timestamp)))
     for f in dataclasses.fields(TrialResult):
         want = None if f.name in DROPPED_FROM_CSV else getattr(original, f.name)
         if isinstance(want, float):
@@ -81,5 +82,5 @@ def test_a_file_without_an_optional_column_still_loads(tmp_path, monkeypatch):
         drop = header.index(column.name)
         del header[drop], row[drop]
         csv_path.write_text(",".join(header) + "\n" + ",".join(row) + "\n")
-        (loaded,) = data_access.load_session_trials(str(log._timestamp))
+        (loaded,) = read_trials(data_access.csv_path_for(str(log._timestamp)))
         assert getattr(loaded, column.field) is None, column.name

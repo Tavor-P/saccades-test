@@ -1,10 +1,9 @@
 """Trials whose gaze tracking dropped out around the flash are flagged
-tracking_ok=False and excluded from ZEST and analysis (scoring.py)."""
+tracking_ok=False and excluded from analysis (scoring.py)."""
 
 import json
 
 import pytest
-from unittest.mock import Mock
 
 from test_session import (  # the session-driving helpers live with the session tests
     _complete_calibration_and_rt_test,
@@ -23,7 +22,7 @@ from include.experiment.types import Side, Target, TrialResult
 from src.experiment.scoring import is_valid_for_saccadic_analysis
 
 
-pytestmark = pytest.mark.usefixtures("staircase_no_jitter")
+pytestmark = pytest.mark.usefixtures("no_flash_jitter")
 
 
 def _session_in_first_trial(fake_gaze, fake_time, **trial_spec):
@@ -53,21 +52,18 @@ def _run_valid_saccade(session, fake_gaze, fake_time, lose_tracking_at_flash: bo
     return [r for r in session.results if r.phase == "saccade"][0]
 
 
-def test_good_tracking_trial_is_valid_and_feeds_zest(fake_gaze, fake_time):
+def test_good_tracking_trial_is_valid(fake_gaze, fake_time):
     session = _session_in_first_trial(fake_gaze, fake_time)
-    session._zest.update = Mock()
     result = _run_valid_saccade(session, fake_gaze, fake_time, lose_tracking_at_flash=False)
     assert result.flash_during_saccade is True
     assert result.tracking_ok is True
-    session._zest.update.assert_called_once()
+    assert session._valid_trial_count == 1
 
 
-def test_tracking_lost_at_flash_is_flagged_and_excluded_from_zest(fake_gaze, fake_time):
+def test_tracking_lost_at_flash_is_flagged_and_not_counted_valid(fake_gaze, fake_time):
     session = _session_in_first_trial(fake_gaze, fake_time)
-    session._zest.update = Mock()
     result = _run_valid_saccade(session, fake_gaze, fake_time, lose_tracking_at_flash=True)
     assert result.tracking_ok is False
-    session._zest.update.assert_not_called()
     assert session._valid_trial_count == 0
 
 
@@ -91,6 +87,7 @@ def test_validity_gate_combines_both_checks():
 
 def test_logger_writes_and_dashboard_reads_tracking_ok(tmp_path, monkeypatch):
     from src.dashboard import data_access
+    from src.experiment.logger import read_trials
     from src.experiment import logger as logger_module
 
     monkeypatch.setattr(logger_module, "DATA_DIR", tmp_path)
@@ -108,7 +105,7 @@ def test_logger_writes_and_dashboard_reads_tracking_ok(tmp_path, monkeypatch):
     assert "tracking_ok" in csv_path.read_text().splitlines()[0]
     monkeypatch.setattr(data_access, "DATA_DIR", tmp_path)
     timestamp = str(json.loads(csv_path.with_name("session.json").read_text())["run"]["unix_timestamp"])
-    assert data_access.load_session_trials(timestamp)[0].tracking_ok is False
+    assert read_trials(data_access.csv_path_for(timestamp))[0].tracking_ok is False
 
     # A CSV logged before this column existed loads as "unknown", not a failure.
     old = csv_path.read_text().splitlines()
@@ -116,4 +113,4 @@ def test_logger_writes_and_dashboard_reads_tracking_ok(tmp_path, monkeypatch):
     drop = header.index("tracking_ok")
     del header[drop], row[drop]
     csv_path.write_text(",".join(header) + "\n" + ",".join(row) + "\n")
-    assert data_access.load_session_trials(timestamp)[0].tracking_ok is None
+    assert read_trials(data_access.csv_path_for(timestamp))[0].tracking_ok is None
