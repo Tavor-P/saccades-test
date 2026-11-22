@@ -134,7 +134,7 @@ Paths are checked by `tests/test_docs.py` - keep them real.
   `rt_samples_total/_in_window/_dropped_in_window`.
 - Readers (`read_trial_rows`/`read_trials`, `data_access`, `analyze_session`, replay) accept both the run-folder layout and old loose `results_<ts>.csv/_meta.json`; old traces hold screen-ratio x
   `NEON_SCENE_WIDTH` in `x_px` (why that constant stays).
-- The dashboard is a separate Flask process sharing only files with the experiment; deleting a run removes its whole folder (glasses video included) and the participant's pooled pooled analysis folder.
+- The dashboard is a separate Flask process sharing only files with the experiment; deleting a run removes its whole folder (glasses video included) and the participant's pooled analysis folder.
 
 ## Architecture invariants
 
