@@ -176,9 +176,9 @@ SPACE presses are never silently dropped; every ignored one is counted in `sessi
   the rate falls 200 -> ~160/s: signature of the receiver thread starved by the render loop (same process/GIL). `run_experiment.main` sets `sys.setswitchinterval(0.0005)` as a first test (result unknown).
   Untested: receive Neon in its own process. Consequence: live `flash_during_saccade` is unreliable; post-hoc judging from phone capture times is unaffected.
 - **Time**: never use `time.monotonic()`/`time.time()` for event timing on Windows (15.6 ms resolution). Use `src/timebase.py` (`now()`, `unix_now()`); enforced by `test_architecture_rules.py`.
-  The phone clock drifts ~1.2 ms/min against the PC (offset re-estimated every 60 s; unverified that `estimate_time_offset` is safe while streaming).
-- **Neon timing**: latency is right only with `local = device_ts + offset` from `estimate_time_offset()` (the sign is easy to flip: a bogus 414 ms once). `NeonGazeSource` stamps samples with CAPTURE time
-  (`device_unix_s` + offset on the `timebase.now()` timeline; arrival time only as fallback, strictly increasing, clamped to <=150 ms latency), so the session must not subtract `gaze_latency_ms` again
+  The phone clock drifts ~1.2 ms/min against the PC (offset re-estimated every `NEON_CLOCK_REESTIMATE_S`).
+- **Neon timing**: latency is right only with `local = device_ts + offset` from `estimate_time_offset()` (the sign is easy to flip). `NeonGazeSource` stamps samples with CAPTURE time
+  (`device_unix_s` + offset on the `timebase.now()` timeline; arrival time only as fallback, strictly increasing, clamped to <=`NEON_MAX_PLAUSIBLE_LATENCY_MS`), so the session must not subtract `gaze_latency_ms` again
   (`timestamps_are_capture_time`). Check `gaze_quality.latency_ms_median` after each run.
 - **Neon geometry**: the scene camera is head-mounted, so head movement shifts gaze x with no eye movement; calibration assumes a still head (chin rest). `NEON_DEVICE_ADDRESS` is pinned to the phone's IP (`None` = auto-discover).
 - **numpy/opencv pins**: `requirements.txt` keeps `numpy<2` plus matching opencv (`glasses_video.py` uses cv2). Bumping is untested: rerun the suite if you do.
