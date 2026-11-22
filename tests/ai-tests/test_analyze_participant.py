@@ -152,4 +152,6 @@ def test_headline_covers_every_outcome():
     assert "0.5 = guessing" in ap.meaning({"method": "accuracy"}) and "1 = the line is never seen" in ap.meaning({"method": "psychometric"})
     assert ap.meaning({"method": None}) is None
     none = ap.headline({**base, "method": None, "index": None, "notes": ["cannot compute: 0 saccade flashes, 30 fixation flashes"]})
-    assert none.startswith("Suppression index cannot be computed yet from 1 run") and none.endswith("0 saccade flashes, 30 fixation flashes.")
+    assert none == "Suppression index cannot be computed yet from 1 run, 5 saccade and 30 fixation flashes: both kinds of flashes are needed."
+    unused = ap.headline({**base, "runs_used": [], "method": None, "index": None, "runs_excluded": [{"reason": "no gaze_trace.csv"}]})
+    assert unused == "Suppression index cannot be computed yet: no run could be used (no gaze_trace.csv)."

@@ -85,11 +85,13 @@ def build_rows(data_dir: Path = DATA_DIR, include_test: bool = False) -> list[di
 def format_overview(rows: list[dict]) -> str:
     lines = ["Study summary: one suppression index per participant (pooled over their compatible runs)", ""]
     groups: dict[str, list[dict]] = {}
+    names: dict[str, str] = {}  # case-insensitive like participants_in_group ("Control" and "control" are one group), shown as first typed
     for r in rows:
-        groups.setdefault(r["group"] or "(no group)", []).append(r)
-    for name, members in sorted(groups.items()):
+        name = r["group"].strip() or "(no group)"
+        groups.setdefault(names.setdefault(name.casefold(), name), []).append(r)
+    for name, members in sorted(groups.items(), key=lambda item: item[0].casefold()):
         usable = [r for r in members if r["status"] == "ok"]
-        lines.append(f"Group {name}: {len(members)} people, {len(usable)} with an index")
+        lines.append(f"Group {name}: {len(members)} {'person' if len(members) == 1 else 'people'}, {len(usable)} with an index")
         for method in ("psychometric", "accuracy"):
             values = [float(r["index"]) for r in usable if r["method"] == method]
             if values:

@@ -359,7 +359,12 @@ def headline(summary: dict) -> str:
         reason = next((x.split(": ", 1)[1] for x in summary["notes"] if x.startswith("psychometric index not computed")), "")
         return (f"Accuracy-based suppression index {summary['index']:.2f} ({_fmt_ci(summary['ci'])}) {source}. This is a fallback "
                 f"(accuracy difference, not a threshold ratio)" + (f" because of {reason}." if reason else "."))
+    if not n_runs and summary.get("runs_excluded"):  # nothing pooled: say why the runs were left out, not "0 flashes"
+        reasons = sorted({r.get("reason", "") for r in summary["runs_excluded"]} - {""})
+        return "Suppression index cannot be computed yet: no run could be used" + (f" ({'; '.join(reasons)})." if reasons else ".")
     reason = summary["notes"][-1] if summary["notes"] else "no flashes"
+    if reason.startswith("cannot compute:"):  # it only repeats the flash counts already in `source`
+        return f"Suppression index cannot be computed yet {source}: both kinds of flashes are needed."
     return f"Suppression index cannot be computed yet {source}: {reason}."
 
 

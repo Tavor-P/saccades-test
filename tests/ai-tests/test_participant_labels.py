@@ -39,3 +39,6 @@ def test_cli_set_and_list(tmp_path, capsys):
     assert labels.main(["--data-dir", str(tmp_path), "list"]) == 0
     out = capsys.readouterr().out
     assert "P01" in out and "TBI" in out and "(no run folders)" in out
+    assert labels.main(["set", "P02", "control", "--data-dir", str(tmp_path)]) == 0  # --data-dir after the subcommand too
+    assert labels.main(["remove", "P01", "--data-dir", str(tmp_path)]) == 0
+    assert set(list_labels(tmp_path)) == {"P02"}

@@ -236,3 +236,19 @@ def test_study_summary_csv_has_one_row_per_participant_with_the_documented_colum
     assert by_id["S01"]["runs_used"] == "2" and int(by_id["S01"]["n_saccade"]) > 0
     assert by_id["S09"]["status"].startswith("No runs") and by_id["S09"]["index"] == ""
     assert "Group control" in out["overview"] and "EXPLORATORY" in out["overview"]
+
+
+def test_cli_all_is_everyone_else_on_either_side_and_overview_groups_ignore_case(study, tmp_path, capsys):
+    # "all" vs a group used to fail with "in both sets" (only an "all" in set B dropped the other side's people)
+    assert cmp.main(["all", "group:control", "--data-dir", str(study), "--out", str(tmp_path / "c1")]) in (0, 2)
+    assert "S02" not in json.loads((tmp_path / "c1" / "comparison.json").read_text())["set_a"]
+    rows = [{"participant": p, "group": g, "status": "ok", "method": "accuracy", "index": "0.1", "flags": ""}
+            for p, g in (("A1", "Control"), ("A2", "control"), ("A3", "TBI"))]
+    overview = study_summary.format_overview(rows)
+    assert "Group Control: 2 people" in overview and "Group TBI: 1 person," in overview and "Group control" not in overview
+
+
+def test_reason_for_no_index_is_not_repeated(tmp_path):
+    write_run(tmp_path, "Z01", 1790000000, n_trials=40, saccade_fraction=0.0, seed=4)  # no saccade flashes at all
+    reason = cmp.load_person("Z01", tmp_path).reason
+    assert reason.startswith("suppression index cannot be computed: 0 saccade flashes") and "cannot compute" not in reason

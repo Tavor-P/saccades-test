@@ -52,6 +52,10 @@ def test_summary_of_a_good_run_is_written_printed_and_warns_on_problems(tmp_path
     assert "Ignored SPACE presses: 3" in text
     assert "import_glasses_video" in text and "analyze_session" in text and "alice" in text
     assert "Very few trials" in text  # 10 flashes of a 30-trial test run is under half
+    assert "No gaze_trace.csv in this run" in text  # the gaze source writes the trace; without it analyze_session fails
+    (folder / "gaze_trace.csv").write_text("t_s,device_unix_s,x_px,worn\n")
+    text = build_run_summary(folder)
+    assert "No gaze_trace.csv" not in text
     assert finish_run_summary(folder) is not None
     assert (folder / "RUN_SUMMARY.txt").read_text(encoding="utf-8") == build_run_summary(folder)
     assert "RUN SUMMARY" in capsys.readouterr().out

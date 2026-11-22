@@ -654,7 +654,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--index-near-ms", type=float, default=None, help="suppression index: 'saccade' = within this many ms of an onset")
     parser.add_argument("--index-far-ms", type=float, default=None, help="suppression index: 'fixation' = at least this many ms from every onset")
     args = parser.parse_args(argv)
-    result = analyze(args.timestamp, args.data_dir, args.offset_ms, args.flash_delay_ms, args.min_amplitude, near_ms=args.index_near_ms, far_ms=args.index_far_ms)
+    try:
+        result = analyze(args.timestamp, args.data_dir, args.offset_ms, args.flash_delay_ms, args.min_amplitude, near_ms=args.index_near_ms, far_ms=args.index_far_ms)
+    except (OSError, ValueError) as exc:  # e.g. a run without gaze_trace.csv, an unknown session: a message, not a traceback
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
     print(result["report"])
     print(f"\nreport: {result['report_path']}\nplot: {result['png']}\nper-flash rows: {result['csv']}\nsuppression index: {result['suppression_json']}")
     return 0

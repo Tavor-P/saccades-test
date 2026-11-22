@@ -139,14 +139,16 @@ def resolve_set(spec: str | list[str], data_dir: Path = DATA_DIR) -> list[str]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Group labels used to pick comparison sets (data/participants.json).")
     parser.add_argument("--data-dir", type=Path, default=DATA_DIR)
+    after = argparse.ArgumentParser(add_help=False)  # --data-dir also accepted after the subcommand, like every other CLI here
+    after.add_argument("--data-dir", type=Path, default=argparse.SUPPRESS)
     sub = parser.add_subparsers(dest="command", required=True)
-    p_set = sub.add_parser("set", help="label a participant: set P01 TBI [--note text]")
+    p_set = sub.add_parser("set", parents=[after], help="label a participant: set P01 TBI [--note text]")
     p_set.add_argument("participant")
     p_set.add_argument("group", help='free text, e.g. TBI or control (use quotes for spaces)')
     p_set.add_argument("--note", default=None)
-    p_rm = sub.add_parser("remove", help="remove a participant's label")
+    p_rm = sub.add_parser("remove", parents=[after], help="remove a participant's label")
     p_rm.add_argument("participant")
-    sub.add_parser("list", help="show every label and the participants with data but no label")
+    sub.add_parser("list", parents=[after], help="show every label and the participants with data but no label")
     args = parser.parse_args(argv)
 
     if args.command == "set":

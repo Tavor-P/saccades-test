@@ -198,7 +198,8 @@ def load_person(participant: str, data_dir: Path = DATA_DIR, include_test: bool 
     person.run_records = list(summary.get("runs_used") or [])
     if person.method is None:
         person.included = False
-        person.reason = "suppression index cannot be computed: " + (person.notes[-1] if person.notes else "no flashes")
+        note = person.notes[-1] if person.notes else "no flashes"
+        person.reason = "suppression index cannot be computed: " + note.removeprefix("cannot compute: ")
     return person
 
 
@@ -785,8 +786,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--include-test", action="store_true", help="also use test-mode runs")
     parser.add_argument("--out", type=Path, default=None, help="output folder (default data/comparisons/<time>_<A>_vs_<B>/)")
     args = parser.parse_args(argv)
-    a = resolve_set(args.set_a, args.data_dir)
-    b = [x for x in resolve_set(args.set_b, args.data_dir) if not (args.set_b.strip().lower() in ("all", "*") and x in a)]  # "P01" vs "all" = everyone else
+    a, b = resolve_set(args.set_a, args.data_dir), resolve_set(args.set_b, args.data_dir)
+    is_all = lambda text: text.strip().lower() in ("all", "*")  # noqa: E731
+    if is_all(args.set_b) and not is_all(args.set_a):
+        b = [x for x in b if x not in a]  # "P01" vs "all" = everyone else
+    elif is_all(args.set_a) and not is_all(args.set_b):
+        a = [x for x in a if x not in b]  # "all" vs "group:control" = everyone else vs the controls
     try:
         result = compare(a, b, args.data_dir, include_test=args.include_test)
     except ValueError as exc:

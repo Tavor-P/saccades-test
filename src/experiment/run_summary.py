@@ -167,6 +167,8 @@ def build_run_summary(run_folder) -> str:
         if shown and counts["missing"] / shown > MAX_UNANSWERED_SHARE:
             warnings.append(f"{counts['missing']} of {shown} flashes got no answer: was the participant pressing UP/DOWN in time?")
     out.append("")
+    if rows and not (folder / session_files.GAZE_TRACE_FILE).exists():
+        warnings.append(f"No {session_files.GAZE_TRACE_FILE} in this run: saccades cannot be found, so analyze_session cannot analyse it.")
 
     lines, quality_warnings = gaze_quality_lines(meta.get("gaze_quality"))
     out += lines
