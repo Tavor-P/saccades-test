@@ -65,7 +65,7 @@ def build_rows(data_dir: Path = DATA_DIR, include_test: bool = False) -> list[di
         n_gaps = [r["gaps_over_threshold"] for r in records if r.get("gaps_over_threshold") is not None]
         geometry = person.geometry or {}
         rows.append({
-            "participant": pid, "group": label.get("group", ""), "note": label.get("note", ""),
+            "participant": pid, "group": label.get("group") or "", "note": label.get("note") or "",
             "status": "ok" if person.included else person.reason,
             "runs_used": person.runs_used, "runs_excluded": person.runs_excluded,
             "index": _fmt(person.index), "ci_low": _fmt(person.ci[0] if person.ci else None), "ci_high": _fmt(person.ci[1] if person.ci else None),
@@ -87,7 +87,7 @@ def format_overview(rows: list[dict]) -> str:
     groups: dict[str, list[dict]] = {}
     names: dict[str, str] = {}  # case-insensitive like participants_in_group ("Control" and "control" are one group), shown as first typed
     for r in rows:
-        name = r["group"].strip() or "(no group)"
+        name = (r["group"] or "").strip() or "(no group)"  # a hand-edited participants.json may hold "group": null
         groups.setdefault(names.setdefault(name.casefold(), name), []).append(r)
     for name, members in sorted(groups.items(), key=lambda item: item[0].casefold()):
         usable = [r for r in members if r["status"] == "ok"]

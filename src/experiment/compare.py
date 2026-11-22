@@ -50,7 +50,7 @@ from src.experiment.analyze_participant import (
 )
 from src.experiment.analyze_session import BIN_EDGES_MS, CHANCE, DATA_DIR, _fit_pair, wilson
 from src.experiment.flash_gates import FIXATION, SACCADE
-from src.experiment.participants import all_participants, list_labels, participants_in_group, resolve_set  # noqa: F401 (re-exported)
+from src.experiment.participants import all_participants, everyone_else, list_labels, participants_in_group, resolve_set  # noqa: F401 (re-exported)
 
 ONE_VS_ONE = "one_vs_one"
 ONE_VS_GROUP = "one_vs_group"
@@ -787,11 +787,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, default=None, help="output folder (default data/comparisons/<time>_<A>_vs_<B>/)")
     args = parser.parse_args(argv)
     a, b = resolve_set(args.set_a, args.data_dir), resolve_set(args.set_b, args.data_dir)
-    is_all = lambda text: text.strip().lower() in ("all", "*")  # noqa: E731
-    if is_all(args.set_b) and not is_all(args.set_a):
-        b = [x for x in b if x not in a]  # "P01" vs "all" = everyone else
-    elif is_all(args.set_a) and not is_all(args.set_b):
-        a = [x for x in a if x not in b]  # "all" vs "group:control" = everyone else vs the controls
+    a, b = everyone_else(args.set_a, a, args.set_b, b)  # "P01" vs "all" = P01 vs everyone else
     try:
         result = compare(a, b, args.data_dir, include_test=args.include_test)
     except ValueError as exc:

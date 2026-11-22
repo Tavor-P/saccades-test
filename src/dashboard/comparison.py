@@ -96,7 +96,9 @@ def resolve(side: str, side_tokens: list[str]) -> list[str]:
 
 
 def resolve_pair(a_tokens: list[str], b_tokens: list[str]) -> tuple[list[str], list[str]]:
-    a, b = resolve("A", a_tokens), resolve("B", b_tokens)
+    a, b = labels_module.everyone_else(a_tokens, resolve("A", a_tokens), b_tokens, resolve("B", b_tokens))  # "P01 vs all" = the rest
+    if not a or not b:
+        raise FriendlyError(f"Set {'A' if not a else 'B'} has nobody left: 'all' means everyone not on the other side.", status=400)
     both = [p for p in a if p in b]
     if both:
         raise FriendlyError(f"{', '.join(both)} {'is' if len(both) == 1 else 'are'} in both set A and set B. A person can only be on "

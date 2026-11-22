@@ -133,6 +133,22 @@ def resolve_set(spec: str | list[str], data_dir: Path = DATA_DIR) -> list[str]:
     return out
 
 
+def _has_all(spec: str | list[str]) -> bool:
+    tokens = spec.split(",") if isinstance(spec, str) else list(spec)
+    return any(t.strip().lower() in ("all", "*") for t in tokens)
+
+
+def everyone_else(spec_a: str | list[str], a: list[str], spec_b: str | list[str], b: list[str]) -> tuple[list[str], list[str]]:
+    """The one "all" rule shared by the compare CLI and the dashboard: when exactly one side says "all", that side means everyone
+    else (the other side's people are dropped from it), so "P01 vs all" compares P01 with the rest. Otherwise the sets are
+    returned as they are, and a person picked on both sides stays an error for the caller to report."""
+    if _has_all(spec_b) and not _has_all(spec_a):
+        return a, [x for x in b if x not in a]
+    if _has_all(spec_a) and not _has_all(spec_b):
+        return [x for x in a if x not in b], b
+    return a, b
+
+
 # -- CLI -----------------------------------------------------------------------------------------
 
 

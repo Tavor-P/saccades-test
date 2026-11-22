@@ -113,6 +113,13 @@ def test_repeated_query_values_and_group_quick_pick_resolve_alike(client):
     with app_module.app.test_request_context():
         assert comparison.resolve("A", ["group:TBI"]) == ["T01", "T02"]
         assert comparison.resolve("B", ["all"]) == sorted([*PEOPLE, "N01", "X01"])
+        everyone = sorted([*PEOPLE, "N01", "X01"])
+        assert comparison.resolve_pair(["T01"], ["all"]) == (["T01"], [p for p in everyone if p != "T01"])  # "all" = everyone else, like the CLI
+        tbi = comparison.resolve("A", ["group:TBI"])
+        assert comparison.resolve_pair(["all"], ["group:TBI"]) == ([p for p in everyone if p not in tbi], tbi)
+        for a, b in ((["all"], ["all"]), (["T01"], ["T01", "C01"])):  # both "all", or one person picked twice: still an error
+            with pytest.raises(comparison.FriendlyError, match="in both set A and set B"):
+                comparison.resolve_pair(a, b)
 
 
 def test_selection_errors_are_friendly(client):

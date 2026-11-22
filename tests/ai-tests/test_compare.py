@@ -243,9 +243,10 @@ def test_cli_all_is_everyone_else_on_either_side_and_overview_groups_ignore_case
     assert cmp.main(["all", "group:control", "--data-dir", str(study), "--out", str(tmp_path / "c1")]) in (0, 2)
     assert "S02" not in json.loads((tmp_path / "c1" / "comparison.json").read_text())["set_a"]
     rows = [{"participant": p, "group": g, "status": "ok", "method": "accuracy", "index": "0.1", "flags": ""}
-            for p, g in (("A1", "Control"), ("A2", "control"), ("A3", "TBI"))]
+            for p, g in (("A1", "Control"), ("A2", "control"), ("A3", "TBI"), ("A4", None))]  # None: hand-edited "group": null
     overview = study_summary.format_overview(rows)
     assert "Group Control: 2 people" in overview and "Group TBI: 1 person," in overview and "Group control" not in overview
+    assert "Group (no group): 1 person," in overview
 
 
 def test_reason_for_no_index_is_not_repeated(tmp_path):
