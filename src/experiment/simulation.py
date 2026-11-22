@@ -8,7 +8,7 @@ trials, on a simulated clock and a simulated gaze tracker.
     python -m src.experiment.simulation --trials 40 --seed 3
 
 Useful for exercising session logic (onset detection, flash timing,
-validity gates, ZEST) and for tuning constants like SACCADE_ONSET_STABILITY_MS
+validity gates) and for tuning constants like SACCADE_ONSET_STABILITY_MS
 or TIMING_OFFSETS_MS against a participant with known behaviour. The
 participant model is deliberately simple (see ParticipantProfile); it is a
 sandbox for the experiment's plumbing, not a model of real saccadic

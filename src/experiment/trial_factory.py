@@ -26,9 +26,8 @@ def _build_saccade_trials(count: int, practice: bool, start_source: Target) -> t
 def build_saccade_sequence(num_practice: int) -> list[TrialSpec]:
     """The practice block: each trial an alternating dot<->cross
     saccade starting from Target.DOT. The real block is no longer built
-    ahead of time here - contrast stays ZEST-adaptive rather than a fixed
-    trial count, so ExperimentSession generates it one trial at a time
-    instead (see generate_next_saccade_trial), continuing the same
+    ahead of time here - ExperimentSession generates it one trial at a time
+    (drawing each contrast from its fixed-contrast bag) (see generate_next_saccade_trial), continuing the same
     dot<->cross alternation from wherever this practice block leaves off."""
     practice_trials, _ = _build_saccade_trials(num_practice, practice=True, start_source=Target.DOT)
     return practice_trials

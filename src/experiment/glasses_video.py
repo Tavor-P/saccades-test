@@ -18,7 +18,6 @@ SYNC_FLASH_COUNT = 3
 END_FLASH_COUNT = 1
 SYNC_FLASH_ON_S = 0.150
 SYNC_FLASH_GAP_S = 0.300
-SYNC_FLASH_PERIOD_S = SYNC_FLASH_ON_S + SYNC_FLASH_GAP_S  # onset to onset
 
 GREEN_MARGIN = 40  # a pixel is "strongly green" when G exceeds both R and B by this much (0-255)
 BASELINE_WINDOW_S = 2.0  # a frame's greenness is judged against the quiet (25th percentile) level of the frames around it; wide enough that the 3-flash pattern cannot raise it

@@ -20,7 +20,7 @@ from src.experiment import compare as cmp  # noqa: E402
 from src.experiment import study_summary  # noqa: E402
 from src.experiment.analyze_session import _weibull  # noqa: E402
 from src.experiment.flash_gates import FIXATION, SACCADE  # noqa: E402
-from src.experiment.participants import set_label  # noqa: E402
+from src.experiment.participants import participants_in_group, set_label  # noqa: E402
 
 CONTRASTS = (4.0, 6.0, 8.0)
 GEOMETRY = {"screen_height_cm": 26.0, "viewing_distance_cm": 50.0, "line_offset_deg": 2.0, "line_sd_deg": 0.15}
@@ -38,9 +38,19 @@ def person(pid, side, ts=0.08, tf=0.04, n_cell=40, seed=0, index=None, method="p
     k_s = sum(r["correct"] for r in rows if r["condition"] == SACCADE)
     k_f = sum(r["correct"] for r in rows if r["condition"] == FIXATION)
     if index is None:
-        index = cmp.index_from_counts(rows) if method == "psychometric" else k_f / n - k_s / n
+        index = index_from_counts(rows) if method == "psychometric" else k_f / n - k_s / n
     return cmp.Person(pid, side=side, index=index, ci=None if index is None else [index - 0.2, index + 0.2], method=method, n_saccade=n, n_fixation=n, n_total=2 * n,
                       correct_saccade=k_s, correct_fixation=k_f, contrasts_pct=list(contrasts), geometry=geometry or dict(GEOMETRY), by_contrast=rows)
+
+
+def index_from_counts(by_contrast: list) -> float | None:
+    """The psychometric index refitted from by_contrast counts with compare's own cells and fit; None if unidentified."""
+    cs, ns, ks = cmp._cells(by_contrast, SACCADE)
+    cf, nf, kf = cmp._cells(by_contrast, FIXATION)
+    if len(cs) < 2 or len(cf) < 2:
+        return None
+    ts, tf, edge = cmp._fit_pair(cs, ns, ks, cf, nf, kf)
+    return None if edge else 1 - tf / ts
 
 
 def true_index(ts, tf):
@@ -194,7 +204,7 @@ def test_end_to_end_one_vs_one_analyses_once_reuses_then_refreshes_when_a_run_ch
     assert all(p.analysis_source.startswith("re-analysed (no saved analysis") for p in r.people)
     saved = json.loads((study / "S01" / "analysis" / "summary.json").read_text())
     assert r.people[0].index == saved["index"]
-    assert cmp.index_from_counts(saved["by_contrast"]) == pytest.approx(saved["index"], abs=1e-9)  # the refit is the same fit
+    assert index_from_counts(saved["by_contrast"]) == pytest.approx(saved["index"], abs=1e-9)  # the refit is the same fit
     assert r.comparable and r.stats["difference"] > 0 and r.name_a == "A (TBI)"
 
     again = cmp.compare(["S01"], ["S02"], study, n_boot=200)
@@ -216,7 +226,7 @@ def test_end_to_end_one_vs_one_analyses_once_reuses_then_refreshes_when_a_run_ch
 
 
 def test_end_to_end_incompatible_geometry_and_missing_data_are_listed(study):
-    r = cmp.compare(cmp.participants_in_group("control", study) + ["S03"], ["S01"], study, n_boot=100)
+    r = cmp.compare(participants_in_group("control", study) + ["S03"], ["S01"], study, n_boot=100)
     reasons = {p.participant: p.reason for p in r.excluded}
     assert "No runs" in reasons["S09"]
     assert "70 cm" in reasons["S03"]

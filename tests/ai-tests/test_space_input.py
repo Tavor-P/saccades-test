@@ -17,7 +17,7 @@ from src.experiment.space_input import (
 )
 from src.experiment.tutorial_session import TutorialSession
 
-pytestmark = pytest.mark.usefixtures("staircase_no_jitter")
+pytestmark = pytest.mark.usefixtures("no_flash_jitter")
 
 
 def _phase(session) -> str:

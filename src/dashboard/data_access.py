@@ -7,7 +7,6 @@ import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from include.experiment.types import TrialResult
 from src.experiment import session_files
 from src.experiment.logger import read_trials
 
@@ -33,12 +32,6 @@ def csv_path_for(timestamp: str) -> Path:
 
 def meta_path_for(timestamp: str) -> Path:
     return _ref(timestamp).meta_path
-
-
-def load_session_trials(timestamp: str) -> list[TrialResult]:
-    """Reparses a session's logged CSV back into TrialResult objects, so it
-    can be analysed as TrialResult objects. Reads both file layouts."""
-    return read_trials(csv_path_for(timestamp))
 
 
 def _flatten(raw: dict) -> dict:

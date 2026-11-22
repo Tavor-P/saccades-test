@@ -31,7 +31,7 @@ from test_session import (
 )
 
 
-pytestmark = pytest.mark.usefixtures("staircase_no_jitter")
+pytestmark = pytest.mark.usefixtures("no_flash_jitter")
 
 
 def _stamped_gaze(fake_gaze):
@@ -241,7 +241,7 @@ def test_trial_rows_log_the_scheduling_inputs_and_flash_relative_to_onset(fake_g
 def test_meta_has_provenance_science_constants_and_phase_summaries(tmp_path, monkeypatch):
     monkeypatch.setattr(logger_module, "DATA_DIR", tmp_path)
     log = ResultLogger("p1")
-    log.set_phase_summary("saccade", {"threshold_estimate": 0.1})
+    log.set_phase_summary("saccade", {"completed_trials": 30})
     log.close()
     meta = json.loads(next(tmp_path.glob("*/*/session.json")).read_text())
     assert set(meta["run"]["git"]) == {"sha", "dirty"}
@@ -249,12 +249,12 @@ def test_meta_has_provenance_science_constants_and_phase_summaries(tmp_path, mon
     assert "psychopy_version" in meta["run"]
     assert meta["settings"]["saccade_onset_stability_ms"] == 10
     assert meta["hardware"]["display_refresh_hz"] is None
-    assert meta["results"]["saccade_phase_summary"]["threshold_estimate"] == 0.1
+    assert meta["results"]["saccade_phase_summary"]["completed_trials"] == 30
 
 
 def _finished_session(fake_gaze, logger):
     session = ExperimentSession(fake_gaze, logger=logger, clock=PausableClock(), skip_practice_trials=True, test_mode=True)
-    cap = session._max_saccade_trials
+    cap = session._fixed_trials
     session._results = [
         TrialResult(
             index=i, phase="saccade", source=Target.DOT, target=Target.CROSS, saccade_duration_ms=None, grating_shown=False,
@@ -267,7 +267,7 @@ def _finished_session(fake_gaze, logger):
     return session
 
 
-def test_completing_the_block_writes_a_phase_summary_that_flags_the_grid_bound(fake_gaze):
+def test_completing_the_block_writes_the_phase_summary(fake_gaze):
     summaries = {}
 
     class _Logger(_NullLogger):
@@ -277,15 +277,8 @@ def test_completing_the_block_writes_a_phase_summary_that_flags_the_grid_bound(f
     session = _finished_session(fake_gaze, _Logger())
     session._begin_next_trial_or_complete()
     summary = summaries["saccade"]
-    assert summary["hit_max_trial_cap"] is True
+    assert summary["completed_trials"] == session._fixed_trials
     assert summary["final_avg_reaction_time_ms"] == 250.0
-    assert summary["threshold_at_grid_bound"] is None
-
-    session = _finished_session(fake_gaze, _Logger())
-    for _ in range(40):
-        session._zest.update(0.4, detected=False)  # never seen even at 40% -> piles up at the top
-    session._log_phase_summary()
-    assert summaries["saccade"]["threshold_at_grid_bound"] == "upper"
 
 def test_a_capture_stamped_source_is_not_shifted_by_its_latency_again(fake_gaze, fake_time):
     """Neon (with a clock offset) and trace replay stamp samples with their capture time and still report

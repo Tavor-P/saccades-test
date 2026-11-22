@@ -1,8 +1,6 @@
 """Relations between tuning constants that must always hold. A violated relation usually means a
 recent retune broke an assumption elsewhere (the tuning comments in constants.py say which)."""
 
-import math
-
 from include.experiment import constants as c
 from include.eye_tracking import constants as g
 from src.experiment.simulation import FRAME_HZ
@@ -25,12 +23,10 @@ def test_timing_windows_are_ordered_and_no_flash_can_be_scheduled_before_the_tri
 
 
 def test_trial_counts_contrast_ranges_and_calibration_rounds_are_consistent():
-    assert c.MAX_SACCADE_TRIALS_TEST >= c.ZEST_MIN_VALID_TRIALS_TEST
-    assert c.MAX_SACCADE_TRIALS_REAL >= c.ZEST_MIN_VALID_TRIALS_REAL
+    assert 1 <= c.SACCADE_FIXED_TRIALS_TEST <= c.SACCADE_FIXED_TRIALS_REAL
     assert c.NUM_RT_TEST_TRIALS_TEST >= 1 and c.NUM_RT_TEST_TRIALS_REAL >= 1
-    assert c.ZEST_LOG_CONTRAST_MIN < c.ZEST_LOG_CONTRAST_MAX
-    assert c.ZEST_LOG_CONTRAST_MIN <= math.log10(c.PRACTICE_CONTRAST) <= c.ZEST_LOG_CONTRAST_MAX
-    assert 0 < c.HARDWARE_CONTRAST_FLOOR < 10**c.ZEST_LOG_CONTRAST_MAX
+    assert c.SACCADE_FIXED_CONTRASTS and all(c.HARDWARE_CONTRAST_FLOOR <= x <= 1 for x in c.SACCADE_FIXED_CONTRASTS)
+    assert c.HARDWARE_CONTRAST_FLOOR <= c.PRACTICE_CONTRAST <= 1
     assert c.CALIBRATION_ROUNDS >= 3  # round 1 discarded, 2-3 averaged (see calibration.py)
 
 

@@ -103,7 +103,6 @@ class StartupDialog(QtWidgets.QDialog):
         self._initial = initial or StartupSettings()
         self._tutorial_touched = False
         self._swallow_release = False
-        self._status_is_error = False
         self.setWindowTitle("Saccade experiment")
         self.setWindowFlag(Qt.WindowType.WindowContextHelpButtonHint, False)
 
@@ -291,7 +290,6 @@ class StartupDialog(QtWidgets.QDialog):
         self._refresh_note()
 
     def set_status(self, message: str, error: bool = False) -> None:
-        self._status_is_error = error
         self.status.setStyleSheet("color: #b00020;" if error else "color: #8a5a00;")
         self.status.setText(message)
 

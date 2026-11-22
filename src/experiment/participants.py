@@ -60,11 +60,6 @@ def list_labels(data_dir: Path = DATA_DIR) -> dict[str, dict]:
     return labels
 
 
-def get_label(participant_id: str, data_dir: Path = DATA_DIR) -> dict | None:
-    """The participant's {"group", "note"}, or None when unlabelled."""
-    return list_labels(data_dir).get(session_files.sanitize_participant_id(participant_id))
-
-
 def _write_atomic(path: Path, labels: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(prefix=".participants-", suffix=".tmp", dir=path.parent)

@@ -2,7 +2,6 @@
 Drive it with on_space/on_response_key/tick/render_state. Flash timing is open-loop (scheduled off the measured reaction time); see CLAUDE.md. Headless
 runs of this class: src/experiment/simulation.py."""
 
-import math
 import random
 from enum import Enum, auto
 
@@ -22,8 +21,6 @@ from include.experiment.constants import (
     GAZE_LANDING_STABILITY_MS,
     GAZE_LATENCY_MAX_MS,
     GRATING_DURATION_FRAMES,
-    MAX_SACCADE_TRIALS_REAL,
-    MAX_SACCADE_TRIALS_TEST,
     NUM_PRACTICE_TRIALS_REAL,
     NUM_PRACTICE_TRIALS_TEST,
     NUM_RT_TEST_TRIALS_REAL,
@@ -38,12 +35,6 @@ from include.experiment.constants import (
     TIMING_JITTER_MS,
     TIMING_OFFSETS_MS,
     TRACKING_LOSS_WINDOW_MS,
-    ZEST_CREDIBLE_INTERVAL_MAX_LOG_WIDTH,
-    ZEST_GRID_BOUND_MARGIN_LOG,
-    ZEST_LOG_CONTRAST_MAX,
-    ZEST_LOG_CONTRAST_MIN,
-    ZEST_MIN_VALID_TRIALS_REAL,
-    ZEST_MIN_VALID_TRIALS_TEST,
 )
 from include.experiment import participant_text as words
 from include.experiment.types import Side, Target, TrialResult, TrialSpec
@@ -63,7 +54,6 @@ from src.experiment.trial_mechanics import (
     spread_flash_delay_ms,
     zone_for,
 )
-from src.experiment.zest import ZestStaircase
 
 
 class Phase(Enum):
@@ -97,7 +87,7 @@ class ExperimentSession:
     Trial structure follows Diamond, Ross & Morrone (2000): a jittered foreperiod showing only the fixation symbol, then the
     other symbol's appearance is the go-cue. A brief flash (here a thin line just above or below the saccade target, after
     Braun, Schutz & Gegenfurtner 2021) is scored as a 2AFC above/below discrimination (UP/DOWN). Contrast comes from fixed
-    levels (SACCADE_FIXED_CONTRASTS) or, when those are empty, a ZEST staircase.
+    levels (SACCADE_FIXED_CONTRASTS, method of constant stimuli).
     With SHARP_GO_CUE (default) the dot/cross swap is instant (render_state()["snap_symbols"]) so the go-cue has a definite
     onset; otherwise the old symbol crossfades out as the new one appears.
 
@@ -110,7 +100,6 @@ class ExperimentSession:
         gaze_source: GazeSource,
         logger: ResultLogger,
         clock: PausableClock,
-        contrast_floor: float | None = None,
         show_gaze_indicator: bool = False,
         test_mode: bool = False,
         precomputed_calibration_ratios: tuple[float, float, float] | None = None,
@@ -147,11 +136,12 @@ class ExperimentSession:
         self._practice_index = 0
         self._trial_source: Target = self._practice_trials[-1].target if self._practice_trials else Target.DOT
         self._main_trial_counter = 0
-        # Fixed probe contrasts (method of constant stimuli) instead of the live staircase - see
-        # SACCADE_FIXED_CONTRASTS. Practice trials keep PRACTICE_CONTRAST either way.
+        # Fixed probe contrasts (method of constant stimuli) - see SACCADE_FIXED_CONTRASTS. Practice trials use PRACTICE_CONTRAST.
         # `fixed_contrasts` (from the startup dialog) overrides the SACCADE_FIXED_CONTRASTS default.
         contrasts = SACCADE_FIXED_CONTRASTS if fixed_contrasts is None else tuple(fixed_contrasts)
-        self._fixed_contrast_bag: ShuffledBag[float] | None = ShuffledBag(contrasts) if contrasts else None
+        if not contrasts:
+            raise ValueError("at least one saccade contrast is required (the ZEST staircase was removed)")
+        self._fixed_contrast_bag: ShuffledBag[float] = ShuffledBag(contrasts)
         self._fixed_trials = SACCADE_FIXED_TRIALS_TEST if test_mode else SACCADE_FIXED_TRIALS_REAL
         self._timing_offset_bag: ShuffledBag[int] = ShuffledBag(TIMING_OFFSETS_MS + CONTROL_OFFSETS_MS)
         self._current_trial_spec: TrialSpec | None = None
@@ -168,19 +158,12 @@ class ExperimentSession:
         if precomputed_rt_samples_ms is not None:
             self._avg_reaction_time_ms = self._rt.average
 
-        # -- stopping criterion for the real block (see constants.py) --
-        self._min_valid_trials = ZEST_MIN_VALID_TRIALS_TEST if test_mode else ZEST_MIN_VALID_TRIALS_REAL
-        self._max_saccade_trials = MAX_SACCADE_TRIALS_TEST if test_mode else MAX_SACCADE_TRIALS_REAL
-
         self._dot_visible = False
         self._cross_visible = False
         self._calibration = CalibrationRounds(gaze_source)
         self._space_ahead = False  # SPACE pressed after answering, before the next trial is ready
         self.space_tally = SpaceTally(lambda: self._phase.name)
         self._results: list[TrialResult] = []
-        zest_kwargs = {"log_contrast_min": math.log10(contrast_floor)} if contrast_floor is not None else {}
-        self._zest_log_min = math.log10(contrast_floor) if contrast_floor is not None else ZEST_LOG_CONTRAST_MIN
-        self._zest = ZestStaircase(**zest_kwargs)
         self._clear_trial_state()
 
         # A tutorial run before this session already calibrated: reuse that result.
@@ -454,26 +437,11 @@ class ExperimentSession:
         log = getattr(self._logger, "set_phase_summary", None)
         if log is None:
             return
-        log_lo, log_hi = self._zest_log_min, ZEST_LOG_CONTRAST_MAX
-        if self._fixed_contrast_bag is None:
-            estimate = self._zest.threshold_estimate
-            lo, hi = self._zest.credible_interval(0.68)
-            margin = ZEST_GRID_BOUND_MARGIN_LOG
-            at_lower = min(math.log10(estimate), math.log10(lo)) <= log_lo + margin
-            at_upper = max(math.log10(estimate), math.log10(hi)) >= log_hi - margin
-            bound = "lower" if at_lower else "upper" if at_upper else None
-        else:  # constant stimuli: the staircase is never updated, so its "estimate" would just be the prior
-            estimate, lo, hi, bound = None, None, None, None
         log(
             "saccade",
             {
-                "threshold_estimate": estimate,
-                "credible_interval_68": None if estimate is None else [lo, hi],
                 "valid_trials": self._valid_trial_count,
                 "completed_trials": self._completed_main_trial_count,
-                "hit_max_trial_cap": self._completed_main_trial_count >= self._max_saccade_trials,
-                "zest_grid_log10_range": [log_lo, log_hi],
-                "threshold_at_grid_bound": bound,
                 "final_avg_reaction_time_ms": self._avg_reaction_time_ms,
                 "rt_samples_total": self._rt.total_added,
                 "rt_samples_in_window": len(self._rt.samples),
@@ -483,18 +451,8 @@ class ExperimentSession:
         )
 
     def _should_stop_main_block(self) -> bool:
-        """Constant stimuli: stop by count. Staircase: stop once ZEST's 68% credible interval is narrow enough (in log
-        contrast) with enough valid trials, or unconditionally at the safety cap (open-loop misses are structural, so it
-        needs real headroom to guarantee termination)."""
-        if self._fixed_contrast_bag is not None:
-            return self._completed_main_trial_count >= self._fixed_trials  # constant stimuli: stop by count
-        if self._completed_main_trial_count >= self._max_saccade_trials:
-            return True
-        if self._valid_trial_count < self._min_valid_trials:
-            return False
-        lo, hi = self._zest.credible_interval(0.68)
-        log_width = math.log10(hi) - math.log10(lo)
-        return log_width <= ZEST_CREDIBLE_INTERVAL_MAX_LOG_WIDTH
+        """Constant stimuli: stop after SACCADE_FIXED_TRIALS_* main trials."""
+        return self._completed_main_trial_count >= self._fixed_trials
 
     def _begin_foreperiod(self) -> None:
         """Shows the current fixation symbol and waits for the participant's SPACE; the
@@ -646,10 +604,8 @@ class ExperimentSession:
         self._grating_actually_shown = True
         if trial.practice:
             self._trial_contrast = PRACTICE_CONTRAST
-        elif self._fixed_contrast_bag is not None:
-            self._trial_contrast = self._fixed_contrast_bag.draw()
         else:
-            self._trial_contrast = self._zest.next_contrast()
+            self._trial_contrast = self._fixed_contrast_bag.draw()
         return True
 
     def _detect_landing(self, new_samples, target_zone) -> None:
@@ -708,16 +664,6 @@ class ExperimentSession:
         tracking_ok = (not (self._tracking_lost_near_flash or head_moved)) if self._grating_actually_shown else None
 
         if not trial.practice:
-            # A "miss" counts as a non-detection like "correct"/"incorrect"; only
-            # flashes that really hit the saccade window feed the staircase, since open-loop misses are structurally common.
-            if (
-                self._grating_actually_shown
-                and outcome in ("correct", "incorrect", "miss")
-                and is_valid_for_saccadic_analysis(self._flash_during_saccade, tracking_ok)
-                and self._fixed_contrast_bag is None  # constant-stimuli mode: no live staircase
-            ):
-                self._zest.update(self._trial_contrast, detected=outcome == "correct")
-
             result = TrialResult(
                 index=trial.index,
                 phase="saccade",
@@ -765,10 +711,7 @@ class ExperimentSession:
 
         grating_shown_count = correct + incorrect + misses
         accuracy = correct / grating_shown_count if grating_shown_count else 0.0
-        text = f"Accuracy: {correct}/{grating_shown_count} ({accuracy:.0%})"
-        if self._fixed_contrast_bag is not None:  # constant stimuli: no staircase, so no threshold to report
-            return text
-        return f"{text} | Threshold estimate: {self._zest.threshold_estimate:.1%} contrast"
+        return f"Accuracy: {correct}/{grating_shown_count} ({accuracy:.0%})"
 
     def _instructions(self) -> str:
         if self._phase is Phase.COMPLETE:

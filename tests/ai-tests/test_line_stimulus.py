@@ -18,6 +18,7 @@ from include.experiment.constants import (
 )
 from include.experiment.types import Side, Target
 from src.dashboard import data_access
+from src.experiment.logger import read_trials
 from src.experiment.geometry import Geometry
 from src.experiment.scoring import score_outcome
 from src.experiment.tutorial_session import TutorialSession
@@ -33,7 +34,7 @@ from test_tutorial_session import _complete_calibration
 from test_tutorial_session import _make_session as _make_tutorial
 from test_tutorial_session import _reach_practice, _start_attempt
 
-pytestmark = pytest.mark.usefixtures("staircase_no_jitter")
+pytestmark = pytest.mark.usefixtures("no_flash_jitter")
 
 
 
@@ -159,6 +160,6 @@ def test_old_csv_with_vertical_horizontal_still_loads_and_new_values_load(tmp_pa
         w.writeheader()
         w.writerows(rows)
     (tmp_path / "results_9_meta.json").write_text(json.dumps({}))
-    trials = data_access.load_session_trials("9")
+    trials = read_trials(data_access.csv_path_for("9"))
     assert [t.orientation for t in trials] == [Side.ABOVE, Side.BELOW, Side.ABOVE, None]
     assert [t.response_orientation for t in trials] == [Side.ABOVE, Side.ABOVE, Side.BELOW, None]

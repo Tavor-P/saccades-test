@@ -2,16 +2,10 @@
 # installer (psychopy.org), which bundles its own Python + opencv-python.
 # Install the extra dependencies into THAT Python, e.g. on Windows:
 #   "C:\Program Files\PsychoPy\python.exe" -m pip install -r requirements.txt
-mediapipe
 flask
 
-# PySpin (the Blackfly S camera driver) is not on PyPI - install the Spinnaker
-# SDK from Teledyne FLIR's website, which includes a PySpin wheel matched to
-# your Python version; pip-install that wheel into the same Python as above.
-# It's built against numpy 1.x's C API, so numpy 2.x breaks its import with
-# "_ARRAY_API not found" - pinned below, along with opencv versions old enough
-# to not require numpy>=2 themselves (mediapipe doesn't pin a numpy/opencv
-# version itself, so without this an unpinned install pulls in numpy 2.x).
+# numpy 1.x and matching opencv (glasses-video sync, src/experiment/glasses_video.py): PsychoPy's
+# bundled packages are built against numpy 1.x, so keep these pins rather than letting pip pull numpy 2.
 numpy<2
 opencv-contrib-python==4.8.1.78
 opencv-python==4.8.1.78

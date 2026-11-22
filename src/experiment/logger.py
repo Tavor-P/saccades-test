@@ -306,7 +306,6 @@ class ResultLogger:
         self,
         participant_id: str,
         camera_label: str | None = None,
-        contrast_floor_percent: float | None = None,
         test_mode: bool | None = None,
     ) -> None:
         DATA_DIR.mkdir(exist_ok=True)
@@ -338,7 +337,6 @@ class ResultLogger:
                 "screen_height_cm": SCREEN_HEIGHT_CM,
                 "line_offset_deg": LINE_OFFSET_DEG,
                 "line_sd_deg": LINE_SD_DEG,
-                "contrast_floor_percent": contrast_floor_percent,
                 "saccade_contrasts_pct": None,
                 "calibration": None,
                 **_settings_constants(),
@@ -359,15 +357,6 @@ class ResultLogger:
     @property
     def display_refresh_hz(self) -> float | None:
         return self._metadata["hardware"]["display_refresh_hz"]
-
-    @property
-    def video_path(self) -> Path:
-        """Where an optional webcam-backend session video recording (see src/eye_tracking/video_recorder.py) belongs."""
-        return self._folder / "webcam_video.mp4"
-
-    @property
-    def video_timestamps_path(self) -> Path:
-        return self._folder / "webcam_video_timestamps.csv"
 
     @property
     def gaze_trace_path(self) -> Path:
@@ -400,8 +389,8 @@ class ResultLogger:
         self._write_metadata()
 
     def set_phase_summary(self, phase: str, summary: dict) -> None:
-        """Final numbers for the saccade phase's staircase/reaction-time state: threshold estimate, credible interval,
-        trial counts, final reaction-time average (merged into session.json "results")."""
+        """Final numbers for the saccade phase: trial counts, final reaction-time average and its sample counts
+        (merged into session.json "results")."""
         key = "saccade_phase_summary" if phase == "saccade" else f"{phase}_phase_summary"
         self._metadata["results"][key] = summary
         self._write_metadata()

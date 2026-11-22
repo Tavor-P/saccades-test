@@ -11,7 +11,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 
 # Session/state-machine modules: pure logic, driven by tick()/render_state().
-LOGIC_MODULES = ["session", "tutorial_session", "trial_mechanics", "trial_factory", "scoring", "zest", "calibration"]
+LOGIC_MODULES = ["session", "tutorial_session", "trial_mechanics", "trial_factory", "scoring", "calibration"]
 
 
 def _tree(path: Path) -> ast.AST:
@@ -96,7 +96,7 @@ def test_only_run_experiment_needs_psychopy_among_experiment_modules():
 
 
 def test_backends_are_imported_lazily():
-    """Why: a machine with only one backend installed (Neon-only, no Spinnaker SDK) must still run.
+    """Why: the device library (pupil_labs) loads only when a gaze source is built, so the simulator, tests and analysis run without it.
     Checked in a fresh interpreter per module so other tests' imports can't mask a violation."""
     for module, forbidden in [
         ("src.eye_tracking.gaze_factory", {"PySpin", "mediapipe", "cv2", "pupil_labs"}),

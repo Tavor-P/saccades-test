@@ -5,7 +5,7 @@ import pytest
 
 from include.eye_tracking.constants import NEON_SCENE_WIDTH
 from include.eye_tracking.types import GazeZone
-from src.eye_tracking.gaze_factory import BACKEND_NEON, build_gaze_source
+from src.eye_tracking.gaze_factory import build_gaze_source
 from src import timebase
 from src.eye_tracking.neon_source import NeonGazeSource
 
@@ -20,7 +20,7 @@ def test_availability_lost_track_zones_calibration_window_history_and_factory():
     assert not NeonGazeSource().is_available
     source = NeonGazeSource(device=object())
     assert source.is_available
-    assert isinstance(build_gaze_source(BACKEND_NEON), NeonGazeSource)
+    assert isinstance(build_gaze_source(), NeonGazeSource)
 
     source._ingest(_x(0.5), worn=False)
     assert not source.latest_sample().face_found  # not worn = lost track

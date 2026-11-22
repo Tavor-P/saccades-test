@@ -1,5 +1,3 @@
-import math
-
 import pytest
 
 from include.eye_tracking.types import GazeZone
@@ -9,8 +7,6 @@ from include.experiment.constants import (
     DOT_POSITION,
     FOREPERIOD_MAX_MS,
     GAZE_LANDING_STABILITY_MS,
-    MAX_SACCADE_TRIALS_REAL,
-    MAX_SACCADE_TRIALS_TEST,
     NUM_PRACTICE_TRIALS_REAL,
     NUM_PRACTICE_TRIALS_TEST,
     NUM_RT_TEST_TRIALS_REAL,
@@ -18,12 +14,10 @@ from include.experiment.constants import (
     PRACTICE_CONTRAST,
     RESPONSE_WINDOW_MS,
     RT_AVERAGE_ROLLING_WINDOW,
+    SACCADE_FIXED_TRIALS_REAL,
+    SACCADE_FIXED_TRIALS_TEST,
     SACCADE_ONSET_STABILITY_MS,
     SACCADE_TIMEOUT_MS,
-    ZEST_CREDIBLE_INTERVAL_MAX_LOG_WIDTH,
-    ZEST_LOG_CONTRAST_MAX,
-    ZEST_MIN_VALID_TRIALS_REAL,
-    ZEST_MIN_VALID_TRIALS_TEST,
 )
 from include.experiment import participant_text as words
 from include.experiment.types import Side, Target, TrialResult, TrialSpec
@@ -32,7 +26,7 @@ from helpers import NullLogger as _NullLogger
 from src.experiment.session import ExperimentSession, Phase
 
 
-pytestmark = pytest.mark.usefixtures("staircase_no_jitter")
+pytestmark = pytest.mark.usefixtures("no_flash_jitter")
 
 
 
@@ -142,14 +136,6 @@ def _set_single_trial(session, **kwargs) -> None:
 
 
 
-def test_contrast_floor_overrides_the_zest_staircase_minimum(fake_gaze):
-    # The staircase's first contrast is the midpoint of its log range, so that is what the floor moves.
-    floor = 0.2
-    session = ExperimentSession(fake_gaze, logger=_NullLogger(), clock=PausableClock(), contrast_floor=floor)
-    expected = 10 ** ((math.log10(floor) + ZEST_LOG_CONTRAST_MAX) / 2)
-    assert session._zest.next_contrast() == pytest.approx(expected)
-
-
 def test_calibration_uses_a_fresh_window_per_target_and_averages_rounds_two_and_three(fake_gaze):
     # Regression: without a fresh rolling-ratio window before each target, stale samples collapse the span.
     # Round 1 is discarded; rounds 2-3 are averaged (average_calibration_rounds).
@@ -187,11 +173,11 @@ def test_constructor_options_precomputed_calibration_skip_practice_and_mode_cons
     assert skipped._practice_trials == [] and skipped._num_practice == 0
 
     real = ExperimentSession(fake_gaze, logger=_NullLogger(), clock=PausableClock())
-    assert (real._num_practice, real._rt_test_target_attempts, real._min_valid_trials, real._max_saccade_trials) == (
-        NUM_PRACTICE_TRIALS_REAL, NUM_RT_TEST_TRIALS_REAL, ZEST_MIN_VALID_TRIALS_REAL, MAX_SACCADE_TRIALS_REAL)
+    assert (real._num_practice, real._rt_test_target_attempts, real._fixed_trials) == (
+        NUM_PRACTICE_TRIALS_REAL, NUM_RT_TEST_TRIALS_REAL, SACCADE_FIXED_TRIALS_REAL)
     test = ExperimentSession(fake_gaze, logger=_NullLogger(), clock=PausableClock(), test_mode=True)
-    assert (test._num_practice, test._rt_test_target_attempts, test._min_valid_trials, test._max_saccade_trials) == (
-        NUM_PRACTICE_TRIALS_TEST, NUM_RT_TEST_TRIALS_TEST, ZEST_MIN_VALID_TRIALS_TEST, MAX_SACCADE_TRIALS_TEST)
+    assert (test._num_practice, test._rt_test_target_attempts, test._fixed_trials) == (
+        NUM_PRACTICE_TRIALS_TEST, NUM_RT_TEST_TRIALS_TEST, SACCADE_FIXED_TRIALS_TEST)
 
 
 # -- reaction-time test -------------------------------------------------------
@@ -279,15 +265,14 @@ def test_fast_lander_does_not_finalize_before_the_scheduled_flash(fake_gaze, fak
     assert len(_saccade_results(session)) == 1
 
 
-# -- flash_during_saccade, scoring and ZEST gating ------------------------------
+# -- flash_during_saccade and scoring ------------------------------
 
 
-def test_valid_trial_is_during_saccade_and_updates_zest(fake_gaze, fake_time):
+def test_valid_trial_is_during_saccade_and_counts_as_valid(fake_gaze, fake_time):
     session = _make_session(fake_gaze)
     _complete_calibration_and_rt_test(session, fake_gaze, fake_time)
     _set_single_trial(session)
     _enter_trial_active(session, fake_time)
-    initial_threshold = session._zest.threshold_estimate
 
     _trigger_onset_and_landing(session, fake_gaze, fake_time, GazeZone.RIGHT)
     session.on_response_key(Side.ABOVE)
@@ -295,16 +280,14 @@ def test_valid_trial_is_during_saccade_and_updates_zest(fake_gaze, fake_time):
 
     assert _saccade_results(session)[0].outcome == "correct"
     assert _saccade_results(session)[0].flash_during_saccade is True
-    assert session._zest.threshold_estimate != initial_threshold
     assert session._valid_trial_count == 1
 
 
-def test_trial_without_onset_times_out_is_not_during_saccade_and_leaves_zest_and_rt_alone(fake_gaze, fake_time):
+def test_trial_without_onset_times_out_is_not_during_saccade_and_leaves_rt_alone(fake_gaze, fake_time):
     session = _make_session(fake_gaze, test_mode=True)
     _complete_calibration_and_rt_test(session, fake_gaze, fake_time)
     _set_single_trial(session)
     _enter_trial_active(session, fake_time)
-    initial_threshold = session._zest.threshold_estimate
     rt_total = session._rt.total_added
     first_counter = session.render_state()["hud"]["trial_index"]
 
@@ -315,7 +298,6 @@ def test_trial_without_onset_times_out_is_not_during_saccade_and_leaves_zest_and
     (result,) = _saccade_results(session)
     assert result.outcome == "timeout"
     assert result.flash_during_saccade is False
-    assert session._zest.threshold_estimate == initial_threshold
     assert session._valid_trial_count == 0
     assert session._rt.total_added == rt_total  # no detected saccade, no RT sample
     assert session.render_state()["hud"]["trial_index"] == first_counter + 1
@@ -366,20 +348,18 @@ def test_wrong_answer_and_no_answer_are_scored(fake_gaze, fake_time, answer, exp
     assert _saccade_results(session)[0].outcome == expected
 
 
-def test_practice_trial_is_not_logged_or_staircased(fake_gaze, fake_time):
+def test_practice_trial_is_not_logged(fake_gaze, fake_time):
     session = _make_session(fake_gaze)
     _complete_calibration_and_rt_test(session, fake_gaze, fake_time)
     _set_single_trial(session, practice=True)
     _enter_trial_active(session, fake_time)
-    initial_threshold = session._zest.threshold_estimate
 
     _trigger_onset_and_landing(session, fake_gaze, fake_time, GazeZone.RIGHT)
-    assert session._trial_contrast == PRACTICE_CONTRAST  # fixed, not drawn from the staircase
+    assert session._trial_contrast == PRACTICE_CONTRAST  # fixed, not drawn from the probe contrasts
     session.on_response_key(Side.ABOVE)
     session.tick()
 
     assert _saccade_results(session) == []
-    assert session._zest.threshold_estimate == initial_threshold
 
 
 def test_source_symbol_hides_the_instant_the_target_appears(fake_gaze, fake_time):
@@ -512,18 +492,13 @@ def _run_valid_trial(session, fake_gaze, fake_time, index: int) -> None:
     session.tick()
 
 
-def test_main_block_respects_the_valid_trial_floor_and_the_max_cap(fake_gaze, fake_time):
+def test_main_block_stops_after_the_fixed_trial_count(fake_gaze, fake_time):
     session = _make_session(fake_gaze, test_mode=True)
     _complete_calibration_and_rt_test(session, fake_gaze, fake_time)
-    for i in range(session._min_valid_trials - 1):
+    for i in range(session._fixed_trials - 1):
         _run_valid_trial(session, fake_gaze, fake_time, i)
     assert session.render_state()["hud"]["phase"] != "COMPLETE"
-
-    session = _make_session(fake_gaze, test_mode=True)
-    session._min_valid_trials = 0  # isolate the max-cap behavior from the credible-interval check
-    _complete_calibration_and_rt_test(session, fake_gaze, fake_time)
-    for i in range(session._max_saccade_trials):
-        _run_valid_trial(session, fake_gaze, fake_time, i)
+    _run_valid_trial(session, fake_gaze, fake_time, session._fixed_trials - 1)
     assert session.render_state()["hud"]["phase"] == "COMPLETE"
 
 
@@ -536,22 +511,6 @@ def _fake_valid_saccade_results(count: int) -> list[TrialResult]:
         )
         for i in range(count)
     ]
-
-
-@pytest.mark.parametrize("interval, stops", [
-    ((0.10, 0.10 * (10**ZEST_CREDIBLE_INTERVAL_MAX_LOG_WIDTH) * 0.5), True),
-    ((0.01, 0.5), False),
-])
-def test_should_stop_main_block_follows_the_credible_interval_width(fake_gaze, interval, stops):
-    session = _make_session(fake_gaze, test_mode=True)
-    session._results = _fake_valid_saccade_results(session._min_valid_trials)
-
-    class _Zest:
-        def credible_interval(self, mass):
-            return interval
-
-    session._zest = _Zest()
-    assert session._should_stop_main_block() is stops
 
 
 # -- space-gated trials ----------------------------------------------------------

@@ -1,4 +1,4 @@
-"""Tunable constants for the experiment: stimulus geometry, trial timing, staircase (ZEST) settings, trial counts. Pure data - no logic. Every constant is
+"""Tunable constants for the experiment: stimulus geometry, trial timing, trial counts. Pure data - no logic. Every constant is
 commented with why it has its value; read the comment before retuning one. Constants are copied by name into importing modules
 (`from ... import X`), so to change one temporarily in a test/simulation use tests/ai-tests/sim_tools.override_constants()."""
 
@@ -10,10 +10,6 @@ import math
 DOT_POSITION = (0.15, 0.5)
 CROSS_POSITION = (0.85, 0.5)
 CENTER_POSITION = (0.5, 0.5)  # the calibration step's centre target
-GRATING_POSITION = (
-    (DOT_POSITION[0] + CROSS_POSITION[0]) / 2,
-    (DOT_POSITION[1] + CROSS_POSITION[1]) / 2,
-)
 
 # Sizes as a fraction of window height (resolution-independent); the PsychoPy
 # runner converts these + the positions above into its 'height' unit system.
@@ -30,7 +26,7 @@ VIEWING_DISTANCE_CM = 50.0
 SCREEN_HEIGHT_CM = 26.0
 SCREEN_HEIGHT_DEG = 2 * math.degrees(math.atan((SCREEN_HEIGHT_CM / 2) / VIEWING_DISTANCE_CM))
 
-# LINE-STIMULUS BRANCH: the flash is NOT the grating below but a thin horizontal line (Braun, Schutz &
+# LINE-STIMULUS BRANCH: the flash is NOT a grating but a thin horizontal line (Braun, Schutz &
 # Gegenfurtner 2021, J Vis): full screen width, a vertical Gaussian luminance profile, 2 deg above or below
 # the saccade target (the symbol the eye is moving to), and the
 # participant says which side with UP / DOWN. Their values: SD 0.15 deg, offset 2 deg, one frame at 120 Hz.
@@ -40,38 +36,10 @@ SCREEN_HEIGHT_DEG = 2 * math.degrees(math.atan((SCREEN_HEIGHT_CM / 2) / VIEWING_
 LINE_OFFSET_DEG = 2.0  # distance of the line's centre above/below the target
 LINE_SD_DEG = 0.15  # vertical standard deviation of the Gaussian profile
 LINE_WIDTH_SCREENS = 24.0  # drawn this many screen widths wide so the horizontal Gaussian edge-fade is invisible (~1 % at the screen edge)
-# The grating constants below are kept (the grating code path still exists on feature/saccade-flash-analysis and
-# the grating values are written to the meta file) but nothing on this branch draws a grating.
-
-# The paper's probe: a horizontal sinusoidal luminance grating (bars parallel
-# to the saccade direction, so the saccade's own motion doesn't smear the
-# pattern into a spurious signal) windowed by a Gaussian envelope, flashed for
-# a single frame.
-#
-# At the paper's literal 0.04 cpd, fewer than 1.2 full cycles fit inside the
-# Gaussian-windowed patch (cycles = GRATING_SPATIAL_FREQUENCY_CPD *
-# GRATING_ENVELOPE_SIGMA_DEG * 6, independent of screen size) - so instead of
-# a grating, the patch looks like a single lopsided light/dark gradient, which
-# is trivially visible in peripheral vision even at low contrast (peripheral
-# acuity is far coarser than foveal, but a single gradient has no fine detail
-# to lose). Bumped up so multiple cycles fit in the patch instead - fine
-# enough that peripheral vision blurs it toward flat gray, resolvable mainly
-# with foveal acuity - but pulled back from an earlier, more aggressive value
-# (0.35 cpd, ~10 cycles) that made the ZEST-driven low-contrast trials come
-# back essentially invisible even to a directly-fixating eye. This is still a
-# deviation from the paper's own value, and its correctness depends on
-# VIEWING_DISTANCE_CM/SCREEN_HEIGHT_CM above actually matching your physical
-# setup - adjust further if it's still too faint or too easy.
-GRATING_SPATIAL_FREQUENCY_CPD = 0.12  # cycles/degree, ~3.5 cycles across the patch
-GRATING_ENVELOPE_SIGMA_DEG = 4.8  # Gaussian envelope space constant
-GRATING_DURATION_FRAMES = 1  # a single frame, exactly as in the paper (their 120Hz CRT -> ~8ms;
+# The flash is drawn for this many frames (named before the line replaced the grating; the grating's own constants live on
+# the `grating` branch). A single frame, exactly as in the paper (their 120Hz CRT -> ~8ms;
 # on a typical 60Hz display this is ~16.7ms instead - still "one frame", just a longer one)
-
-GRATING_SF_CYCLES_PER_HEIGHT_UNIT = GRATING_SPATIAL_FREQUENCY_CPD * SCREEN_HEIGHT_DEG
-GRATING_ENVELOPE_SIGMA_HEIGHT_UNITS = GRATING_ENVELOPE_SIGMA_DEG / SCREEN_HEIGHT_DEG
-# PsychoPy's 'gauss' mask tapers to ~0 by the edge of `size`, at a standard
-# deviation of size/6 - so size = 6 * sigma reproduces the paper's space constant.
-GRATING_SIZE_HEIGHT_UNITS = GRATING_ENVELOPE_SIGMA_HEIGHT_UNITS * 6
+GRATING_DURATION_FRAMES = 1
 
 LINE_OFFSET_HEIGHT_UNITS = LINE_OFFSET_DEG / SCREEN_HEIGHT_DEG  # = offset as a fraction of the screen height
 LINE_SD_HEIGHT_UNITS = LINE_SD_DEG / SCREEN_HEIGHT_DEG
@@ -80,13 +48,11 @@ LINE_HEIGHT_HEIGHT_UNITS = LINE_SD_HEIGHT_UNITS * 6
 
 # Whether a session is a quick test/smoke run (fewer trials) or a real
 # data-collection session is a runtime decision, not a constant to edit here
-# - see run_experiment.py's _resolve_test_mode(): leaving the startup
-# dialog's Participant ID blank means test, entering one means real.
+# - the startup dialog's Mode dropdown (src/experiment/startup_model.py: Real needs a Participant ID).
 
 # A few throwaway trials before the real block, so a participant
 # doesn't learn the response mapping on data that counts. Fixed at a high,
-# easily-visible contrast (not drawn from the staircase) and excluded from
-# both the ZEST update and the logged CSV/results.
+# easily-visible contrast and excluded from the logged CSV/results.
 NUM_PRACTICE_TRIALS_TEST = 2
 NUM_PRACTICE_TRIALS_REAL = 5
 PRACTICE_CONTRAST = 0.25
@@ -99,47 +65,14 @@ PRACTICE_CONTRAST = 0.25
 GAZE_INDICATOR_RADIUS_RATIO = CIRCLE_RADIUS_RATIO * 0.6
 GAZE_INDICATOR_OPACITY = 0.35
 
-# ZEST (Zippy Estimation by Sequential Testing, King-Smith et al. 1994)
-# adaptive contrast staircase - the paper's actual contrast-selection method:
-# "their contrast varying according to a ZEST procedure, which independently
-# estimated the most informative contrast at which to present the next
-# stimulus." Beta/lapse follow the standard Weibull psychometric-function
-# assumptions used for staircases on simple detection tasks (Watson & Pelli,
-# 1983); the paper doesn't publish these fitting constants itself.
-
 # A contrast of `c` here becomes a peak luminance deviation of `c/2` around the
 # mid-grey background (see luminance_to_color / apply_render_state in
 # run_experiment.py). On a standard 8-bit panel (256 levels), one quantization
 # step is 1/255 of luminance, so anything below `c = 2/255` can't move a pixel
 # value at all - it's bit-identical to the background regardless of the
-# observer's actual threshold. Floor the staircase one step above that (not
-# exactly at it) so the lowest testable contrast is still guaranteed
-# renderable rather than sitting right on the rounding boundary. Exposed as
-# its own constant (not just inlined below) so anything letting the floor be
-# configured - see src/experiment/settings.py - can still enforce this
-# physical lower bound no matter what's typed in.
+# observer's actual threshold. The startup dialog's saccade-contrast fields
+# (src/experiment/settings.py) refuse anything below this physical floor.
 HARDWARE_CONTRAST_FLOOR = 2 / 255
-ZEST_LOG_CONTRAST_MIN = math.log10(HARDWARE_CONTRAST_FLOOR) + 0.05  # ~0.0088 (0.88%)
-ZEST_LOG_CONTRAST_MAX = math.log10(0.5)
-ZEST_GRID_SIZE = 120
-ZEST_BETA = 3.5
-# The task is a 2-alternative forced choice (report line above vs below the target),
-# not plain yes/no detection - so chance performance is 50%, not a small
-# guess-rate floor. Using anything lower than 0.5 here would systematically
-# bias the fitted threshold, since the model would wrongly attribute
-# above-floor "guessing" accuracy to genuine detection.
-#
-# This 0.5 floor is only valid if participants actually guess when unsure
-# instead of withholding a response - logged sessions showed "incorrect"
-# (a confident wrong guess) is almost never chosen versus "miss" (no
-# response), which means real behavior was closer to a 0%, not 50%,
-# guess floor. That undershoot reads to ZEST as much stronger evidence of
-# "still can't see it" than a true coin-flip would, so it kept pushing
-# contrast up past the intended ~82%-correct criterion - hence sessions
-# converging to contrasts people then aced. The on-screen instructions now
-# explicitly tell participants to guess if unsure, to match this assumption.
-ZEST_GUESS_RATE = 0.5
-ZEST_LAPSE_RATE = 0.02
 
 # Trial responses: report which side of the target the line was on (UP = above, DOWN = below) rather than
 # a plain yes/no SPACE press, so accuracy can't be inflated by just always pressing "I saw it".
@@ -155,7 +88,7 @@ FOREPERIOD_MIN_MS = 500
 FOREPERIOD_MAX_MS = 1000
 
 SACCADE_TIMEOUT_MS = 15_000  # force-advance a trial if gaze never lands (broken tracking)
-# A flash-shown trial is flagged tracking_ok=False (and excluded from ZEST and
+# A flash-shown trial is flagged tracking_ok=False (and excluded from
 # the analysis graph, exactly like flash_during_saccade != True) if the gaze
 # source reported "no face"/lost track at any tick within this window either
 # side of the scheduled flash time - onset/landing timestamps (and so the
@@ -170,14 +103,13 @@ GAZE_LANDING_STABILITY_MS = 150  # gaze must hold in the target zone this long t
 # between the symbols lasts just 30-35 ms, so that cost 10-20 ms of lead (see the table in
 # the commit that introduced this). Lower = earlier, truer onset but more fixational-jitter
 # false triggers (per-sample position noise on Neon is a few hundredths, and the screen-
-# mapped backends add spikes); higher = later. Chosen from recorded traces, see
-# tests/ai-tests/analyze_onset_threshold.py. Sweep it with
+# mapped backends add spikes); higher = later. Chosen from recorded traces (the offline
+# study script, analyze_onset_threshold.py, was removed; recover it from git). Sweep it with
 # `run_sim.py --sweep SACCADE_ONSET_DISPLACEMENT=0.03,0.05,0.08,0.12`.
 #
 # The threshold is a fraction of the dot-to-cross span, i.e. an ANGLE that scales with
 # DOT_POSITION/CROSS_POSITION: 0.08 was ~1.9 deg of a ~24 deg span; with the wider ~41 deg
-# span 0.05 is ~2.0 deg, the same physical threshold (re-check with
-# analyze_onset_threshold.py on a fresh trace of the wider layout).
+# span 0.05 is ~2.0 deg, the same physical threshold (re-check on a fresh trace of the wider layout).
 SACCADE_ONSET_DISPLACEMENT = 0.05
 
 # The fixation baseline the displacement is measured from: the median of the last
@@ -200,7 +132,7 @@ ONSET_BASELINE_NEAR_SOURCE = 0.25
 # outliers instead of letting them drag a plain mean around. Since `since` is the first
 # sample beyond the threshold, this debounce delays confirmation but not the reported onset.
 # If avg_reaction_time_ms in real sessions is implausibly fast (well under ~100 ms), raise
-# this or the displacement threshold. Verify with neon_fixation_test.
+# this or the displacement threshold. Verify on a head-still fixation recording.
 SACCADE_ONSET_STABILITY_MS = 10
 
 # 3-point calibration is run this many times (round 1 discarded, rounds 2-3
@@ -220,7 +152,7 @@ CALIBRATION_ROUNDS = 3
 # detection lag as a constraint on flash timing precision, at the cost of
 # some trials' flashes landing outside the actual saccade window entirely
 # (see flash_during_saccade in include/experiment/types.py) - expected and
-# handled by only feeding valid trials to ZEST (see ExperimentSession).
+# handled by judging every flash afterwards from the raw gaze trace (analyze_session).
 #
 # Bell-curve flashes (since 2026-11-21): the values no longer add to the average RT directly. Each
 # non-control flash is drawn from a normal curve centred on the average reaction time (the moment
@@ -252,22 +184,21 @@ TIMING_JITTER_MS = 10
 CONTROL_OFFSETS_MS = (400, 500)
 
 # Fixed probe contrasts for the saccade phase (method of constant stimuli), drawn without
-# repeats like the timing offsets. With them the live ZEST staircase is NOT used or updated in
-# the saccade phase: it only learns from flashes the live check says landed in the saccade, and
-# with the current gaze latency (~90 ms) almost none do, so it never adapts. Instead every flash
-# is judged afterwards from the raw gaze trace (accuracy vs flash time relative to saccade
+# repeats like the timing offsets. (An adaptive ZEST staircase was used once and removed: it only
+# learned from flashes the live check said landed in the saccade, and with the ~90 ms gaze latency
+# almost none did, so it never adapted.) Every flash is judged afterwards from the raw gaze trace (accuracy vs flash time relative to saccade
 # onset). Line-stimulus defaults 4/6/8 %: an EDUCATED GUESS, not a measurement. The line sits next to the
 # saccade target and is much easier to see than the old off-centre grating: a Test-mode run at 10/15/20 % was
 # at ceiling (11/11 correct at fixation, 18/22 overall), leaving no headroom to see suppression, and the old
 # foveal grating threshold was ~1.3 %; the earlier 2/4/6 % guess was judged too hard. Re-pilot on glasses and
 # adjust in the startup dialog. The 8-bit display renders ~5 / 7.6 / 10 grey steps at the line's peak for
-# 4 / 6 / 8 %, so levels are coarse; the hardware floor (HARDWARE_CONTRAST_FLOOR, 0.78 %) still allows them. () = back to the staircase.
+# 4 / 6 / 8 %, so levels are coarse; the hardware floor (HARDWARE_CONTRAST_FLOOR, 0.78 %) still allows them. Must not be empty.
 # The startup dialog's "Saccade contrast min/max (%)" fields (defaults: the ends of the tuple below)
 # rebuild it per session as SACCADE_CONTRAST_LEVELS evenly spaced values between them (see
 # src/experiment/settings.py); 1 level or min == max gives a single contrast.
 SACCADE_CONTRAST_LEVELS = 3
 SACCADE_FIXED_CONTRASTS = (0.04, 0.06, 0.08)
-# Number of main-block saccade trials in that mode (it stops by count, not by staircase width):
+# Number of main-block saccade trials in that mode (the block stops by count):
 # ~30 % of flashes should land near the saccade, so 150 trials give ~50 usable flashes.
 SACCADE_FIXED_TRIALS_TEST = 30
 SACCADE_FIXED_TRIALS_REAL = 150
@@ -329,33 +260,6 @@ RT_OUTLIER_MAD_FLOOR_MS = 25.0
 # this range before being subtracted, so a bad clock-offset estimate can't
 # shift onset/landing times by seconds.
 GAZE_LATENCY_MAX_MS = 150.0
-
-# The final ZEST threshold estimate (or its 68% credible interval) lying within
-# this many log10 units of the contrast grid's ends is flagged in _meta.json:
-# the true threshold is probably outside the searchable range, so the number is
-# a bound, not an estimate.
-ZEST_GRID_BOUND_MARGIN_LOG = 0.05
-
-# Stopping criterion for the main saccade block, replacing a fixed trial
-# count now that contrast stays ZEST-adaptive rather than a discrete level
-# grid (an efficient, well-estimated threshold is the goal - not full-curve
-# coverage). Runs until ZestStaircase.credible_interval(0.68) is narrow
-# enough (in log-contrast space - credible_interval returns *linear*
-# bounds, so compare log10(hi) - log10(lo), not a raw linear difference) AND
-# at least this many valid (flash_during_saccade is True) trials have been
-# collected, so a narrow interval isn't trusted before enough data has
-# actually shaped it - OR the max-trial safety cap is hit regardless (open-
-# loop misses are structural now, not rare lag noise, so this needs real
-# headroom above the min-valid floor to guarantee termination without cutting
-# a normally-behaving session short).
-#
-# All three are first guesses, not validated against real session data yet -
-# tune once results from an actual run are in.
-ZEST_CREDIBLE_INTERVAL_MAX_LOG_WIDTH = 0.1  # ~26% linear ratio between the interval's bounds
-ZEST_MIN_VALID_TRIALS_TEST = 6
-ZEST_MIN_VALID_TRIALS_REAL = 25
-MAX_SACCADE_TRIALS_TEST = 30
-MAX_SACCADE_TRIALS_REAL = 200
 
 # Go-cue beep, played the instant the target appears (see run_experiment.py) -
 # same tone this project's trial-start warning tone once used (see the

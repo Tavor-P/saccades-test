@@ -89,7 +89,7 @@ def test_defaults_from_disk_shipped_remembered_and_damaged_files(data_dir):
     assert d.contrast_min_percent == 4 and d.contrast_max_percent == 8
 
     (data_dir / "p01" / "2026-01-01_10-00-00").mkdir(parents=True)
-    settings.save_contrast_floor_percent(1.5)  # other settings must survive
+    (data_dir / "settings.json").write_text(json.dumps({"contrast_floor_percent": 1.5}))  # an old file's other keys must survive
     settings.save_last_startup(
         {"participant_id": "p01", "test_mode": True, "screen_height_cm": 19, "viewing_distance_cm": 60.0, "run_tutorial": True,
          "flash_spread_sd_ms": 60}

@@ -1,4 +1,4 @@
-import psychopy  # noqa: F401  (importing this first wires PySpin onto sys.path for src.eye_tracking.camera)
+import psychopy  # noqa: F401  (imported first, as run_experiment does, so PsychoPy's user-packages dir is on sys.path)
 import pytest
 
 from include.eye_tracking.interfaces import GazeSource

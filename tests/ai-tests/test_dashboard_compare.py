@@ -70,11 +70,11 @@ def test_label_edit_round_trip_and_index_page(client, data):
     assert 'value="TBI"' in page and 'list="group-suggestions"' in page
     response = client.post("/participants/T01/label", json={"group": " control ", "note": "pilot <b>1</b>"})
     assert response.status_code == 200 and response.get_json() == {"ok": True, "group": "control", "note": "pilot <b>1</b>"}
-    assert participants.get_label("T01", data) == {"group": "control", "note": "pilot <b>1</b>"}
+    assert participants.list_labels(data).get("T01") == {"group": "control", "note": "pilot <b>1</b>"}
     page = _html(client.get("/"))
     assert "pilot &lt;b&gt;1&lt;/b&gt;" in page and "<b>1</b>" not in page  # escaped
     assert client.post("/participants/T01/label", json={"group": "", "note": ""}).status_code == 200
-    assert participants.get_label("T01", data) is None
+    assert "T01" not in participants.list_labels(data)
     assert client.post("/participants/NOBODY/label", json={"group": "TBI"}).status_code == 404
     assert client.post("/participants/T02/label", data='{"group": "x"}', content_type="text/plain").status_code == 400  # no cross-site form posts
     bad = client.post("/participants/T02/label", json={"group": "group:x"})

@@ -49,7 +49,6 @@ Do this once per computer.
    ```
    .\scripts\py.ps1 -m pip install -r requirements.txt
    ```
-   The FLIR Blackfly S + MediaPipe backend additionally needs the Spinnaker SDK (`PySpin`); Neon-only machines do not.
 4. Start the Neon Companion app on the phone. The experiment looks for the Neon at `NEON_DEVICE_ADDRESS` in
    `include/eye_tracking/constants.py` (pinned to a phone IP at the time of writing; set it to your phone's address, or to `None` to auto-discover).
 5. **Measure your screen** (once per monitor and seat position): the height of the visible picture (cm) and the eye-to-screen distance (cm). You type
@@ -89,8 +88,7 @@ Command Prompt, the Run box or Explorer opens the .ps1 file in an editor instead
 | *Advanced*: Show gaze indicator | debug aid |
 
 Click a field's name or its **?** for a short help bubble next to the mouse (click anywhere or press Esc to close it). The last values are remembered; an invalid entry
-shows a message in the dialog and keeps everything you typed. The gaze source is always the Neon; set the environment variable `SACCADES_BACKEND=webcam` to use the
-Blackfly S + MediaPipe backend instead.
+shows a message in the dialog and keeps everything you typed. The gaze source is always the Neon.
 
 ### What happens in a run
 
@@ -314,7 +312,7 @@ Not verified on real footage: whether the scene camera sees the green flash from
 .\scripts\py.ps1 -m src.dashboard.app
 ```
 
-[http://localhost:5000](http://localhost:5000) lists past sessions (both layouts): label, filter, adjust the default contrast floor (used only when the saccade phase runs the staircase instead of fixed contrasts), delete. Old runs' baseline rows are listed too.
+[http://localhost:5000](http://localhost:5000) lists past sessions (both layouts): label, filter, delete. Old runs' baseline rows are listed too.
 The click-by-click route is in [Analysing your data in 3 clicks](#analysing-your-data-in-3-clicks); this section says what each page does.
 
 **Results pages** (**Analyse** on a run or a participant) run the same analysis as `analyze_session` / `analyze_participant` (about 7 s for one 150-trial run and 10 s for a person with three,
@@ -362,14 +360,12 @@ Participants (people with traumatic brain injury and controls) produce personal 
 | Problem | Fix |
 |---|---|
 | `No module named 'src'` | Run commands from the project folder, or through `scripts/py.ps1` |
-| `No module named 'flask'` / `'PySpin'` / `'mediapipe'` | The install did not take (often a non-writable `Program Files`): rerun the terminal as Administrator and reinstall. Neon-only machines do not need `PySpin`/`mediapipe` |
-| `_ARRAY_API not found` or `numpy.core.multiarray failed to import` | numpy/opencv drifted from `PySpin`: reinstall `requirements.txt`, which pins working versions |
+| `No module named 'flask'` | The install did not take (often a non-writable `Program Files`): rerun the terminal as Administrator and reinstall |
+| `_ARRAY_API not found` or `numpy.core.multiarray failed to import` | numpy/opencv drifted: reinstall `requirements.txt`, which pins working versions |
 | Neon not found | Phone and PC must share a network, the Companion app must be running; set `NEON_DEVICE_ADDRESS` to the phone's IP |
-| Camera picker is empty | Webcam backend only: it lists FLIR cameras via Spinnaker, not generic webcams |
 | Eye tracking seems inaccurate | Redo calibration, looking steadily at each target; keep the head still after calibrating |
 | Pressing SPACE seems to do nothing | Presses during a trial's wait are ignored by design; they are counted in the console summary and `ignored_space_presses` |
 | Glasses recording `failed` in `session.json` | The recording may need the Companion app open with a wearer and workspace selected (not verified yet); the rest of the data is unaffected |
-| A webcam session's video is missing or empty | OpenCV could not open the codec; look for `WARNING: video recording failed to start` in the console |
 
 ## Research background
 
@@ -377,10 +373,10 @@ Participants (people with traumatic brain injury and controls) produce personal 
 checked* for this README; what follows is only what this repository's code and comments record about it.
 - Taken from it: a participant fixates a symbol, a jittered wait (800-1200 ms after a warning tone in the paper; here 500-1000 ms after
   the participant's own SPACE press) precedes the saccade target, the flash is a single display frame, contrast is varied with a ZEST
-  staircase (here only if the fixed contrasts are switched off), and the same detection task is run during saccades and during fixation (here the
+  staircase (not here: fixed contrasts), and the same detection task is run during saccades and during fixation (here the
   fixation condition comes from flashes inside the saccade phase).
 - Where we differ: the flash is a line, not their grating (below); the tone is a go cue at target onset; the saccade phase uses fixed contrasts
-  rather than the staircase; gaze is Neon, not a lab eye tracker.
+  rather than a staircase; gaze is Neon, not a lab eye tracker.
 
 **Braun, Schutz & Gegenfurtner (2021)**, "Age effects on saccadic suppression of luminance and color", *J Vis* 21(6):11,
 doi:10.1167/jov.21.6.11, <https://pmc.ncbi.nlm.nih.gov/articles/PMC8237129/>. Abstract and Methods were read for this README (the Results and
@@ -430,7 +426,7 @@ flashes 50-300 ms away; small numbers and a window chosen after seeing the first
 [CLAUDE.md](CLAUDE.md) describes the architecture, the repo map and the gotchas. All logic can be run without hardware:
 
 ```
-.\scripts\py.ps1 -m pytest -q                 # 293 tests pass (+2 skipped without PySpin/mediapipe), about 4 min, no glasses or window needed
+.\scripts\py.ps1 -m pytest -q                 # 275 tests pass, about 4 min, no glasses or window needed
 .\scripts\py.ps1 -m src.experiment.simulation # headless simulated trial; see tests/ai-tests/README.md for run_sim.py
 ```
 

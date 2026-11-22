@@ -7,7 +7,6 @@ from invariants import check_session
 
 from src.experiment import session as session_module
 from src.experiment.simulation import simulate_session
-from src.experiment.zest import ZestStaircase
 
 
 def _violations(trials=14, seed=2):
@@ -23,8 +22,14 @@ def test_catches_scoring_that_always_says_correct(monkeypatch):
     assert any("correct" in v for v in _violations(trials=30))
 
 
-def test_catches_a_staircase_that_returns_impossible_contrast(monkeypatch, staircase_no_jitter):
-    monkeypatch.setattr(ZestStaircase, "next_contrast", lambda self: 7.0)
+def test_catches_a_flash_at_a_contrast_outside_the_fixed_set(monkeypatch):
+    original = session_module.ShuffledBag.draw
+
+    def buggy(self):
+        value = original(self)
+        return 7.0 if isinstance(value, float) else value  # contrasts are floats, timing offsets ints
+
+    monkeypatch.setattr(session_module.ShuffledBag, "draw", buggy)
     assert any("contrast out of range" in v for v in _violations())
 
 
@@ -82,14 +87,3 @@ def test_would_have_caught_the_clock_offset_sign_bug(monkeypatch):
     monkeypatch.setattr(NeonGazeSource, "_estimate_clock_offset", wrong_sign)
     with pytest.raises(AssertionError):
         test_neon_source.test_samples_are_stamped_with_capture_time_using_the_offset_with_the_right_sign(monkeypatch)
-
-
-def test_would_have_caught_a_live_gate_that_forgets_tracking_ok(monkeypatch):
-    import test_validity_lockstep
-    from src.experiment.simulation import ParticipantProfile
-
-    monkeypatch.setattr(session_module, "is_valid_for_saccadic_analysis", lambda flash, tracking_ok=None: flash is True)
-    with pytest.raises(AssertionError):
-        test_validity_lockstep.check_live_feed(
-            monkeypatch, ParticipantProfile(dropout_rate_per_s=2.0), 4
-        )

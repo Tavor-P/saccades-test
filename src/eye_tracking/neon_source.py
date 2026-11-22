@@ -48,8 +48,7 @@ def _connect():
 class NeonGazeSource(GazeSource):
     """Gaze from Pupil Labs Neon glasses via the Real-Time API, polled on a
     background thread. Uses the scene-camera gaze x coordinate (normalised by
-    the scene width) as the "ratio", so the 3-point calibration works exactly
-    as it does for the webcam. Because the scene camera is head-mounted, the
+    the scene width) as the "ratio" that the 3-point calibration maps. Because the scene camera is head-mounted, the
     participant should keep their head still after calibrating (e.g. chin
     rest) - head movement shifts gaze x without any eye movement.
 

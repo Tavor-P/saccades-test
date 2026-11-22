@@ -9,7 +9,7 @@ import pytest
 
 from include.eye_tracking.constants import NEON_SCENE_WIDTH
 from src.experiment import analyze_session as an
-from src.experiment.settings import resolve_saccade_contrasts, saccade_contrast_levels, validate_saccade_contrast_range
+from src.experiment.settings import saccade_contrast_levels, validate_saccade_contrast_range
 
 CLOCK_OFFSET_S = 0.25
 RATE_HZ = 200
@@ -139,15 +139,10 @@ def test_contrast_levels_are_evenly_spaced_between_min_and_max():
     assert saccade_contrast_levels(15, 15) == (0.15,)
 
 
-def test_invalid_contrast_ranges_are_rejected_or_fall_back():
+def test_invalid_contrast_ranges_are_rejected():
     for bad in ((20, 10), (0.0, 10), (10, 150)):
         with pytest.raises(ValueError):
             validate_saccade_contrast_range(*bad)
-    assert resolve_saccade_contrasts("5", "30") == pytest.approx((0.05, 0.175, 0.30))
-    assert resolve_saccade_contrasts("", "abc") == pytest.approx((0.04, 0.06, 0.08))  # the defaults
-    assert resolve_saccade_contrasts("30", "5") == pytest.approx((0.04, 0.06, 0.08))
-    assert resolve_saccade_contrasts("4", "8") == pytest.approx((0.04, 0.06, 0.08))
-    assert resolve_saccade_contrasts("2", "6") == pytest.approx((0.02, 0.04, 0.06))  # 2 % is above the hardware floor
 
 
 def test_session_uses_the_dialog_contrasts_instead_of_the_default(fake_gaze, fake_time):
@@ -155,7 +150,8 @@ def test_session_uses_the_dialog_contrasts_instead_of_the_default(fake_gaze, fak
 
     session = _make_session(fake_gaze, fixed_contrasts=(0.07,))
     assert {session._fixed_contrast_bag.draw() for _ in range(4)} == {0.07}
-    assert _make_session(fake_gaze, fixed_contrasts=())._fixed_contrast_bag is None  # empty = the staircase
+    with pytest.raises(ValueError):  # an empty set is refused (the staircase it used to select is gone)
+        _make_session(fake_gaze, fixed_contrasts=())
 
 
 # -- suppression index ---------------------------------------------------------------------------
