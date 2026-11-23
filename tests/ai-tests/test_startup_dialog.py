@@ -62,6 +62,8 @@ def test_validate_accepts_comma_decimals_range_edges_and_test_mode_without_id():
     assert valid().flash_spread_sd_ms == FLASH_SPREAD_SD_MS == StartupSettings().flash_spread_sd_ms
     assert valid(flash_spread_text="60,5").flash_spread_sd_ms == 60.5
     assert valid(flash_spread_text="10").flash_spread_sd_ms == 10 and valid(flash_spread_text="250").flash_spread_sd_ms == 250
+    assert valid().return_jump is True and valid(return_jump=False).return_jump is False
+    assert "back" in HELP_TEXTS["return_jump"]
     assert valid(participant_id="", mode="Test").test_mode is True
     assert valid(participant_id="", mode="Test").folder_id == "anonymous"
 
@@ -118,6 +120,9 @@ def test_defaults_from_disk_shipped_remembered_and_damaged_files(data_dir):
     d = defaults_from_disk(data_dir)
     assert (d.participant_id, d.test_mode, d.screen_height_cm, d.viewing_distance_cm) == ("p01", True, 19.0, 60.0)
     assert d.flash_spread_sd_ms == 60.0
+    assert d.return_jump is True  # not stored yet -> shipped default (RETURN_JUMP_DEFAULT)
+    settings.save_last_startup({"participant_id": "p01", "return_jump": False})
+    assert defaults_from_disk(data_dir).return_jump is False
     assert d.run_tutorial is False  # existing folder; the stored tutorial flag is ignored
     assert json.loads((data_dir / "settings.json").read_text())["contrast_floor_percent"] == 1.5
 
@@ -259,10 +264,10 @@ def test_field_order_labels_advanced_section_and_png_renders(dialog, qapp, tmp_p
     assert dialog.height() > closed_height
     order = list(dialog.help_labels)
     assert order == [
-        "participant_id", "mode", "run_tutorial", "screen_height_cm", "viewing_distance_cm", "neon_address",
+        "participant_id", "mode", "run_tutorial", "screen_height_cm", "viewing_distance_cm", "neon_address", "return_jump",
         "contrast_min_percent", "contrast_max_percent", "flash_spread_sd_ms", "show_gaze_indicator",
     ]
-    ys = [dialog.help_labels[k].mapTo(dialog, QtCore.QPoint(0, 0)).y() for k in order[:6]]
+    ys = [dialog.help_labels[k].mapTo(dialog, QtCore.QPoint(0, 0)).y() for k in order[:7]]
     assert ys == sorted(ys)
     assert dialog.help_labels["contrast_min_percent"].text() == "Saccade contrast min (%)"
     assert dialog.help_labels["flash_spread_sd_ms"].text() == "Flash timing spread (ms)"

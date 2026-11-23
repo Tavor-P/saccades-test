@@ -105,8 +105,10 @@ def test_summary_json_schema_is_stable(pooled):
         "index", "ci", "method", "label", "threshold_saccade", "threshold_fixation", "slope", "notes",
         "n_flashes", "correct", "by_contrast", "exclusion_reasons",
         "contrasts_pct", "geometry", "runs_used", "runs_excluded", "flashes_csv", "analysis",
+        "run_kind", "by_leg", "return_latency",
     ]
-    assert s["schema_version"] == 1 and s["participant"] == PID
+    assert s["schema_version"] == 2 and s["participant"] == PID
+    assert s["run_kind"] == "single" and s["by_leg"] is None and s["return_latency"] is None
     assert set(s["n_flashes"]) == {"saccade", "fixation", "excluded", "total"}
     assert set(s["correct"]) == {"saccade", "fixation", "excluded"}
     assert len(s["ci"]) == 2 and s["ci"][0] < s["index"] < s["ci"][1]
@@ -114,7 +116,7 @@ def test_summary_json_schema_is_stable(pooled):
     assert {(r["contrast_pct"], r["condition"]) for r in s["by_contrast"]} == {(c, k) for c in (4.0, 6.0, 8.0) for k in ("saccade", "fixation", "excluded")}
     assert all(set(r) == {"contrast_pct", "condition", "n", "correct"} for r in s["by_contrast"])
     run_keys = {"run", "run_key", "date", "mode", "n_saccade", "n_fixation", "n_excluded", "index", "ci", "method", "notes",
-                "contrasts_pct", "contrasts_from", "geometry", "gaze_latency_ms_median", "longest_gap_ms", "gaps_over_threshold"}
+                "contrasts_pct", "contrasts_from", "geometry", "gaze_latency_ms_median", "longest_gap_ms", "gaps_over_threshold", "run_kind"}
     assert all(set(r) == run_keys for r in s["runs_used"])
     assert all(set(r) == run_keys | {"reason"} for r in s["runs_excluded"])
     assert s["runs_used"][0]["gaze_latency_ms_median"] == 17.5

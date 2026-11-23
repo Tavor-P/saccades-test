@@ -407,12 +407,15 @@ def run_saccade_phase(
     geometry: Geometry | None = None,
     flash_spread_sd_ms: float | None = None,
     neon_address: tuple[str, int] | None = None,
+    return_jump: bool = False,
+    precomputed_return_rt_samples_ms: list[float] | None = None,
 ) -> ExperimentSession | None:
     """The gaze-contingent saccade test. `precomputed_calibration_ratios`/
     `skip_practice_trials`/`precomputed_rt_samples_ms` come from a completed
     TutorialSession (see main()) - when set, this phase reuses that calibration
     and its practice reaction times instead of calibrating, running its own RT
-    test and practising again.
+    test and practising again. `return_jump` (dialog "Return jump") turns on the
+    jump-back trials; `precomputed_return_rt_samples_ms` are the tutorial's return latencies.
     Every trial waits for the participant's SPACE (the built-in break). Returns the completed session, or None if the participant quit early."""
     # Raw gaze is recorded alongside the results CSV so the session can be replayed offline.
     gaze = build_gaze_source(trace_path=logger.gaze_trace_path, **_address_kwargs(neon_address))
@@ -435,6 +438,8 @@ def run_saccade_phase(
             fixed_contrasts=saccade_contrasts,
             geometry=geometry,
             flash_spread_sd_ms=flash_spread_sd_ms,
+            return_jump=return_jump,
+            precomputed_return_rt_samples_ms=precomputed_return_rt_samples_ms,
         )
         go_cue_tone = build_go_cue_tone()
         presenter = FramePresenter(stimuli, narrator)
@@ -500,6 +505,7 @@ def run_tutorial_phase(
     narrator: Narrator,
     geometry: Geometry | None = None,
     neon_address: tuple[str, int] | None = None,
+    return_jump: bool = False,
 ) -> TutorialSession | None:
     """A one-time, narrated on-ramp for first-time participants, run before
     the saccade phase (see main()). Unlike that phase, no key or
@@ -513,7 +519,7 @@ def run_tutorial_phase(
     gaze.start()
     try:  # from here on gaze.stop() must run whatever raises (the Neon threads would leak otherwise)
         clock = PausableClock()
-        session = TutorialSession(gaze, clock, geometry=geometry)
+        session = TutorialSession(gaze, clock, geometry=geometry, return_jump=return_jump)
         go_cue_tone = build_go_cue_tone()
 
         presenter = FramePresenter(stimuli, narrator)
@@ -605,10 +611,11 @@ def find_neon_or_exit(address_text: str, resolve=None, network=None, show_box=No
     raise SystemExit(2)
 
 
-def prompt_session_info() -> tuple[str, bool, bool, bool, tuple[float, ...], Geometry, float, str] | None:
+def prompt_session_info() -> tuple[str, bool, bool, bool, tuple[float, ...], Geometry, float, str, bool] | None:
     """The startup dialog (src/experiment/startup_dialog.py): Participant ID, Mode, Run tutorial, screen height/distance and, under Advanced, the saccade
     phase's contrast range (min/max, see SACCADE_FIXED_CONTRASTS) and the Show gaze indicator toggle. Invalid input keeps the dialog open with a message.
-    Returns (participant_id, show_gaze_indicator, run_tutorial, test_mode, saccade_contrasts, geometry, flash_spread_sd_ms, neon_address_text),
+    Returns (participant_id, show_gaze_indicator, run_tutorial, test_mode, saccade_contrasts, geometry, flash_spread_sd_ms, neon_address_text,
+    return_jump),
     or None if cancelled."""
     from src.experiment.startup_dialog import prompt_startup_settings
 
@@ -625,6 +632,7 @@ def prompt_session_info() -> tuple[str, bool, bool, bool, tuple[float, ...], Geo
         chosen.geometry,
         chosen.flash_spread_sd_ms,
         chosen.neon_address,
+        chosen.return_jump,
     )
 
 
@@ -658,6 +666,7 @@ def main() -> None:
         geometry,
         flash_spread_sd_ms,
         neon_address_text,
+        return_jump,
     ) = session_info
 
     neon = find_neon_or_exit(neon_address_text)  # before the run folder and the fullscreen window exist
@@ -667,6 +676,7 @@ def main() -> None:
     logger.set_saccade_contrasts(saccade_contrasts)
     logger.set_geometry(geometry)
     logger.set_flash_spread_sd_ms(flash_spread_sd_ms)
+    logger.set_return_jump(return_jump)
     win = build_window(fullscreen=True)
     logger.set_display_refresh_hz(measure_refresh_hz(win))
     stimuli = build_stimuli(win, show_hud=test_mode, geometry=geometry)
@@ -675,7 +685,10 @@ def main() -> None:
 
     lost: NeonConnectionError | None = None
     try:
-        _run_phases(win, stimuli, logger, narrator, run_tutorial, show_gaze_indicator, test_mode, saccade_contrasts, geometry, flash_spread_sd_ms, neon_address)
+        _run_phases(
+            win, stimuli, logger, narrator, run_tutorial, show_gaze_indicator, test_mode, saccade_contrasts, geometry, flash_spread_sd_ms,
+            neon_address, return_jump,
+        )
     except NeonConnectionError as exc:  # e.g. the phone slept between the tutorial and the saccade phase: plain message, no traceback
         lost = exc
         print("", NEON_LOST_TITLE.upper(), _neon_lost_message(exc, logger.folder), "", sep="\n", file=sys.stderr, flush=True)
@@ -700,16 +713,21 @@ def _neon_lost_message(exc: Exception, folder) -> str:
     )
 
 
-def _run_phases(win, stimuli, logger, narrator, run_tutorial, show_gaze_indicator, test_mode, saccade_contrasts, geometry, flash_spread_sd_ms, neon_address) -> None:
+def _run_phases(
+    win, stimuli, logger, narrator, run_tutorial, show_gaze_indicator, test_mode, saccade_contrasts, geometry, flash_spread_sd_ms,
+    neon_address, return_jump=False,
+) -> None:
     """Tutorial (optional) then the saccade phase; returns early if the participant quits."""
     precomputed_calibration_ratios = None
     precomputed_rt_samples_ms = None
+    precomputed_return_rt_samples_ms = None
     if run_tutorial:
-        tutorial_session = run_tutorial_phase(win, stimuli, narrator, geometry=geometry, neon_address=neon_address)
+        tutorial_session = run_tutorial_phase(win, stimuli, narrator, geometry=geometry, neon_address=neon_address, return_jump=return_jump)
         if tutorial_session is None:
             return  # quit early
         precomputed_calibration_ratios = tutorial_session.calibration_ratios
         precomputed_rt_samples_ms = tutorial_session.rt_samples_ms
+        precomputed_return_rt_samples_ms = tutorial_session.return_rt_samples_ms if return_jump else None
 
     result = run_saccade_phase(
         win,
@@ -725,6 +743,8 @@ def _run_phases(win, stimuli, logger, narrator, run_tutorial, show_gaze_indicato
         geometry=geometry,
         flash_spread_sd_ms=flash_spread_sd_ms,
         neon_address=neon_address,
+        return_jump=return_jump,
+        precomputed_return_rt_samples_ms=precomputed_return_rt_samples_ms,
     )
     if result is None:
         return  # quit early

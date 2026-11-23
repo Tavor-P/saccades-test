@@ -27,6 +27,7 @@ SCENARIOS: dict[str, dict] = {
     "dropouts": {"dropout_rate_per_s": 1.0},
     "realistic": dict(REALISTIC_RT),  # ex-Gaussian RT with drift, autocorrelation, anticipations and lapses
     "no_suppression": {"suppressed_threshold_contrast": 0.05},  # control: flash is equally visible in the saccade
+    "learned": {"return_mode": "learned"},  # return saccades become predictive (planned at the go cue) - a guess
 }
 
 
@@ -116,7 +117,13 @@ def summarize(sim: SimulationResult) -> dict:
     truly_in_indices = {r.index for r in truly_in}
     # Reaction-time ground truth: how well the session's avg_rt_used_ms (what scheduled each
     # flash) tracks the participant's true mean at that trial, and the true latency of that trial.
-    used = [(r.avg_rt_used_ms, sim.trial_cues[(r.phase, r.index)]) for r in flashes if r.avg_rt_used_ms is not None and (r.phase, r.index) in sim.trial_cues]
+    # Out-leg flashes only: a return-leg flash's avg_rt_used_ms is the return-latency average.
+    used = [
+        (r.avg_rt_used_ms, sim.trial_cues[(r.phase, r.index)])
+        for r in flashes
+        if r.avg_rt_used_ms is not None and r.flash_leg != "return" and (r.phase, r.index) in sim.trial_cues
+    ]
+    return_rows = [r for r in rows if r.jump_back_ms_after_go_cue is not None]
     return {
         "trials": len(rows),
         "session_completed": sim.session.render_state()["hud"]["phase"] == "COMPLETE",
@@ -145,11 +152,25 @@ def summarize(sim: SimulationResult) -> dict:
         "avg_rt_bias_ms": _mean([a - c.true_mean_ms for a, c in used]),  # used average minus true mean
         "avg_rt_abs_err_ms": _mean([abs(a - c.true_mean_ms) for a, c in used]),
         "avg_rt_abs_err_vs_trial_ms": _mean([abs(a - c.latency_ms) for a, c in used]),  # vs this trial's actual latency
+        # Return jump (all zero / None when the setting is off): flashes per leg, and of them the ones that really
+        # fell in the saccade (ground truth) and the ones the live classifier keeps.
+        "return_jump_trials": len(return_rows),
+        "forced_jump_backs": sum(r.jump_back_forced is True for r in rows),
+        "mean_return_reaction_ms": _mean([r.return_reaction_ms for r in return_rows]),
+        **{
+            f"{what}_{leg}": sum(
+                1 for r in flashes if (r.flash_leg or "out") == leg and (
+                    sim.flash_truth.get((r.phase, r.index)) is True if what == "truly_in_saccade" else r.index in valid_indices
+                )
+            )
+            for what in ("truly_in_saccade", "valid") for leg in ("out", "return")
+        },
     }
 
 
 def simulate(scenario: str = "default", trials: int = 30, seed: int = 0, profile: dict | None = None, constants: dict | None = None, test_mode: bool = True) -> SimulationResult:
-    """Run one simulated session (no summary) with an optional temporary constant override."""
+    """Run one simulated session (no summary) with an optional temporary constant override. The return jump follows
+    RETURN_JUMP_DEFAULT, so `constants={"RETURN_JUMP_DEFAULT": False}` (CLI: --set RETURN_JUMP_DEFAULT=false) turns it off."""
     with override_constants(constants or {}):
         return simulate_session(max_trials=trials, profile=make_profile(scenario, **(profile or {})), seed=seed, test_mode=test_mode)
 
@@ -164,6 +185,8 @@ SWEEP_METRICS = (
     "valid_flash_rate", "valid_precision", "valid_recall", "mean_reaction_latency_ms",
     "mean_onset_detection_lag_ms", "tracking_not_ok", "timeouts",
     "avg_rt_bias_ms", "avg_rt_abs_err_ms", "avg_rt_abs_err_vs_trial_ms",
+    "valid_flashes", "flashes_truly_in_saccade", "truly_in_saccade_out", "truly_in_saccade_return",
+    "forced_jump_backs", "mean_return_reaction_ms", "simulated_seconds",
 )
 
 

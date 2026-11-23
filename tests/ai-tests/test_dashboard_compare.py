@@ -172,3 +172,9 @@ def test_study_page_lists_people_and_serves_the_csv(client, data):
     csv_response = client.get("/study/study_summary.csv")
     assert csv_response.status_code == 200 and csv_response.data.startswith(b"participant,group,note,status")
     assert (data / "study_summary.csv").exists()
+
+
+def test_single_vs_return_jump_mismatch_is_shown_on_the_compare_page(client, data):
+    sr.write_run(data, "R01", START + 20 * DAY, n_trials=60, seed=40, return_jump=True)
+    page = _html(client.get("/compare?a=T01&b=R01"))
+    assert "different settings" in page and "run kind return_jump/" in page and "run kind single" in page and "Traceback" not in page

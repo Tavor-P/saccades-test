@@ -10,6 +10,8 @@ TUTORIAL_INTRO = (
     "The line can be very faint. If you are not sure, guess.",
     "You can rest between trials. Nothing starts until you press SPACE.",
 )
+# Run setting "Return jump" on: shown after the first intro line, and replacing the practice/first-trial lines below.
+TUTORIAL_INTRO_RETURN_JUMP = "Then it jumps back to the left. Follow it back right away."
 
 # -- calibration (tutorial and, without a tutorial, the saccade phase) --
 CALIBRATE_LEFT = "Look at the dot on the left, then press SPACE."
@@ -20,11 +22,13 @@ CALIBRATE_RIGHT = "Look at the dot on the right, then press SPACE."
 QUIZ = "Press UP if the line is above the dot, DOWN if it is below."
 PRACTICE_INTRO = "Practice lines are clear. Real ones are much fainter, so guessing is normal."
 PRACTICE_DONE = "Practice done. The real test starts now. Press SPACE."
+PRACTICE_START_RETURN_JUMP = "Press SPACE. Look at the dot on the left. Follow it there and back."
 
 # -- saccade phase --
 RT_TEST_INTRO = "Press SPACE. Look at the dot on the left. Follow it when it jumps."
 ANSWER = "Press UP if the line was above, DOWN if below. If unsure, guess."
 FIRST_TRIAL = "Nothing starts until you press SPACE. Follow the dot when it jumps."
+FIRST_TRIAL_RETURN_JUMP = "Nothing starts until you press SPACE. Follow the dot there and back."
 FINISHED = "All done. Thank you!"
 
 # -- glasses-video sync step --

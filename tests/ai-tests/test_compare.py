@@ -263,3 +263,53 @@ def test_reason_for_no_index_is_not_repeated(tmp_path):
     write_run(tmp_path, "Z01", 1790000000, n_trials=40, saccade_fraction=0.0, seed=4)  # no saccade flashes at all
     reason = cmp.load_person("Z01", tmp_path).reason
     assert reason.startswith("suppression index cannot be computed: 0 saccade flashes") and "cannot compute" not in reason
+
+
+# -- run kind (single vs return-jump) ------------------------------------------------------------
+
+
+def test_one_vs_one_with_different_run_kinds_is_not_comparable():
+    a, b = person("A1", "A", seed=5), person("B1", "B", seed=6)
+    b.run_kind = "return_jump/arrival"
+    r = cmp.compare_people([a, b], n_boot=50)
+    assert not r.comparable and all(not p.included for p in r.people)
+    assert "different settings" in r.headline and "run kind return_jump/arrival" in r.headline and "run kind single" in r.headline
+
+
+def test_group_mode_excludes_the_minority_run_kind_and_different_triggers_do_not_mix():
+    people = _group("A", "A", [0.1, 0.2, 0.3]) + _group("B", "B", [0.4, 0.5, 0.6])
+    people[0].run_kind = "return_jump/arrival"
+    people[3].run_kind = "return_jump/onset"
+    r = cmp.compare_people(people, n_boot=50)
+    reasons = {p.participant: p.reason for p in r.excluded}
+    assert set(reasons) == {"A0", "B0"} and all("run kind" in v and "differ from the majority's" in v for v in reasons.values())
+
+
+def test_matching_run_kinds_compare_as_before():
+    a, b = person("A1", "A", ts=0.11, seed=5), person("B1", "B", ts=0.045, seed=6)
+    a.run_kind = b.run_kind = "return_jump/arrival"
+    r = cmp.compare_people([a, b], n_boot=100)
+    assert r.comparable and r.stats["difference"] > 0
+
+
+def test_schema_1_summary_without_run_kind_counts_as_single(tmp_path):
+    write_run(tmp_path, "S01", 1790000000, n_trials=90, seed=1)
+    cmp.compare(["S01"], ["S01x"], tmp_path, n_boot=50) if False else None
+    cmp.load_person("S01", tmp_path)  # writes the saved schema-2 analysis
+    path = tmp_path / "S01" / "analysis" / "summary.json"
+    summary = json.loads(path.read_text())
+    for key in ("run_kind", "by_leg", "return_latency"):
+        summary.pop(key)
+    summary["schema_version"] = 1
+    path.write_text(json.dumps(summary), encoding="utf-8")
+    old = cmp.load_person("S01", tmp_path, refresh=False)  # use the saved schema-1 file as is
+    assert old.included and old.analysis_source == "saved" and old.run_kind == "single"
+    assert old.compat_key == person("X", "A", geometry=old.geometry, contrasts=old.contrasts_pct).compat_key
+
+
+def test_end_to_end_single_vs_return_jump_is_refused(tmp_path):
+    write_run(tmp_path, "S01", 1790000000, n_trials=90, seed=1)
+    write_run(tmp_path, "S02", 1790000000, n_trials=90, seed=2, return_jump=True)
+    r = cmp.compare(["S01"], ["S02"], tmp_path, n_boot=50)
+    assert not r.comparable and "different settings" in r.headline
+    assert "run kind single" in r.people[0].reason and "run kind return_jump/" in r.people[0].reason

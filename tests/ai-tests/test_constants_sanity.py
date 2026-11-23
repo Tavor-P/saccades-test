@@ -40,3 +40,14 @@ def test_gaze_constants_dead_zone_smoothing_neon_staleness_and_onset_displacemen
     assert 0.03 <= c.SACCADE_ONSET_DISPLACEMENT < 0.5 - g.GAZE_DEAD_ZONE
     assert 0 < c.ONSET_BASELINE_WINDOW_MS < 1000
     assert c.SACCADE_ONSET_DISPLACEMENT < c.ONSET_BASELINE_NEAR_SOURCE < 0.5
+
+
+def test_return_jump_constants():
+    """The forced jump-back comes well inside the saccade timeout, and after an out-leg control flash at the default
+    average (the jump also waits for the out flash itself, so this only keeps the usual case clean)."""
+    assert isinstance(c.RETURN_JUMP_DEFAULT, bool)
+    assert 0 < c.RETURN_LEG_FLASH_FRACTION < 1
+    assert c.RETURN_JUMP_LANDING_TIMEOUT_MS < c.SACCADE_TIMEOUT_MS
+    assert c.RETURN_JUMP_LANDING_TIMEOUT_MS >= c.DEFAULT_REACTION_TIME_MS + max(c.CONTROL_OFFSETS_MS) + c.TIMING_JITTER_MS
+    assert c.RETURN_JUMP_TRIGGER in ("arrival", "onset")
+    assert 0 < c.RETURN_FLASH_SPREAD_SD_MS <= c.FLASH_SPREAD_SD_MS

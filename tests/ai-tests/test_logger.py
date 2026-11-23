@@ -46,8 +46,9 @@ def test_writes_the_run_folder_with_its_files_and_the_trial_columns_in_order(tmp
     assert header.split(",") == FIELDNAMES == [c.name for c in TRIAL_COLUMNS]
     assert FIELDNAMES == [
         "phase", "trial", "contrast_pct", "flash_shown", "flash_during_saccade", "answered", "correct", "outcome",
-        "line_side", "answer_side",
-        "flash_ms_after_go_cue", "reaction_ms", "answer_ms", "flash_unix_ms", "tracking_ok",
+        "line_side", "answer_side", "flash_leg",
+        "flash_ms_after_go_cue", "out_arrival_ms_after_go_cue", "jump_back_ms_after_go_cue", "reaction_ms", "return_reaction_ms",
+        "answer_ms", "flash_unix_ms", "jump_back_forced", "left_target_before_jump", "tracking_ok",
     ]
 
 
@@ -59,6 +60,7 @@ def test_session_json_sections_and_what_the_setters_record(tmp_path, monkeypatch
     assert meta["participant"]["id"] == "alice"
     assert meta["run"]["unix_timestamp"] > 0 and meta["run"]["mode"] is None
     assert "viewing_distance_cm" in meta["settings"] and meta["settings"]["calibration"] is None
+    assert meta["settings"]["return_jump_trigger"] in ("arrival", "onset") and meta["settings"]["return_flash_spread_sd_ms"] > 0
     assert "constants" not in meta  # the giant constants snapshot is gone
 
     other = tmp_path / "other"

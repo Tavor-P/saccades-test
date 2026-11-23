@@ -5,7 +5,7 @@
     python tests/ai-tests/find_bugs.py --extreme          # only hostile participants/trackers
 
 Each session draws a random ParticipantProfile (reaction time, noise, latency,
-dropouts, response behaviour ...), runs the REAL ExperimentSession, then checks invariants.py and watches
+dropouts, response behaviour ...) and switches the return jump on or off at random, runs the REAL ExperimentSession, then checks invariants.py and watches
 for exceptions and hangs. Every finding prints a one-line command that reproduces
 it, so a failure can be handed straight to `run_sim.py --timeline`.
 Exit status is 1 if anything was found.
@@ -37,6 +37,8 @@ PROFILE_RANGES = {
     "dropout_rate_per_s": (0.0, 4.0),
     "dropout_ms": (20, 400),
     "gaze_offset_ratio": (-0.05, 0.05),
+    "return_reaction_ms_mean": (80, 600),  # only matters with the return jump on
+    "return_reaction_ms_sd": (1, 150),
 }
 
 # Hostile one-off situations that have to terminate cleanly.
@@ -50,6 +52,7 @@ EXTREME_PROFILES = {
     "zero_noise": {"gaze_noise_ratio": 0.0},
     "very_noisy": {"gaze_noise_ratio": 0.05},
     "instant_saccades": {"saccade_ms_min": 8, "saccade_ms_max": 12},
+    "never_returns": {"return_reaction_ms_mean": 20_000, "return_reaction_ms_sd": 1},  # return leg times out
 }
 
 
@@ -57,17 +60,18 @@ def random_profile(rng: random.Random) -> dict:
     return {k: round(rng.uniform(lo, hi), 4) for k, (lo, hi) in PROFILE_RANGES.items() if rng.random() < 0.5}
 
 
-def run_one(profile: dict, seed: int, trials: int) -> tuple[list[str], float]:
+def run_one(profile: dict, seed: int, trials: int, constants: dict | None = None) -> tuple[list[str], float]:
     """-> (findings, seconds). Findings include crashes and hangs as strings."""
     t0 = time.time()
     try:
-        return check_session(simulate(trials=trials, seed=seed, profile=profile)), time.time() - t0
+        return check_session(simulate(trials=trials, seed=seed, profile=profile, constants=constants)), time.time() - t0
     except Exception:  # noqa: BLE001 - the whole point is to catch anything
         return [f"EXCEPTION: {traceback.format_exc(limit=3).strip().splitlines()[-1]}"], time.time() - t0
 
 
-def repro_command(profile: dict, seed: int, trials: int) -> str:
+def repro_command(profile: dict, seed: int, trials: int, constants: dict | None = None) -> str:
     parts = [f"python tests/ai-tests/run_sim.py --seed {seed} --trials {trials}"]
+    parts += [f"--set {k}={v}" for k, v in (constants or {}).items()]
     parts += [f"--profile {k}={v}" for k, v in profile.items()]
     return " ".join(parts)
 
@@ -82,19 +86,33 @@ def main() -> int:
     a = p.parse_args()
 
     rng = random.Random(a.seed)
-    cases = list(EXTREME_PROFILES.items())
+    # Hostile profiles run with the return jump at its default (on); random ones switch it off half the time, and
+    # half of the jump-on ones use the "onset" trigger. A quarter of the random participants make learned (predictive) returns.
+    cases = [(name, profile, {}) for name, profile in EXTREME_PROFILES.items()]
     if not a.extreme:
-        cases += [(f"random_{i}", random_profile(rng)) for i in range(a.sessions)]
+        for i in range(a.sessions):
+            profile = random_profile(rng)
+            r = rng.random()
+            if r >= 0.5:
+                constants, suffix = {"RETURN_JUMP_DEFAULT": False}, "_nojump"
+            elif r < 0.25:
+                constants, suffix = {"RETURN_JUMP_TRIGGER": "onset"}, "_onset"
+            else:
+                constants, suffix = {}, ""
+            if rng.random() < 0.25:
+                profile["return_mode"] = "learned"
+                suffix += "_learned"
+            cases.append((f"random_{i}{suffix}", profile, constants))
 
     findings = []
-    for i, (name, profile) in enumerate(cases):
+    for i, (name, profile, constants) in enumerate(cases):
         seed = a.seed + i
-        problems, secs = run_one(profile, seed, a.trials)
+        problems, secs = run_one(profile, seed, a.trials, constants)
         status = "ok" if not problems else f"{len(problems)} PROBLEM(S)"
         if not a.json:
             print(f"[{i + 1}/{len(cases)}] {name:28s} {secs:5.1f}s  {status}", flush=True)
         for msg in problems:
-            findings.append({"case": name, "seed": seed, "problem": msg, "repro": repro_command(profile, seed, a.trials)})
+            findings.append({"case": name, "seed": seed, "problem": msg, "repro": repro_command(profile, seed, a.trials, constants)})
 
     if a.json:
         print(json.dumps(findings, indent=1))

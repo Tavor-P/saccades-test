@@ -97,3 +97,23 @@ class TrialResult:
     avg_rt_used_ms: float | None = None
     scheduled_delay_ms: float | None = None
     gaze_latency_ms: float | None = None
+    # Return-jump trials (run setting "Return jump"; None in rt_test rows and CSVs logged before it existed):
+    # flash_leg: 'out' (flash during the go-cue saccade) or 'return' (during the saccade back after the
+    # target jumped back to the start symbol); set on every flash-shown saccade-phase trial ('out' when the
+    # setting is off). jump_back_ms_after_go_cue: the frame the target jumped back, ms after the go cue
+    # (same timeline as scheduled_delay_ms, which stays flash minus go cue for both legs).
+    # return_reaction_ms: jump-back frame to the return saccade's detected onset, SIGNED (capture time; < 0 =
+    # the eye turned back before the jump was drawn; None if no onset). jump_back_forced: True if the jump
+    # trigger (RETURN_JUMP_TRIGGER) never happened and the jump came at RETURN_JUMP_LANDING_TIMEOUT_MS.
+    # out_arrival_ms_after_go_cue: first sample inside the target zone, ms after the go cue (with the jump on
+    # this is the out landing used for saccade_duration_ms / flash_during_saccade; lets the analysis re-anchor
+    # return latency to the arrival). left_target_before_jump: the last sample captured before the jump frame
+    # was already outside the target zone (after arriving). These are None when the setting is off or no jump happened.
+    # For 'return' rows flash_during_saccade / flash_relative_to_onset_ms / avg_rt_used_ms refer to the
+    # return leg; reaction_latency_ms / onset_detection_lag_ms / saccade_duration_ms always to the out leg.
+    flash_leg: str | None = None
+    jump_back_ms_after_go_cue: float | None = None
+    return_reaction_ms: float | None = None
+    jump_back_forced: bool | None = None
+    out_arrival_ms_after_go_cue: float | None = None
+    left_target_before_jump: bool | None = None

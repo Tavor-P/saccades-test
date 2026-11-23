@@ -175,6 +175,35 @@ TIMING_JITTER_MS = 10
 # () = no controls.
 CONTROL_OFFSETS_MS = (400, 500)
 
+# Return-jump trials (startup dialog "Return jump", first-time default RETURN_JUMP_DEFAULT): once the live classifier sees the
+# eye arrive at the saccade target (or leave the start, see RETURN_JUMP_TRIGGER), the target jumps straight back to where the eye started (the target symbol disappears and
+# the start symbol reappears), the participant looks back, and only then the trial waits for the UP/DOWN answer. Each trial
+# still flashes exactly once, on the OUT leg (go cue -> target) or the RETURN leg (jump-back -> start symbol). The return
+# leg gives a second, largely free saccade per trial; it is scheduled off its own rolling return-latency average.
+# Off = the old one-saccade trial, unchanged.
+RETURN_JUMP_DEFAULT = True
+# Share of trials whose flash goes on the return leg, dealt from a shuffled bag (4 return : 1 out at 0.8) so the split is exact
+# over every 5 trials. The out leg keeps some flashes so the out saccade stays a probed, unpredictable movement; the return leg
+# gets most because its flashes come on top of the out leg's. A guess: re-decide after the first glasses runs.
+RETURN_LEG_FLASH_FRACTION = 0.8
+# What makes the target jump back (the jump-back frame is the return leg's start, logged as jump_back_ms_after_go_cue):
+#   "arrival": the first live gaze sample inside the target zone. With the gaze stream ~13-20 ms late, the jump is drawn
+#              right after the real landing, so the return saccade answers a target that has just been reached.
+#   "onset":   the out saccade's confirmed onset, the same OnsetDetector rule the RT test uses to hide its cross. The jump
+#              is drawn ~25 ms after the real onset, i.e. MID-saccade: the eye lands where the target used to be.
+# Either way the jump never comes before an out-leg flash has been drawn (it waits for it). "arrival" for now; the user picks.
+RETURN_JUMP_TRIGGER = "arrival"
+# Jump back anyway (and log jump_back_forced = yes) if the trigger has not happened this long after the go cue.
+# 1500 ms: a slow reaction (~500 ms) + saccade (~50) + gaze delay (~20) is ~600 ms, and a hypometric first saccade needs
+# another ~200-300 ms for its correction; 1500 leaves room for both without letting a lost track stall the trial.
+RETURN_JUMP_LANDING_TIMEOUT_MS = 1500
+# Return-leg flash timing: a bell curve like FLASH_SPREAD_SD_MS's, centred on the rolling return-latency average and cut to
+# FLASH_WINDOW_MIN_MS..FLASH_WINDOW_MAX_MS after the JUMP-BACK frame. Narrower than the out leg's because a practised,
+# predictable return saccade should vary less. 40 is a GUESS: set it from the return_reaction_ms SD of the first glasses runs.
+# The return average keeps negative and near-zero latencies (anticipatory returns); once it is <= 0 every non-control
+# return flash is drawn at the jump-back frame itself (0 ms), the earliest moment a return flash can exist.
+RETURN_FLASH_SPREAD_SD_MS = 40
+
 # Fixed probe contrasts for the saccade phase (method of constant stimuli), drawn without
 # repeats like the timing offsets. (An adaptive ZEST staircase was used once and removed: it only
 # learned from flashes the live check said landed in the saccade, and with the ~90 ms gaze latency
