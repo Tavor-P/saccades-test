@@ -334,7 +334,7 @@ class NeonGazeSource(GazeSource):
 
     def _estimate_clock_offset(self) -> None:
         """Phone-vs-PC clock offset (Pupil's Time Echo protocol), needed to turn a gaze datum's device timestamp into its capture time.
-        A failure does not stop the session, but it is loud: stamps fall back to arrival time (~95 ms late) and analyze_session cannot
+        A failure does not stop the session, but it is loud: stamps fall back to arrival time (late by the network delay) and analyze_session cannot
         judge the run, so it prints a WARNING and records "failed (reason)" in clock_offset_status (session.json gaze_quality)."""
         try:
             est = self._time_offset_estimate()
@@ -349,7 +349,7 @@ class NeonGazeSource(GazeSource):
             target = f" at {self.phone_ip}" if self.phone_ip else ""
             print(
                 f"WARNING: could not measure the Neon phone's clock offset{target} ({reason}). Gaze will be stamped with arrival time "
-                "(~95 ms late) and analyze_session will need --offset-ms. Restart the Companion app / check the network and start again.",
+                "(late by the network delay) and analyze_session will need --offset-ms. Restart the Companion app / check the network and start again.",
                 file=sys.stderr,
             )
             return

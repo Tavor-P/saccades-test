@@ -26,7 +26,7 @@ COLUMNS = (
     "n_saccade", "n_fixation", "n_flashes_total", "correct_saccade", "correct_fixation", "contrasts_pct",
     "screen_height_cm", "viewing_distance_cm", "gaze_delay_ms_median", "longest_gap_ms_max", "gaps_over_threshold_total", "flags",
 )
-GAZE_DELAY_FLAG_MS = 50.0  # median gaze delay above this: the known ~95 ms problem (live classification only; post-hoc analysis is unaffected)
+GAZE_DELAY_FLAG_MS = 50.0  # median gaze delay above this: an unusually high delay (live classification only; post-hoc analysis is unaffected)
 LONG_GAP_FLAG_MS = TRACKING_LOSS_WINDOW_MS  # a tracking gap at least as long as the window that already excludes nearby flashes
 
 
