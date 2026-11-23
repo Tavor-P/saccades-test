@@ -10,9 +10,9 @@ def score_outcome(
     actual_orientation: Side | None,
 ) -> str:
     """Shared scoring (outside of the saccade phase's "timeout" case, which its
-    own state machine handles before falling back to this). Every trial flashes a grating and is scored as a 2-alternative
-    orientation discrimination (correct/incorrect/miss) rather than plain yes/no
-    detection - correctly reporting *which* orientation it was rules out a
+    own state machine handles before falling back to this). Every trial flashes a line and is scored as a 2-alternative
+    side discrimination (correct/incorrect/miss) rather than plain yes/no
+    detection - correctly reporting *which* side it was rules out a
     lucky guess in a way merely detecting *that* something flashed doesn't.
     (Old sessions also hold "false_alarm"/"correct_rejection" outcomes from the
     removed catch trials; they are only ever read, never produced.)"""
@@ -22,7 +22,7 @@ def score_outcome(
 
 
 def is_valid_for_saccadic_analysis(flash_during_saccade: bool | None, tracking_ok: bool | None = None) -> bool:
-    """The single validity gate for a saccade-phase, grating-shown trial's
+    """The single validity gate for a saccade-phase, line-shown trial's
     flash_during_saccade - applied by the session's valid-trial count
     (ExperimentSession._valid_trial_count). Only True counts - False
     (the flash landed outside the real-time-detected saccade window) and

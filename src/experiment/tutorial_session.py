@@ -50,7 +50,7 @@ _CALIBRATION_PHASES = (Phase.CALIBRATE_LEFT, Phase.CALIBRATE_CENTER, Phase.CALIB
 
 
 class TutorialSession:
-    """A one-time, narrated on-ramp for first-time participants, run before both real phases. Stages:
+    """A one-time, narrated on-ramp for first-time participants, run before the saccade phase. Stages:
 
     1. Calibration - the same 3-round discard-first/average procedure as ExperimentSession (CalibrationRounds); the result
        is exposed as `calibration_ratios` for the saccade phase to reuse.

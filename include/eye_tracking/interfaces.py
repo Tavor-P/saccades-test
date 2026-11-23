@@ -19,7 +19,7 @@ class GazeSource(ABC):
     @property
     @abstractmethod
     def is_available(self) -> bool:
-        """Whether the underlying device (camera / eye tracker) is actually connected."""
+        """Whether the underlying device (Neon glasses) is actually connected."""
 
     @abstractmethod
     def latest_sample(self) -> GazeSample: ...
@@ -44,4 +44,4 @@ class GazeSource(ABC):
         calibration target, so average_recent_ratio() reflects only samples
         gathered after this point - not whatever they were looking at
         previously. A no-op for sources that don't use a rolling sample
-        window (e.g. ioHub, which runs its own vendor calibration routine)."""
+        window."""

@@ -36,10 +36,9 @@ def build_saccade_sequence(num_practice: int) -> list[TrialSpec]:
 def generate_next_saccade_trial(
     index: int, source: Target, offset_bag: ShuffledBag[int]
 ) -> tuple[TrialSpec, Target]:
-    """One real-block trial at a time, for ExperimentSession's open-ended
-    main loop (see include.experiment.constants' stopping-criterion
-    constants) - total trial count isn't known upfront the way it is for
-    build_saccade_sequence's fixed-length schedule. Source/target
+    """One real-block trial at a time, generated trial by trial; ExperimentSession
+    stops at `SACCADE_FIXED_TRIALS_*` (include.experiment.constants). Unlike
+    build_saccade_sequence, which builds its whole fixed-length schedule at once. Source/target
     dot<->cross alternation stays deterministic, same as
     _build_saccade_trials. Returns (trial, next source) - the caller threads
     `source` through consecutive calls the same way _build_saccade_trials
