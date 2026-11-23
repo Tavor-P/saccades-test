@@ -320,7 +320,7 @@ class ResultLogger:
         self._rows: list[TrialResult] = []
 
         self._metadata = {
-            "participant": {"id": participant_id, "name": None, "gender": None, "age": None},
+            "participant": {"id": participant_id, "gender": None, "age": None},
             "run": {
                 "mode": None if test_mode is None else ("test" if test_mode else "real"),
                 "started_at": datetime.now().isoformat(timespec="seconds"),
