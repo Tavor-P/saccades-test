@@ -60,6 +60,7 @@ def test_session_json_sections_and_what_the_setters_record(tmp_path, monkeypatch
     assert meta["participant"]["id"] == "alice"
     assert meta["run"]["unix_timestamp"] > 0 and meta["run"]["mode"] is None
     assert "viewing_distance_cm" in meta["settings"] and meta["settings"]["calibration"] is None
+    assert meta["settings"]["return_jump_trigger"] in ("arrival", "onset") and meta["settings"]["return_flash_spread_sd_ms"] > 0
     assert "constants" not in meta  # the giant constants snapshot is gone
 
     other = tmp_path / "other"

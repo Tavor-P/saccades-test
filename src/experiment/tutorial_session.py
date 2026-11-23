@@ -149,6 +149,7 @@ class TutorialSession:
         self._return_landed_since: float | None = None
         self._return_landed = False
         self._out_arrived = False  # first in-target sample seen (the "arrival" trigger; the return detector listens from it)
+        self._out_arrived_before_jump = False
         self._return_reaction_ms: float | None = None
 
     @property
@@ -253,6 +254,7 @@ class TutorialSession:
         self._return_landed_since = None
         self._return_landed = False
         self._out_arrived = False
+        self._out_arrived_before_jump = False
         self._return_reaction_ms: float | None = None
 
     def _start_foreperiod(self) -> None:
@@ -289,7 +291,7 @@ class TutorialSession:
         sample_t = self._sample_time(sample, now)
 
         # After the jump only while the out onset is still being confirmed past an arrival (see ExperimentSession._measure_reaction).
-        before_jump = self._jump_at is None or sample_t < self._jump_at or self._out_arrived
+        before_jump = self._jump_at is None or sample_t < self._jump_at or self._out_arrived_before_jump
         if not self._onset_detector.confirmed and sample_t >= self._trial_start and before_jump:
             if self._onset_detector.update(sample, sample_t):
                 self._rt.add((self._onset_detector.since - self._trial_start) * 1000)
@@ -332,6 +334,7 @@ class TutorialSession:
         target_zone = _zone_for(self._target)
         if (not self._out_arrived and sample_t >= self._trial_start and sample.face_found and sample.zone is target_zone):
             self._out_arrived = True
+            self._out_arrived_before_jump = self._jump_at is None
             self._landed = True  # the out landing, in return-jump mode (same rule as ExperimentSession)
             if self._return_onset_detector is None:
                 self._return_onset_detector = OnsetDetector(target_zone, wait_for_baseline=True)

@@ -771,8 +771,9 @@ class ExperimentSession:
         for s, s_t in new_samples:
             if s_t < self._trial_start_time:
                 continue  # captured before the go-cue (it just arrived after it): cannot be a reaction to it
-            if self._jump_at is not None and s_t >= self._jump_at and self._out_arrived_at is None:
-                break
+            arrived_before_jump = self._out_arrived_at is not None and self._out_arrived_at <= (self._jump_at or 0.0)
+            if self._jump_at is not None and s_t >= self._jump_at and not arrived_before_jump:
+                break  # a late arrival after a FORCED jump must not let a > 1.5 s "reaction" into the RT average
             if not self._onset_detector.confirmed and self._onset_detector.update(s, s_t):
                 self._reaction_latency_ms = (self._onset_detector.since - self._trial_start_time) * 1000
                 self._record_reaction_time(self._reaction_latency_ms)
