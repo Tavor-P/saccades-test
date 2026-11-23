@@ -52,15 +52,14 @@ def test_index_lists_sessions_or_says_none(client, tmp_path):
     assert b"p9" in response.data
 
 
-def test_update_session_persists_fields_rejects_a_bad_age_and_404s_for_unknown(client, tmp_path):
-    _write_session(tmp_path, "456")
-    response = client.post("/sessions/456", json={"name": "Sam", "gender": "man", "age": "31"})
+def test_old_session_with_personal_fields_lists_fine_and_page_never_shows_them(client, tmp_path):
+    _write_session(tmp_path, "321", meta={"participant_id": "p5", "name": "Zelda Quux", "gender": "nonbinary", "age": 47})
+    response = client.get("/")
     assert response.status_code == 200
-    assert response.get_json() == {"ok": True}
-    meta = json.loads((tmp_path / "results_456_meta.json").read_text())
-    assert meta["name"] == "Sam" and meta["age"] == 31
-    assert client.post("/sessions/456", json={"name": "", "gender": "", "age": "nope"}).status_code == 400
-    assert client.post("/sessions/000000", json={"name": "", "gender": "", "age": ""}).status_code == 404
+    assert b"p5" in response.data
+    for leaked in (b"Zelda", b"Quux", b"nonbinary", b"47", b"Gender", b"Age", b"Name contains"):
+        assert leaked not in response.data
+    assert client.post("/sessions/321", json={"name": "Sam"}).status_code == 405  # the save route is gone
 
 
 def test_delete_session_removes_it_from_disk_and_the_index_and_404s_for_unknown(client, tmp_path):

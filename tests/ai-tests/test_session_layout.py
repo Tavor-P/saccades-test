@@ -97,7 +97,7 @@ def test_old_layout_grating_and_line_rows_load_and_unknown_values_read_as_none(t
     assert read_trials(data_access.csv_path_for("1792967858"))[6].orientation is None
 
 
-def test_dashboard_lists_edits_and_deletes_new_and_old_sessions(tmp_path, monkeypatch):
+def test_dashboard_lists_and_deletes_new_and_old_sessions(tmp_path, monkeypatch):
     shutil.copytree(FIXTURES, tmp_path, dirs_exist_ok=True)
     log = _new_run(tmp_path, monkeypatch, participant="alice", test_mode=True)
     monkeypatch.setattr(data_access, "DATA_DIR", tmp_path)
@@ -105,12 +105,6 @@ def test_dashboard_lists_edits_and_deletes_new_and_old_sessions(tmp_path, monkey
     sessions = data_access.discover_sessions()
     assert sessions[0].timestamp == key
     assert sessions[0].metadata["participant_id"] == "alice" and sessions[0].metadata["test_mode"] is True
-    data_access.save_participant_info(key, "Alice", "f", "31")
-    assert data_access.load_metadata(key)["age"] == 31
-    assert json.loads((log.folder / "session.json").read_text())["participant"]["name"] == "Alice"
-    data_access.save_participant_info("1792967858", "Old", "", "")
-    assert json.loads((tmp_path / "results_1792967858_meta.json").read_text())["name"] == "Old"
-
     (log.glasses_dir / "video.mp4").write_bytes(b"x")
     data_access.delete_session(key)  # a new-layout delete removes the whole run folder, glasses video included
     assert not log.folder.exists() and not (tmp_path / "alice").exists()
