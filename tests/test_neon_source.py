@@ -244,3 +244,60 @@ def test_receive_and_ingest_errors_are_counted_logged_once_and_the_loop_survives
     assert source._thread.is_alive()
     source.stop()
     assert source.quality_summary()["receive_errors"] > 0
+
+
+def _quiet_device(**extra):
+    return SimpleNamespace(receive_gaze_datum=lambda timeout_seconds=None: None, close=lambda: None, **extra)
+
+
+@pytest.mark.parametrize(
+    "estimate, reason",
+    [
+        (lambda: None, "returned None"),  # what the Real-Time API gives for an unreachable time-echo port / old Companion app
+        (lambda: (_ for _ in ()).throw(OSError("connection refused")), "OSError: connection refused"),
+    ],
+)
+def test_a_failed_clock_offset_is_loud_and_recorded_for_session_json(capsys, estimate, reason):
+    source = NeonGazeSource(device=_quiet_device(estimate_time_offset=estimate, phone_ip="192.168.43.1"), address="192.168.43.1")
+    assert source.quality_summary()["clock_offset_status"] == "not started"
+    source.start()
+    source.stop()
+    status = source.quality_summary()["clock_offset_status"]
+    assert status.startswith("failed (") and reason in status
+    assert not source.timestamps_are_capture_time
+    err = capsys.readouterr().err
+    assert "WARNING: could not measure the Neon phone's clock offset at 192.168.43.1" in err and reason in err
+
+
+def test_a_hanging_clock_offset_estimate_times_out_instead_of_blocking_start(monkeypatch):
+    import threading
+
+    from src.eye_tracking import neon_source as module
+
+    monkeypatch.setattr(module, "NEON_CLOCK_ESTIMATE_TIMEOUT_S", 0.05)
+    release = threading.Event()
+    source = NeonGazeSource(device=_quiet_device(estimate_time_offset=lambda: release.wait(5)))
+    started = time.perf_counter()
+    source.start()
+    assert time.perf_counter() - started < 2.0
+    source.stop()
+    release.set()
+    assert "TimeoutError" in source.quality_summary()["clock_offset_status"]
+
+
+def test_a_good_clock_offset_reports_ok_and_the_phone_ip_is_recorded_with_a_warning_when_it_differs(capsys):
+    source = NeonGazeSource(device=_quiet_device(estimate_time_offset=lambda: _est(200.0, 1.0), phone_ip="10.0.0.7"), address="192.168.43.1")
+    source.start()
+    source.stop()
+    assert source.quality_summary()["clock_offset_status"] == "ok" and source._clock_offset_ms == 200.0
+    assert source.phone_ip == "10.0.0.7"
+    assert "phone reports its address as 10.0.0.7" in capsys.readouterr().err
+
+    same = NeonGazeSource(device=_quiet_device(estimate_time_offset=lambda: _est(200.0, 1.0), phone_ip="192.168.43.1"), address="192.168.43.1")
+    same.start()
+    same.stop()
+    assert same.phone_ip == "192.168.43.1" and "phone reports" not in capsys.readouterr().err
+    no_ip = NeonGazeSource(device=_quiet_device(estimate_time_offset=lambda: _est(200.0, 1.0)), address="192.168.43.1")
+    no_ip.start()
+    no_ip.stop()
+    assert no_ip.phone_ip is None  # fakes without the attribute still work

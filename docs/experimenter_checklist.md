@@ -24,7 +24,7 @@ Commands run from the project folder in PowerShell. Full details: [README.md](..
 - [ ] Phone: confirm the recording is saved; export the scene video (mp4) to the PC.
 - [ ] `.\scripts\py.ps1 -m src.experiment.import_glasses_video data\<participant>\<run folder> C:\path\to\scene_video.mp4`
 - [ ] `.\scripts\py.ps1 -m src.experiment.analyze_session data\<participant>\<run folder>`
-- [ ] Analyse: dashboard (`.\scripts\py.ps1 -m src.dashboard.app`, then **Analyse** on the participant), or double-click `analyze_participant.bat` and type the ID (README: "Analysing your data in 3 clicks"). Results are exploratory (pilot).
+- [ ] Analyse: dashboard (`.\scripts\py.ps1 -m src.dashboard.app`, then **Analyse** on the participant), or double-click `launchers\analyze_participant.bat` and type the ID (README: "Analysing your data in 3 clicks"). Results are exploratory (pilot).
 - [ ] Reprint a past summary any time: `.\scripts\py.ps1 -m src.experiment.run_summary` (newest run).
 
 ## Troubleshooting

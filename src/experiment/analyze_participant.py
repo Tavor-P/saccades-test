@@ -262,7 +262,7 @@ def analyze_participant(
     candidates = entries if include_test else [e for e in entries if e.mode != "test"]
     if not candidates:
         raise NoRunsError(f"Participant '{pid}' has only test runs ({len(tests)}). To analyse them, run: "
-                         f"analyze_participant.bat {pid} --include-test  (or: .\\scripts\\py.ps1 -m src.experiment.analyze_participant {pid} --include-test)")
+                         f"launchers\\analyze_participant.bat {pid} --include-test  (or: .\\scripts\\py.ps1 -m src.experiment.analyze_participant {pid} --include-test)")
     for e in candidates:
         _analyse_entry(e, flash_delay_ms, min_amplitude)
 

@@ -106,7 +106,7 @@ def format_overview(rows: list[dict]) -> str:
         "Psychometric indices: 0 = no suppression, 1 = never seen during saccades. Accuracy-based indices are on another scale; never mix them.",
         f"Flags: gaze delay > {GAZE_DELAY_FLAG_MS:g} ms is the known open delay problem (affects only the live classification); "
         f"tracking gap >= {LONG_GAP_FLAG_MS:g} ms; gaps_over_threshold counts gaps > {NEON_GAP_THRESHOLD_MS:g} ms.",
-        "To test groups against each other: compare.bat (or -m src.experiment.compare group:TBI group:control).",
+        "To test groups against each other: launchers\\compare.bat (or -m src.experiment.compare group:TBI group:control).",
     ]
     return "\n".join(lines)
 

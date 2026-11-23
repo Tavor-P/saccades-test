@@ -62,7 +62,7 @@ def test_test_runs_are_skipped_unless_asked_for(tmp_path, pooled):
 
     for i in range(2):
         sr.write_run(tmp_path, "T", START + i * DAY, n_trials=20, seed=i, test_mode=True)
-    with pytest.raises(ap.NoRunsError, match=r"analyze_participant.bat T --include-test"):
+    with pytest.raises(ap.NoRunsError, match=r"launchers\\analyze_participant.bat T --include-test"):
         ap.analyze_participant("T", tmp_path, write=False)
     with_tests = ap.analyze_participant("T", tmp_path, include_test=True, write=False, n_boot=50)
     assert [r["mode"] for r in with_tests.summary["runs_used"]] == ["test", "test"]

@@ -91,7 +91,8 @@ def test_neon_address_field_accepts_blank_ip_and_ip_port_rejects_the_rest_and_is
     assert valid(neon_address_text=" 192.168.43.1 ").neon_address == "192.168.43.1"
     assert valid(neon_address_text="192.168.43.1:8080").neon_address == "192.168.43.1:8080"
     assert valid(neon_address_text="neon.local").neon_address == "neon.local"
-    for bad in ("192.168.43", "192.168.0.300", "192.168.0.6:", "192.168.0.6:0", "192.168.0.6:70000", "192.168.0.6:http", "a b", "http://1.2.3.4"):
+    assert valid(neon_address_text="http://192.168.43.1:8080/").neon_address == "http://192.168.43.1:8080/"  # pasted URL form is accepted
+    for bad in ("192.168.43", "192.168.0.300", "192.168.0.6:", "192.168.0.6:0", "192.168.0.6:70000", "192.168.0.6:http", "a b", "ftp://1.2.3.4"):
         with pytest.raises(ValueError, match="Neon address"):
             valid(neon_address_text=bad)
             pytest.fail(f"{bad!r} was accepted")

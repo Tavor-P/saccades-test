@@ -38,7 +38,7 @@ Printable version: [docs/experimenter_checklist.md](docs/experimenter_checklist.
 4. Read the participant script below, then follow the narrated tutorial (SPACE advances; Esc quits and keeps the data).
 5. At the end the console and `RUN_SUMMARY.txt` in the run folder show what happened and the next commands; SPACE closes the window.
 6. Export the scene video from the phone and attach it (see [Glasses video](#glasses-video)).
-7. Analyse: dashboard **Analyse** button, or `launchersnalyze_latest.bat`; after several runs of one person, `launchersnalyze_participant.bat`.
+7. Analyse: dashboard **Analyse** button, or `launchers\analyze_latest.bat`; after several runs of one person, `launchers\analyze_participant.bat`.
 
 > **Participant script.** "Look at the dot and press SPACE when you are ready. After a moment, with a beep, it jumps to the other side of the screen: look at it as fast as you can.
 > Around then a very faint thin line flashes for an instant above or below it. Press UP if it was above, DOWN if below, and guess if you are not sure.
@@ -124,8 +124,8 @@ For anyone who does not program. The numbers are exploratory (feasibility pilot)
 
 | Launcher | Does | Output |
 |---|---|---|
-| `launchersnalyze_latest.bat` | analyses the newest run | `analysis/` in that run folder |
-| `launchersnalyze_participant.bat` | asks for an ID, pools all their runs | `data/<participant id>/analysis/` |
+| `launchers\analyze_latest.bat` | analyses the newest run | `analysis/` in that run folder |
+| `launchers\analyze_participant.bat` | asks for an ID, pools all their runs | `data/<participant id>/analysis/` |
 | `launchers\compare.bat` | asks for Set A and Set B (e.g. `P01` and `group:control`; set labels first with `participants set`) | `data/comparisons/...` |
 | `launchers\study_summary.bat` | the one-CSV overview | `data/study_summary.csv` |
 

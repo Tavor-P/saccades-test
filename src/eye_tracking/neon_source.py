@@ -16,6 +16,7 @@ from include.eye_tracking.constants import (
     NEON_LATENCY_WINDOW_SAMPLES,
     NEON_CLOCK_REESTIMATE_S,
     NEON_CLOCK_REESTIMATE_MAX_STD_MS,
+    NEON_CLOCK_ESTIMATE_TIMEOUT_S,
     NEON_DISCOVERY_TIMEOUT_S,
     NEON_SCENE_WIDTH,
     HEAD_POLL_HZ,
@@ -123,6 +124,9 @@ class NeonGazeSource(GazeSource):
         self._offset_thread: threading.Thread | None = None
         self._recording_id: str | None = None  # the phone-side recording started by start_recording()
         self._clock_offset_std_ms: float | None = None
+        # "not started" until start() estimates it, then "ok" or "failed (reason)" - for session.json gaze_quality.clock_offset_status.
+        self._clock_offset_status = "not started"
+        self.phone_ip: str | None = None  # the IP the phone reports (time echo and the gaze stream use it), set by start()
         self._roundtrip_ms: float | None = None
         self._latencies_ms: deque[float] = deque(maxlen=_MAX_LATENCY_SAMPLES)
         self._history: deque[GazeSample] = deque(maxlen=NEON_HISTORY_SAMPLES)  # for samples_since()
@@ -179,6 +183,7 @@ class NeonGazeSource(GazeSource):
                 "No Pupil Labs Neon found on the network - check the Companion app is open and the PC "
                 "is on the same Wi-Fi/hotspot (or type the phone's address into 'Neon address' in the start dialog)."
             )
+        self._note_phone_ip()
         self._estimate_clock_offset()
         self._running = True
         self._thread = threading.Thread(target=self._loop, daemon=True)
@@ -287,19 +292,69 @@ class NeonGazeSource(GazeSource):
             return False
         return True
 
-    def _estimate_clock_offset(self) -> None:
-        """Phone-vs-PC clock offset (Pupil's Time Echo protocol), needed to turn
-        a gaze datum's device timestamp into real end-to-end latency. Best
-        effort: a failure just leaves latency unreported."""
+    def _note_phone_ip(self) -> None:
+        """Remembers the IP the phone reports about itself (`Device.phone_ip`): the time-echo connection and the gaze stream go there,
+        not necessarily to the address we connected to. Warns when the two differ (e.g. two network interfaces). Never raises."""
         try:
-            est = self._device.estimate_time_offset()
+            ip = getattr(self._device, "phone_ip", None)
+        except Exception as exc:  # noqa: BLE001 - a property reading a status that is not there yet
+            print(f"WARNING: could not read the Neon phone's own IP address ({type(exc).__name__}: {exc}).", file=sys.stderr)
+            ip = None
+        self.phone_ip = str(ip) if isinstance(ip, str) and ip else None
+        if self.phone_ip and self._address and self.phone_ip != self._address:
+            print(
+                f"WARNING: connected to the Neon at {self._address}, but the phone reports its address as {self.phone_ip}; "
+                "the clock sync and gaze stream use the latter. If they fail, type that address into 'Neon address'.",
+                file=sys.stderr,
+            )
+
+    def _time_offset_estimate(self):
+        """`device.estimate_time_offset()` with a bounded wait (NEON_CLOCK_ESTIMATE_TIMEOUT_S): run on a daemon thread, so an
+        unanswered time-echo port cannot hang start(). Raises on failure, None result or timeout."""
+        if not hasattr(self._device, "estimate_time_offset"):
+            raise RuntimeError("this device object cannot estimate the clock offset")
+        result: dict = {}
+
+        def run() -> None:
+            try:
+                result["est"] = self._device.estimate_time_offset()
+            except BaseException as exc:  # noqa: BLE001 - handed to the caller
+                result["exc"] = exc
+
+        worker = threading.Thread(target=run, daemon=True)
+        worker.start()
+        worker.join(NEON_CLOCK_ESTIMATE_TIMEOUT_S)
+        if worker.is_alive():
+            raise TimeoutError(f"no answer from the phone's time-echo port within {NEON_CLOCK_ESTIMATE_TIMEOUT_S:g} s")
+        if "exc" in result:
+            raise result["exc"]
+        if result.get("est") is None:
+            raise RuntimeError("estimate_time_offset() returned None (time-echo port unreachable, or Companion app too old)")
+        return result["est"]
+
+    def _estimate_clock_offset(self) -> None:
+        """Phone-vs-PC clock offset (Pupil's Time Echo protocol), needed to turn a gaze datum's device timestamp into its capture time.
+        A failure does not stop the session, but it is loud: stamps fall back to arrival time (~95 ms late) and analyze_session cannot
+        judge the run, so it prints a WARNING and records "failed (reason)" in clock_offset_status (session.json gaze_quality)."""
+        try:
+            est = self._time_offset_estimate()
             offset_ms = float(est.time_offset_ms.mean)
             std_ms = float(est.time_offset_ms.std)
             roundtrip_ms = float(est.roundtrip_duration_ms.mean)
             anchor = timebase.measure_anchor()  # as soon after the estimate as possible: offset is in system-clock terms
-        except Exception:
+        except Exception as exc:  # noqa: BLE001
+            reason = f"{type(exc).__name__}: {exc}"
+            with self._lock:
+                self._clock_offset_status = f"failed ({reason})"
+            target = f" at {self.phone_ip}" if self.phone_ip else ""
+            print(
+                f"WARNING: could not measure the Neon phone's clock offset{target} ({reason}). Gaze will be stamped with arrival time "
+                "(~95 ms late) and analyze_session will need --offset-ms. Restart the Companion app / check the network and start again.",
+                file=sys.stderr,
+            )
             return
         with self._lock:
+            self._clock_offset_status = "ok"
             self._clock_offset_ms = offset_ms
             self._clock_offset_std_ms = std_ms
             self._roundtrip_ms = roundtrip_ms
@@ -453,6 +508,7 @@ class NeonGazeSource(GazeSource):
                 "gaps_over_threshold": self._gaps,
                 "gap_threshold_ms": NEON_GAP_THRESHOLD_MS,
                 "longest_gap_ms": round(self._longest_gap_ms, 1),
+                "clock_offset_status": self._clock_offset_status,
                 "clock_offset_ms": self._clock_offset_ms,
                 "clock_offset_std_ms": self._clock_offset_std_ms,
                 "clock_offset_history": list(self._offset_history),

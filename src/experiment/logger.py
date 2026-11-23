@@ -419,6 +419,12 @@ class ResultLogger:
         self._metadata["hardware"]["neon_device"] = label
         self._write_metadata()
 
+    def set_neon_phone_ip(self, ip: str | None) -> None:
+        """The IP the phone reports about itself (NeonGazeSource.phone_ip): clock sync and the gaze stream use it, so a value that
+        differs from neon_device explains a failed clock offset. Absent in older session.json files."""
+        self._metadata["hardware"]["neon_phone_ip"] = ip
+        self._write_metadata()
+
     def set_gaze_quality(self, summary: dict) -> None:
         """Session-level gaze tracking quality (sample rate, gaps, latency,
         clock offset) from a GazeSource that reports it - see

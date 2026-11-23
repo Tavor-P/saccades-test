@@ -2,7 +2,6 @@
 tick() + render_state() and draw the result. All experiment logic lives in the session classes, not here - this is the only module that needs PsychoPy."""
 
 import sys
-from functools import partial
 
 import pyglet
 from psychopy import core, event, gui, sound, visual
@@ -22,6 +21,7 @@ from include.experiment.constants import (
 from include.experiment import participant_text
 from include.experiment.types import Side
 from src.eye_tracking.gaze_factory import BACKEND_NEON, build_gaze_source
+from src.eye_tracking.neon_source import NeonConnectionError  # no device library at import time (pupil_labs loads lazily in start())
 from src.eye_tracking.neon_address import FAILURE_TITLE, Resolution, failure_message, network_summary, parse_address, resolve_neon_address
 from src import timebase
 from src.experiment.glasses_video import END_FLASH_COUNT, SYNC_FLASH_COUNT, sync_flash_frames
@@ -419,6 +419,8 @@ def run_saccade_phase(
     gaze.start()
     recording_started = False
     try:  # a failure before the main loop must still stop the phone recording (gaze.stop() does)
+        phone_ip = getattr(gaze, "phone_ip", None)
+        logger.set_neon_phone_ip(phone_ip if isinstance(phone_ip, str) else None)
         recording_started = _start_glasses_recording(gaze, logger)
         clock = PausableClock()
         session = ExperimentSession(
@@ -468,18 +470,28 @@ def run_saccade_phase(
             draw_all(stimuli)
             win.flip()
     finally:
-        report_space_presses(session, "saccade", logger)
+        # Every step is guarded on its own: one failing must never skip the rest, above all stopping the phone recording and gaze.stop().
+        _best_effort("space-press report", lambda: report_space_presses(session, "saccade", logger))
         if hasattr(gaze, "quality_summary"):
-            logger.set_gaze_quality(gaze.quality_summary())
+            _best_effort("gaze-quality summary", lambda: logger.set_gaze_quality(gaze.quality_summary()))
         if hasattr(gaze, "head_motion_summary"):
-            try:  # best effort: must never stop gaze.stop() / the phone recording below from running
-                logger.set_head_motion(gaze.head_motion_summary(session.head_flagged_trials))
-                gaze.write_head_motion_csv(logger.head_motion_path)
-            except Exception as exc:  # noqa: BLE001
-                print(f"WARNING: could not save the head-movement summary: {exc}", file=sys.stderr)
+            _best_effort("head-movement summary", lambda: _save_head_motion(gaze, session, logger))
         if recording_started:
-            _stop_glasses_recording(win, stimuli, logger, narrator, gaze)
+            _best_effort("phone recording stop", lambda: _stop_glasses_recording(win, stimuli, logger, narrator, gaze))
         gaze.stop()
+
+
+def _best_effort(label: str, step) -> None:
+    """Runs one cleanup step; an Exception is printed as a WARNING instead of skipping the steps after it."""
+    try:
+        step()
+    except Exception as exc:  # noqa: BLE001
+        print(f"WARNING: could not save the {label}: {type(exc).__name__}: {exc}", file=sys.stderr)
+
+
+def _save_head_motion(gaze, session, logger: ResultLogger) -> None:
+    logger.set_head_motion(gaze.head_motion_summary(session.head_flagged_trials))
+    gaze.write_head_motion_csv(logger.head_motion_path)
 
 
 def run_tutorial_phase(
@@ -499,14 +511,14 @@ def run_tutorial_phase(
     participant quit early."""
     gaze = build_gaze_source(**_address_kwargs(neon_address))
     gaze.start()
-    clock = PausableClock()
-    session = TutorialSession(gaze, clock, geometry=geometry)
-    go_cue_tone = build_go_cue_tone()
+    try:  # from here on gaze.stop() must run whatever raises (the Neon threads would leak otherwise)
+        clock = PausableClock()
+        session = TutorialSession(gaze, clock, geometry=geometry)
+        go_cue_tone = build_go_cue_tone()
 
-    presenter = FramePresenter(stimuli, narrator)
-    last_phase = None
+        presenter = FramePresenter(stimuli, narrator)
+        last_phase = None
 
-    try:
         drain_stale_space(session)
         key_gate = NarrationKeyGate()
         while True:
@@ -660,42 +672,64 @@ def main() -> None:
     print(f"Session folder: {logger.folder}")
     narrator = Narrator()
 
+    lost: NeonConnectionError | None = None
     try:
-        precomputed_calibration_ratios = None
-        precomputed_rt_samples_ms = None
-        if run_tutorial:
-            tutorial_session = run_tutorial_phase(win, stimuli, narrator, geometry=geometry, neon_address=neon_address)
-            if tutorial_session is None:
-                return  # quit early
-            precomputed_calibration_ratios = tutorial_session.calibration_ratios
-            precomputed_rt_samples_ms = tutorial_session.rt_samples_ms
-
-        saccade_phase = partial(
-            run_saccade_phase,
-            narrator=narrator,
-            show_gaze_indicator=show_gaze_indicator,
-            test_mode=test_mode,
-            precomputed_calibration_ratios=precomputed_calibration_ratios,
-            skip_practice_trials=run_tutorial,
-            precomputed_rt_samples_ms=precomputed_rt_samples_ms,
-            saccade_contrasts=saccade_contrasts,
-            geometry=geometry,
-            flash_spread_sd_ms=flash_spread_sd_ms,
-            neon_address=neon_address,
-        )
-
-        result = saccade_phase(win, stimuli, logger)
-        if result is None:
-            return  # quit early
-        if result.calibration_ratios is not None:
-            logger.set_calibration(*result.calibration_ratios)
-        print(f"Run finished. Analyse it with: scripts/py.ps1 -m src.experiment.analyze_session {logger.folder.name}")
+        _run_phases(win, stimuli, logger, narrator, run_tutorial, show_gaze_indicator, test_mode, saccade_contrasts, geometry, flash_spread_sd_ms, neon_address)
+    except NeonConnectionError as exc:  # e.g. the phone slept between the tutorial and the saccade phase: plain message, no traceback
+        lost = exc
+        print("", NEON_LOST_TITLE.upper(), _neon_lost_message(exc, logger.folder), "", sep="\n", file=sys.stderr, flush=True)
     finally:
         logger.close()
-        if finish_run_summary(logger.folder) and sys.exc_info()[0] is None and logger.gaze_trace_path.exists():
+        if finish_run_summary(logger.folder) and sys.exc_info()[0] is None and lost is None and logger.gaze_trace_path.exists():
             show_done_screen(win, stimuli, narrator, logger.folder)
         narrator.stop()
         win.close()
+    if lost is not None:  # the fullscreen window is closed now, so the box is visible
+        show_error_box(NEON_LOST_TITLE, _neon_lost_message(lost, logger.folder))
+        raise SystemExit(2)
+
+
+NEON_LOST_TITLE = "Lost the Neon glasses"
+
+
+def _neon_lost_message(exc: Exception, folder) -> str:
+    return (
+        f"{exc}\n\nThe run stopped. Whatever was recorded so far is saved in {folder}.\n"
+        "Wake the phone, keep the Companion app open and the glasses plugged in, then start a new run."
+    )
+
+
+def _run_phases(win, stimuli, logger, narrator, run_tutorial, show_gaze_indicator, test_mode, saccade_contrasts, geometry, flash_spread_sd_ms, neon_address) -> None:
+    """Tutorial (optional) then the saccade phase; returns early if the participant quits."""
+    precomputed_calibration_ratios = None
+    precomputed_rt_samples_ms = None
+    if run_tutorial:
+        tutorial_session = run_tutorial_phase(win, stimuli, narrator, geometry=geometry, neon_address=neon_address)
+        if tutorial_session is None:
+            return  # quit early
+        precomputed_calibration_ratios = tutorial_session.calibration_ratios
+        precomputed_rt_samples_ms = tutorial_session.rt_samples_ms
+
+    result = run_saccade_phase(
+        win,
+        stimuli,
+        logger,
+        narrator=narrator,
+        show_gaze_indicator=show_gaze_indicator,
+        test_mode=test_mode,
+        precomputed_calibration_ratios=precomputed_calibration_ratios,
+        skip_practice_trials=run_tutorial,
+        precomputed_rt_samples_ms=precomputed_rt_samples_ms,
+        saccade_contrasts=saccade_contrasts,
+        geometry=geometry,
+        flash_spread_sd_ms=flash_spread_sd_ms,
+        neon_address=neon_address,
+    )
+    if result is None:
+        return  # quit early
+    if result.calibration_ratios is not None:
+        logger.set_calibration(*result.calibration_ratios)
+    print(f"Run finished. Analyse it with: scripts/py.ps1 -m src.experiment.analyze_session {logger.folder.name}")
 
 
 if __name__ == "__main__":
