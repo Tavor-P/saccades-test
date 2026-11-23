@@ -10,6 +10,7 @@ from src.dashboard.data_access import (
     csv_path_for,
     delete_session,
     discover_sessions,
+    save_participant_info,
 )
 
 app = Flask(__name__)
@@ -28,6 +29,22 @@ def index():
         participants=comparison.overview_with_labels(),
         groups=comparison.group_names(),
     )
+
+
+@app.post("/sessions/<timestamp>")
+def update_session(timestamp: str):
+    if not csv_path_for(timestamp).exists():
+        abort(404)
+    body = request.get_json(force=True)
+    try:
+        save_participant_info(
+            timestamp,
+            gender=body.get("gender", ""),
+            age=body.get("age", ""),
+        )
+    except ValueError:
+        return jsonify({"ok": False, "error": "age must be a whole number"}), 400
+    return jsonify({"ok": True})
 
 
 @app.delete("/sessions/<timestamp>")

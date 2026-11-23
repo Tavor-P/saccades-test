@@ -11,6 +11,7 @@
   th { color: #9a9ba8; font-weight: 500; font-size: 0.85rem; text-transform: uppercase; }
   tr:hover { background: #24252e; }
   input { background: #2a2b34; border: 1px solid #454654; color: #e8e8ec; border-radius: 4px; padding: 0.3rem 0.5rem; width: 100%; box-sizing: border-box; }
+  input.age { width: 5rem; }
   input.saved { border-color: #4caf82; }
   input.error { border-color: #d9534f; }
   .muted { color: #8b8c99; }
@@ -81,11 +82,33 @@
   {% if not sessions %}
     <p class="empty">No sessions logged yet in data/ - run the experiment first.</p>
   {% else %}
+  <div class="filters">
+    <div class="filter-field">
+      <label for="filter-gender">Gender contains</label>
+      <input type="text" id="filter-gender" placeholder="e.g. woman">
+    </div>
+    <div class="filter-field">
+      <label for="filter-age-min">Age min</label>
+      <input type="number" id="filter-age-min" min="0">
+    </div>
+    <div class="filter-field">
+      <label for="filter-age-max">Age max</label>
+      <input type="number" id="filter-age-max" min="0">
+    </div>
+    <div class="filter-field filter-toggle">
+      <label><input type="checkbox" id="filter-exclude"> Exclude matches instead of showing them</label>
+    </div>
+    <button type="button" id="filter-clear" class="graph-toggle">Clear filters</button>
+    <button type="button" id="delete-all-visible" class="btn-danger">Delete all visible</button>
+    <span id="filter-count" class="muted"></span>
+  </div>
   <table>
     <thead>
       <tr>
         <th>Run at</th>
         <th>Participant ID</th>
+        <th>Gender</th>
+        <th>Age</th>
         <th>Trials</th>
         <th>Actions</th>
       </tr>
@@ -95,6 +118,8 @@
       <tr data-timestamp="{{ session.timestamp }}">
         <td>{{ session.timestamp | session_datetime }}</td>
         <td class="muted">{{ session.metadata.participant_id if session.metadata.participant_id is not none else "-" }}</td>
+        <td><input type="text" class="field gender" value="{{ session.metadata.gender or '' }}" placeholder="-"></td>
+        <td><input type="number" class="field age" min="0" value="{{ session.metadata.age if session.metadata.age is not none else '' }}" placeholder="-"></td>
         <td class="muted">
           {% for phase, count in session.trial_counts.items() %}{{ phase }}: {{ count }}{% if not loop.last %}, {% endif %}{% endfor %}
           {% if not session.trial_counts %}no trials{% endif %}
@@ -154,8 +179,98 @@ document.querySelectorAll("tr[data-timestamp]").forEach((row) => {
       alert("Couldn't delete this session - see the server log for details.");
     }
   });
+
+  row.querySelectorAll("input.field").forEach((input) => {
+    input.addEventListener("change", async () => {
+      const gender = row.querySelector(".gender").value;
+      const age = row.querySelector(".age").value;
+      input.classList.remove("saved", "error");
+      try {
+        const response = await fetch(`/sessions/${timestamp}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ gender, age }),
+        });
+        input.classList.add(response.ok ? "saved" : "error");
+      } catch (err) {
+        input.classList.add("error");
+      }
+      if (typeof applyFilters === "function") applyFilters();
+    });
+  });
+
 });
 
+const filterGender = document.getElementById("filter-gender");
+if (filterGender) {
+  const filterAgeMin = document.getElementById("filter-age-min");
+  const filterAgeMax = document.getElementById("filter-age-max");
+  const filterExclude = document.getElementById("filter-exclude");
+  const filterCount = document.getElementById("filter-count");
+  const filterClear = document.getElementById("filter-clear");
+  const rows = document.querySelectorAll("tr[data-timestamp]");
+
+  const rowMatchesFilters = (row) => {
+    const gender = row.querySelector(".gender").value.trim().toLowerCase();
+    const ageRaw = row.querySelector(".age").value.trim();
+    const age = ageRaw === "" ? null : Number(ageRaw);
+
+    const genderFilter = filterGender.value.trim().toLowerCase();
+    const ageMin = filterAgeMin.value.trim() === "" ? null : Number(filterAgeMin.value);
+    const ageMax = filterAgeMax.value.trim() === "" ? null : Number(filterAgeMax.value);
+
+    if (genderFilter && !gender.includes(genderFilter)) return false;
+    if (ageMin !== null && (age === null || age < ageMin)) return false;
+    if (ageMax !== null && (age === null || age > ageMax)) return false;
+    return true;
+  };
+
+  window.applyFilters = () => {
+    const exclude = filterExclude.checked;
+    let visibleCount = 0;
+    rows.forEach((row) => {
+      const matches = rowMatchesFilters(row);
+      const show = exclude ? !matches : matches;
+      row.classList.toggle("filtered-out", !show);
+      if (show) visibleCount += 1;
+    });
+    filterCount.textContent = `Showing ${visibleCount} of ${rows.length} sessions`;
+  };
+
+  [filterGender, filterAgeMin, filterAgeMax].forEach((input) => {
+    input.addEventListener("input", applyFilters);
+  });
+  filterExclude.addEventListener("change", applyFilters);
+  filterClear.addEventListener("click", () => {
+    filterGender.value = "";
+    filterAgeMin.value = "";
+    filterAgeMax.value = "";
+    filterExclude.checked = false;
+    applyFilters();
+  });
+
+  const deleteAllButton = document.getElementById("delete-all-visible");
+  deleteAllButton.addEventListener("click", async () => {
+    const visibleRows = Array.from(rows).filter((row) => !row.classList.contains("filtered-out"));
+    if (visibleRows.length === 0) {
+      alert("No visible sessions to delete - adjust or clear your filters first.");
+      return;
+    }
+    const noun = visibleRows.length === 1 ? "session" : "sessions";
+    if (!confirm(`Delete ${visibleRows.length} visible ${noun} permanently? This cannot be undone.`)) return;
+
+    deleteAllButton.disabled = true;
+    const results = await Promise.all(visibleRows.map((row) => deleteSessionByTimestamp(row.dataset.timestamp)));
+    const failures = results.filter((ok) => !ok).length;
+    if (failures > 0) {
+      deleteAllButton.disabled = false;
+      alert(`${failures} of ${visibleRows.length} sessions failed to delete - see the server log for details.`);
+    }
+    location.reload();
+  });
+
+  applyFilters();
+}
 </script>
 </body>
 </html>
