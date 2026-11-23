@@ -57,9 +57,9 @@ Double-click launchers: `run_experiment.bat` in the repo root; `analyze_latest.b
   it costs in-saccade flashes). A slow first-time starter costs only ~1 usable flash (8 practice trials + the window of 12 absorb it). The centre stays on the average RT.
 - **Nothing has run on glasses since the last refactors**: line rendering, quiz/captions, every contrast level, results layout, phone video + sync flashes, head monitor and the new analysis/dashboard pages
   are tested only on simulator, fake devices and synthetic data.
-- **Known problems**: (1) gaze reaches the PC ~95 ms late (Gotchas): live `flash_during_saccade` is useless, post-hoc analysis unaffected. (2) RT SD ~60-80 ms: only ~2/7 of flashes land within +-50 ms of onset
+- **Known problems**: (1) the old ~95 ms gaze delay looks fixed (now ~13-20 ms, Gotchas); live `flash_during_saccade` is unvalidated, post-hoc analysis is the judgement. (2) RT SD ~60-80 ms: only ~2/7 of flashes land within +-50 ms of onset
   (simulator: ~55 fixation / ~31 saccade flashes per 150 trials). (3) Geometry is the 26 cm / 50 cm placeholder until the user measures their monitor (dialog says so).
-- **Next**: (1) Test run, then several 150-trial Real runs per person on glasses; (2) measure real screen geometry; (3) find the ~95 ms delay cause; (4) one-page grant figure; (5) clinical metadata fields (needs IRB).
+- **Next**: (1) Test run, then several 150-trial Real runs per person on glasses; (2) measure real screen geometry; (3) confirm gaze latency stays ~15 ms on long real runs; (4) one-page grant figure; (5) clinical metadata fields (needs IRB).
 
 ## Repo map
 
@@ -173,9 +173,9 @@ SPACE presses are never silently dropped; every ignored one is counted in `sessi
 
 ## Gotchas that cost real debugging time
 
-- **OPEN PROBLEM: gaze arrives ~90-100 ms late in real sessions** (`gaze_quality.latency_ms_median`; ~16 ms in standalone scripts). In the raw trace the delay steps up ~65 ms about 6 s in (render loop starts) and
-  the rate falls 200 -> ~160/s: signature of the receiver thread starved by the render loop (same process/GIL). `run_experiment.main` sets `sys.setswitchinterval(0.0005)` as a first test (result unknown).
-  Untested: receive Neon in its own process. Consequence: live `flash_during_saccade` is unreliable; post-hoc judging from phone capture times is unaffected.
+- **Gaze latency (was ~90-100 ms, now ~13-20 ms)**: in Oct 2026 real sessions showed ~95 ms (`gaze_quality.latency_ms_median`) with the rate falling 200 -> ~160/s once the render loop started: the receiver thread
+  starved by the render loop (same process/GIL). `run_experiment.main` has since set `sys.setswitchinterval(0.0005)` (5f5a0c6, 2026-10-22); every run on disk after it (2026-11-01..11-23) shows a median of 12.5-19.8 ms
+  at ~199/s. Keep checking `latency_ms_median` per run; if it climbs again, next step is receiving Neon in its own process.
 - **Time**: never use `time.monotonic()`/`time.time()` for event timing on Windows (15.6 ms resolution). Use `src/timebase.py` (`now()`, `unix_now()`); enforced by `test_architecture_rules.py`.
   The phone clock drifts ~1.2 ms/min against the PC (offset re-estimated every `NEON_CLOCK_REESTIMATE_S`).
 - **Neon timing**: latency is right only with `local = device_ts + offset` from `estimate_time_offset()` (the sign is easy to flip). `NeonGazeSource` stamps samples with CAPTURE time

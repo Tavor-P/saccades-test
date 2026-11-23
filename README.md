@@ -184,7 +184,7 @@ Not verified on real footage: whether the scene camera sees the green flash, and
 participant's pooled analysis with it).
 
 - **Results pages** (**Analyse** on a run or participant): same analysis as the CLI, roughly 7-10 s on synthetic data; a saved analysis is shown again ("Analysed at ...") while newer than every run file, else
-  or after **Re-analyse** it reruns. The quality box lights: gaze delay and tracking gaps (green up to 150 ms; the usual ~95 ms is fine; never red), head movement, flashes per condition
+  or after **Re-analyse** it reruns. The quality box lights: gaze delay and tracking gaps (green up to 150 ms; recent runs show ~15 ms; never red), head movement, flashes per condition
   (green 12+, amber 5-11, red under 5) with the method used, and for a participant the runs left out. Problems (no gaze recording, only test runs) appear as a sentence.
 - **Group labels**: the **Participants** table's **Group** and **Note** boxes write `data/participants.json`, the same file the CLI uses. Empty both to remove a label.
 - **Compare** (`/compare`): Set A / Set B columns, then the headline, the mode with a "how to read this" line, the plot, a per-person table, amber warnings and downloads. The address bar holds only the selection
@@ -233,7 +233,7 @@ participant's pooled analysis with it).
 - **Untested on glasses:** line rendering at 60 Hz, tutorial and captions, results layout, phone recording and sync flashes, head monitor, every contrast level, and the dashboard pages in a real browser.
 - **Contrasts are a guess.** 4/6/8 % is only ~5-10 grey steps on an 8-bit display, so levels are coarse. Re-pilot and adjust in the startup dialog.
 - **Screen geometry is only as good as what you type in**; the placeholders (26 cm at 50 cm) make degrees approximate. The geometry used is saved in `session.json` and printed in the analysis report.
-- **Gaze reaches the PC ~90-100 ms late** (about 16 ms in standalone scripts), so the live `flash_during_saccade` flag is unreliable. Post-hoc judging from the phone's capture times is unaffected. Cause not found.
+- **Gaze delay**: early runs (Oct 2026) saw gaze reach the PC ~90-100 ms late; since a fix that day, runs show ~13-20 ms. Check the gaze delay light after each run. The live `flash_during_saccade` flag is still only a guide; post-hoc judging from the phone's capture times is the real one.
 - **Timing is open-loop:** reaction times vary (SD ~60-80 ms), so only a minority of flashes land near onset (simulator: ~43 of 150 within +-50 ms, ~31 pass the saccade gate, ~55 fixation flashes). People with TBI may vary more.
 - **One participant so far:** the group tools are built and tested on synthetic data only.
 
