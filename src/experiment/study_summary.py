@@ -39,7 +39,7 @@ def _flags(person, delays, gaps) -> list[str]:
     if person.included and person.ci is None:
         flags.append("no CI")
     if delays and float(np.median(delays)) > GAZE_DELAY_FLAG_MS:
-        flags.append(f"gaze delay > {GAZE_DELAY_FLAG_MS:g} ms (known issue; post-hoc analysis unaffected)")
+        flags.append(f"gaze delay > {GAZE_DELAY_FLAG_MS:g} ms (unusually high; post-hoc analysis unaffected)")
     if gaps and max(gaps) >= LONG_GAP_FLAG_MS:
         flags.append(f"tracking gap >= {LONG_GAP_FLAG_MS:g} ms")
     if person.runs_excluded:
