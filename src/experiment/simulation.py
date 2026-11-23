@@ -110,6 +110,15 @@ class ParticipantProfile:
     # jump back to a just-seen place should be faster and less variable), not measured on this setup.
     return_reaction_ms_mean: float | None = None
     return_reaction_ms_sd: float | None = None
+    # return_mode "reactive": the return saccade answers the jump-back (latency above, from the jump). "learned": once
+    # the participant has seen one jump-back, every later return is PLANNED at the go cue, independent of when the jump
+    # comes: latency from the TRUE out landing starts at ~reaction_ms_mean/_sd and shrinks with each return-jump trial n
+    # towards return_learned_ms/_sd_ms (exp(-n / return_learn_trials)). So returns can start before the jump frame
+    # (negative return_reaction_ms). All three numbers are GUESSES (predictive saccades to a just-left place).
+    return_mode: str = "reactive"
+    return_learned_ms: float = 40.0
+    return_learned_sd_ms: float = 15.0
+    return_learn_trials: float = 20.0
 
     @property
     def return_reaction_mean_ms(self) -> float:
@@ -270,6 +279,7 @@ class SimulatedParticipant:
         self.pending_flash_truth: bool | None = None
         self._go_target_x: float | None = None  # where the go-cue's target appeared (TRIAL_ACTIVE only)
         self._jump_back_seen = False
+        self._return_planned = False  # "learned" return mode: the return saccade was planned at the go cue
 
     # -- eye ------------------------------------------------------------------
 
@@ -380,11 +390,39 @@ class SimulatedParticipant:
                     self._go_target_x = x
                 self._log(t, "go-cue: target appeared")
                 self._log(t + reaction, f"[true] saccade onset (reaction {reaction * 1000:.0f} ms, flight {dur * 1000:.0f} ms)")
+                if phase == "TRIAL_ACTIVE" and self._p.return_mode == "learned" and self.return_cues:
+                    self._plan_learned_return(t)
+
+    def _plan_learned_return(self, t: float) -> None:
+        """"learned" return mode: plan the return saccade now, timed from the true out landing (see ParticipantProfile)."""
+        p, n = self._p, len(self.return_cues)
+        weight = math.exp(-n / p.return_learn_trials)
+        mean = p.return_learned_ms + (p.reaction_ms_mean - p.return_learned_ms) * weight
+        sd = p.return_learned_sd_ms + (p.reaction_ms_sd - p.return_learned_sd_ms) * weight
+        latency_ms = max(0.0, self._rng.gauss(mean, sd))
+        landing = self._move_start + self._move_dur
+        self.return_cues.append(CueRecord(landing, "RETURN", n, latency_ms, mean, "learned"))
+        start = landing + latency_ms / 1000
+        dur = self._rng.uniform(p.saccade_ms_min, p.saccade_ms_max) / 1000
+        self._prev_move = (self._eye_from, self._eye_to, self._move_start, self._move_dur)
+        self._eye_from, self._eye_to = self._eye_to, self._eye_from
+        self._move_start, self._move_dur = start, dur
+        self._return_planned = True
+        self._log(start, f"[true] learned return saccade onset ({latency_ms:.0f} ms after the true landing, flight {dur * 1000:.0f} ms)")
 
     def _on_jump_back(self, x: float, t: float) -> None:
         """The target jumped back to `x`: plan the return saccade (after the out saccade has ended). If the out saccade
         has not even started (a forced jump after a very slow start), it is cancelled and the eye simply stays put."""
         self._jump_back_seen = True
+        if self._return_planned:
+            out_start = self._prev_move[2]
+            if t < out_start:  # forced jump before the out saccade began: both saccades are dropped
+                self._fixate(self._prev_move[0], t)
+                self.saccade_onset = None
+                self._log(t, "jump-back seen before the out saccade started: out and planned return cancelled")
+            else:
+                self._log(t, "jump-back: target reappeared at the start (return already planned)")
+            return
         if t < self._move_start:
             self._fixate(self._eye_from, t)
             self.saccade_onset = None
@@ -431,8 +469,14 @@ class SimulatedParticipant:
         self._flash_seen = True
         contrast = state["grating"]["contrast"]
         orientation = state["grating"]["orientation"]
-        onset = self.saccade_onset
-        suppressed = onset is not None and onset <= t <= onset + self._move_dur
+        # In a saccade = inside the flight of the current move or of the one before it (a return planned while the out
+        # saccade is still to come or in flight). A fixation is a "move" with from == to and never counts.
+        moves = [(self._eye_from, self._eye_to, self._move_start, self._move_dur)]
+        if self._prev_move is not None:
+            moves.append(self._prev_move)
+        suppressed = self.saccade_onset is not None and any(
+            a != b and start <= t <= start + dur for a, b, start, dur in moves
+        )
         self.pending_flash_truth = suppressed
         threshold = self._p.suppressed_threshold_contrast if suppressed else self._p.threshold_contrast
         p_seen = 1 / (1 + math.exp(-self._p.slope * (math.log10(max(contrast, 1e-6)) - math.log10(threshold))))

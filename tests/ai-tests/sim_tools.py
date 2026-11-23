@@ -27,6 +27,7 @@ SCENARIOS: dict[str, dict] = {
     "dropouts": {"dropout_rate_per_s": 1.0},
     "realistic": dict(REALISTIC_RT),  # ex-Gaussian RT with drift, autocorrelation, anticipations and lapses
     "no_suppression": {"suppressed_threshold_contrast": 0.05},  # control: flash is equally visible in the saccade
+    "learned": {"return_mode": "learned"},  # return saccades become predictive (planned at the go cue) - a guess
 }
 
 

@@ -95,12 +95,14 @@ TRIAL_COLUMNS: list[Column] = [
     Column("answer_side", "response_orientation", lambda r: _enum_value(r.response_orientation)),
     Column("flash_leg", "flash_leg", lambda r: r.flash_leg or ""),
     Column("flash_ms_after_go_cue", "scheduled_delay_ms", lambda r: _num(r.scheduled_delay_ms)),
+    Column("out_arrival_ms_after_go_cue", "out_arrival_ms_after_go_cue", lambda r: _num(r.out_arrival_ms_after_go_cue)),
     Column("jump_back_ms_after_go_cue", "jump_back_ms_after_go_cue", lambda r: _num(r.jump_back_ms_after_go_cue)),
     Column("reaction_ms", "reaction_latency_ms", lambda r: _num(r.reaction_latency_ms)),
     Column("return_reaction_ms", "return_reaction_ms", lambda r: _num(r.return_reaction_ms)),
     Column("answer_ms", "response_time_ms", lambda r: _num(r.response_time_ms)),
     Column("flash_unix_ms", "grating_shown_at_unix_ms", lambda r: _num(r.grating_shown_at_unix_ms)),
     Column("jump_back_forced", "jump_back_forced", lambda r: _yes_no(r.jump_back_forced), _yes_no_to_canonical),
+    Column("left_target_before_jump", "left_target_before_jump", lambda r: _yes_no(r.left_target_before_jump), _yes_no_to_canonical),
     Column("tracking_ok", "tracking_ok", lambda r: _yes_no(r.tracking_ok), _yes_no_to_canonical),
 ]
 FIELDNAMES = [c.name for c in TRIAL_COLUMNS]
@@ -195,6 +197,8 @@ def trial_from_row(row: dict) -> TrialResult:
         jump_back_ms_after_go_cue=_parse_float(row.get("jump_back_ms_after_go_cue")),
         return_reaction_ms=_parse_float(row.get("return_reaction_ms")),
         jump_back_forced=_parse_optional_bool(row.get("jump_back_forced")),
+        out_arrival_ms_after_go_cue=_parse_float(row.get("out_arrival_ms_after_go_cue")),
+        left_target_before_jump=_parse_optional_bool(row.get("left_target_before_jump")),
     )
 
 
@@ -244,6 +248,8 @@ _SETTINGS_CONSTANTS = {
         "SACCADE_ONSET_STABILITY_MS",
         "RETURN_LEG_FLASH_FRACTION",
         "RETURN_JUMP_LANDING_TIMEOUT_MS",
+        "RETURN_JUMP_TRIGGER",
+        "RETURN_FLASH_SPREAD_SD_MS",
     ),
     "include.eye_tracking.constants": ("GAZE_DEAD_ZONE",),
 }

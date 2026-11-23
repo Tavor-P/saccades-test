@@ -7,6 +7,7 @@ When an invariant fails, first decide whether the *invariant* is wrong or the
 (include/experiment/types.py) and ExperimentSession, not implementation details.
 """
 
+from include.experiment import constants as _constants  # read at call time: override_constants patches the module
 from include.experiment.constants import (
     RESPONSE_WINDOW_MS,
     SACCADE_ONSET_STABILITY_MS,
@@ -47,6 +48,9 @@ def check_session(sim: SimulationResult, max_trials_cap: int | None = None) -> l
     saccade_rows = [r for r in sim.results if r.phase == "saccade"]
     rt_rows = [r for r in sim.results if r.phase == "rt_test"]
     return_jump = bool(getattr(sim.session, "_return_jump", False))
+    # The session's own copies: simulate() has restored any overridden constants by the time this runs.
+    trigger = getattr(sim.session, "_return_jump_trigger", _constants.RETURN_JUMP_TRIGGER)
+    return_sd = getattr(sim.session, "_return_flash_sd_ms", _constants.RETURN_FLASH_SPREAD_SD_MS)
 
     for r in sim.results:
         tag = f"{r.phase} #{r.index}"
@@ -115,22 +119,34 @@ def check_session(sim: SimulationResult, max_trials_cap: int | None = None) -> l
         allowed_offsets = TIMING_OFFSETS_MS + CONTROL_OFFSETS_MS
         if r.timing_offset_ms is not None and r.timing_offset_ms not in allowed_offsets:
             v.append(f"{tag}: timing_offset_ms {r.timing_offset_ms} not one of {allowed_offsets}")
-        v.extend(_check_return_jump_row(r, tag, return_jump))
+        v.extend(_check_return_jump_row(r, tag, return_jump, trigger))
         # The flash delay relative to its own leg's start: the go cue, or the jump-back frame for a return-leg flash.
         leg_delay_ms = r.scheduled_delay_ms
         if r.flash_leg == "return" and r.scheduled_delay_ms is not None and r.jump_back_ms_after_go_cue is not None:
             leg_delay_ms = r.scheduled_delay_ms - r.jump_back_ms_after_go_cue
+        on_return = r.flash_leg == "return" and r.jump_back_ms_after_go_cue is not None
         if r.timing_offset_ms in TIMING_OFFSETS_MS and leg_delay_ms is not None and r.avg_rt_used_ms is not None:
-            # Bell-curve flash: inside its slice of the curve around the average RT, inside the flash window.
-            edges = [
-                spread_flash_delay_ms(r.timing_offset_ms, TIMING_OFFSETS_MS, r.avg_rt_used_ms, FLASH_SPREAD_SD_MS,
-                                      FLASH_WINDOW_MIN_MS, FLASH_WINDOW_MAX_MS, rng=_Edge(low))
-                for low in (True, False)
-            ]
-            if not edges[0] - 1e-6 <= leg_delay_ms <= edges[1] + 1e-6:
-                v.append(f"{tag}: {r.flash_leg or 'out'}-leg flash delay {leg_delay_ms:.1f} ms outside its slice {edges[0]:.1f}..{edges[1]:.1f} ms")
+            if on_return and r.avg_rt_used_ms <= 0:
+                # Anticipatory return average: the flash goes on the jump-back frame itself.
+                if abs(leg_delay_ms) > 1e-6:
+                    v.append(f"{tag}: return average {r.avg_rt_used_ms:.1f} ms <= 0 but flash {leg_delay_ms:.1f} ms after the jump")
+            else:
+                # Bell-curve flash: inside its slice of the curve around the leg's average, inside the flash window.
+                sd = return_sd if on_return else FLASH_SPREAD_SD_MS
+                edges = [
+                    spread_flash_delay_ms(r.timing_offset_ms, TIMING_OFFSETS_MS, r.avg_rt_used_ms, sd,
+                                          FLASH_WINDOW_MIN_MS, FLASH_WINDOW_MAX_MS, rng=_Edge(low))
+                    for low in (True, False)
+                ]
+                if on_return:
+                    edges = [max(0.0, e) for e in edges]
+                if not edges[0] - 1e-6 <= leg_delay_ms <= edges[1] + 1e-6:
+                    v.append(f"{tag}: {r.flash_leg or 'out'}-leg flash delay {leg_delay_ms:.1f} ms outside its slice {edges[0]:.1f}..{edges[1]:.1f} ms")
         if r.timing_offset_ms in CONTROL_OFFSETS_MS and leg_delay_ms is not None and r.avg_rt_used_ms is not None:
-            if abs(leg_delay_ms - r.avg_rt_used_ms - r.timing_offset_ms) > TIMING_JITTER_MS + 1e-6:
+            expected = r.avg_rt_used_ms + r.timing_offset_ms
+            if on_return and expected < -TIMING_JITTER_MS:
+                expected = 0.0  # clamped to the jump-back frame
+            if abs(leg_delay_ms - expected) > TIMING_JITTER_MS + 1e-6 and not (on_return and abs(leg_delay_ms) < 1e-6):
                 v.append(f"{tag}: control flash delay {leg_delay_ms:.1f} ms not avg RT + {r.timing_offset_ms} +/- jitter")
         for name in ("flash_during_saccade", "tracking_ok"):
             val = getattr(r, name)
@@ -159,7 +175,7 @@ def check_session(sim: SimulationResult, max_trials_cap: int | None = None) -> l
     return v
 
 
-def _check_return_jump_row(r, tag: str, return_jump: bool) -> list[str]:
+def _check_return_jump_row(r, tag: str, return_jump: bool, trigger: str = "arrival") -> list[str]:
     """The return-jump columns of one saccade row (see TrialResult: flash_leg ... jump_back_forced)."""
     v: list[str] = []
     jump_fields = ("jump_back_ms_after_go_cue", "return_reaction_ms", "jump_back_forced")
@@ -181,8 +197,14 @@ def _check_return_jump_row(r, tag: str, return_jump: bool) -> list[str]:
         return v
     if jump < 0 or (r.jump_back_forced and jump < RETURN_JUMP_LANDING_TIMEOUT_MS - 1e-6):
         v.append(f"{tag}: jump_back_ms_after_go_cue {jump:.1f} impossible (forced={r.jump_back_forced})")
-    if r.return_reaction_ms is not None and r.return_reaction_ms < 0:
-        v.append(f"{tag}: negative return_reaction_ms {r.return_reaction_ms}")
+    # return_reaction_ms is SIGNED (an anticipatory return starts before the jump); it can't precede the out arrival.
+    arrival = r.out_arrival_ms_after_go_cue
+    if r.return_reaction_ms is not None and arrival is not None and jump + r.return_reaction_ms < arrival - 1e-6:
+        v.append(f"{tag}: return onset {jump + r.return_reaction_ms:.1f} ms before the out arrival at {arrival:.1f} ms")
+    if r.left_target_before_jump and arrival is None:
+        v.append(f"{tag}: left_target_before_jump without an out arrival")
+    if arrival is not None and (arrival < 0 or (not r.jump_back_forced and trigger == "arrival" and arrival > jump + 1e-6)):
+        v.append(f"{tag}: out arrival {arrival:.1f} ms impossible (jump at {jump:.1f}, forced={r.jump_back_forced})")
     if r.scheduled_delay_ms is not None and r.grating_shown:
         if r.flash_leg == "return" and r.scheduled_delay_ms < jump - 1e-6:
             v.append(f"{tag}: return-leg flash at {r.scheduled_delay_ms:.1f} ms, before the jump-back at {jump:.1f} ms")

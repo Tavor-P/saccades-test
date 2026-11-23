@@ -49,3 +49,5 @@ def test_return_jump_constants():
     assert 0 < c.RETURN_LEG_FLASH_FRACTION < 1
     assert c.RETURN_JUMP_LANDING_TIMEOUT_MS < c.SACCADE_TIMEOUT_MS
     assert c.RETURN_JUMP_LANDING_TIMEOUT_MS >= c.DEFAULT_REACTION_TIME_MS + max(c.CONTROL_OFFSETS_MS) + c.TIMING_JITTER_MS
+    assert c.RETURN_JUMP_TRIGGER in ("arrival", "onset")
+    assert 0 < c.RETURN_FLASH_SPREAD_SD_MS <= c.FLASH_SPREAD_SD_MS

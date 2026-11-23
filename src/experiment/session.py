@@ -28,7 +28,9 @@ from include.experiment.constants import (
     NUM_RT_TEST_TRIALS_TEST,
     PRACTICE_CONTRAST,
     RESPONSE_WINDOW_MS,
+    RETURN_FLASH_SPREAD_SD_MS,
     RETURN_JUMP_LANDING_TIMEOUT_MS,
+    RETURN_JUMP_TRIGGER,
     RETURN_LEG_FLASH_FRACTION,
     SACCADE_FIXED_CONTRASTS,
     SACCADE_FIXED_TRIALS_REAL,
@@ -137,6 +139,9 @@ class ExperimentSession:
         # start symbol and the participant looks back; each trial's one flash goes on the out or the return leg (shuffled bag,
         # RETURN_LEG_FLASH_FRACTION on the return leg). Off = the old alternating dot<->cross trials, unchanged.
         self._return_jump = bool(return_jump)
+        # Read once per session (a run never changes them; checkers read these copies after the simulator restores constants).
+        self._return_jump_trigger = RETURN_JUMP_TRIGGER
+        self._return_flash_sd_ms = float(RETURN_FLASH_SPREAD_SD_MS)
         # Bell-curve width for the flash times (startup dialog, Advanced); None = the FLASH_SPREAD_SD_MS default.
         self._flash_spread_sd_ms = FLASH_SPREAD_SD_MS if flash_spread_sd_ms is None else float(flash_spread_sd_ms)
         self._geometry = geometry or Geometry.default()  # sizes the line's offset (screen height / viewing distance)
@@ -194,10 +199,14 @@ class ExperimentSession:
         self._rt = RollingReactionTime(DEFAULT_REACTION_TIME_MS, seed=precomputed_rt_samples_ms or ())
         if precomputed_rt_samples_ms is not None:
             self._avg_reaction_time_ms = self._rt.average
-        # Return-saccade latencies (jump-back frame -> return onset) have their own rolling average: return saccades to a
-        # just-left, well-known location are expected to be faster. Until it has RT_MIN_SAMPLES_FOR_AVERAGE plausible
-        # samples, return-leg flashes are centred on the out-leg average instead (see _return_average_ms).
-        self._return_rt = RollingReactionTime(DEFAULT_REACTION_TIME_MS, seed=precomputed_return_rt_samples_ms or ())
+        # Return-saccade latencies (jump-back frame -> return onset, SIGNED) have their own rolling average: return saccades
+        # to a just-left, well-known location are expected to be faster, often anticipatory. It keeps every latency,
+        # negative and near-zero ones included (min_plausible_ms=None): an early return is the behaviour being tracked, not
+        # a bad measurement. Until it has RT_MIN_SAMPLES_FOR_AVERAGE samples, return-leg flashes are centred on the
+        # out-leg average instead (see _return_average_ms).
+        self._return_rt = RollingReactionTime(
+            DEFAULT_REACTION_TIME_MS, seed=precomputed_return_rt_samples_ms or (), min_plausible_ms=None
+        )
 
         self._dot_visible = False
         self._cross_visible = False
@@ -297,6 +306,12 @@ class ExperimentSession:
         self._return_reaction_ms: float | None = None
         self._return_landed_since: float | None = None
         self._return_landed = False
+        # Capture time of the first sample inside the target zone after the go cue. With the return jump on it IS the
+        # out-leg landing (_target_landed_since/_landed are set from it): the eye may turn back long before a 150 ms
+        # stable stay. Also the "arrival" trigger and where the return onset detector starts listening.
+        self._out_arrived_at: float | None = None
+        self._return_feed_from: float | None = None  # capture time from which samples go to the return-leg detectors
+        self._in_target_before_jump: bool | None = None  # zone of the last tracked sample captured before the jump frame
 
     @property
     def results(self) -> list[TrialResult]:
@@ -564,14 +579,14 @@ class ExperimentSession:
         self._trial_scheduled_delay_ms = self._flash_delay_ms(trial, self._avg_reaction_time_ms)
         self._flash_scheduled_at = self._trial_start_time + self._trial_scheduled_delay_ms / 1000
 
-    def _flash_delay_ms(self, trial: TrialSpec, average_ms: float) -> float:
+    def _flash_delay_ms(self, trial: TrialSpec, average_ms: float, sd_ms: float | None = None) -> float:
         """Delay (ms) from the leg's start (go cue or jump back) to the flash. A TIMING_OFFSETS_MS label picks a slice of a
-        bell curve centred on `average_ms` (see the constant); a control offset (or a practice trial's None = 0) is
-        average + offset + jitter."""
+        bell curve centred on `average_ms` with SD `sd_ms` (default: the session's out-leg spread; see the constant); a
+        control offset (or a practice trial's None = 0) is average + offset + jitter."""
         if trial.timing_offset_ms is not None and trial.timing_offset_ms in TIMING_OFFSETS_MS:
             return spread_flash_delay_ms(
                 trial.timing_offset_ms, TIMING_OFFSETS_MS, average_ms,
-                self._flash_spread_sd_ms, FLASH_WINDOW_MIN_MS, FLASH_WINDOW_MAX_MS,
+                self._flash_spread_sd_ms if sd_ms is None else sd_ms, FLASH_WINDOW_MIN_MS, FLASH_WINDOW_MAX_MS,
             )
         offset_ms = trial.timing_offset_ms if trial.timing_offset_ms is not None else 0  # 0 is itself a valid offset
         jitter_ms = random.uniform(-TIMING_JITTER_MS, TIMING_JITTER_MS) if TIMING_JITTER_MS else 0.0
@@ -638,29 +653,55 @@ class ExperimentSession:
             self._finish_trial(landed=True)
 
     def _tick_return_jump(self, trial: TrialSpec, new_samples, now: float) -> None:
-        """The rest of a return-jump trial tick: out landing -> jump back -> return onset/landing -> finish."""
+        """The rest of a return-jump trial tick: out arrival / onset -> jump back -> return onset/landing -> finish."""
+        target_zone = zone_for(trial.target)
+        for s, s_t in new_samples:
+            if s_t < self._trial_start_time or not s.face_found:
+                continue
+            if self._out_arrived_at is None and s.zone is target_zone:
+                self._out_arrived_at = s_t
+                self._target_landed_since, self._landed = s_t, True  # the out landing, in return-jump mode
+            if self._out_arrived_at is not None and (self._jump_at is None or s_t < self._jump_at):
+                self._in_target_before_jump = s.zone is target_zone
+
         if self._jump_at is None:
-            self._detect_landing(new_samples, zone_for(trial.target))
             # An out-leg flash is drawn (and gone) before the target jumps, so the jump never overlaps it.
             out_flash_done = self._flash_leg == "return" or (self._flash_decided and not self._grating_visible)
+            if self._return_jump_trigger == "onset":
+                triggered = self._onset_detector.confirmed  # like the RT test hiding its cross
+            else:
+                triggered = self._out_arrived_at is not None
             if out_flash_done:
-                if self._landed:
+                if triggered:
                     self._jump_back(trial, now, forced=False)
                 elif now - self._trial_start_time >= RETURN_JUMP_LANDING_TIMEOUT_MS / 1000:
                     self._jump_back(trial, now, forced=True)
-            return
 
-        after_jump = [(s, s_t) for s, s_t in new_samples if s_t >= self._jump_at]  # earlier captures cannot answer the jump
+        # The return leg is listened to from the out arrival (or the jump, if that came first): a predictive return
+        # saccade may start BEFORE the jump frame (negative return latency), e.g. while a late out-leg flash holds the jump.
+        if self._return_feed_from is None:
+            self._return_feed_from = self._out_arrived_at if self._out_arrived_at is not None else self._jump_at
+        if self._return_feed_from is None:
+            return
+        if self._return_onset_detector is None:
+            # wait_for_baseline: the eye may still be flying towards the target; approaching is not leaving.
+            self._return_onset_detector = OnsetDetector(target_zone, wait_for_baseline=True)
+        feed = [(s, s_t) for s, s_t in new_samples if s_t >= self._return_feed_from]
         detector = self._return_onset_detector
-        for s, s_t in after_jump:
-            if not detector.confirmed and detector.update(s, s_t):
-                self._return_reaction_ms = (detector.since - self._jump_at) * 1000
-                if not self._jump_forced:  # after a forced jump the eye may not be on the target: no clean return latency
-                    self._return_rt.add(self._return_reaction_ms)
+        for s, s_t in feed:
+            if detector.confirmed:
+                break
+            detector.update(s, s_t)
+        if detector.confirmed and self._jump_at is not None and self._return_reaction_ms is None:
+            self._return_reaction_ms = (detector.since - self._jump_at) * 1000  # signed: < 0 = left before the jump
+            if not self._jump_forced:  # after a forced jump the eye may not be on the target: no clean return latency
+                self._return_rt.add(self._return_reaction_ms)
         was_landed = self._return_landed
         self._return_landed_since, self._return_landed = _track_landing(
-            after_jump, zone_for(trial.source), self._return_landed_since, self._return_landed
+            feed, zone_for(trial.source), self._return_landed_since, self._return_landed
         )
+        if self._jump_at is None:
+            return
         if self._return_landed and not was_landed and self._flash_decided and not self._responded:
             # The answer is asked once the eye is back: the full window counts from the return landing.
             self._response_window_open = True
@@ -681,10 +722,12 @@ class ExperimentSession:
             self.forced_jump_backs += 1
         self._dot_visible = trial.source is Target.DOT
         self._cross_visible = trial.source is Target.CROSS
-        self._return_onset_detector = OnsetDetector(zone_for(trial.target))
         if self._flash_leg == "return":
             average_ms = self._return_average_ms()
-            delay_ms = self._flash_delay_ms(trial, average_ms)
+            if average_ms <= 0 and trial.timing_offset_ms in TIMING_OFFSETS_MS:
+                delay_ms = 0.0  # anticipatory returns: the jump frame is the earliest a return flash can be
+            else:
+                delay_ms = max(0.0, self._flash_delay_ms(trial, average_ms, self._return_flash_sd_ms))
             self._trial_avg_rt_ms = average_ms
             # Still flash minus GO CUE (analyze_session derives the go cue from it); the jump is in jump_back_ms_after_go_cue.
             self._trial_scheduled_delay_ms = (now - self._trial_start_time) * 1000 + delay_ms
@@ -723,11 +766,12 @@ class ExperimentSession:
     def _measure_reaction(self, new_samples) -> None:
         """Onset detection runs every tick purely as a measurement (reaction_latency_ms, the rolling RT average and one
         bound of the flash_during_saccade window); it no longer triggers the flash. Out leg only: samples captured after
-        a jump back belong to the return leg."""
+        a jump back belong to the return leg - unless the out saccade already arrived (the "arrival" trigger jumps on the
+        first in-target sample, which can come before SACCADE_ONSET_STABILITY_MS has confirmed the out onset)."""
         for s, s_t in new_samples:
             if s_t < self._trial_start_time:
                 continue  # captured before the go-cue (it just arrived after it): cannot be a reaction to it
-            if self._jump_at is not None and s_t >= self._jump_at:
+            if self._jump_at is not None and s_t >= self._jump_at and self._out_arrived_at is None:
                 break
             if not self._onset_detector.confirmed and self._onset_detector.update(s, s_t):
                 self._reaction_latency_ms = (self._onset_detector.since - self._trial_start_time) * 1000
@@ -844,6 +888,12 @@ class ExperimentSession:
                 jump_back_ms_after_go_cue=(self._jump_at - self._trial_start_time) * 1000 if self._jump_at is not None else None,
                 return_reaction_ms=self._return_reaction_ms,
                 jump_back_forced=self._jump_forced,
+                out_arrival_ms_after_go_cue=(
+                    (self._out_arrived_at - self._trial_start_time) * 1000 if self._out_arrived_at is not None else None
+                ),
+                left_target_before_jump=(
+                    None if self._jump_at is None else (self._out_arrived_at is not None and self._in_target_before_jump is False)
+                ),
             )
             self._logger.log(result)
             self._results.append(result)

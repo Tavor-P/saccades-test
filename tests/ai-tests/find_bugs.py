@@ -86,13 +86,23 @@ def main() -> int:
     a = p.parse_args()
 
     rng = random.Random(a.seed)
-    # Hostile profiles run with the return jump at its default (on); random ones switch it off half the time.
+    # Hostile profiles run with the return jump at its default (on); random ones switch it off half the time, and
+    # half of the jump-on ones use the "onset" trigger. A quarter of the random participants make learned (predictive) returns.
     cases = [(name, profile, {}) for name, profile in EXTREME_PROFILES.items()]
     if not a.extreme:
         for i in range(a.sessions):
             profile = random_profile(rng)
-            constants = {} if rng.random() < 0.5 else {"RETURN_JUMP_DEFAULT": False}
-            cases.append((f"random_{i}" + ("" if not constants else "_nojump"), profile, constants))
+            r = rng.random()
+            if r >= 0.5:
+                constants, suffix = {"RETURN_JUMP_DEFAULT": False}, "_nojump"
+            elif r < 0.25:
+                constants, suffix = {"RETURN_JUMP_TRIGGER": "onset"}, "_onset"
+            else:
+                constants, suffix = {}, ""
+            if rng.random() < 0.25:
+                profile["return_mode"] = "learned"
+                suffix += "_learned"
+            cases.append((f"random_{i}{suffix}", profile, constants))
 
     findings = []
     for i, (name, profile, constants) in enumerate(cases):
