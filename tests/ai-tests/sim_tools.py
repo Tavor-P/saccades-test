@@ -2,7 +2,7 @@
 the way an AI agent wants to: named scenarios, one-line constant overrides,
 sweeps over a parameter, and machine-readable summaries. See README.md here.
 
-Nothing in this module opens a window, touches a camera, or writes to data/.
+Nothing in this module opens a window, touches the glasses, or writes to data/.
 """
 
 import contextlib

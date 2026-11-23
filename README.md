@@ -156,7 +156,7 @@ moving fast at the flash, latency from the go cue 100-500 ms, amplitude 0.5-1.5x
 The index is a Weibull psychometric fit per condition (guess rate 0.5, shared slope) with a bootstrap CI; with too few flashes it falls back to the accuracy difference, or reports "cannot be computed" with the
 reason. Other options: `--offset-ms`, `--flash-delay-ms`, `--min-amplitude`, `--index-near-ms`, `--index-far-ms` (see `--help`).
 
-**`analyze_participant`**: one run gives only ~19 saccade flashes, so each person does several runs that are pooled. Test runs are skipped unless `--include-test`. Only runs with the **same saccade contrasts and screen
+**`analyze_participant`**: one run gives only ~30 saccade flashes, so each person does several runs that are pooled. Test runs are skipped unless `--include-test`. Only runs with the **same saccade contrasts and screen
 geometry** are pooled (the largest such set; others are listed at the top of the report with the reason).
 
 **`compare`**: uses everyone's pooled analysis (redone first if missing or stale). People are left out, with the reason, when their index cannot be computed, their runs used other contrasts/geometry than the majority,
@@ -221,7 +221,7 @@ participant's pooled analysis with it).
 
 | | Braun et al. 2021 | This experiment |
 |---|---|---|
-| Eye tracker | EyeLink 1000, 1000 Hz | Pupil Labs Neon, ~160-200 Hz, gaze reaches the PC late |
+| Eye tracker | EyeLink 1000, 1000 Hz | Pupil Labs Neon, ~200 Hz, gaze reaches the PC ~15 ms late |
 | Flash trigger | live, 15 ms after online onset detection | scheduled on a bell curve around the person's average reaction time, judged **after the fact** from the raw trace |
 | Display | 120 Hz, 8 ms flash | 60 Hz, one frame (~17 ms) |
 | Saccade size | 10 deg | ~30-40 deg on a large screen (dot at 15 %, cross at 85 % of the width); depends on geometry |
@@ -242,6 +242,6 @@ participant's pooled analysis with it).
 [CLAUDE.md](CLAUDE.md) has the architecture, repo map and gotchas. Everything runs without hardware:
 
 ```
-.\scripts\py.ps1 -m pytest -q                 # 275 tests pass, about 4 min, no glasses or window needed
+.\scripts\py.ps1 -m pytest -q                 # 304 tests pass, about 4 min, no glasses or window needed
 .\scripts\py.ps1 -m src.experiment.simulation # headless simulated trial; see tests/ai-tests/README.md for run_sim.py
 ```

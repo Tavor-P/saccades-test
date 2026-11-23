@@ -1,6 +1,6 @@
 """Pooled analysis of ALL of one participant's runs (`-m src.experiment.analyze_participant <participant-id>`).
 
-One run gives only ~19 saccade flashes, too few for a stable suppression index, so this pools every run of a person:
+One run gives only ~30 saccade flashes, too few for a stable suppression index, so this pools every run of a person:
 1. finds the run folders under data/<participant>/ (test runs only with --include-test; old loose `results_<ts>.csv` files
    have no participant and are ignored),
 2. analyses each run exactly as `analyze_session` does (saccades from its own raw gaze trace, every flash gated by
