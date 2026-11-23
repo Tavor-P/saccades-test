@@ -39,7 +39,6 @@ def update_session(timestamp: str):
     try:
         save_participant_info(
             timestamp,
-            name=body.get("name", ""),
             gender=body.get("gender", ""),
             age=body.get("age", ""),
         )

@@ -105,11 +105,11 @@ def test_dashboard_lists_edits_and_deletes_new_and_old_sessions(tmp_path, monkey
     sessions = data_access.discover_sessions()
     assert sessions[0].timestamp == key
     assert sessions[0].metadata["participant_id"] == "alice" and sessions[0].metadata["test_mode"] is True
-    data_access.save_participant_info(key, "Alice", "f", "31")
+    data_access.save_participant_info(key, "f", "31")
     assert data_access.load_metadata(key)["age"] == 31
-    assert json.loads((log.folder / "session.json").read_text())["participant"]["name"] == "Alice"
-    data_access.save_participant_info("1792967858", "Old", "", "")
-    assert json.loads((tmp_path / "results_1792967858_meta.json").read_text())["name"] == "Old"
+    assert json.loads((log.folder / "session.json").read_text())["participant"]["gender"] == "f"
+    data_access.save_participant_info("1792967858", "", "31")
+    assert json.loads((tmp_path / "results_1792967858_meta.json").read_text())["age"] == 31
 
     (log.glasses_dir / "video.mp4").write_bytes(b"x")
     data_access.delete_session(key)  # a new-layout delete removes the whole run folder, glasses video included

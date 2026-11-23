@@ -88,19 +88,19 @@ def test_metadata_defaults_and_participant_info_merges_clears_and_validates(tmp_
     monkeypatch.setattr(data_access, "DATA_DIR", tmp_path)
     _write_session(tmp_path, "222", rows=[])
     meta = data_access.load_metadata("222")
-    assert meta["name"] is None and meta["participant_id"] is None  # no meta file
+    assert "name" not in meta and meta["participant_id"] is None  # no meta file
     with pytest.raises(ValueError):
-        data_access.save_participant_info("222", name="X", gender="Y", age="not-a-number")
+        data_access.save_participant_info("222", gender="Y", age="not-a-number")
 
     _write_session(tmp_path, "333", rows=[], meta={"participant_id": "p1", "calibration": {"left_ratio": 0.4, "right_ratio": 0.6}})
-    data_access.save_participant_info("333", name="Jamie", gender="woman", age="29")
+    data_access.save_participant_info("333", gender="woman", age="29")
     meta = data_access.load_metadata("333")
-    assert (meta["name"], meta["gender"], meta["age"], meta["participant_id"]) == ("Jamie", "woman", 29, "p1")
+    assert (meta["gender"], meta["age"], meta["participant_id"]) == ("woman", 29, "p1") and "name" not in meta
     assert meta["calibration"] == {"left_ratio": 0.4, "right_ratio": 0.6}  # other fields not clobbered
 
-    data_access.save_participant_info("333", name="", gender="", age="")
+    data_access.save_participant_info("333", gender="", age="")
     meta = data_access.load_metadata("333")
-    assert meta["name"] is None and meta["gender"] is None and meta["age"] is None
+    assert meta["gender"] is None and meta["age"] is None
 
 
 def test_delete_session_removes_csv_and_meta_tolerates_missing_meta_and_drops_it_from_the_list(tmp_path, monkeypatch):

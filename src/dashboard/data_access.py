@@ -35,7 +35,7 @@ def meta_path_for(timestamp: str) -> Path:
 
 
 def _flatten(raw: dict) -> dict:
-    """The dashboard's flat view (participant_id, started_at, test_mode, calibration, name, gender, age) of either an old
+    """The dashboard's flat view (participant_id, started_at, test_mode, calibration, gender, age) of either an old
     _meta.json (already flat) or a new session.json (sectioned)."""
     if "run" not in raw and "participant" not in raw:
         return dict(raw)
@@ -44,7 +44,6 @@ def _flatten(raw: dict) -> dict:
     return {
         **raw,
         "participant_id": participant.get("id"),
-        "name": participant.get("name"),
         "gender": participant.get("gender"),
         "age": participant.get("age"),
         "started_at": run.get("started_at"),
@@ -66,21 +65,20 @@ def load_metadata(timestamp: str) -> dict:
     meta.setdefault("started_at", None)
     meta.setdefault("test_mode", None)
     meta.setdefault("calibration", None)
-    meta.setdefault("name", None)
     meta.setdefault("gender", None)
     meta.setdefault("age", None)
     return meta
 
 
-def save_participant_info(timestamp: str, name: str, gender: str, age: str) -> None:
+def save_participant_info(timestamp: str, gender: str, age: str) -> None:
     ref = _ref(timestamp)
-    name, gender = name.strip() or None, gender.strip() or None
+    gender = gender.strip() or None
     age_value = int(age) if age.strip() else None
     raw = json.loads(ref.meta_path.read_text()) if ref.meta_path.exists() else {}
     if ref.is_legacy:
-        raw.update(name=name, gender=gender, age=age_value)
+        raw.update(gender=gender, age=age_value)
     else:
-        raw.setdefault("participant", {}).update(name=name, gender=gender, age=age_value)
+        raw.setdefault("participant", {}).update(gender=gender, age=age_value)
     ref.meta_path.write_text(json.dumps(raw, indent=2))
 
 

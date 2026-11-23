@@ -84,10 +84,6 @@
   {% else %}
   <div class="filters">
     <div class="filter-field">
-      <label for="filter-name">Name contains</label>
-      <input type="text" id="filter-name" placeholder="e.g. Alex">
-    </div>
-    <div class="filter-field">
       <label for="filter-gender">Gender contains</label>
       <input type="text" id="filter-gender" placeholder="e.g. woman">
     </div>
@@ -111,7 +107,6 @@
       <tr>
         <th>Run at</th>
         <th>Participant ID</th>
-        <th>Name</th>
         <th>Gender</th>
         <th>Age</th>
         <th>Trials</th>
@@ -123,7 +118,6 @@
       <tr data-timestamp="{{ session.timestamp }}">
         <td>{{ session.timestamp | session_datetime }}</td>
         <td class="muted">{{ session.metadata.participant_id if session.metadata.participant_id is not none else "-" }}</td>
-        <td><input type="text" class="field name" value="{{ session.metadata.name or '' }}" placeholder="-"></td>
         <td><input type="text" class="field gender" value="{{ session.metadata.gender or '' }}" placeholder="-"></td>
         <td><input type="number" class="field age" min="0" value="{{ session.metadata.age if session.metadata.age is not none else '' }}" placeholder="-"></td>
         <td class="muted">
@@ -188,7 +182,6 @@ document.querySelectorAll("tr[data-timestamp]").forEach((row) => {
 
   row.querySelectorAll("input.field").forEach((input) => {
     input.addEventListener("change", async () => {
-      const name = row.querySelector(".name").value;
       const gender = row.querySelector(".gender").value;
       const age = row.querySelector(".age").value;
       input.classList.remove("saved", "error");
@@ -196,7 +189,7 @@ document.querySelectorAll("tr[data-timestamp]").forEach((row) => {
         const response = await fetch(`/sessions/${timestamp}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name, gender, age }),
+          body: JSON.stringify({ gender, age }),
         });
         input.classList.add(response.ok ? "saved" : "error");
       } catch (err) {
@@ -208,9 +201,8 @@ document.querySelectorAll("tr[data-timestamp]").forEach((row) => {
 
 });
 
-const filterName = document.getElementById("filter-name");
-if (filterName) {
-  const filterGender = document.getElementById("filter-gender");
+const filterGender = document.getElementById("filter-gender");
+if (filterGender) {
   const filterAgeMin = document.getElementById("filter-age-min");
   const filterAgeMax = document.getElementById("filter-age-max");
   const filterExclude = document.getElementById("filter-exclude");
@@ -219,17 +211,14 @@ if (filterName) {
   const rows = document.querySelectorAll("tr[data-timestamp]");
 
   const rowMatchesFilters = (row) => {
-    const name = row.querySelector(".name").value.trim().toLowerCase();
     const gender = row.querySelector(".gender").value.trim().toLowerCase();
     const ageRaw = row.querySelector(".age").value.trim();
     const age = ageRaw === "" ? null : Number(ageRaw);
 
-    const nameFilter = filterName.value.trim().toLowerCase();
     const genderFilter = filterGender.value.trim().toLowerCase();
     const ageMin = filterAgeMin.value.trim() === "" ? null : Number(filterAgeMin.value);
     const ageMax = filterAgeMax.value.trim() === "" ? null : Number(filterAgeMax.value);
 
-    if (nameFilter && !name.includes(nameFilter)) return false;
     if (genderFilter && !gender.includes(genderFilter)) return false;
     if (ageMin !== null && (age === null || age < ageMin)) return false;
     if (ageMax !== null && (age === null || age > ageMax)) return false;
@@ -248,12 +237,11 @@ if (filterName) {
     filterCount.textContent = `Showing ${visibleCount} of ${rows.length} sessions`;
   };
 
-  [filterName, filterGender, filterAgeMin, filterAgeMax].forEach((input) => {
+  [filterGender, filterAgeMin, filterAgeMax].forEach((input) => {
     input.addEventListener("input", applyFilters);
   });
   filterExclude.addEventListener("change", applyFilters);
   filterClear.addEventListener("click", () => {
-    filterName.value = "";
     filterGender.value = "";
     filterAgeMin.value = "";
     filterAgeMax.value = "";

@@ -54,13 +54,23 @@ def test_index_lists_sessions_or_says_none(client, tmp_path):
 
 def test_update_session_persists_fields_rejects_a_bad_age_and_404s_for_unknown(client, tmp_path):
     _write_session(tmp_path, "456")
-    response = client.post("/sessions/456", json={"name": "Sam", "gender": "man", "age": "31"})
+    response = client.post("/sessions/456", json={"gender": "man", "age": "31"})
     assert response.status_code == 200
     assert response.get_json() == {"ok": True}
     meta = json.loads((tmp_path / "results_456_meta.json").read_text())
-    assert meta["name"] == "Sam" and meta["age"] == 31
-    assert client.post("/sessions/456", json={"name": "", "gender": "", "age": "nope"}).status_code == 400
-    assert client.post("/sessions/000000", json={"name": "", "gender": "", "age": ""}).status_code == 404
+    assert meta["gender"] == "man" and meta["age"] == 31 and "name" not in meta
+    assert client.post("/sessions/456", json={"gender": "", "age": "nope"}).status_code == 400
+    assert client.post("/sessions/000000", json={"gender": "", "age": ""}).status_code == 404
+
+
+def test_old_session_with_a_name_lists_fine_and_page_has_no_name_field(client, tmp_path):
+    _write_session(tmp_path, "321", meta={"participant_id": "p5", "name": "Zelda Quux", "gender": "nonbinary", "age": 47})
+    response = client.get("/")
+    assert response.status_code == 200
+    assert b"p5" in response.data
+    for leaked in (b"Zelda", b"Quux", b"Name", b"filter-name", b'class="field name"'):
+        assert leaked not in response.data
+    assert b"Gender" in response.data and b"Age" in response.data
 
 
 def test_delete_session_removes_it_from_disk_and_the_index_and_404s_for_unknown(client, tmp_path):
