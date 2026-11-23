@@ -2,8 +2,6 @@
 commented with why it has its value; read the comment before retuning one. Constants are copied by name into importing modules
 (`from ... import X`), so to change one temporarily in a test/simulation use tests/ai-tests/sim_tools.override_constants()."""
 
-import math
-
 # (xRatio, yRatio), 0-1 fraction of screen, framework-agnostic. Wide on purpose: a saccade's
 # duration grows with its size (~21 ms + ~2.2 ms/deg), so 15%/85% of a 53 cm screen at 50 cm
 # (~41 deg, ~110 ms) gives a longer movement for the flash to land in than the old 30%/70% (~24 deg).
@@ -24,14 +22,13 @@ BACKGROUND_LUMINANCE = 0.5  # 0=black, 1=white; mid-grey so the flash reads as a
 # replication.
 VIEWING_DISTANCE_CM = 50.0
 SCREEN_HEIGHT_CM = 26.0
-SCREEN_HEIGHT_DEG = 2 * math.degrees(math.atan((SCREEN_HEIGHT_CM / 2) / VIEWING_DISTANCE_CM))
 
 # LINE-STIMULUS BRANCH: the flash is NOT a grating but a thin horizontal line (Braun, Schutz &
 # Gegenfurtner 2021, J Vis): full screen width, a vertical Gaussian luminance profile, 2 deg above or below
 # the saccade target (the symbol the eye is moving to), and the
 # participant says which side with UP / DOWN. Their values: SD 0.15 deg, offset 2 deg, one frame at 120 Hz.
 # Sizes in degrees depend on the screen height and viewing distance, which the startup dialog asks for each run (src/experiment/geometry.py
-# turns them into the values the line uses); VIEWING_DISTANCE_CM / SCREEN_HEIGHT_CM above and the LINE_*_HEIGHT_UNITS below are only the
+# turns them into the values the line uses); VIEWING_DISTANCE_CM / SCREEN_HEIGHT_CM above are only the
 # defaults (24-inch placeholders). A saccade between dot and cross spans a different angle on every screen width and distance.
 LINE_OFFSET_DEG = 2.0  # distance of the line's centre above/below the target
 LINE_SD_DEG = 0.15  # vertical standard deviation of the Gaussian profile
@@ -40,11 +37,6 @@ LINE_WIDTH_SCREENS = 24.0  # drawn this many screen widths wide so the horizonta
 # the `grating` branch). A single frame, exactly as in the paper (their 120Hz CRT -> ~8ms;
 # on a typical 60Hz display this is ~16.7ms instead - still "one frame", just a longer one)
 GRATING_DURATION_FRAMES = 1
-
-LINE_OFFSET_HEIGHT_UNITS = LINE_OFFSET_DEG / SCREEN_HEIGHT_DEG  # = offset as a fraction of the screen height
-LINE_SD_HEIGHT_UNITS = LINE_SD_DEG / SCREEN_HEIGHT_DEG
-# PsychoPy's 'gauss' mask has a standard deviation of size/6, so a mask this tall has SD = LINE_SD_DEG.
-LINE_HEIGHT_HEIGHT_UNITS = LINE_SD_HEIGHT_UNITS * 6
 
 # Whether a session is a quick test/smoke run (fewer trials) or a real
 # data-collection session is a runtime decision, not a constant to edit here
@@ -199,7 +191,7 @@ CONTROL_OFFSETS_MS = (400, 500)
 SACCADE_CONTRAST_LEVELS = 3
 SACCADE_FIXED_CONTRASTS = (0.04, 0.06, 0.08)
 # Number of main-block saccade trials in that mode (the block stops by count):
-# ~30 % of flashes should land near the saccade, so 150 trials give ~50 usable flashes.
+# ~20 % of flashes land in the saccade gate, so 150 trials give ~30 saccade-gate flashes (simulator).
 SACCADE_FIXED_TRIALS_TEST = 30
 SACCADE_FIXED_TRIALS_REAL = 150
 
@@ -255,10 +247,11 @@ RT_MIN_PLAUSIBLE_MS = 100.0
 RT_OUTLIER_MAD_K = 3.0
 RT_OUTLIER_MAD_FLOOR_MS = 25.0
 
-# Gaze-sample timestamps are the PC arrival time; the eye actually moved
-# (measured gaze latency) earlier. A source's reported latency is clamped to
-# this range before being subtracted, so a bad clock-offset estimate can't
-# shift onset/landing times by seconds.
+# For sources that stamp samples with the PC arrival time, the eye actually moved
+# (measured gaze latency) earlier, so the latency is subtracted; it is clamped to
+# this range first, so a bad clock-offset estimate can't shift onset/landing times
+# by seconds. Neon stamps CAPTURE time, so nothing is subtracted for it
+# (`timestamps_are_capture_time` in session.py).
 GAZE_LATENCY_MAX_MS = 150.0
 
 # Go-cue beep, played the instant the target appears (see run_experiment.py) -
@@ -280,7 +273,7 @@ WARNING_TONE_VOLUME = 0.5
 # Runs once, ahead of the saccade phase; hands its calibration and its practice
 # reaction times to the saccade phase so neither is repeated.
 
-# Contrast of the fixed gratings in the "how to answer" quiz - comfortably
+# Contrast of the fixed lines in the "how to answer" quiz - comfortably
 # above threshold so a participant who understands the key mapping can
 # reliably clear the streak.
 TUTORIAL_QUIZ_CONTRAST = 0.5

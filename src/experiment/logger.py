@@ -305,7 +305,7 @@ class ResultLogger:
     def __init__(
         self,
         participant_id: str,
-        camera_label: str | None = None,
+        gaze_source_label: str | None = None,
         test_mode: bool | None = None,
     ) -> None:
         DATA_DIR.mkdir(exist_ok=True)
@@ -332,7 +332,7 @@ class ResultLogger:
                 "psychopy_version": _psychopy_version(),
             },
             "settings": {
-                "gaze_source": camera_label,
+                "gaze_source": gaze_source_label,
                 "viewing_distance_cm": VIEWING_DISTANCE_CM,
                 "screen_height_cm": SCREEN_HEIGHT_CM,
                 "line_offset_deg": LINE_OFFSET_DEG,
