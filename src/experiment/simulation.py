@@ -1,4 +1,4 @@
-"""Headless simulation of the saccade experiment - no PsychoPy window, no camera,
+"""Headless simulation of the saccade experiment - no PsychoPy window, no glasses,
 no files, no real time. A simulated participant, who sees only what
 `ExperimentSession.render_state()` would draw, drives the *real*
 ExperimentSession through calibration, the reaction-time test and saccade

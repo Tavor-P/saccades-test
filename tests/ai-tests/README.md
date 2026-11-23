@@ -1,7 +1,7 @@
 # ai-tests: headless simulation for AI agents
 
 Run the **real** `ExperimentSession` against a simulated participant, clock and
-gaze tracker - no PsychoPy window, no camera, no files written, no real waiting
+gaze tracker - no PsychoPy window, no glasses, no files written, no real waiting
 (a full session takes a few seconds). Use it to check session logic, or to see how
 changing a constant (e.g. `SACCADE_ONSET_STABILITY_MS`) changes results, without
 asking the human to put the glasses on.
@@ -41,10 +41,10 @@ Constants are overridden temporarily (restored afterwards).
   the experiment keeps, how many really fell inside the simulated saccade; of the flashes that
   really did, how many it kept. "Really inside" is strict: `[onset, onset + flight]` of the
   simulated eye movement (real perisaccadic suppression extends somewhat beyond that).
-- `mean_reaction_latency_ms` - go-cue to the classifier first seeing gaze leave the source zone.
+- `mean_reaction_latency_ms` - go-cue to the classifier first seeing gaze move beyond the displacement threshold.
   This runs *later* than the true saccade onset (the eye must cross the whole source zone first,
   plus tracker latency); `--timeline` shows both.
-- `mean_onset_detection_lag_ms` - first sample outside the source zone to the debounced onset.
+- `mean_onset_detection_lag_ms` - first sample beyond the displacement threshold to the debounced onset.
 - `true_rt_mean_ms`, `avg_rt_used_mean_ms`, `avg_rt_bias_ms`, `avg_rt_abs_err_ms`, `avg_rt_abs_err_vs_trial_ms` - **reaction-time ground truth**
   (flash trials only). `true_rt_mean_ms` is the simulated participant's real mean latency at each trial (mean + drift
   + wave + direction offset); `avg_rt_used_ms` is what the session actually scheduled the flash from. Bias = used minus
@@ -75,7 +75,7 @@ main trial), counted from 0.
 Preset `realistic` (scenario, or `ParticipantProfile.realistic(**overrides)`): mean 220, SD 55, tau 50 (total SD ~74),
 drift 0.4 ms/trial, autocorr 0.3, anticipation 3 %, lapse 2 %. Plausible values, not fitted to data. Draws use only the
 participant's own seeded rng, so a seed still reproduces a run. Caveat: a rolling-average window below
-`RT_AVERAGE_MIN_USABLE` (3) never leaves the default 230 ms - it is a fixed-schedule baseline, not a "last latency" rule.
+`RT_MIN_SAMPLES_FOR_AVERAGE` (3) never leaves the default `DEFAULT_REACTION_TIME_MS` (225 ms) - it is a fixed-schedule baseline, not a "last latency" rule.
 
 ## What the simulation is (and is not)
 
@@ -93,5 +93,5 @@ recorded gaze).
 - `run_sim.py` - the CLI. `sim_tools.py` - scenarios, constant overrides, `summarize`, `sweep`.
 - `test_ai_tools.py` - pytest self-tests (`pytest tests/ai-tests`).
 - `find_bugs.py` + `invariants.py` - randomized bug hunt (`find_bugs.py --sessions 300 --seed 7`, `--extreme`); each finding prints a `run_sim.py` repro command. Exit status 1 if anything is found.
-- `test_invariants.py`, `test_bug_injection.py`, `test_schema_sync.py`, `test_constants_sanity.py`, `test_validity_lockstep.py`, `test_architecture_rules.py` - the bug-finding tests (see CLAUDE.md)
+- `test_invariants.py`, `test_bug_injection.py`, `test_schema_sync.py`, `test_constants_sanity.py`, `test_architecture_rules.py` - the bug-finding tests (see CLAUDE.md)
 - The simulator itself lives in `src/experiment/simulation.py` (tests: `tests/test_simulation.py`).
