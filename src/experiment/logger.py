@@ -106,7 +106,7 @@ DROPPED_FROM_CSV = {
     "source": "the two symbols are the left and right dot and trials alternate strictly, so the direction is the trial parity within a phase",
     "target": "same as source: the opposite symbol, i.e. the direction of the eye movement follows from the trial parity",
     "timing_offset_ms": "the actual delay is in flash_ms_after_go_cue and analyze_session recomputes timing (and the control flashes) from the gaze trace",
-    "saccade_duration_ms": "live-detected duration from a ~95 ms late gaze stream; analyze_session measures saccades from the raw trace (median kept in session.json)",
+    "saccade_duration_ms": "live-detected duration from the live gaze stream; analyze_session measures saccades from the raw trace (median kept in session.json)",
     "onset_detection_lag_ms": "diagnostic of the live onset detector (median kept in session.json)",
     "flash_relative_to_onset_ms": "live estimate from the late gaze stream; analyze_session recomputes it post hoc from the trace",
     "avg_rt_used_ms": "reaction-time-average bookkeeping; flash_ms_after_go_cue already holds the resulting delay (final average is in session.json)",

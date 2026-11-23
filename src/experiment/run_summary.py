@@ -19,8 +19,8 @@ DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 ROOT = Path(__file__).resolve().parents[2]
 SUMMARY_FILE = "RUN_SUMMARY.txt"
 
-MIN_SAMPLE_RATE_HZ = 100.0  # Neon streams ~140-200 Hz; below this the saccade timing gets coarse
-MAX_LATENCY_MS = 150.0  # known open problem: ~95 ms in full runs; analysis uses the phone's capture times so only far beyond that matters
+MIN_SAMPLE_RATE_HZ = 100.0  # Neon streams ~200 Hz; below this the saccade timing gets coarse
+MAX_LATENCY_MS = 150.0  # typical ~15 ms in full runs; analysis uses the phone's capture times so only far beyond that matters
 MAX_GAP_MS = 150.0
 MAX_TRACKING_LOST_SHARE = 0.10
 MAX_UNANSWERED_SHARE = 0.20
@@ -80,14 +80,14 @@ def gaze_quality_lines(quality: dict | None) -> tuple[list[str], list[str]]:
         lines.append("Gaze rate: unknown (check)")
         warnings.append("Gaze sample rate unknown.")
     elif rate < MIN_SAMPLE_RATE_HZ:
-        lines.append(f"Gaze rate: {rate:.0f} Hz (check, expected 140+)")
+        lines.append(f"Gaze rate: {rate:.0f} Hz (check, expected about 200)")
         warnings.append(f"Low gaze sample rate ({rate:.0f} Hz): check the Wi-Fi and that the glasses were worn.")
     else:
         lines.append(f"Gaze rate: {rate:.0f} Hz (OK)")
     if latency is None:
         lines.append("Gaze delay: unknown (check)")
     elif latency > MAX_LATENCY_MS:
-        lines.append(f"Gaze delay: {latency:.0f} ms (check, typical 90-100)")
+        lines.append(f"Gaze delay: {latency:.0f} ms (check, typical ~15)")
         warnings.append(f"Gaze reached the PC {latency:.0f} ms late; the analysis uses the phone's capture times but check the network.")
     else:
         lines.append(f"Gaze delay: {latency:.0f} ms (OK)")

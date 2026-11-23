@@ -119,7 +119,7 @@ def _worst(lights) -> str:
 
 LATENCY_RULE = (f"Green: the median gaze delay (phone to this computer) is at most {MAX_LATENCY_MS:.0f} ms. Amber: longer, or not recorded. "
                 "Never red: the analysis times saccades with the phone's own capture times, so the delay only affects the live display "
-                "(about 95 ms is the known, usual value in full runs).")
+                "(typical is about 15 ms in full runs).")
 GAP_RULE = (f"Green: the longest pause in the gaze stream is at most {MAX_GAP_MS:.0f} ms. Amber: longer, or not recorded. "
             f"Never red: any flash with a pause over {TRACKING_GAP_MS:.0f} ms around it is already left out by the analysis.")
 HEAD_RULE = ("Green: the head monitor ran and no trial was flagged. Amber: the monitor was unavailable, or some trials were flagged "

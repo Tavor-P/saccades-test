@@ -111,8 +111,8 @@ def test_old_layout_rows_trial_counts_and_gaze_quality_wording(tmp_path):
     assert counts["shown"] == 1 and counts["correct"] == 1 and counts["median_reaction_ms"] == 300
 
     lines, warnings = gaze_quality_lines({"sample_rate_hz": 60.0, "latency_ms_median": 300.0, "longest_gap_ms": 500.0, "gaps_over_threshold": 9})
-    assert "Gaze rate: 60 Hz (check, expected 140+)" in lines
-    assert "Gaze delay: 300 ms (check, typical 90-100)" in lines
+    assert "Gaze rate: 60 Hz (check, expected about 200)" in lines
+    assert "Gaze delay: 300 ms (check, typical ~15)" in lines
     assert "Gaze gaps: longest 500 ms, 9 over the threshold (check)" in lines
     assert len(warnings) == 3
     lines, warnings = gaze_quality_lines(None)
