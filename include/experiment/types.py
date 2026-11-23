@@ -51,9 +51,9 @@ class TrialResult:
     response_time_ms: float | None
     outcome: str  # "correct" | "incorrect" | "miss" | "timeout"  (old sessions also: "false_alarm" | "correct_rejection")
     # Saccade phase only (None in old presaccade rows, which have no saccade to
-    # time): go-cue to the gaze classifier's first sample outside the source
-    # zone, and that sample to the debounced onset that actually fired the
-    # flash - together they let SACCADE_ONSET_STABILITY_MS be tuned against
+    # time): go-cue to the gaze classifier's first sample beyond the
+    # displacement threshold, and that sample to the debounced onset (confirmation
+    # lag) - together they let SACCADE_ONSET_STABILITY_MS be tuned against
     # measured latency instead of guesswork. Also populated (onset only) on
     # "rt_test" rows, where it's literally the thing being measured.
     reaction_latency_ms: float | None = None
@@ -71,10 +71,10 @@ class TrialResult:
     # TrialSpec.timing_offset_ms. None for rows that don't use open-loop
     # scheduling (old presaccade, rt_test, or CSVs logged before this existed).
     timing_offset_ms: int | None = None
-    # Wall-clock (time.time(), milliseconds since the Unix epoch) timestamp
-    # of the moment the grating actually flashed - unlike every other timing
-    # field here, which is relative to PausableClock's monotonic clock and
-    # only meaningful within one trial/session. This is what lets the flash
+    # Wall-clock (`timebase.unix_ms()`: milliseconds since the Unix epoch)
+    # timestamp of the moment the line actually flashed - unlike every other
+    # timing field here, which is on the `src/timebase.py` clock (`now()` =
+    # perf_counter) and only meaningful within one trial/session. This is what lets the flash
     # be located in absolute time against something recorded independently
     # (e.g. a synced video/frame log). None for old presaccade
     # rows and rt_test rows, which never flash.
@@ -89,9 +89,10 @@ class TrialResult:
     # never detected) - the quantity the open-loop timing is trying to land
     # inside the saccade. avg_rt_used_ms / scheduled_delay_ms: the reaction-
     # time average in effect when the trial was scheduled and the resulting
-    # go-cue-to-flash delay (avg + timing offset), for every saccade trial.
-    # gaze_latency_ms: the eye-to-sample latency subtracted from onset/landing
-    # timestamps for this trial (0 if the source reports none).
+    # go-cue-to-flash delay, drawn from the bell curve around the average RT
+    # (`timing_offset_ms` is the slice label), for every saccade trial.
+    # gaze_latency_ms: measured latency; subtracted only for sources that stamp
+    # arrival time (not Neon).
     flash_relative_to_onset_ms: float | None = None
     avg_rt_used_ms: float | None = None
     scheduled_delay_ms: float | None = None

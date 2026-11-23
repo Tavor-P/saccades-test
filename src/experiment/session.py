@@ -1,4 +1,4 @@
-"""ExperimentSession: the saccade phase as a PsychoPy-free state machine (calibration -> reaction-time test -> practice -> open-ended real block).
+"""ExperimentSession: the saccade phase as a PsychoPy-free state machine (calibration -> reaction-time test -> practice -> real block, generated trial by trial; stops at `SACCADE_FIXED_TRIALS_*`).
 Drive it with on_space/on_response_key/tick/render_state. Flash timing is open-loop (scheduled off the measured reaction time); see CLAUDE.md. Headless
 runs of this class: src/experiment/simulation.py."""
 
@@ -140,7 +140,7 @@ class ExperimentSession:
         # `fixed_contrasts` (from the startup dialog) overrides the SACCADE_FIXED_CONTRASTS default.
         contrasts = SACCADE_FIXED_CONTRASTS if fixed_contrasts is None else tuple(fixed_contrasts)
         if not contrasts:
-            raise ValueError("at least one saccade contrast is required (the ZEST staircase was removed)")
+            raise ValueError("at least one saccade contrast is required")
         self._fixed_contrast_bag: ShuffledBag[float] = ShuffledBag(contrasts)
         self._fixed_trials = SACCADE_FIXED_TRIALS_TEST if test_mode else SACCADE_FIXED_TRIALS_REAL
         self._timing_offset_bag: ShuffledBag[int] = ShuffledBag(TIMING_OFFSETS_MS + CONTROL_OFFSETS_MS)
@@ -702,7 +702,7 @@ class ExperimentSession:
 
     def _summary(self) -> str:
         # Accuracy = (times the arrow-key response correctly reported the
-        # grating's orientation) divided by (times the grating was actually
+        # line's side) divided by (times the line was actually
         # shown) - "incorrect" (wrong orientation guessed) and "miss" (no
         # response at all) both count against it.
         correct = sum(1 for r in self._results if r.outcome == "correct")

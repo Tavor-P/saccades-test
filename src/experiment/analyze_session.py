@@ -71,7 +71,7 @@ class Saccade:
 @dataclass(frozen=True)
 class Flash:
     trial: int
-    time: float  # PC unix seconds the grating was drawn (before any display-delay correction)
+    time: float  # PC unix seconds the line was drawn (before any display-delay correction)
     contrast: float
     orientation: str
     outcome: str  # correct | incorrect | miss
@@ -117,7 +117,7 @@ def load_trace(path: Path, clock_offset_s: float, offset_history: list[dict] | N
 
 
 def load_flashes(path: Path) -> list[Flash]:
-    """Every shown saccade-phase grating with a logged wall-clock time (reads both trials.csv and the old results CSV)."""
+    """Every shown saccade-phase line with a logged wall-clock time (reads both trials.csv and the old results CSV)."""
     flashes = []
     for row in read_trial_rows(Path(path)):
         if row.get("phase") != "saccade" or row.get("grating_shown") != "True":
