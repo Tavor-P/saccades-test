@@ -32,8 +32,10 @@ from src.experiment.flash_gates import (
     EXCLUDED,
     FIXATION,
     FIXATION_EXCLUSION_MS,
+    RETURN_LATENCY_MAX_MS,
     SACCADE,
     classify_flashes,
+    classify_leg_flash,
     summarize_gates,
 )
 
@@ -76,6 +78,10 @@ class Flash:
     orientation: str
     outcome: str  # correct | incorrect | miss
     go_cue: float | None = None  # PC unix seconds the trial's target appeared (flash time minus its scheduled delay)
+    leg: str | None = None  # return-jump runs: 'out' | 'return' (trials.csv flash_leg); None in older runs
+    jump: float | None = None  # PC unix seconds the target jumped back (go cue + jump_back_ms_after_go_cue); None = no jump
+    jump_forced: bool = False  # the jump came on the landing timeout (no out landing was seen live)
+    return_reaction_ms: float | None = None  # the live classifier's signed return latency from the jump (cross-check only)
 
     @property
     def correct(self) -> bool:
@@ -133,6 +139,9 @@ def load_flashes(path: Path) -> list[Flash]:
                 outcome = "miss"
             else:
                 outcome = "correct" if row.get("response_orientation") == row.get("orientation") else "incorrect"
+        go_cue = shown - float(delay) / 1000 if delay else None
+        jump_ms = row.get("jump_back_ms_after_go_cue")
+        reaction = row.get("return_reaction_ms")
         flashes.append(
             Flash(
                 trial=int(row["trial_index"]),
@@ -140,7 +149,11 @@ def load_flashes(path: Path) -> list[Flash]:
                 contrast=float(row["contrast"]),
                 orientation=row.get("orientation", ""),
                 outcome=outcome,
-                go_cue=shown - float(delay) / 1000 if delay else None,
+                go_cue=go_cue,
+                leg=row.get("flash_leg") or None,
+                jump=go_cue + float(jump_ms) / 1000 if jump_ms and go_cue is not None else None,
+                jump_forced=row.get("jump_back_forced") == "True",
+                return_reaction_ms=float(reaction) if reaction else None,
             )
         )
     return flashes
@@ -190,6 +203,135 @@ def place_flashes(flashes: list[Flash], saccades: list[Saccade], flash_delay_ms:
         s = saccades[k]
         placed.append(Placed(f, 1000 * (when - s.onset), s.onset <= when <= s.offset))
     return placed
+
+
+# -- return-jump runs: the two saccades of each trial ----------------------------------------------
+# A trial whose row logs a jump-back has an out saccade (go cue -> target) and a return saccade (back to the start). Each
+# flash is placed against and gated by the saccade of its own leg (flash_gates.classify_leg_flash). Runs with no jump
+# logged in any row (older runs, or the jump setting off) never reach this code.
+
+OUT_SEARCH_S = (-0.2, 1.5)  # the out saccade: the first one with onset in [go cue - 0.2 s, go cue + 1.5 s]
+RETURN_SEARCH_AFTER_JUMP_S = 1.0  # the return saccade starts at most this long after the jump (and before the next go cue)
+RETURN_MIN_AMPLITUDE_REL = 0.5  # ...and moves back toward the start by >= this x the out amplitude (an overshoot correction is not a return)
+LEGS = ("out", "return")
+
+
+@dataclass(frozen=True)
+class TrialSaccades:
+    """The saccades of one return-jump trial (None = not found)."""
+
+    out: Saccade | None
+    back: Saccade | None
+
+    def of(self, leg: str | None) -> Saccade | None:
+        return self.back if leg == "return" else self.out
+
+
+def is_return_jump(flashes: list[Flash]) -> bool:
+    """True when any row logged a jump-back: the run used the return-jump trials."""
+    return any(f.jump is not None for f in flashes)
+
+
+def find_trial_saccades(flashes: list[Flash], saccades: list[Saccade]) -> list[TrialSaccades]:
+    """Per flash (one per trial): its trial's out and return saccade. The search for a trial ends at the next trial's go cue."""
+    cues = sorted(f.go_cue for f in flashes if f.go_cue is not None)
+    found = []
+    for f in flashes:
+        if f.go_cue is None:
+            found.append(TrialSaccades(None, None))
+            continue
+        later = [c for c in cues if c > f.go_cue]
+        end = later[0] if later else math.inf
+        lo, hi = f.go_cue + OUT_SEARCH_S[0], min(f.go_cue + OUT_SEARCH_S[1], end)
+        k = next((i for i, s in enumerate(saccades) if lo <= s.onset <= hi), None)
+        if k is None:
+            found.append(TrialSaccades(None, None))
+            continue
+        out = saccades[k]
+        back = None
+        if f.jump is not None:
+            direction = math.copysign(1.0, out.x1 - out.x0)
+            last = min(f.jump + RETURN_SEARCH_AFTER_JUMP_S, end)
+            for s in saccades[k + 1 :]:
+                if s.onset > last:
+                    break
+                if -direction * (s.x1 - s.x0) >= RETURN_MIN_AMPLITUDE_REL * out.amplitude:
+                    back = s
+                    break
+        found.append(TrialSaccades(out, back))
+    return found
+
+
+def place_leg_flashes(flashes: list[Flash], trials: list[TrialSaccades], flash_delay_ms: float = 0.0) -> list[Placed]:
+    """Each flash against its own leg's saccade (rel_ms None when that saccade was not found). A flash without a leg is an out flash."""
+    placed = []
+    for f, tr in zip(flashes, trials):
+        s = tr.of(f.leg)
+        when = f.time + flash_delay_ms / 1000
+        placed.append(Placed(f, None, False) if s is None else Placed(f, 1000 * (when - s.onset), s.onset <= when <= s.offset))
+    return placed
+
+
+def classify_leg_flashes(placed: list[Placed], trials: list[TrialSaccades], saccades: list[Saccade], t: np.ndarray, x: np.ndarray, flash_delay_ms: float = 0.0) -> list:
+    """flash_gates.classify_leg_flash for every flash; the amplitude gate uses each leg's own run median."""
+    medians = {}
+    for leg in LEGS:
+        amps = [tr.of(leg).amplitude for tr in trials if tr.of(leg) is not None]
+        medians[leg] = float(np.median(amps)) if amps else None
+    out = []
+    for p, tr in zip(placed, trials):
+        leg = "return" if p.flash.leg == "return" else "out"
+        anchor = p.flash.jump if leg == "return" else p.flash.go_cue
+        out.append(classify_leg_flash(p.flash.time + flash_delay_ms / 1000, saccades, t, x, leg, tr.of(leg), anchor, medians[leg], p.flash.jump_forced))
+    return out
+
+
+def leg_subset(placed: list[Placed], gates: list, leg: str) -> tuple[list[Placed], list]:
+    """This leg's saccade flashes plus EVERY fixation flash (the fixation control is shared by both legs: the eye was still,
+    whichever leg the flash had been timed for)."""
+    keep = [i for i, (p, g) in enumerate(zip(placed, gates)) if g.condition == FIXATION or (g.condition == SACCADE and (p.flash.leg or "out") == leg)]
+    return [placed[i] for i in keep], [gates[i] for i in keep]
+
+
+def suppression_by_leg(placed: list[Placed], gates: list, **kwargs) -> dict:
+    """{'out', 'return', 'pooled'}: suppression_index per leg (that leg's saccade flashes vs all fixation flashes) and pooled."""
+    result = {}
+    for leg in LEGS:
+        sub_placed, sub_gates = leg_subset(placed, gates, leg)
+        result[leg] = suppression_index(sub_placed, gates=sub_gates, **kwargs)
+    result["pooled"] = suppression_index(placed, gates=gates, **kwargs)
+    return result
+
+
+def _robust_sd(values: np.ndarray) -> float:
+    return float(1.4826 * np.median(np.abs(values - np.median(values))))
+
+
+def return_latency_stats(flashes: list[Flash], trials: list[TrialSaccades], settings: dict | None = None) -> dict:
+    """Return-saccade latency from the jump-back frame, from the raw trace, over every trial that jumped (whichever leg its flash
+    was on), forced jumps left out. Negative = the eye turned back before the jump was drawn (predictive). The logged live
+    `return_reaction_ms` is summarised alongside as a cross-check. Caveat: the jump time is go cue + logged offset, and the go cue
+    is the flash time minus its SCHEDULED delay, so the anchor can sit up to one frame late (latencies read up to ~17 ms short)."""
+    jumped = [(f, tr) for f, tr in zip(flashes, trials) if f.jump is not None]
+    usable = [(f, tr) for f, tr in jumped if not f.jump_forced]
+    lat = np.asarray([1000 * (tr.back.onset - f.jump) for f, tr in usable if tr.back is not None])
+    live = np.asarray([f.return_reaction_ms for f, _ in usable if f.return_reaction_ms is not None])
+    s = settings or {}
+    return {
+        "trials_jumped": len(jumped),
+        "forced_jumps": len(jumped) - len(usable),
+        "no_return_found": sum(tr.back is None for _, tr in usable),
+        "n": int(len(lat)),
+        "median_ms": float(np.median(lat)) if len(lat) else None,
+        "sd_ms": float(np.std(lat, ddof=1)) if len(lat) >= 2 else None,
+        "robust_sd_ms": _robust_sd(lat) if len(lat) >= 2 else None,
+        "share_predictive": float(np.mean(lat < 0)) if len(lat) else None,
+        "live_n": int(len(live)),
+        "live_median_ms": float(np.median(live)) if len(live) else None,
+        "live_sd_ms": float(np.std(live, ddof=1)) if len(live) >= 2 else None,
+        "return_flash_spread_sd_ms": s.get("return_flash_spread_sd_ms"),
+        "return_jump_trigger": s.get("return_jump_trigger"),
+    }
 
 
 # -- statistics ----------------------------------------------------------------------------------
@@ -470,6 +612,39 @@ def format_gate_report(gates: dict) -> str:
     return "\n".join(lines)
 
 
+def _ms(v, fmt="{:.0f} ms") -> str:
+    return "n/a" if v is None else fmt.format(v)
+
+
+def format_return_latency(r: dict) -> str:
+    """The return-latency block of a return-jump run (what RETURN_FLASH_SPREAD_SD_MS should be set from)."""
+    lines = ["Return latency (return saccade onset minus the jump-back frame, from the raw trace; < 0 = predictive):"]
+    lines.append(f"  trials that jumped: {r['trials_jumped']} ({r['forced_jumps']} forced jumps left out, no return saccade found in {r['no_return_found']})")
+    if r["n"]:
+        lines.append(f"  n {r['n']}: median {_ms(r['median_ms'])}, SD {_ms(r['sd_ms'])} (robust SD {_ms(r['robust_sd_ms'])}), "
+                     f"predictive {100 * r['share_predictive']:.0f}%")
+    else:
+        lines.append("  no return saccade found: no latency")
+    if r["live_n"]:
+        lines.append(f"  live classifier (return_reaction_ms, cross-check): n {r['live_n']}, median {_ms(r['live_median_ms'])}, SD {_ms(r['live_sd_ms'])}")
+    if r.get("return_flash_spread_sd_ms") is not None:
+        lines.append(f"  this run's return flash spread SD (RETURN_FLASH_SPREAD_SD_MS): {r['return_flash_spread_sd_ms']:g} ms; trigger: {r.get('return_jump_trigger') or '?'}")
+    lines.append("  (the jump time is anchored on the scheduled flash delay, so it can be up to one frame late: latencies near 0 read slightly low)")
+    return "\n".join(lines)
+
+
+def format_leg_suppression(by_leg: dict) -> str:
+    """Suppression index for the out leg, the return leg (each: its saccade flashes vs ALL fixation flashes) and both pooled."""
+    lines = ["Suppression index by leg (each leg's saccade flashes against the shared fixation flashes):"]
+    for leg in (*LEGS, "pooled"):
+        s = by_leg[leg]
+        ci = "" if s["ci"] is None else f", 95% CI {s['ci'][0]:+.2f} to {s['ci'][1]:+.2f}"
+        value = "cannot be computed" if s["index"] is None else f"{s['index']:+.2f} ({s['method']}{ci})"
+        lines.append(f"  {leg:<7} saccade {s['correct_saccade']}/{s['n_saccade']}, fixation {s['correct_fixation']}/{s['n_fixation']}: {value}")
+    lines.append(f"  (return-leg saccade gates: own return saccade, latency from the jump <= {RETURN_LATENCY_MAX_MS:.0f} ms, no lower bound)")
+    return "\n".join(lines)
+
+
 # -- plot ----------------------------------------------------------------------------------------
 
 
@@ -557,6 +732,13 @@ class RunAnalysis:
     summary: dict  # summarize() plus "gates" and "suppression"
     suppression: dict
     geometry_line: str | None
+    trials: list[TrialSaccades] | None = None  # return-jump runs: each flash's trial saccades (None for other runs)
+    by_leg: dict | None = None  # return-jump runs: suppression_by_leg()
+    return_latency: dict | None = None  # return-jump runs: return_latency_stats()
+
+    @property
+    def return_jump(self) -> bool:
+        return self.trials is not None
 
     @property
     def stamp(self) -> str:
@@ -587,9 +769,14 @@ def analyze_run(
     t, x = load_trace(ref.gaze_trace_path, clock_offset_ms / 1000, offset_history)
     saccades = detect_saccades(t, x, min_amplitude=min_amplitude)
     flashes = load_flashes(ref.trials_path)
-    placed = place_flashes(flashes, saccades, flash_delay_ms)
+    trials = find_trial_saccades(flashes, saccades) if is_return_jump(flashes) else None
+    if trials is None:
+        placed = place_flashes(flashes, saccades, flash_delay_ms)
+        gates = classify_flashes(placed, saccades, t, x, flash_delay_ms, [p.flash.go_cue for p in placed])
+    else:
+        placed = place_leg_flashes(flashes, trials, flash_delay_ms)
+        gates = classify_leg_flashes(placed, trials, saccades, t, x, flash_delay_ms)
     summary = summarize(placed, saccades)
-    gates = classify_flashes(placed, saccades, t, x, flash_delay_ms, [p.flash.go_cue for p in placed])
     summary["gates"] = summarize_gates(placed, gates)
     suppression = suppression_index(placed, near_ms, far_ms, gates=gates)
     summary["suppression"] = suppression
@@ -598,17 +785,29 @@ def analyze_run(
         geometry_line = format_geometry(meta.get("settings"))
     except (OSError, ValueError, AttributeError, KeyError):
         geometry_line = None
-    return RunAnalysis(ref, meta if isinstance(meta, dict) else {}, t, x, saccades, placed, gates, summary, suppression, geometry_line)
+    meta = meta if isinstance(meta, dict) else {}
+    run = RunAnalysis(ref, meta, t, x, saccades, placed, gates, summary, suppression, geometry_line)
+    if trials is not None:
+        by_leg = suppression_by_leg(placed, gates, near_ms=near_ms, far_ms=far_ms)
+        by_leg["pooled"] = suppression  # identical computation; keep the one object
+        run.trials, run.by_leg = trials, by_leg
+        run.return_latency = return_latency_stats(flashes, trials, meta.get("settings") if isinstance(meta.get("settings"), dict) else None)
+        summary["by_leg"], summary["return_latency"] = by_leg, run.return_latency
+    return run
 
 
 def write_flash_rows(path: Path, placed: list[Placed], gates: list, extra: dict[str, list] | None = None) -> Path:
-    """The per-flash CSV; `extra` columns (name -> one value per flash) go first (the participant analysis adds the run)."""
+    """The per-flash CSV; `extra` columns (name -> one value per flash) go first (the participant analysis adds the run).
+    flash_rel_onset_ms is relative to the flash's own leg's saccade in return-jump runs (the nearest onset otherwise);
+    flash_leg is blank for runs without return jumps; saccade_latency_ms is from the go cue (out) or the jump (return)."""
     extra = extra or {}
     with Path(path).open("w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow([*extra, "trial", "contrast", "orientation", "outcome", "flash_rel_onset_ms", "inside_saccade", "condition", "gate_reason"])
+        writer.writerow([*extra, "trial", "contrast", "orientation", "outcome", "flash_rel_onset_ms", "inside_saccade", "condition", "gate_reason", "flash_leg", "saccade_latency_ms"])
         for i, (p, g) in enumerate(zip(placed, gates)):
-            writer.writerow([*(values[i] for values in extra.values()), p.flash.trial, p.flash.contrast, p.flash.orientation, p.flash.outcome, "" if p.rel_ms is None else round(p.rel_ms, 1), p.inside, g.condition, g.reason])
+            leg = (p.flash.leg or "out") if p.flash.jump is not None else ""
+            writer.writerow([*(values[i] for values in extra.values()), p.flash.trial, p.flash.contrast, p.flash.orientation, p.flash.outcome, "" if p.rel_ms is None else round(p.rel_ms, 1), p.inside, g.condition, g.reason,
+                             leg, "" if g.latency_ms is None else round(g.latency_ms, 1)])
     return Path(path)
 
 
@@ -633,6 +832,10 @@ def analyze(
     run = analyze_run(ref, clock_offset_ms, flash_delay_ms, min_amplitude, near_ms, far_ms)
     stamp, summary, suppression, placed, gates = run.stamp, run.summary, run.suppression, run.placed, run.gates
     report = format_report(summary, label=f"(session {stamp})", geometry=run.geometry_line) + "\n" + format_gate_report(summary["gates"]) + "\n" + format_suppression(suppression)
+    saved = suppression
+    if run.return_jump:
+        report = format_return_latency(run.return_latency) + "\n" + report + "\n" + format_leg_suppression(run.by_leg)
+        saved = {**suppression, "by_leg": {leg: run.by_leg[leg] for leg in LEGS}, "return_latency": run.return_latency}
 
     out_dir = Path(out_dir) if out_dir is not None else ref.analysis_dir
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -640,7 +843,7 @@ def analyze(
     png = plot_report(placed, run.saccades, summary, name("plot.png", "analysis_{ts}.png"), title=f"Session {stamp}")
     csv_path = write_flash_rows(name("flashes.csv", "analysis_{ts}_flashes.csv"), placed, gates)
     json_path = name("suppression.json", "analysis_{ts}_suppression.json")
-    json_path.write_text(json.dumps(suppression, indent=2))
+    json_path.write_text(json.dumps(saved, indent=2))
     report_path = name("report.txt", "analysis_{ts}_report.txt")
     report_path.write_text(report + "\n", encoding="utf-8")
     return {"summary": summary, "report": report, "report_path": report_path, "png": png, "csv": csv_path, "suppression_json": json_path}

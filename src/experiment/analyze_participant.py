@@ -30,6 +30,7 @@ import numpy as np
 from src.experiment import session_files
 from src.experiment.analyze_session import (
     DATA_DIR,
+    LEGS,
     MIN_AMPLITUDE,
     RunAnalysis,
     _contrast_counts,
@@ -37,16 +38,20 @@ from src.experiment.analyze_session import (
     analyze_run,
     fit_pair_with_slope,
     format_gate_report,
+    format_leg_suppression,
+    format_return_latency,
     format_suppression,
     load_flashes,
+    return_latency_stats,
     summarize,
+    suppression_by_leg,
     suppression_index,
     wilson,
     write_flash_rows,
 )
 from src.experiment.flash_gates import EXCLUDED, FIXATION, SACCADE, summarize_gates
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2  # 2: run_kind, by_leg, return_latency (return-jump runs)
 ANALYSIS_DIR = "analysis"  # data/<participant>/analysis/
 CONDITIONS = (SACCADE, FIXATION, EXCLUDED)
 # summary.json top-level keys. A comparison module reads these; add keys only with a SCHEMA_VERSION bump.
@@ -55,7 +60,11 @@ SUMMARY_KEYS = (
     "index", "ci", "method", "label", "threshold_saccade", "threshold_fixation", "slope", "notes",
     "n_flashes", "correct", "by_contrast", "exclusion_reasons",
     "contrasts_pct", "geometry", "runs_used", "runs_excluded", "flashes_csv", "analysis",
+    "run_kind", "by_leg", "return_latency",
 )
+# Run kinds never pool across each other: "single" (no return jump) and "return_jump/<trigger>" (the trigger changes the
+# movement itself). The return flash spread SD and leg fraction only change flash scheduling, so they do not split runs.
+SINGLE_RUN_KIND = "single"
 _GEOMETRY_FIELDS = ("screen_height_cm", "viewing_distance_cm", "line_offset_deg", "line_sd_deg")
 
 
@@ -74,6 +83,7 @@ class RunEntry:
     contrasts_from: str = ""  # "settings" (session.json) | "trials" (the contrasts actually shown; older runs)
     geometry: dict = field(default_factory=dict)
     excluded_reason: str | None = None
+    run_kind: str = SINGLE_RUN_KIND  # SINGLE_RUN_KIND | "return_jump/<trigger>"
 
     @property
     def name(self) -> str:
@@ -96,7 +106,7 @@ class RunEntry:
 
     @property
     def compat_key(self) -> tuple:
-        return (self.contrasts_pct, tuple(self.geometry.get(k) for k in _GEOMETRY_FIELDS))
+        return (self.contrasts_pct, tuple(self.geometry.get(k) for k in _GEOMETRY_FIELDS), self.run_kind)
 
 
 @dataclass
@@ -171,6 +181,15 @@ def _analyse_entry(entry: RunEntry, flash_delay_ms: float, min_amplitude: float)
         entry.contrasts_pct = tuple(sorted({round(100 * p.flash.contrast, 3) for p in entry.analysis.placed}))
         entry.contrasts_from = "trials"
     entry.geometry = {k: (None if settings.get(k) is None else round(float(settings[k]), 3)) for k in _GEOMETRY_FIELDS}
+    entry.run_kind = run_kind(entry.analysis)
+
+
+def run_kind(run: RunAnalysis) -> str:
+    """SINGLE_RUN_KIND, or "return_jump/<trigger>" (trigger from session.json settings; 'unknown' if not recorded). The
+    trials decide (a row logged a jump-back), not the setting alone, so a run is classed by what it actually did."""
+    if not run.return_jump:
+        return SINGLE_RUN_KIND
+    return f"return_jump/{(run.meta.get('settings') or {}).get('return_jump_trigger') or 'unknown'}"
 
 
 def _fmt_contrasts(levels) -> str:
@@ -206,6 +225,9 @@ def _incompatibility(entry: RunEntry, pooled: RunEntry) -> str:
         parts.append(f"contrasts {_fmt_contrasts(entry.contrasts_pct)} differ from the pooled runs' {_fmt_contrasts(pooled.contrasts_pct)}")
     if entry.compat_key[1] != pooled.compat_key[1]:
         parts.append(f"screen geometry ({_fmt_geometry(entry.geometry)}) differs from the pooled runs' ({_fmt_geometry(pooled.geometry)})")
+    if entry.run_kind != pooled.run_kind:
+        parts.append(f"run kind {entry.run_kind} differs from the pooled runs' {pooled.run_kind} (return-jump and single-saccade runs, "
+                     "or different jump triggers, are never pooled)")
     return "; ".join(parts)
 
 
@@ -227,9 +249,16 @@ def _by_contrast(placed: list, gates: list) -> list[dict]:
     return rows
 
 
+def _leg_record(s: dict) -> dict:
+    """The summary.json view of one suppression_index() result."""
+    return {k: (list(s[k]) if k == "ci" and s[k] is not None else s[k]) for k in (
+        "index", "ci", "method", "n_saccade", "n_fixation", "correct_saccade", "correct_fixation", "threshold_saccade", "threshold_fixation", "notes")}
+
+
 def _run_record(e: RunEntry) -> dict:
     record = {"run": e.name, "run_key": e.ref.key, "date": e.date, "mode": e.mode}
     if e.analysis is not None:
+        record["run_kind"] = e.run_kind
         n, s = e.counts(), e.analysis.suppression
         record.update(
             n_saccade=n[SACCADE], n_fixation=n[FIXATION], n_excluded=n[EXCLUDED],
@@ -284,6 +313,16 @@ def analyze_participant(
     suppression = suppression_index(placed, gates=gates, n_boot=n_boot)
     gate_counts = summarize_gates(placed, gates)
     slope = _pooled_slope(placed, gates) if suppression["method"] == "psychometric" else None
+    kind = used[0].run_kind if used else None
+    by_leg = return_latency = None
+    if kind is not None and kind != SINGLE_RUN_KIND:
+        legs = suppression_by_leg(placed, gates, n_boot=n_boot)
+        by_leg = {leg: _leg_record(legs[leg]) for leg in LEGS}
+        by_leg["pooled"] = _leg_record(suppression)
+        flashes = [p.flash for e in used for p in e.analysis.placed]
+        trials = [tr for e in used for tr in e.analysis.trials]
+        return_latency = return_latency_stats(flashes, trials, used[-1].analysis.meta.get("settings") or {})
+        return_latency["return_flash_spread_sd_ms_by_run"] = {e.name: (e.analysis.meta.get("settings") or {}).get("return_flash_spread_sd_ms") for e in used}
 
     summary = {
         "schema_version": SCHEMA_VERSION,
@@ -312,7 +351,11 @@ def analyze_participant(
             "flash_delay_ms": flash_delay_ms, "min_amplitude": min_amplitude, "n_boot": n_boot,
             "test_runs_skipped": 0 if include_test else len(tests),
             "legacy_loose_files": "ignored (old results_<ts>.csv sessions have no participant folder)",
+            "pooling_rule": "same saccade contrasts, screen geometry and run kind (single vs return_jump/<trigger>)",
         },
+        "run_kind": kind,
+        "by_leg": by_leg,  # return-jump pools: {out, return, pooled}; each leg = its saccade flashes vs all fixation flashes
+        "return_latency": return_latency,  # return-jump pools: return onset minus the jump (raw trace), all pooled trials
     }
     assert tuple(summary) == SUMMARY_KEYS
     result = ParticipantResult(pid, summary, "", used, excluded, placed, gates, run_of_flash)
@@ -426,6 +469,8 @@ def format_participant_report(result: ParticipantResult) -> str:
     lines.append(format_suppression(pooled))
     if s["slope"] is not None:
         lines.append(f"    shared Weibull slope: {s['slope']:g}")
+    if s["by_leg"] is not None:
+        lines += ["", f"Return-jump runs ({s['run_kind']}):", format_return_latency(s["return_latency"]), format_leg_suppression(s["by_leg"])]
     lines += ["", "Files: report.txt (this), plot.png, flashes.csv (every pooled flash with its run), summary.json (machine-readable)."]
     return "\n".join(lines)
 
