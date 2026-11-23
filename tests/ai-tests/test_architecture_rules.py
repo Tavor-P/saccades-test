@@ -101,6 +101,8 @@ def test_backends_are_imported_lazily():
     for module, forbidden in [
         ("src.eye_tracking.gaze_factory", {"PySpin", "mediapipe", "cv2", "pupil_labs"}),
         ("src.eye_tracking.neon_source", {"PySpin", "mediapipe", "psychopy"}),
+        ("src.eye_tracking.neon_address", {"pupil_labs", "PySpin", "mediapipe", "psychopy", "cv2"}),
+        ("src.eye_tracking.neon_check", {"pupil_labs", "PySpin", "mediapipe", "psychopy", "cv2", "PyQt6"}),
         ("src.eye_tracking.gaze_trace", {"PySpin", "mediapipe", "psychopy", "cv2"}),
         ("src.experiment.simulation", {"PySpin", "mediapipe", "psychopy", "pyglet", "cv2"}),
     ]:

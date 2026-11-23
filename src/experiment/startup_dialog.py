@@ -1,5 +1,5 @@
 """The startup dialog (PyQt6; PsychoPy's own gui.Dlg cannot fold sections or show click help). Layout: Participant ID, Mode, Run tutorial, Screen height,
-Viewing distance, then a closed-by-default 'Advanced' section (contrast min/max, gaze indicator). Clicking a field's name or its '?' shows a help bubble
+Viewing distance, Neon address, then a closed-by-default 'Advanced' section (contrast min/max, gaze indicator). Clicking a field's name or its '?' shows a help bubble
 next to the mouse - a frameless tool-tip window (no title bar, no taskbar entry, never a dialog) that closes on the next click anywhere, on Esc or when
 focus moves to another field. The settings model and validation are Qt-free and live in startup_model.py."""
 
@@ -125,6 +125,8 @@ class StartupDialog(QtWidgets.QDialog):
         self.contrast_min = QtWidgets.QLineEdit(f"{self._initial.contrast_min_percent:g}")
         self.contrast_max = QtWidgets.QLineEdit(f"{self._initial.contrast_max_percent:g}")
         self.flash_spread = QtWidgets.QLineEdit(f"{self._initial.flash_spread_sd_ms:g}")
+        self.neon_address = QtWidgets.QLineEdit(self._initial.neon_address)
+        self.neon_address.setPlaceholderText("blank = find automatically")
         self.gaze_indicator = QtWidgets.QCheckBox()
         self.gaze_indicator.setChecked(self._initial.show_gaze_indicator)
 
@@ -140,6 +142,7 @@ class StartupDialog(QtWidgets.QDialog):
         self._add_row(main, 3, "run_tutorial", self.tutorial)
         self._add_row(main, 4, "screen_height_cm", self.screen_height)
         self._add_row(main, 5, "viewing_distance_cm", self.viewing_distance)
+        self._add_row(main, 6, "neon_address", self.neon_address)
 
         self.advanced_toggle = QtWidgets.QPushButton()
         self.advanced_toggle.setFlat(True)
@@ -180,7 +183,7 @@ class StartupDialog(QtWidgets.QDialog):
 
         self.participant.textChanged.connect(self._on_participant_changed)
         self.tutorial.activated.connect(self._on_tutorial_touched)
-        for edit in (self.participant, self.screen_height, self.viewing_distance, self.contrast_min, self.contrast_max, self.flash_spread):
+        for edit in (self.participant, self.screen_height, self.viewing_distance, self.contrast_min, self.contrast_max, self.flash_spread, self.neon_address):
             edit.textChanged.connect(self._clear_error)
         for edit in (self.screen_height, self.viewing_distance):
             edit.textChanged.connect(self._refresh_note)
@@ -310,6 +313,7 @@ class StartupDialog(QtWidgets.QDialog):
                 self.contrast_max.text(),
                 self.gaze_indicator.isChecked(),
                 self.flash_spread.text(),
+                self.neon_address.text(),
             )
         except ValueError as error:
             self.set_status(str(error), error=True)
@@ -338,6 +342,7 @@ def prompt_startup_settings(data_dir: Path | None = None) -> StartupSettings | N
             "contrast_max_percent": chosen.contrast_max_percent,
             "flash_spread_sd_ms": chosen.flash_spread_sd_ms,
             "show_gaze_indicator": chosen.show_gaze_indicator,
+            "neon_address": chosen.neon_address,
         }
     )
     return chosen

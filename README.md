@@ -19,7 +19,8 @@ Once per computer.
    ```
    .\scripts\py.ps1 -m pip install -r requirements.txt
    ```
-4. Start the Neon Companion app on the phone. The experiment looks for the Neon at `NEON_DEVICE_ADDRESS` in `include/eye_tracking/constants.py` (set it to your phone's IP, or `None` to auto-discover).
+4. Start the Neon Companion app on the phone. Type the phone's IP (shown in the Companion app) into **Neon address** in the start dialog, or leave it blank to search automatically. Before the window opens the
+   experiment checks that address, then auto-discovery, then the PC's gateway (the phone, when the PC is on its hotspot); if none answers it shows what it tried and stops.
 5. **Measure your screen** (once per monitor and seat position): the visible picture's height (cm) and the eye-to-screen distance (cm). You type them into the startup dialog; the line's offset
    (2 deg) and thickness, and the saccade size in degrees, follow them. Until you do, the dialog warns that the values are placeholders (26 cm / 50 cm).
 
@@ -206,7 +207,7 @@ participant's pooled analysis with it).
 | `No module named 'src'` | Run from the project folder, or through `scripts/py.ps1` |
 | `No module named 'flask'` | The install did not take (often non-writable `Program Files`): rerun the terminal as Administrator and reinstall |
 | `_ARRAY_API not found` / `numpy.core.multiarray failed to import` | numpy/opencv drifted: reinstall `requirements.txt` (it pins working versions) |
-| Neon not found | Phone and PC on one network, Companion app running; set `NEON_DEVICE_ADDRESS` to the phone's IP |
+| "Neon glasses not found" at start | Read the list of addresses tried. Phone and PC on one network (guest/campus Wi-Fi often blocks devices: use the phone's hotspot). Hotspot: join it from the PC, keep the Companion app open with the glasses plugged in, type the address the app shows into **Neon address** (or leave it blank); if the PC can't see the hotspot, turn on its 2.4 GHz / "Maximise compatibility" option. For a full report double-click `neon_check.bat` (or `.\scripts\py.ps1 -m src.eye_tracking.neon_check`): it opens no window, tries the same addresses, reads the phone's battery/glasses status and the gaze rate, and saves `neon_check_report.txt` (no participant data) to pass on |
 | Eye tracking seems inaccurate | Redo calibration, looking steadily at each target; keep the head still afterwards |
 | SPACE seems to do nothing | Presses during a trial's wait are ignored by design; they are counted in the console summary and `ignored_space_presses` |
 | Glasses recording `failed` in `session.json` | The recording may need the Companion app open with a wearer and workspace selected (not verified); other data is unaffected |

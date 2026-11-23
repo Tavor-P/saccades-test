@@ -34,6 +34,10 @@ POSITION_SMOOTHING = 0.35  # EMA weight given to each new (post-median) reading;
 NEON_DEVICE_ADDRESS: str | None = "192.168.0.60"
 NEON_DEVICE_PORT = 8080
 NEON_DISCOVERY_TIMEOUT_S = 10.0
+# Start-up check (src/eye_tracking/neon_address.py): each candidate address gets one Real-Time API status request with this timeout,
+# so a dead address costs ~2 s instead of the ~20 s OS connect timeout; discovery (mDNS) is tried for this long.
+NEON_PROBE_TIMEOUT_S = 2.0
+NEON_PREFLIGHT_DISCOVERY_S = 4.0
 # Scene camera resolution - gaze x is divided by this to give a 0-1 "ratio"
 # that the 3-point calibration fits to a 0=dot..1=cross position. Only horizontal gaze is used by the experiment.
 NEON_SCENE_WIDTH = 1600

@@ -22,6 +22,7 @@ from include.experiment.constants import (
 from include.experiment import participant_text
 from include.experiment.types import Side
 from src.eye_tracking.gaze_factory import BACKEND_NEON, build_gaze_source
+from src.eye_tracking.neon_address import FAILURE_TITLE, Resolution, failure_message, network_summary, parse_address, resolve_neon_address
 from src import timebase
 from src.experiment.glasses_video import END_FLASH_COUNT, SYNC_FLASH_COUNT, sync_flash_frames
 from src.experiment.geometry import Geometry
@@ -405,6 +406,7 @@ def run_saccade_phase(
     saccade_contrasts: tuple[float, ...] | None = None,
     geometry: Geometry | None = None,
     flash_spread_sd_ms: float | None = None,
+    neon_address: tuple[str, int] | None = None,
 ) -> ExperimentSession | None:
     """The gaze-contingent saccade test. `precomputed_calibration_ratios`/
     `skip_practice_trials`/`precomputed_rt_samples_ms` come from a completed
@@ -413,7 +415,7 @@ def run_saccade_phase(
     test and practising again.
     Every trial waits for the participant's SPACE (the built-in break). Returns the completed session, or None if the participant quit early."""
     # Raw gaze is recorded alongside the results CSV so the session can be replayed offline.
-    gaze = build_gaze_source(trace_path=logger.gaze_trace_path)
+    gaze = build_gaze_source(trace_path=logger.gaze_trace_path, **_address_kwargs(neon_address))
     gaze.start()
     recording_started = False
     try:  # a failure before the main loop must still stop the phone recording (gaze.stop() does)
@@ -485,6 +487,7 @@ def run_tutorial_phase(
     stimuli: dict,
     narrator: Narrator,
     geometry: Geometry | None = None,
+    neon_address: tuple[str, int] | None = None,
 ) -> TutorialSession | None:
     """A one-time, narrated on-ramp for first-time participants, run before
     the saccade phase (see main()). Unlike that phase, no key or
@@ -494,7 +497,7 @@ def run_tutorial_phase(
     heard yet. Returns the completed session (its calibration_ratios feeds
     the real saccade phase, skipping its own calibration), or None if the
     participant quit early."""
-    gaze = build_gaze_source()
+    gaze = build_gaze_source(**_address_kwargs(neon_address))
     gaze.start()
     clock = PausableClock()
     session = TutorialSession(gaze, clock, geometry=geometry)
@@ -551,10 +554,50 @@ def run_tutorial_phase(
         gaze.stop()
 
 
-def prompt_session_info() -> tuple[str, bool, bool, bool, tuple[float, ...], Geometry, float] | None:
+def _address_kwargs(neon_address: tuple[str, int] | None) -> dict:
+    return {} if neon_address is None else {"address": neon_address[0], "port": neon_address[1]}
+
+
+def show_error_box(title: str, text: str) -> None:
+    """A plain Qt message box (the startup dialog's QApplication already exists); never raises - the console has the same text."""
+    try:
+        from PyQt6 import QtWidgets
+
+        box = QtWidgets.QMessageBox()
+        box.setIcon(QtWidgets.QMessageBox.Icon.Critical)
+        box.setWindowTitle(title)
+        box.setText(title)
+        box.setInformativeText(text)
+        box.setStyleSheet("QLabel { font-family: Consolas, 'Courier New', monospace; }")
+        box.exec()
+    except Exception as exc:  # no display / no Qt: the printed message is enough
+        print(f"(could not show the message box: {exc})", file=sys.stderr)
+
+
+def find_neon_or_exit(address_text: str, resolve=None, network=None, show_box=None) -> Resolution:
+    """The start-up check, run before any window or run folder exists: find the Neon phone (neon_address.resolve_neon_address) or print
+    a plain explanation, show it in a message box and exit with status 2 (no traceback). The console text is printed first and stays
+    readable while the box is open (the .bat launchers pause after exit)."""
+    resolve = resolve or resolve_neon_address
+    network = network or network_summary
+    show_box = show_box or show_error_box
+    address, port = parse_address(address_text)
+    print("Looking for the Neon glasses...", flush=True)
+    resolution = resolve(address, port, progress=lambda text: print(text, flush=True))
+    if resolution.ok:
+        print(f"Neon found at {resolution.address}:{resolution.port} ({resolution.source}).", flush=True)
+        return resolution
+    message = failure_message(resolution, network())
+    print("", FAILURE_TITLE.upper(), message, "", sep="\n", file=sys.stderr, flush=True)
+    show_box(FAILURE_TITLE, message)
+    raise SystemExit(2)
+
+
+def prompt_session_info() -> tuple[str, bool, bool, bool, tuple[float, ...], Geometry, float, str] | None:
     """The startup dialog (src/experiment/startup_dialog.py): Participant ID, Mode, Run tutorial, screen height/distance and, under Advanced, the saccade
     phase's contrast range (min/max, see SACCADE_FIXED_CONTRASTS) and the Show gaze indicator toggle. Invalid input keeps the dialog open with a message.
-    Returns (participant_id, show_gaze_indicator, run_tutorial, test_mode, saccade_contrasts, geometry, flash_spread_sd_ms), or None if cancelled."""
+    Returns (participant_id, show_gaze_indicator, run_tutorial, test_mode, saccade_contrasts, geometry, flash_spread_sd_ms, neon_address_text),
+    or None if cancelled."""
     from src.experiment.startup_dialog import prompt_startup_settings
 
     gui.ensureQtApp()  # PsychoPy's own QApplication (Fusion style), shared with the dialog so the PsychoPy window created afterwards keeps working
@@ -569,6 +612,7 @@ def prompt_session_info() -> tuple[str, bool, bool, bool, tuple[float, ...], Geo
         saccade_contrast_levels(chosen.contrast_min_percent, chosen.contrast_max_percent),
         chosen.geometry,
         chosen.flash_spread_sd_ms,
+        chosen.neon_address,
     )
 
 
@@ -600,9 +644,13 @@ def main() -> None:
         saccade_contrasts,
         geometry,
         flash_spread_sd_ms,
+        neon_address_text,
     ) = session_info
 
+    neon = find_neon_or_exit(neon_address_text)  # before the run folder and the fullscreen window exist
+    neon_address = (neon.address, neon.port)
     logger = ResultLogger(participant_id, camera_label=BACKEND_NEON, test_mode=test_mode)
+    logger.set_neon_device(neon.label())
     logger.set_saccade_contrasts(saccade_contrasts)
     logger.set_geometry(geometry)
     logger.set_flash_spread_sd_ms(flash_spread_sd_ms)
@@ -616,7 +664,7 @@ def main() -> None:
         precomputed_calibration_ratios = None
         precomputed_rt_samples_ms = None
         if run_tutorial:
-            tutorial_session = run_tutorial_phase(win, stimuli, narrator, geometry=geometry)
+            tutorial_session = run_tutorial_phase(win, stimuli, narrator, geometry=geometry, neon_address=neon_address)
             if tutorial_session is None:
                 return  # quit early
             precomputed_calibration_ratios = tutorial_session.calibration_ratios
@@ -633,6 +681,7 @@ def main() -> None:
             saccade_contrasts=saccade_contrasts,
             geometry=geometry,
             flash_spread_sd_ms=flash_spread_sd_ms,
+            neon_address=neon_address,
         )
 
         result = saccade_phase(win, stimuli, logger)

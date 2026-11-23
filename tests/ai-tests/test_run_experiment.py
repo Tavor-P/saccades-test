@@ -126,3 +126,89 @@ def test_a_failure_while_setting_up_the_saccade_phase_still_stops_the_gaze_sourc
             run_experiment.run_saccade_phase(MagicMock(), {"aspect": 1.6}, logger, MagicMock())
     gaze.start_recording.assert_called_once()
     gaze.stop.assert_called_once()
+
+
+# -- start-up check: the Neon is found (or the run stops plainly) before any window or run folder exists ------------
+
+
+def _resolution(ok: bool):
+    from src.eye_tracking.neon_address import SOURCE_GATEWAY, SOURCE_GIVEN, Attempt, Resolution
+
+    tried = (Attempt(SOURCE_GIVEN, "192.168.0.60", 8080, False, "no answer within 2 s"),)
+    if ok:
+        return Resolution("192.168.43.1", 8080, SOURCE_GATEWAY, tried + (Attempt(SOURCE_GATEWAY, "192.168.43.1", 8080, True, "Neon answered"),))
+    return Resolution(None, None, None, tried)
+
+
+def test_find_neon_or_exit_prints_the_plain_message_shows_the_box_and_exits_2(capsys):
+    from src.experiment.run_experiment import find_neon_or_exit
+
+    boxes = []
+    seen = {}
+
+    def resolve(address, port, progress):
+        seen["args"] = (address, port)
+        return _resolution(False)
+
+    with __import__("pytest").raises(SystemExit) as info:
+        find_neon_or_exit(
+            "192.168.0.60", resolve=resolve, network=lambda: {"wifi_name": "Pixel_1234", "ipv4": "192.168.43.57", "gateways": ["192.168.43.1"]},
+            show_box=lambda title, text: boxes.append((title, text)),
+        )
+    assert info.value.code == 2 and seen["args"] == ("192.168.0.60", 8080)
+    out = capsys.readouterr()
+    assert "Looking for the Neon glasses" in out.out
+    assert "NEON GLASSES NOT FOUND" in out.err and "192.168.0.60:8080" in out.err and "Pixel_1234" in out.err
+    assert "Traceback" not in out.err
+    assert boxes and boxes[0][0] == "Neon glasses not found" and boxes[0][1] in out.err
+
+
+def test_find_neon_or_exit_returns_the_found_address():
+    from src.experiment.run_experiment import find_neon_or_exit
+
+    r = find_neon_or_exit("", resolve=lambda a, p, progress: _resolution(True), show_box=lambda *_: __import__("pytest").fail("no box"))
+    assert (r.address, r.port) == ("192.168.43.1", 8080)
+
+
+def test_main_stops_before_the_run_folder_and_window_when_the_neon_is_missing(monkeypatch):
+    import pytest
+
+    from src.experiment import run_experiment
+    from src.experiment.geometry import Geometry
+
+    monkeypatch.setattr(run_experiment.sys, "setswitchinterval", lambda *_: None)
+    monkeypatch.setattr(run_experiment, "prompt_session_info", lambda: ("P01", False, True, False, (0.04,), Geometry.default(), 80.0, ""))
+    monkeypatch.setattr(run_experiment, "resolve_neon_address", lambda a, p, progress: _resolution(False))
+    monkeypatch.setattr(run_experiment, "network_summary", lambda: {})
+    boxes = []
+    monkeypatch.setattr(run_experiment, "show_error_box", lambda title, text: boxes.append(title))
+    monkeypatch.setattr(run_experiment, "build_window", Mock(side_effect=AssertionError("window opened")))
+    monkeypatch.setattr(run_experiment, "ResultLogger", Mock(side_effect=AssertionError("run folder created")))
+    with pytest.raises(SystemExit) as info:
+        run_experiment.main()
+    assert info.value.code == 2 and boxes == ["Neon glasses not found"]
+
+
+def test_main_passes_the_found_address_to_both_gaze_sources_and_session_json(monkeypatch):
+    import pytest
+
+    from src.experiment import run_experiment
+    from src.experiment.geometry import Geometry
+
+    monkeypatch.setattr(run_experiment.sys, "setswitchinterval", lambda *_: None)
+    monkeypatch.setattr(run_experiment, "prompt_session_info", lambda: ("P01", False, True, False, (0.04,), Geometry.default(), 80.0, ""))
+    monkeypatch.setattr(run_experiment, "resolve_neon_address", lambda a, p, progress: _resolution(True))
+    logger = MagicMock()
+    monkeypatch.setattr(run_experiment, "ResultLogger", Mock(return_value=logger))
+    monkeypatch.setattr(run_experiment, "build_window", Mock())
+    monkeypatch.setattr(run_experiment, "measure_refresh_hz", Mock(return_value=60.0))
+    monkeypatch.setattr(run_experiment, "build_stimuli", Mock(return_value={}))
+    monkeypatch.setattr(run_experiment, "Narrator", Mock())
+    monkeypatch.setattr(run_experiment, "finish_run_summary", Mock(return_value=False))
+    tutorial = Mock(return_value=None)  # participant quits during the tutorial
+    monkeypatch.setattr(run_experiment, "run_tutorial_phase", tutorial)
+    run_experiment.main()
+    assert tutorial.call_args.kwargs["neon_address"] == ("192.168.43.1", 8080)
+    logger.set_neon_device.assert_called_once_with("192.168.43.1:8080 (PC's gateway (phone hotspot))")
+    assert run_experiment._address_kwargs(("192.168.43.1", 8080)) == {"address": "192.168.43.1", "port": 8080}
+    assert run_experiment._address_kwargs(None) == {}

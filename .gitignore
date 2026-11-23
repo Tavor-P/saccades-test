@@ -10,3 +10,4 @@ dist/
 build/
 .cache/
 *.log
+neon_check_report.txt

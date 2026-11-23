@@ -83,6 +83,26 @@ def test_validate_rejects_a_missing_id_bad_ranges_non_numbers_and_min_not_below_
             valid(contrast_min_text=lo, contrast_max_text=hi)
 
 
+def test_neon_address_field_accepts_blank_ip_and_ip_port_rejects_the_rest_and_is_remembered(data_dir):
+    from include.eye_tracking.constants import NEON_DEVICE_ADDRESS
+
+    assert StartupSettings().neon_address == (NEON_DEVICE_ADDRESS or "")  # first-time default = the pinned address
+    assert valid().neon_address == ""  # blank = find automatically
+    assert valid(neon_address_text=" 192.168.43.1 ").neon_address == "192.168.43.1"
+    assert valid(neon_address_text="192.168.43.1:8080").neon_address == "192.168.43.1:8080"
+    assert valid(neon_address_text="neon.local").neon_address == "neon.local"
+    for bad in ("192.168.43", "192.168.0.300", "192.168.0.6:", "192.168.0.6:0", "192.168.0.6:70000", "192.168.0.6:http", "a b", "http://1.2.3.4"):
+        with pytest.raises(ValueError, match="Neon address"):
+            valid(neon_address_text=bad)
+            pytest.fail(f"{bad!r} was accepted")
+    assert "hotspot" in HELP_TEXTS["neon_address"] and "Blank" in HELP_TEXTS["neon_address"]
+
+    settings.save_last_startup({"neon_address": "10.0.0.1:8080"})
+    assert defaults_from_disk(data_dir).neon_address == "10.0.0.1:8080"
+    settings.save_last_startup({"neon_address": ""})
+    assert defaults_from_disk(data_dir).neon_address == ""  # a remembered blank stays blank
+
+
 def test_defaults_from_disk_shipped_remembered_and_damaged_files(data_dir):
     d = defaults_from_disk(data_dir)
     assert d == StartupSettings(run_tutorial=True)
@@ -236,10 +256,10 @@ def test_field_order_labels_advanced_section_and_png_renders(dialog, qapp, tmp_p
     assert dialog.height() > closed_height
     order = list(dialog.help_labels)
     assert order == [
-        "participant_id", "mode", "run_tutorial", "screen_height_cm", "viewing_distance_cm",
+        "participant_id", "mode", "run_tutorial", "screen_height_cm", "viewing_distance_cm", "neon_address",
         "contrast_min_percent", "contrast_max_percent", "flash_spread_sd_ms", "show_gaze_indicator",
     ]
-    ys = [dialog.help_labels[k].mapTo(dialog, QtCore.QPoint(0, 0)).y() for k in order[:5]]
+    ys = [dialog.help_labels[k].mapTo(dialog, QtCore.QPoint(0, 0)).y() for k in order[:6]]
     assert ys == sorted(ys)
     assert dialog.help_labels["contrast_min_percent"].text() == "Saccade contrast min (%)"
     assert dialog.help_labels["flash_spread_sd_ms"].text() == "Flash timing spread (ms)"
@@ -333,9 +353,14 @@ def test_start_validates_keeps_input_and_returns_settings_cancel_rejects(dialog,
     assert dialog.result_settings is None and "Flash timing spread" in dialog.status.text()
 
     dialog.flash_spread.setText("60")
+    dialog.neon_address.setText("192.168.43:1")
+    dialog.start_button.click()
+    assert dialog.result_settings is None and "Neon address" in dialog.status.text()
+    dialog.neon_address.setText(" 192.168.43.1:8080 ")
     dialog.mode.setCurrentText("Test")
     dialog.start_button.click()
     s = dialog.result_settings
+    assert s.neon_address == "192.168.43.1:8080"
     assert s is not None and (s.participant_id, s.test_mode, s.screen_height_cm, s.viewing_distance_cm, s.flash_spread_sd_ms) == (
         "p9", True, 19.5, 60.0, 60.0)
     assert dialog.result() == QtWidgets.QDialog.DialogCode.Accepted

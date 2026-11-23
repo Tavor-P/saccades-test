@@ -414,6 +414,11 @@ class ResultLogger:
         self._metadata["hardware"]["display_refresh_hz"] = None if hz is None else round(float(hz), 2)
         self._write_metadata()
 
+    def set_neon_device(self, label: str) -> None:
+        """Where the Neon was actually reached, e.g. '192.168.43.1:8080 (PC's gateway (phone hotspot))' (start-up check in run_experiment)."""
+        self._metadata["hardware"]["neon_device"] = label
+        self._write_metadata()
+
     def set_gaze_quality(self, summary: dict) -> None:
         """Session-level gaze tracking quality (sample rate, gaps, latency,
         clock offset) from a GazeSource that reports it - see

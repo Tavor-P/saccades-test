@@ -35,14 +35,63 @@ _MAX_LATENCY_SAMPLES = 100_000  # ~8 min at 200 Hz; older samples drop off, boun
 _MAX_LOGGED_ERROR_KINDS = 50  # distinct error signatures remembered for log de-duplication
 
 
-def _connect():
+class NeonConnectionError(RuntimeError):
+    """The Neon could not be reached: one plain sentence instead of the Real-Time API's aiohttp traceback."""
+
+
+def _is_half_built_device_cleanup(unraisable) -> bool:
+    """The `Device.__del__` -> close() AttributeError a Device whose __init__ failed raises when it is collected."""
+    name = getattr(unraisable.object, "__qualname__", "") or ""
+    return name.endswith("Device.__del__") and isinstance(unraisable.exc_value, AttributeError)
+
+
+def _build_device(device_class, address: str, port: int):
+    """`device_class(address, port)`, or NeonConnectionError. A Device whose constructor failed would print an AttributeError from its
+    __del__ when collected; that noise is swallowed here (only that one), everything else still reaches the normal hook."""
+    import gc
+
+    previous_hook = sys.unraisablehook
+
+    def hook(unraisable):
+        if not _is_half_built_device_cleanup(unraisable):
+            previous_hook(unraisable)
+
+    sys.unraisablehook = hook
+    reason = None
+    try:
+        try:
+            return device_class(address, port)
+        except Exception as exc:
+            reason = f"{type(exc).__name__}: {exc}"
+        gc.collect()  # the half-built Device is freed here, while the hook above is still in place
+    finally:
+        sys.unraisablehook = previous_hook
+    raise NeonConnectionError(
+        f"Could not connect to the Neon phone at {address}:{port} ({reason}). Check the phone is on the same network/hotspot, "
+        "the Companion app is open and the glasses are plugged in, then start again."
+    )
+
+
+def _connect(address: str | None = NEON_DEVICE_ADDRESS, port: int = NEON_DEVICE_PORT):
     """Imported lazily so the rest of the project (and the test suite) works
-    without pupil-labs-realtime-api installed."""
+    without pupil-labs-realtime-api installed. A given address is checked with a short status request first, so a dead address
+    fails in ~2 s with a plain error instead of hanging ~20 s and then raising an aiohttp traceback."""
     from pupil_labs.realtime_api.simple import Device, discover_one_device
 
-    if NEON_DEVICE_ADDRESS:
-        return Device(NEON_DEVICE_ADDRESS, NEON_DEVICE_PORT)
-    return discover_one_device(max_search_duration_seconds=NEON_DISCOVERY_TIMEOUT_S)
+    from src.eye_tracking.neon_address import probe_status
+
+    if address:
+        problem = probe_status(address, port)
+        if problem is not None:
+            raise NeonConnectionError(
+                f"The Neon phone at {address}:{port} does not answer ({problem}). Check the phone is on the same network/hotspot, "
+                "the Companion app is open and the glasses are plugged in, then start again."
+            )
+        return _build_device(Device, address, port)
+    try:
+        return discover_one_device(max_search_duration_seconds=NEON_DISCOVERY_TIMEOUT_S)
+    except Exception as exc:
+        raise NeonConnectionError(f"Searching for the Neon phone failed ({type(exc).__name__}: {exc}).") from None
 
 
 class NeonGazeSource(GazeSource):
@@ -52,11 +101,13 @@ class NeonGazeSource(GazeSource):
     participant should keep their head still after calibrating (e.g. chin
     rest) - head movement shifts gaze x without any eye movement.
 
-    `device` is injectable for tests; otherwise the Neon is auto-discovered
-    (or reached at NEON_DEVICE_ADDRESS) in start()."""
+    `device` is injectable for tests; otherwise start() connects to `address`:`port` (normally the one run_experiment's start-up
+    check found, see neon_address.py), or auto-discovers the Neon when `address` is None."""
 
-    def __init__(self, device=None, trace_path: Path | None = None) -> None:
+    def __init__(self, device=None, trace_path: Path | None = None, address: str | None = NEON_DEVICE_ADDRESS, port: int = NEON_DEVICE_PORT) -> None:
         self._device = device
+        self._address = address
+        self._port = port
         # Optional raw-gaze recording (see gaze_trace.py) for later replay.
         self._trace = GazeTraceWriter(trace_path) if trace_path is not None else None
         self._mapper = GazeMapper()
@@ -122,11 +173,11 @@ class NeonGazeSource(GazeSource):
 
     def start(self) -> None:
         if self._device is None:
-            self._device = _connect()
+            self._device = _connect(self._address, self._port)
         if self._device is None:
-            raise RuntimeError(
-                "No Pupil Labs Neon found on the network - check the companion app is running and the PC "
-                "is on the same Wi-Fi/hotspot (or set NEON_DEVICE_ADDRESS in include/eye_tracking/constants.py)."
+            raise NeonConnectionError(
+                "No Pupil Labs Neon found on the network - check the Companion app is open and the PC "
+                "is on the same Wi-Fi/hotspot (or type the phone's address into 'Neon address' in the start dialog)."
             )
         self._estimate_clock_offset()
         self._running = True

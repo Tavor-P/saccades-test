@@ -4,8 +4,10 @@ Everything here is unit-tested without a display."""
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 
+from include.eye_tracking.constants import NEON_DEVICE_ADDRESS
 from include.experiment.constants import FLASH_SPREAD_SD_MS, HARDWARE_CONTRAST_FLOOR, SCREEN_HEIGHT_CM, VIEWING_DISTANCE_CM
 from src.experiment import session_files
+from src.eye_tracking.neon_address import parse_address
 from src.experiment.geometry import Geometry
 from src.experiment.settings import (
     DATA_DIR,
@@ -31,6 +33,7 @@ FIELD_LABELS = {
     "run_tutorial": "Run tutorial",
     "screen_height_cm": "Screen height (cm)",
     "viewing_distance_cm": "Viewing distance (cm)",
+    "neon_address": "Neon address",
     "contrast_min_percent": "Saccade contrast min (%)",
     "contrast_max_percent": "Saccade contrast max (%)",
     "flash_spread_sd_ms": "Flash timing spread (ms)",
@@ -47,6 +50,11 @@ HELP_TEXTS = {
     "run_tutorial": "Explains the task step by step and calibrates the eye tracker. Recommended for anyone new.",
     "screen_height_cm": "Height of the visible picture on the monitor in cm (measure it). Used to make the line the right size in degrees.",
     "viewing_distance_cm": "From the participant's eyes to the screen in cm (chin rest distance).",
+    "neon_address": (
+        "The Neon phone's IP address (or IP:port), as shown in the Neon Companion app. Blank = find it automatically. "
+        "On the phone's own hotspot the address changes: join the hotspot from this PC and copy the address from the Companion app, "
+        "or leave this blank (the PC's gateway is tried too)."
+    ),
     "contrast_min_percent": _CONTRAST_HELP,
     "contrast_max_percent": _CONTRAST_HELP,
     "flash_spread_sd_ms": (
@@ -70,6 +78,7 @@ class StartupSettings:
     contrast_max_percent: float = DEFAULT_SACCADE_CONTRAST_MAX_PERCENT
     flash_spread_sd_ms: float = float(FLASH_SPREAD_SD_MS)
     show_gaze_indicator: bool = False
+    neon_address: str = NEON_DEVICE_ADDRESS or ""  # "" = find automatically (see src/eye_tracking/neon_address.py)
 
     @property
     def geometry(self) -> Geometry:
@@ -106,6 +115,7 @@ def validate(
     contrast_max_text: str,
     show_gaze_indicator: bool,
     flash_spread_text: str = f"{FLASH_SPREAD_SD_MS:g}",
+    neon_address_text: str = "",
 ) -> StartupSettings:
     """The dialog's raw field values -> StartupSettings, or ValueError with a message for the status line."""
     if mode == MODE_REAL and not participant_id.strip():
@@ -118,6 +128,7 @@ def validate(
     if not cmin < cmax:
         raise ValueError("Contrast min must be smaller than max")
     spread = _number_in(flash_spread_text, "Flash timing spread", *FLASH_SPREAD_RANGE_MS, "ms")
+    parse_address(neon_address_text)  # ValueError names the field
     return StartupSettings(
         participant_id=participant_id.strip(),
         test_mode=mode == MODE_TEST,
@@ -128,6 +139,7 @@ def validate(
         contrast_max_percent=cmax,
         flash_spread_sd_ms=spread,
         show_gaze_indicator=bool(show_gaze_indicator),
+        neon_address=neon_address_text.strip(),
     )
 
 

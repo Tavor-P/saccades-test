@@ -28,7 +28,7 @@ backend. Participant/experimenter docs: [README.md](README.md).
   (never `git add -A` / `commit -a`); don't touch other sessions' files, tell the user instead.
 - PowerShell 5.1 has no `&&`; keep each file's line endings (CRLF). `.gitignore` has `data/`, which matches any `data` folder (tests: use `tests/fixtures/`).
 - `data/` is git-ignored runtime output and participant data is personal data: never commit or print it, never write to it from tests/simulations, never copy real sessions into `tests/fixtures/`.
-- Report test results truthfully (ran / skipped). Suite: 275 tests pass, none skipped, ~3-4 min.
+- Report test results truthfully (ran / skipped). Suite: 300 tests pass, none skipped, ~3-4 min.
 
 ## Commands (all through the wrapper)
 
@@ -45,8 +45,9 @@ backend. Participant/experimenter docs: [README.md](README.md).
 .\scripts\py.ps1 -m src.experiment.compare "P01,P02" "group:control" [--include-test] [--out D]   # -> data/comparisons/
 .\scripts\py.ps1 -m src.experiment.study_summary [--include-test]   # data/study_summary.csv + .txt
 .\scripts\py.ps1 -m src.experiment.import_glasses_video <run-folder> <exported.mp4>
+.\scripts\py.ps1 -m src.eye_tracking.neon_check [address]      # contacts the real Neon: human only; writes neon_check_report.txt
 ```
-Double-click launchers in the repo root: `run_experiment.bat`, `analyze_latest.bat`, `analyze_participant.bat`, `compare.bat`, `study_summary.bat`, `run_tests.bat`.
+Double-click launchers in the repo root: `run_experiment.bat`, `analyze_latest.bat`, `analyze_participant.bat`, `compare.bat`, `study_summary.bat`, `run_tests.bat`, `neon_check.bat`.
 
 ## Status and next steps (2026-11-22)
 
@@ -96,6 +97,8 @@ Paths are checked by `tests/test_docs.py` - keep them real.
 | `src/experiment/simulation.py` | headless simulator |
 | `src/experiment/narrator.py`, `study_summary.py`, `run_summary.py`, `src/eye_tracking/gaze_factory.py` | SAPI TTS; study CSV; end-of-run summary; `build_gaze_source()` |
 | `src/eye_tracking/neon_source.py`, `head_monitor.py` | `NeonGazeSource` (stream + quality stats + IMU thread); `HeadMotionTracker` (flags only) |
+| `src/eye_tracking/neon_address.py` | start-up check: dialog address -> auto-discovery -> PC's default gateway (hotspot); `failure_message` |
+| `src/eye_tracking/neon_check.py` | standalone connection check (no window): same resolution + adapters, phone status, 3 s gaze rate -> `neon_check_report.txt` (git-ignored) |
 | `src/eye_tracking/gaze_mapping.py` | `GazeMapper`: ratio -> calibrated position / zone / smoothing |
 | `src/eye_tracking/gaze_trace.py` | raw gaze recording + `ReplayGazeSource` |
 | `src/dashboard/app.py` | Flask dashboard (separate process, `127.0.0.1` only; `data_access.py` reads/writes `data/`) |
@@ -180,7 +183,10 @@ SPACE presses are never silently dropped; every ignored one is counted in `sessi
 - **Neon timing**: latency is right only with `local = device_ts + offset` from `estimate_time_offset()` (the sign is easy to flip). `NeonGazeSource` stamps samples with CAPTURE time
   (`device_unix_s` + offset on the `timebase.now()` timeline; arrival time only as fallback, strictly increasing, clamped to <=`NEON_MAX_PLAUSIBLE_LATENCY_MS`), so the session must not subtract `gaze_latency_ms` again
   (`timestamps_are_capture_time`). Check `gaze_quality.latency_ms_median` after each run.
-- **Neon geometry**: the scene camera is head-mounted, so head movement shifts gaze x with no eye movement; calibration assumes a still head (chin rest). `NEON_DEVICE_ADDRESS` is pinned to the phone's IP (`None` = auto-discover).
+- **Neon geometry**: the scene camera is head-mounted, so head movement shifts gaze x with no eye movement; calibration assumes a still head (chin rest). The address comes from the dialog's "Neon address" field (first-time default `NEON_DEVICE_ADDRESS`, remembered in `data/settings.json`).
+- **Neon start-up check**: `run_experiment.main` calls `find_neon_or_exit` BEFORE the run folder and window: it probes (GET `/api/status`, `NEON_PROBE_TIMEOUT_S`) the dialog address, then
+  auto-discovery (`NEON_PREFLIGHT_DISCOVERY_S`), then the PC's default gateway (on a phone hotspot the phone is the gateway). Nothing answers -> plain message on stderr + message box, exit 2.
+  The found address goes to `NeonGazeSource` and `session.json` `hardware.neon_device`. `NeonGazeSource.start()` raises one `NeonConnectionError` (no aiohttp chain) and swallows the half-built `Device.__del__` noise.
 - **numpy/opencv pins**: `requirements.txt` keeps `numpy<2` plus matching opencv (`glasses_video.py` uses cv2). Bumping is untested: rerun the suite if you do.
 - **TTS narrator is Windows-only SAPI via COM** (`pywin32`). COM objects are apartment-threaded: create AND call `SAPI.SpVoice` on the same thread (`_run()` wraps its loop in `pythoncom.CoInitialize()`/`CoUninitialize()`).
   `Speak()` blocks for the utterance, hence the dedicated thread; `speak()` does not interrupt queued speech, so callers must gate on changed text (`narrate_if_changed`) or utterances queue and lag the screen.
