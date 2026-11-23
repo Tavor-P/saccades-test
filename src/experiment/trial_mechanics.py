@@ -46,11 +46,19 @@ def line_position(reference: tuple[float, float], side: Side, geometry: Geometry
     return x, y - offset if side is Side.ABOVE else y + offset
 
 
-def robust_kept_ms(samples: Sequence[float]) -> list[float]:
-    """The samples a reaction-time average keeps: anticipations (< RT_MIN_PLAUSIBLE_MS) are dropped,
-    then slow outliers (more than RT_OUTLIER_MAD_K scaled MADs above the median, MAD floored at
-    RT_OUTLIER_MAD_FLOOR_MS)."""
-    plausible = [s for s in samples if s >= RT_MIN_PLAUSIBLE_MS]
+_DEFAULT_MIN = object()  # "use RT_MIN_PLAUSIBLE_MS" (read at call time, so tests/sims can override the constant)
+
+
+def _min_plausible(min_plausible_ms) -> float | None:
+    return RT_MIN_PLAUSIBLE_MS if min_plausible_ms is _DEFAULT_MIN else min_plausible_ms
+
+
+def robust_kept_ms(samples: Sequence[float], min_plausible_ms=_DEFAULT_MIN) -> list[float]:
+    """The samples a reaction-time average keeps: anticipations (< `min_plausible_ms`, default
+    RT_MIN_PLAUSIBLE_MS; None keeps every value, negatives included) are dropped, then slow outliers
+    (more than RT_OUTLIER_MAD_K scaled MADs above the median, MAD floored at RT_OUTLIER_MAD_FLOOR_MS)."""
+    floor = _min_plausible(min_plausible_ms)
+    plausible = [s for s in samples if floor is None or s >= floor]
     if not plausible:
         return []
     median = statistics.median(plausible)
@@ -59,10 +67,10 @@ def robust_kept_ms(samples: Sequence[float]) -> list[float]:
     return [s for s in plausible if s <= limit]
 
 
-def robust_average_ms(samples: Sequence[float], default: float) -> float:
+def robust_average_ms(samples: Sequence[float], default: float, min_plausible_ms=_DEFAULT_MIN) -> float:
     """Reaction-time average that one bad measurement can't move: the median of `robust_kept_ms`,
     or `default` if nothing plausible is left."""
-    kept = robust_kept_ms(samples)
+    kept = robust_kept_ms(samples, min_plausible_ms)
     return statistics.median(kept) if kept else default
 
 
@@ -72,9 +80,14 @@ class RollingReactionTime:
     every `add`. One instance serves the tutorial's practice trials and the saccade phase (seed the
     latter with the former's `samples`), so the average carries over seamlessly. With fewer than
     RT_MIN_SAMPLES_FOR_AVERAGE plausible (>= RT_MIN_PLAUSIBLE_MS) samples in the window the average
-    keeps its previous value (initially `default`), so one or two latencies never decide the schedule."""
+    keeps its previous value (initially `default`), so one or two latencies never decide the schedule.
+    `min_plausible_ms=None` (the return-jump leg) counts every latency, negative and near-zero ones
+    included: an anticipatory return saccade is the expected behaviour there, not a bad measurement."""
 
-    def __init__(self, default: float, seed: Sequence[float] = (), window: int = RT_AVERAGE_ROLLING_WINDOW) -> None:
+    def __init__(
+        self, default: float, seed: Sequence[float] = (), window: int = RT_AVERAGE_ROLLING_WINDOW, min_plausible_ms=_DEFAULT_MIN
+    ) -> None:
+        self._min_plausible_ms = min_plausible_ms
         self._window: deque[float] = deque(maxlen=window)
         self._average = default
         self.has_estimate = False  # True once the average comes from samples rather than `default`
@@ -86,8 +99,9 @@ class RollingReactionTime:
         """Adds one detected latency and returns the updated average."""
         self._window.append(sample_ms)
         self.total_added += 1
-        if sum(1 for s in self._window if s >= RT_MIN_PLAUSIBLE_MS) >= RT_MIN_SAMPLES_FOR_AVERAGE:
-            self._average = robust_average_ms(self._window, default=self._average)
+        floor = _min_plausible(self._min_plausible_ms)
+        if sum(1 for s in self._window if floor is None or s >= floor) >= RT_MIN_SAMPLES_FOR_AVERAGE:
+            self._average = robust_average_ms(self._window, default=self._average, min_plausible_ms=self._min_plausible_ms)
             self.has_estimate = True
         return self._average
 
@@ -103,7 +117,7 @@ class RollingReactionTime:
     @property
     def n_dropped(self) -> int:
         """How many samples in the window the robust rule currently leaves out of the average."""
-        return len(self._window) - len(robust_kept_ms(self._window))
+        return len(self._window) - len(robust_kept_ms(self._window, self._min_plausible_ms))
 
 
 class OnsetDetector:
@@ -137,9 +151,15 @@ class OnsetDetector:
     `confirmed` is the flag. Once `confirmed` is True, the caller is expected to
     stop calling `update()` (matching every call site's `if not <confirmed>:`
     gate) so `since` freezes at the sample that actually triggered confirmation.
+
+    `wait_for_baseline=True` (the return-jump leg, fed while the eye may still be
+    flying TOWARDS the source) ignores every sample until the first near-source
+    one seeds the baseline, instead of comparing against the nominal position:
+    an approaching eye is not "leaving" the source.
     """
 
-    def __init__(self, avoid_zone: GazeZone) -> None:
+    def __init__(self, avoid_zone: GazeZone, wait_for_baseline: bool = False) -> None:
+        self._wait_for_baseline = wait_for_baseline
         self._source_position = {GazeZone.LEFT: LEFT_POSITION, GazeZone.RIGHT: RIGHT_POSITION}.get(avoid_zone, CENTER_POSITION)
         # +1: moving right (increasing position) leaves the source; -1: moving left does; 0: either way.
         self._direction = {GazeZone.LEFT: 1, GazeZone.RIGHT: -1}.get(avoid_zone, 0)
@@ -170,6 +190,8 @@ class OnsetDetector:
         if not self._baseline and abs(position - self._source_position) <= ONSET_BASELINE_NEAR_SOURCE:
             # First near-source sample: it IS the fixation (whatever calibration offset it has), nothing to compare yet.
             self._baseline.append((now, position))
+            return False
+        if not self._baseline and self._wait_for_baseline:
             return False
         baseline = self._baseline_position()
         if self._displacement(position, baseline) > SACCADE_ONSET_DISPLACEMENT:
