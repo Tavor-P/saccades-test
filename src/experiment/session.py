@@ -2,6 +2,7 @@
 Drive it with on_space/on_response_key/tick/render_state. Flash timing is open-loop (scheduled off the measured reaction time); see CLAUDE.md. Headless
 runs of this class: src/experiment/simulation.py."""
 
+import math
 import random
 from enum import Enum, auto
 
@@ -27,6 +28,8 @@ from include.experiment.constants import (
     NUM_RT_TEST_TRIALS_TEST,
     PRACTICE_CONTRAST,
     RESPONSE_WINDOW_MS,
+    RETURN_JUMP_LANDING_TIMEOUT_MS,
+    RETURN_LEG_FLASH_FRACTION,
     SACCADE_FIXED_CONTRASTS,
     SACCADE_FIXED_TRIALS_REAL,
     SACCADE_FIXED_TRIALS_TEST,
@@ -49,6 +52,7 @@ from src.experiment.trial_mechanics import (
     OnsetDetector,
     RollingReactionTime,
     ShuffledBag,
+    flash_leg_pool,
     line_position,
     sample_capture_time,
     spread_flash_delay_ms,
@@ -80,6 +84,22 @@ _TRIAL_PHASES = _RT_TEST_PHASES + _MAIN_TRIAL_PHASES
 _ANSWER_TEXT = words.ANSWER
 
 
+def _track_landing(samples, zone, since: float | None, landed: bool) -> tuple[float | None, bool]:
+    """One tick of landing detection (shared by the out and the return leg): gaze must stay in `zone` for
+    GAZE_LANDING_STABILITY_MS of capture time. Returns the updated (first-in-zone time, landed)."""
+    for s, s_t in samples:
+        if landed:
+            break
+        if s.face_found and s.zone is zone:
+            if since is None:
+                since = s_t
+            elif s_t - since >= GAZE_LANDING_STABILITY_MS / 1000:
+                landed = True
+        else:
+            since = None
+    return since, landed
+
+
 class ExperimentSession:
     """Gaze-contingent saccade experiment: calibration, an alternating dot/cross trial loop, perisaccadic line flashes,
     response scoring and logging.
@@ -109,8 +129,14 @@ class ExperimentSession:
         fixed_contrasts: tuple[float, ...] | None = None,
         geometry: Geometry | None = None,
         flash_spread_sd_ms: float | None = None,
+        return_jump: bool = False,
+        precomputed_return_rt_samples_ms: list[float] | None = None,
     ) -> None:
         self._gaze = gaze_source
+        # Return-jump trials (startup dialog "Return jump"): once the out landing is confirmed the target jumps back to the
+        # start symbol and the participant looks back; each trial's one flash goes on the out or the return leg (shuffled bag,
+        # RETURN_LEG_FLASH_FRACTION on the return leg). Off = the old alternating dot<->cross trials, unchanged.
+        self._return_jump = bool(return_jump)
         # Bell-curve width for the flash times (startup dialog, Advanced); None = the FLASH_SPREAD_SD_MS default.
         self._flash_spread_sd_ms = FLASH_SPREAD_SD_MS if flash_spread_sd_ms is None else float(flash_spread_sd_ms)
         self._geometry = geometry or Geometry.default()  # sizes the line's offset (screen height / viewing distance)
@@ -131,10 +157,13 @@ class ExperimentSession:
         # session's own practice trials; [] means "measured, but nothing usable" (-> DEFAULT_REACTION_TIME_MS).
         self._rt_seeded = precomputed_rt_samples_ms is not None
         num_practice = 0 if (skip_practice_trials or self._rt_seeded) else (NUM_PRACTICE_TRIALS_TEST if test_mode else NUM_PRACTICE_TRIALS_REAL)
-        self._practice_trials = build_saccade_sequence(num_practice=num_practice)
+        self._practice_trials = build_saccade_sequence(num_practice=num_practice, alternate=not self._return_jump)
         self._num_practice = len(self._practice_trials)
         self._practice_index = 0
-        self._trial_source: Target = self._practice_trials[-1].target if self._practice_trials else Target.DOT
+        # With return jump every trial starts at the dot (the target always jumps back to it).
+        self._trial_source: Target = (
+            self._practice_trials[-1].target if self._practice_trials and not self._return_jump else Target.DOT
+        )
         self._main_trial_counter = 0
         # Fixed probe contrasts (method of constant stimuli) - see SACCADE_FIXED_CONTRASTS. Practice trials use PRACTICE_CONTRAST.
         # `fixed_contrasts` (from the startup dialog) overrides the SACCADE_FIXED_CONTRASTS default.
@@ -145,6 +174,14 @@ class ExperimentSession:
         self._fixed_trials = SACCADE_FIXED_TRIALS_TEST if test_mode else SACCADE_FIXED_TRIALS_REAL
         self._timing_offset_bag: ShuffledBag[int] = ShuffledBag(TIMING_OFFSETS_MS + CONTROL_OFFSETS_MS)
         self._current_trial_spec: TrialSpec | None = None
+        # Which leg each trial's flash goes on: practice and main trials have separate bags so the main block's split is exact
+        # per pass. Only built (and drawn from) with return jump on, so the off case consumes no extra random numbers.
+        self._flash_leg_bag: ShuffledBag[str] | None = None
+        self._practice_flash_leg_bag: ShuffledBag[str] | None = None
+        if self._return_jump:
+            self._flash_leg_bag = ShuffledBag(flash_leg_pool(RETURN_LEG_FLASH_FRACTION))
+            self._practice_flash_leg_bag = ShuffledBag(flash_leg_pool(RETURN_LEG_FLASH_FRACTION))
+        self.forced_jump_backs = 0  # main trials whose jump back came at RETURN_JUMP_LANDING_TIMEOUT_MS (session.json summary)
 
         # -- reaction-time test + rolling average (see constants.py) --
         self._rt_test_target_attempts = NUM_RT_TEST_TRIALS_TEST if test_mode else NUM_RT_TEST_TRIALS_REAL
@@ -157,6 +194,10 @@ class ExperimentSession:
         self._rt = RollingReactionTime(DEFAULT_REACTION_TIME_MS, seed=precomputed_rt_samples_ms or ())
         if precomputed_rt_samples_ms is not None:
             self._avg_reaction_time_ms = self._rt.average
+        # Return-saccade latencies (jump-back frame -> return onset) have their own rolling average: return saccades to a
+        # just-left, well-known location are expected to be faster. Until it has RT_MIN_SAMPLES_FOR_AVERAGE plausible
+        # samples, return-leg flashes are centred on the out-leg average instead (see _return_average_ms).
+        self._return_rt = RollingReactionTime(DEFAULT_REACTION_TIME_MS, seed=precomputed_return_rt_samples_ms or ())
 
         self._dot_visible = False
         self._cross_visible = False
@@ -248,6 +289,14 @@ class ExperimentSession:
         self._landed = False
         self._foreperiod_start = 0.0
         self._foreperiod_duration = 0.0
+        # Return-jump state (stays at these values with return jump off, except _flash_leg = 'out').
+        self._flash_leg: str | None = None  # 'out' | 'return': which leg this trial's flash goes on
+        self._jump_at: float | None = None  # session-clock time of the jump-back frame
+        self._jump_forced: bool | None = None
+        self._return_onset_detector: OnsetDetector | None = None
+        self._return_reaction_ms: float | None = None
+        self._return_landed_since: float | None = None
+        self._return_landed = False
 
     @property
     def results(self) -> list[TrialResult]:
@@ -296,7 +345,9 @@ class ExperimentSession:
 
     def _line_state(self, trial: TrialSpec | None) -> dict:
         side = trial.orientation if trial is not None else None
-        target_position = DOT_POSITION if trial is None or trial.target is Target.DOT else CROSS_POSITION
+        # The saccade target of the flash's leg: the start symbol for a return-leg flash.
+        aim = None if trial is None else (trial.source if self._flash_leg == "return" else trial.target)
+        target_position = DOT_POSITION if aim is None or aim is Target.DOT else CROSS_POSITION
         x, y = line_position(target_position, side or Side.ABOVE, self._geometry)
         return {
             "visible": self._grating_visible,
@@ -416,7 +467,7 @@ class ExperimentSession:
             self._log_phase_summary()
             return
         trial, self._trial_source = generate_next_saccade_trial(
-            self._main_trial_counter, self._trial_source, self._timing_offset_bag
+            self._main_trial_counter, self._trial_source, self._timing_offset_bag, alternate=not self._return_jump
         )
         self._main_trial_counter += 1
         self._current_trial_spec = trial
@@ -447,8 +498,25 @@ class ExperimentSession:
                 "rt_samples_in_window": len(self._rt.samples),
                 "rt_samples_dropped_in_window": self._rt.n_dropped,
                 "gaze_latency_ms_used": self.gaze_latency_ms,
+                **self._return_jump_summary(),
             },
         )
+
+    def _return_jump_summary(self) -> dict:
+        if not self._return_jump:
+            return {}
+        return {
+            "final_avg_return_reaction_time_ms": self._return_rt.average if self._return_rt.has_estimate else None,
+            "return_rt_samples_total": self._return_rt.total_added,
+            "return_rt_samples_in_window": len(self._return_rt.samples),
+            "return_rt_samples_dropped_in_window": self._return_rt.n_dropped,
+            "forced_jump_backs": self.forced_jump_backs,
+        }
+
+    @property
+    def return_rt_samples_ms(self) -> list[float]:
+        """Return-saccade latencies currently in the return rolling window (oldest first)."""
+        return self._return_rt.samples
 
     def _should_stop_main_block(self) -> bool:
         """Constant stimuli: stop after SACCADE_FIXED_TRIALS_* main trials."""
@@ -480,22 +548,38 @@ class ExperimentSession:
         self._last_sample_ts = self._gaze.latest_sample().timestamp
         self._onset_detector = OnsetDetector(zone_for(trial.source))
         # Open-loop: the flash fires at a fixed delay from this instant, not when the gaze classifier detects onset. The
-        # average is always set here: the RT test (or seeded samples) comes first. A TIMING_OFFSETS_MS label picks a slice of
-        # a bell curve centred on the average RT (see the constant); a control offset (or a practice trial's None = 0) is
-        # average RT + offset + jitter.
-        offset_ms = trial.timing_offset_ms if trial.timing_offset_ms is not None else 0  # 0 is itself a valid offset
+        # average is always set here: the RT test (or seeded samples) comes first. A return-leg flash is scheduled the same
+        # way but from the jump-back frame, with the return average (_jump_back).
         self._trial_gaze_latency_ms = self.gaze_latency_ms
         self._latency_s = self._timestamp_latency_s(self._trial_gaze_latency_ms)
+        if self._return_jump:
+            bag = self._practice_flash_leg_bag if trial.practice else self._flash_leg_bag
+            self._flash_leg = bag.draw()
+        else:
+            self._flash_leg = "out"
+        if self._flash_leg == "return":
+            self._flash_scheduled_at = math.inf  # scheduled at the jump back
+            return
         self._trial_avg_rt_ms = self._avg_reaction_time_ms
+        self._trial_scheduled_delay_ms = self._flash_delay_ms(trial, self._avg_reaction_time_ms)
+        self._flash_scheduled_at = self._trial_start_time + self._trial_scheduled_delay_ms / 1000
+
+    def _flash_delay_ms(self, trial: TrialSpec, average_ms: float) -> float:
+        """Delay (ms) from the leg's start (go cue or jump back) to the flash. A TIMING_OFFSETS_MS label picks a slice of a
+        bell curve centred on `average_ms` (see the constant); a control offset (or a practice trial's None = 0) is
+        average + offset + jitter."""
         if trial.timing_offset_ms is not None and trial.timing_offset_ms in TIMING_OFFSETS_MS:
-            self._trial_scheduled_delay_ms = spread_flash_delay_ms(
-                trial.timing_offset_ms, TIMING_OFFSETS_MS, self._avg_reaction_time_ms,
+            return spread_flash_delay_ms(
+                trial.timing_offset_ms, TIMING_OFFSETS_MS, average_ms,
                 self._flash_spread_sd_ms, FLASH_WINDOW_MIN_MS, FLASH_WINDOW_MAX_MS,
             )
-        else:
-            jitter_ms = random.uniform(-TIMING_JITTER_MS, TIMING_JITTER_MS) if TIMING_JITTER_MS else 0.0
-            self._trial_scheduled_delay_ms = self._avg_reaction_time_ms + offset_ms + jitter_ms
-        self._flash_scheduled_at = self._trial_start_time + self._trial_scheduled_delay_ms / 1000
+        offset_ms = trial.timing_offset_ms if trial.timing_offset_ms is not None else 0  # 0 is itself a valid offset
+        jitter_ms = random.uniform(-TIMING_JITTER_MS, TIMING_JITTER_MS) if TIMING_JITTER_MS else 0.0
+        return average_ms + offset_ms + jitter_ms
+
+    def _return_average_ms(self) -> float:
+        """Centre for a return-leg flash: the return-saccade average once it rests on enough samples, else the out-leg one."""
+        return self._return_rt.average if self._return_rt.has_estimate else self._avg_reaction_time_ms
 
     def tick(self) -> None:
         self._on_calibration(self._calibration.poll())
@@ -538,6 +622,10 @@ class ExperimentSession:
         ):
             self._tracking_lost_near_flash = True
 
+        if self._return_jump:
+            self._tick_return_jump(trial, new_samples, now)
+            return
+
         self._detect_landing(new_samples, zone_for(trial.target))
 
         if not self._landed and now - self._trial_start_time >= SACCADE_TIMEOUT_MS / 1000:
@@ -548,6 +636,59 @@ class ExperimentSession:
         # average) cannot finalize before their flash happens.
         if self._landed and self._flash_decided and (self._responded or not self._response_window_open):
             self._finish_trial(landed=True)
+
+    def _tick_return_jump(self, trial: TrialSpec, new_samples, now: float) -> None:
+        """The rest of a return-jump trial tick: out landing -> jump back -> return onset/landing -> finish."""
+        if self._jump_at is None:
+            self._detect_landing(new_samples, zone_for(trial.target))
+            # An out-leg flash is drawn (and gone) before the target jumps, so the jump never overlaps it.
+            out_flash_done = self._flash_leg == "return" or (self._flash_decided and not self._grating_visible)
+            if out_flash_done:
+                if self._landed:
+                    self._jump_back(trial, now, forced=False)
+                elif now - self._trial_start_time >= RETURN_JUMP_LANDING_TIMEOUT_MS / 1000:
+                    self._jump_back(trial, now, forced=True)
+            return
+
+        after_jump = [(s, s_t) for s, s_t in new_samples if s_t >= self._jump_at]  # earlier captures cannot answer the jump
+        detector = self._return_onset_detector
+        for s, s_t in after_jump:
+            if not detector.confirmed and detector.update(s, s_t):
+                self._return_reaction_ms = (detector.since - self._jump_at) * 1000
+                if not self._jump_forced:  # after a forced jump the eye may not be on the target: no clean return latency
+                    self._return_rt.add(self._return_reaction_ms)
+        was_landed = self._return_landed
+        self._return_landed_since, self._return_landed = _track_landing(
+            after_jump, zone_for(trial.source), self._return_landed_since, self._return_landed
+        )
+        if self._return_landed and not was_landed and self._flash_decided and not self._responded:
+            # The answer is asked once the eye is back: the full window counts from the return landing.
+            self._response_window_open = True
+            self._response_deadline = max(self._response_deadline, now + RESPONSE_WINDOW_MS / 1000)
+
+        if not self._return_landed and now - self._jump_at >= SACCADE_TIMEOUT_MS / 1000:
+            self._finish_trial(landed=self._landed)
+            return
+        if self._return_landed and self._flash_decided and (self._responded or not self._response_window_open):
+            self._finish_trial(landed=self._landed)
+
+    def _jump_back(self, trial: TrialSpec, now: float, forced: bool) -> None:
+        """The target jumps back: the start symbol reappears (the new saccade target), the one just reached disappears.
+        A return-leg flash is scheduled from this frame."""
+        self._jump_at = now
+        self._jump_forced = forced
+        if forced and not trial.practice:
+            self.forced_jump_backs += 1
+        self._dot_visible = trial.source is Target.DOT
+        self._cross_visible = trial.source is Target.CROSS
+        self._return_onset_detector = OnsetDetector(zone_for(trial.target))
+        if self._flash_leg == "return":
+            average_ms = self._return_average_ms()
+            delay_ms = self._flash_delay_ms(trial, average_ms)
+            self._trial_avg_rt_ms = average_ms
+            # Still flash minus GO CUE (analyze_session derives the go cue from it); the jump is in jump_back_ms_after_go_cue.
+            self._trial_scheduled_delay_ms = (now - self._trial_start_time) * 1000 + delay_ms
+            self._flash_scheduled_at = now + delay_ms / 1000
 
     def _head_tracker(self):
         """The source's head-movement monitor (Neon IMU), or None when the source has none / it switched itself off."""
@@ -581,10 +722,13 @@ class ExperimentSession:
 
     def _measure_reaction(self, new_samples) -> None:
         """Onset detection runs every tick purely as a measurement (reaction_latency_ms, the rolling RT average and one
-        bound of the flash_during_saccade window); it no longer triggers the flash."""
+        bound of the flash_during_saccade window); it no longer triggers the flash. Out leg only: samples captured after
+        a jump back belong to the return leg."""
         for s, s_t in new_samples:
             if s_t < self._trial_start_time:
                 continue  # captured before the go-cue (it just arrived after it): cannot be a reaction to it
+            if self._jump_at is not None and s_t >= self._jump_at:
+                break
             if not self._onset_detector.confirmed and self._onset_detector.update(s, s_t):
                 self._reaction_latency_ms = (self._onset_detector.since - self._trial_start_time) * 1000
                 self._record_reaction_time(self._reaction_latency_ms)
@@ -611,16 +755,7 @@ class ExperimentSession:
     def _detect_landing(self, new_samples, target_zone) -> None:
         """Landing is flagged at once but the trial is not finalized: a real reaction time can outlast how quickly landing
         is detected, so ending the trial here would cut off a still-valid response."""
-        for s, s_t in new_samples:
-            if self._landed:
-                break
-            if s.face_found and s.zone is target_zone:
-                if self._target_landed_since is None:
-                    self._target_landed_since = s_t
-                elif s_t - self._target_landed_since >= GAZE_LANDING_STABILITY_MS / 1000:
-                    self._landed = True
-            else:
-                self._target_landed_since = None
+        self._target_landed_since, self._landed = _track_landing(new_samples, target_zone, self._target_landed_since, self._landed)
 
     def _hide_source_symbol(self) -> None:
         trial = self._current_trial_spec
@@ -629,16 +764,25 @@ class ExperimentSession:
         else:
             self._cross_visible = False
 
+    def _flash_leg_onset_landing(self) -> tuple[float | None, float | None]:
+        """(onset, first-in-zone landing) capture times of the saccade on the flash's leg."""
+        if self._flash_leg == "return":
+            detector = self._return_onset_detector
+            return (detector.since if detector is not None else None), self._return_landed_since
+        return self._onset_detector.since, self._target_landed_since
+
     def _compute_flash_during_saccade(self) -> bool | None:
-        """Whether the scheduled flash time fell within [onset, landing] (the "first observed" capture times). Only meaningful
-        for trials that flashed. False if onset was never detected; None if landing was never confirmed (undeterminable)."""
+        """Whether the scheduled flash time fell within [onset, landing] (the "first observed" capture times) of the flash's
+        leg. Only meaningful for trials that flashed. False if onset was never detected; None if landing was never confirmed
+        (undeterminable)."""
         if not self._grating_actually_shown:
             return None
-        if self._onset_detector.since is None:
+        onset, landed_since = self._flash_leg_onset_landing()
+        if onset is None:
             return False
-        if self._target_landed_since is None:
+        if landed_since is None:
             return None
-        return self._onset_detector.since <= self._flash_scheduled_at <= self._target_landed_since
+        return onset <= self._flash_scheduled_at <= landed_since
 
     def _finish_trial(self, landed: bool) -> None:
         trial = self._current_trial_spec
@@ -653,8 +797,13 @@ class ExperimentSession:
             and self._target_landed_since >= onset_at
             else None
         )
-        if (not landed and not self._onset_detector.confirmed) or not self._grating_actually_shown:
-            outcome = "timeout"  # no saccade, or the trial ended before its flash fired
+        if self._flash_leg == "return":
+            leg_moved = self._return_landed or (self._return_onset_detector is not None and self._return_onset_detector.confirmed)
+        else:
+            leg_moved = landed or self._onset_detector.confirmed
+        flash_onset_at, _ = self._flash_leg_onset_landing()
+        if not leg_moved or not self._grating_actually_shown:
+            outcome = "timeout"  # no saccade (on the flash's leg), or the trial ended before its flash fired
         else:
             outcome = score_outcome(self._responded, self._response_orientation, trial.orientation)
         self._flash_during_saccade = self._compute_flash_during_saccade()
@@ -684,13 +833,17 @@ class ExperimentSession:
                 grating_shown_at_unix_ms=self._grating_shown_at_unix_ms,
                 tracking_ok=tracking_ok,
                 flash_relative_to_onset_ms=(
-                    (self._flash_scheduled_at - onset_at) * 1000
-                    if self._grating_actually_shown and onset_at is not None
+                    (self._flash_scheduled_at - flash_onset_at) * 1000
+                    if self._grating_actually_shown and flash_onset_at is not None
                     else None
                 ),
                 avg_rt_used_ms=self._trial_avg_rt_ms,
                 scheduled_delay_ms=self._trial_scheduled_delay_ms,
                 gaze_latency_ms=self._trial_gaze_latency_ms,
+                flash_leg=self._flash_leg if self._grating_actually_shown else None,
+                jump_back_ms_after_go_cue=(self._jump_at - self._trial_start_time) * 1000 if self._jump_at is not None else None,
+                return_reaction_ms=self._return_reaction_ms,
+                jump_back_forced=self._jump_forced,
             )
             self._logger.log(result)
             self._results.append(result)
@@ -719,7 +872,9 @@ class ExperimentSession:
         # The answer text is shared by AWAITING_SPACE (after the first trial), FOREPERIOD and TRIAL_ACTIVE
         # so it is spoken once and never flickers or repeats from trial to trial.
         if self._phase is Phase.AWAITING_SPACE:
-            return words.FIRST_TRIAL if self._is_first_trial() else _ANSWER_TEXT
+            if self._is_first_trial():
+                return words.FIRST_TRIAL_RETURN_JUMP if self._return_jump else words.FIRST_TRIAL
+            return _ANSWER_TEXT
         if self._phase in (Phase.FOREPERIOD, Phase.TRIAL_ACTIVE):
             return _ANSWER_TEXT
         if self._phase in _RT_TEST_PHASES:

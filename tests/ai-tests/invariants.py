@@ -15,11 +15,14 @@ from include.experiment.constants import (
     FLASH_SPREAD_SD_MS,
     FLASH_WINDOW_MAX_MS,
     FLASH_WINDOW_MIN_MS,
+    RETURN_JUMP_LANDING_TIMEOUT_MS,
+    RETURN_LEG_FLASH_FRACTION,
+    SACCADE_TIMEOUT_MS,
     TIMING_JITTER_MS,
     TIMING_OFFSETS_MS,
 )
 from src.experiment.simulation import FRAME_HZ, SimulationResult
-from src.experiment.trial_mechanics import spread_flash_delay_ms
+from src.experiment.trial_mechanics import flash_leg_pool, spread_flash_delay_ms
 
 FRAME_MS = 1000 / FRAME_HZ
 
@@ -43,6 +46,7 @@ def check_session(sim: SimulationResult, max_trials_cap: int | None = None) -> l
         max_trials_cap = sim.session._fixed_trials
     saccade_rows = [r for r in sim.results if r.phase == "saccade"]
     rt_rows = [r for r in sim.results if r.phase == "rt_test"]
+    return_jump = bool(getattr(sim.session, "_return_jump", False))
 
     for r in sim.results:
         tag = f"{r.phase} #{r.index}"
@@ -82,7 +86,12 @@ def check_session(sim: SimulationResult, max_trials_cap: int | None = None) -> l
         if r.responded:
             if r.grating_shown and r.response_time_ms is None:
                 v.append(f"{tag}: responded to a flash but no response_time_ms")
-            if r.response_time_ms is not None and not (0 <= r.response_time_ms <= RESPONSE_WINDOW_MS + 2 * FRAME_MS):
+            limit_ms = RESPONSE_WINDOW_MS
+            if r.jump_back_ms_after_go_cue is not None and r.scheduled_delay_ms is not None:
+                # Return jump: the window is (re)opened in full at the return landing, which may come up to
+                # SACCADE_TIMEOUT_MS after the jump-back.
+                limit_ms = max(limit_ms, r.jump_back_ms_after_go_cue - r.scheduled_delay_ms + SACCADE_TIMEOUT_MS + RESPONSE_WINDOW_MS)
+            if r.response_time_ms is not None and not (0 <= r.response_time_ms <= limit_ms + 2 * FRAME_MS):
                 v.append(f"{tag}: response_time_ms {r.response_time_ms:.0f} outside [0, response window]")
         else:
             if r.response_time_ms is not None or r.response_orientation is not None:
@@ -106,18 +115,23 @@ def check_session(sim: SimulationResult, max_trials_cap: int | None = None) -> l
         allowed_offsets = TIMING_OFFSETS_MS + CONTROL_OFFSETS_MS
         if r.timing_offset_ms is not None and r.timing_offset_ms not in allowed_offsets:
             v.append(f"{tag}: timing_offset_ms {r.timing_offset_ms} not one of {allowed_offsets}")
-        if r.timing_offset_ms in TIMING_OFFSETS_MS and r.scheduled_delay_ms is not None and r.avg_rt_used_ms is not None:
+        v.extend(_check_return_jump_row(r, tag, return_jump))
+        # The flash delay relative to its own leg's start: the go cue, or the jump-back frame for a return-leg flash.
+        leg_delay_ms = r.scheduled_delay_ms
+        if r.flash_leg == "return" and r.scheduled_delay_ms is not None and r.jump_back_ms_after_go_cue is not None:
+            leg_delay_ms = r.scheduled_delay_ms - r.jump_back_ms_after_go_cue
+        if r.timing_offset_ms in TIMING_OFFSETS_MS and leg_delay_ms is not None and r.avg_rt_used_ms is not None:
             # Bell-curve flash: inside its slice of the curve around the average RT, inside the flash window.
             edges = [
                 spread_flash_delay_ms(r.timing_offset_ms, TIMING_OFFSETS_MS, r.avg_rt_used_ms, FLASH_SPREAD_SD_MS,
                                       FLASH_WINDOW_MIN_MS, FLASH_WINDOW_MAX_MS, rng=_Edge(low))
                 for low in (True, False)
             ]
-            if not edges[0] - 1e-6 <= r.scheduled_delay_ms <= edges[1] + 1e-6:
-                v.append(f"{tag}: scheduled_delay_ms {r.scheduled_delay_ms:.1f} outside its slice {edges[0]:.1f}..{edges[1]:.1f} ms")
-        if r.timing_offset_ms in CONTROL_OFFSETS_MS and r.scheduled_delay_ms is not None and r.avg_rt_used_ms is not None:
-            if abs(r.scheduled_delay_ms - r.avg_rt_used_ms - r.timing_offset_ms) > TIMING_JITTER_MS + 1e-6:
-                v.append(f"{tag}: control flash scheduled_delay_ms {r.scheduled_delay_ms:.1f} not avg RT + {r.timing_offset_ms} +/- jitter")
+            if not edges[0] - 1e-6 <= leg_delay_ms <= edges[1] + 1e-6:
+                v.append(f"{tag}: {r.flash_leg or 'out'}-leg flash delay {leg_delay_ms:.1f} ms outside its slice {edges[0]:.1f}..{edges[1]:.1f} ms")
+        if r.timing_offset_ms in CONTROL_OFFSETS_MS and leg_delay_ms is not None and r.avg_rt_used_ms is not None:
+            if abs(leg_delay_ms - r.avg_rt_used_ms - r.timing_offset_ms) > TIMING_JITTER_MS + 1e-6:
+                v.append(f"{tag}: control flash delay {leg_delay_ms:.1f} ms not avg RT + {r.timing_offset_ms} +/- jitter")
         for name in ("flash_during_saccade", "tracking_ok"):
             val = getattr(r, name)
             if val is not None and not isinstance(val, bool):
@@ -129,9 +143,49 @@ def check_session(sim: SimulationResult, max_trials_cap: int | None = None) -> l
     if len(saccade_rows) > max_trials_cap:
         v.append(f"{len(saccade_rows)} saccade trials exceed the safety cap {max_trials_cap}")
 
+    if return_jump:
+        # The leg comes from a shuffled bag, so every full pass splits exactly; allow one pass of seam slack.
+        pool = flash_leg_pool(RETURN_LEG_FLASH_FRACTION)
+        legs = [r.flash_leg for r in saccade_rows if r.flash_leg is not None]
+        expected = len(legs) * pool.count("return") / len(pool)
+        if abs(legs.count("return") - expected) > len(pool):
+            v.append(f"{legs.count('return')} of {len(legs)} flashes on the return leg, expected ~{expected:.1f} (fraction {RETURN_LEG_FLASH_FRACTION})")
+
     phase = sim.session.render_state()["hud"]["phase"]
     if phase == "COMPLETE":
         expected_rt_rows = sim.session._rt_test_target_attempts
         if len(rt_rows) != expected_rt_rows:
             v.append(f"RT test ran {len(rt_rows)} attempts, expected {expected_rt_rows}")
+    return v
+
+
+def _check_return_jump_row(r, tag: str, return_jump: bool) -> list[str]:
+    """The return-jump columns of one saccade row (see TrialResult: flash_leg ... jump_back_forced)."""
+    v: list[str] = []
+    jump_fields = ("jump_back_ms_after_go_cue", "return_reaction_ms", "jump_back_forced")
+    if r.grating_shown and r.flash_leg not in ("out", "return"):
+        v.append(f"{tag}: flash shown but flash_leg {r.flash_leg!r}")
+    if not r.grating_shown and r.flash_leg is not None:
+        v.append(f"{tag}: no flash shown but flash_leg {r.flash_leg!r}")
+    if not return_jump:
+        if r.flash_leg not in (None, "out"):
+            v.append(f"{tag}: return jump off but flash_leg {r.flash_leg!r}")
+        for name in jump_fields:
+            if getattr(r, name) is not None:
+                v.append(f"{tag}: return jump off but {name}={getattr(r, name)!r}")
+        return v
+    jump = r.jump_back_ms_after_go_cue
+    if jump is None or not isinstance(r.jump_back_forced, bool):
+        # Every return-jump trial jumps: on landing, or forced at RETURN_JUMP_LANDING_TIMEOUT_MS.
+        v.append(f"{tag}: return jump on but no jump logged (jump_back_ms={jump!r}, forced={r.jump_back_forced!r})")
+        return v
+    if jump < 0 or (r.jump_back_forced and jump < RETURN_JUMP_LANDING_TIMEOUT_MS - 1e-6):
+        v.append(f"{tag}: jump_back_ms_after_go_cue {jump:.1f} impossible (forced={r.jump_back_forced})")
+    if r.return_reaction_ms is not None and r.return_reaction_ms < 0:
+        v.append(f"{tag}: negative return_reaction_ms {r.return_reaction_ms}")
+    if r.scheduled_delay_ms is not None and r.grating_shown:
+        if r.flash_leg == "return" and r.scheduled_delay_ms < jump - 1e-6:
+            v.append(f"{tag}: return-leg flash at {r.scheduled_delay_ms:.1f} ms, before the jump-back at {jump:.1f} ms")
+        if r.flash_leg == "out" and r.scheduled_delay_ms > jump + 1e-6:
+            v.append(f"{tag}: out-leg flash at {r.scheduled_delay_ms:.1f} ms, after the jump-back at {jump:.1f} ms")
     return v

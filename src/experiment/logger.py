@@ -93,18 +93,22 @@ TRIAL_COLUMNS: list[Column] = [
     Column("outcome", "outcome", lambda r: OUTCOME_WORDS.get(r.outcome, r.outcome), _word_to_canonical(OUTCOME_WORDS)),
     Column("line_side", "orientation", lambda r: _enum_value(r.orientation)),
     Column("answer_side", "response_orientation", lambda r: _enum_value(r.response_orientation)),
+    Column("flash_leg", "flash_leg", lambda r: r.flash_leg or ""),
     Column("flash_ms_after_go_cue", "scheduled_delay_ms", lambda r: _num(r.scheduled_delay_ms)),
+    Column("jump_back_ms_after_go_cue", "jump_back_ms_after_go_cue", lambda r: _num(r.jump_back_ms_after_go_cue)),
     Column("reaction_ms", "reaction_latency_ms", lambda r: _num(r.reaction_latency_ms)),
+    Column("return_reaction_ms", "return_reaction_ms", lambda r: _num(r.return_reaction_ms)),
     Column("answer_ms", "response_time_ms", lambda r: _num(r.response_time_ms)),
     Column("flash_unix_ms", "grating_shown_at_unix_ms", lambda r: _num(r.grating_shown_at_unix_ms)),
+    Column("jump_back_forced", "jump_back_forced", lambda r: _yes_no(r.jump_back_forced), _yes_no_to_canonical),
     Column("tracking_ok", "tracking_ok", lambda r: _yes_no(r.tracking_ok), _yes_no_to_canonical),
 ]
 FIELDNAMES = [c.name for c in TRIAL_COLUMNS]
 
 # TrialResult fields that are NOT in trials.csv, with why. Per-phase medians of saccade_duration_ms and onset_detection_lag_ms go to session.json.
 DROPPED_FROM_CSV = {
-    "source": "the two symbols are the left and right dot and trials alternate strictly, so the direction is the trial parity within a phase",
-    "target": "same as source: the opposite symbol, i.e. the direction of the eye movement follows from the trial parity",
+    "source": "the two symbols are the left and right dot; with return jump off trials alternate strictly (direction = trial parity within a phase), with it on every trial starts at the same symbol (out leg away from it, return leg back to it); analyze_session finds saccades in the gaze trace",
+    "target": "same as source: the opposite symbol, i.e. follows from the trial parity (return jump off) or is the same every trial (return jump on)",
     "timing_offset_ms": "the actual delay is in flash_ms_after_go_cue and analyze_session recomputes timing (and the control flashes) from the gaze trace",
     "saccade_duration_ms": "live-detected duration from a ~95 ms late gaze stream; analyze_session measures saccades from the raw trace (median kept in session.json)",
     "onset_detection_lag_ms": "diagnostic of the live onset detector (median kept in session.json)",
@@ -187,6 +191,10 @@ def trial_from_row(row: dict) -> TrialResult:
         avg_rt_used_ms=_parse_float(row.get("avg_rt_used_ms")),
         scheduled_delay_ms=_parse_float(row.get("scheduled_delay_ms")),
         gaze_latency_ms=_parse_float(row.get("gaze_latency_ms")),
+        flash_leg=row.get("flash_leg") or None,
+        jump_back_ms_after_go_cue=_parse_float(row.get("jump_back_ms_after_go_cue")),
+        return_reaction_ms=_parse_float(row.get("return_reaction_ms")),
+        jump_back_forced=_parse_optional_bool(row.get("jump_back_forced")),
     )
 
 
@@ -234,6 +242,8 @@ _SETTINGS_CONSTANTS = {
         "TRACKING_LOSS_WINDOW_MS",
         "SACCADE_ONSET_DISPLACEMENT",
         "SACCADE_ONSET_STABILITY_MS",
+        "RETURN_LEG_FLASH_FRACTION",
+        "RETURN_JUMP_LANDING_TIMEOUT_MS",
     ),
     "include.eye_tracking.constants": ("GAZE_DEAD_ZONE",),
 }
@@ -408,6 +418,12 @@ class ResultLogger:
     def set_flash_spread_sd_ms(self, sd_ms: float) -> None:
         """The bell-curve width (SD, ms) of the flash times this run used (startup dialog; FLASH_SPREAD_SD_MS is the default)."""
         self._metadata["settings"]["flash_spread_sd_ms"] = float(sd_ms)
+        self._write_metadata()
+
+    def set_return_jump(self, enabled: bool) -> None:
+        """Whether this run used return-jump trials (startup dialog "Return jump"; RETURN_JUMP_DEFAULT is the first-time default).
+        Absent in older session.json files, which never jumped back."""
+        self._metadata["settings"]["return_jump"] = bool(enabled)
         self._write_metadata()
 
     def set_display_refresh_hz(self, hz: float | None) -> None:

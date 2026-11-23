@@ -3,6 +3,7 @@
 import random
 import statistics
 from collections import deque
+from fractions import Fraction
 from typing import Generic, Sequence, TypeVar
 
 from include.eye_tracking.constants import CENTER_POSITION, LEFT_POSITION, RIGHT_POSITION
@@ -76,6 +77,7 @@ class RollingReactionTime:
     def __init__(self, default: float, seed: Sequence[float] = (), window: int = RT_AVERAGE_ROLLING_WINDOW) -> None:
         self._window: deque[float] = deque(maxlen=window)
         self._average = default
+        self.has_estimate = False  # True once the average comes from samples rather than `default`
         self.total_added = 0
         for sample in seed:
             self.add(sample)
@@ -86,6 +88,7 @@ class RollingReactionTime:
         self.total_added += 1
         if sum(1 for s in self._window if s >= RT_MIN_PLAUSIBLE_MS) >= RT_MIN_SAMPLES_FOR_AVERAGE:
             self._average = robust_average_ms(self._window, default=self._average)
+            self.has_estimate = True
         return self._average
 
     @property
@@ -207,6 +210,14 @@ class ShuffledBag(Generic[_T]):
             random.shuffle(shuffled)
             self._remaining = deque(shuffled)
         return self._remaining.popleft()
+
+
+def flash_leg_pool(return_fraction: float) -> list[str]:
+    """The smallest pool of 'out'/'return' leg labels whose return share is `return_fraction` (denominator capped at
+    20), for a ShuffledBag: 0.8 -> 4 x 'return' + 1 x 'out', so every 5 trials split exactly."""
+    share = Fraction(min(max(return_fraction, 0.0), 1.0)).limit_denominator(20)
+    n_return, n_total = share.numerator, share.denominator
+    return ["return"] * n_return + ["out"] * (n_total - n_return)
 
 
 def spread_flash_delay_ms(

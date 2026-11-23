@@ -9,12 +9,13 @@ from src.experiment import session as session_module
 from src.experiment.simulation import simulate_session
 
 
-def _violations(trials=14, seed=2):
-    return check_session(simulate_session(max_trials=trials, seed=seed))
+def _violations(trials=14, seed=2, **kwargs):
+    return check_session(simulate_session(max_trials=trials, seed=seed, **kwargs))
 
 
-def test_baseline_is_clean():
-    assert _violations() == []
+@pytest.mark.parametrize("return_jump", [True, False])
+def test_baseline_is_clean(return_jump):
+    assert _violations(return_jump=return_jump) == []
 
 
 def test_catches_scoring_that_always_says_correct(monkeypatch):
@@ -53,8 +54,9 @@ def test_catches_a_session_that_never_stops(monkeypatch):
 
 def test_catches_onset_detection_reporting_before_the_debounce(monkeypatch):
     monkeypatch.setattr("src.experiment.trial_mechanics.SACCADE_ONSET_STABILITY_MS", 400)  # detector waits 400 ms...
-    # ...while the invariant still believes in the configured debounce window.
-    assert any("onset_detection_lag_ms" in v for v in _violations(trials=10))
+    # ...while the invariant still believes in the configured debounce window. Return jump off: with it on, a 400 ms
+    # debounce outlasts the landing debounce, so the jump back ends out-leg onset detection before it could report.
+    assert any("onset_detection_lag_ms" in v for v in _violations(trials=10, return_jump=False))
 
 
 # ---- Past bugs: re-introduce each one and confirm a regression test goes red -------------------------

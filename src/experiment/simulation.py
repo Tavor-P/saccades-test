@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 
 from include.eye_tracking.interfaces import GazeSource
 from include.eye_tracking.types import GazeSample, GazeZone
-from include.experiment.constants import CROSS_POSITION, DOT_POSITION, SCREEN_HEIGHT_CM, VIEWING_DISTANCE_CM
+from include.experiment.constants import CROSS_POSITION, DOT_POSITION, RETURN_JUMP_DEFAULT, SCREEN_HEIGHT_CM, VIEWING_DISTANCE_CM
 from include.experiment.types import Side, TrialResult
 from src.eye_tracking.head_monitor import HeadMotionTracker
 from src.experiment.pausable_clock import PausableClock
@@ -105,6 +105,19 @@ class ParticipantProfile:
     # Direction dependence: dot->cross (rightward) saccades are this much slower than cross->dot
     # ones; split +-half around the mean so the overall mean is unchanged.
     reaction_dir_offset_ms: float = 0.0
+    # Return jump (the target jumps back once the out landing is confirmed): latency from the jump-back to the
+    # return saccade's start. None = 0.8 x reaction_ms_mean / 0.6 x reaction_ms_sd - A GUESS (a second, predictable
+    # jump back to a just-seen place should be faster and less variable), not measured on this setup.
+    return_reaction_ms_mean: float | None = None
+    return_reaction_ms_sd: float | None = None
+
+    @property
+    def return_reaction_mean_ms(self) -> float:
+        return self.return_reaction_ms_mean if self.return_reaction_ms_mean is not None else 0.8 * self.reaction_ms_mean
+
+    @property
+    def return_reaction_sd_ms(self) -> float:
+        return self.return_reaction_ms_sd if self.return_reaction_ms_sd is not None else 0.6 * self.reaction_ms_sd
 
     @classmethod
     def realistic(cls, **overrides) -> "ParticipantProfile":
@@ -235,9 +248,13 @@ class SimulatedParticipant:
         self._eye_from = self._eye_to = 0.5  # screen x (0-1)
         self._move_start = 0.0
         self._move_dur = 0.05
+        # The move before the current one (from, to, start, dur), still used for times before the current one starts:
+        # a return saccade is planned while the out saccade may still be in the tracker's (lagged) view. None otherwise.
+        self._prev_move: tuple[float, float, float, float] | None = None
         self._dropout_until = -1.0
         self._head_yaw_deg = 0.0
         self.cues: list[CueRecord] = []  # ground-truth latency of every go-cue so far
+        self.return_cues: list[CueRecord] = []  # ground truth of every jump-back (phase "RETURN"), return-jump sessions only
         self._ar_dev = 0.0  # AR(1) state: last cue's deviation from its true mean
         self._reset_phase_state()
 
@@ -251,14 +268,21 @@ class SimulatedParticipant:
         # really fell inside the participant's saccade. Collected by the simulator
         # and attached to the trial's logged row.
         self.pending_flash_truth: bool | None = None
+        self._go_target_x: float | None = None  # where the go-cue's target appeared (TRIAL_ACTIVE only)
+        self._jump_back_seen = False
 
     # -- eye ------------------------------------------------------------------
 
     def _eye_x(self, t: float) -> float:
-        u = (t - self._move_start) / self._move_dur
-        return self._eye_from + (self._eye_to - self._eye_from) * _smoothstep(u)
+        if self._prev_move is not None and t < self._move_start:
+            start_x, end_x, start, dur = self._prev_move
+        else:
+            start_x, end_x, start, dur = self._eye_from, self._eye_to, self._move_start, self._move_dur
+        u = (t - start) / dur
+        return start_x + (end_x - start_x) * _smoothstep(u)
 
     def _fixate(self, x: float, t: float) -> None:
+        self._prev_move = None
         self._eye_from = self._eye_to = x
         self._move_start = t
 
@@ -308,6 +332,11 @@ class SimulatedParticipant:
             self._pending_space_at = t + 0.7
             self._session.on_space()
 
+        if phase == "TRIAL_ACTIVE" and self._go_target_x is not None and not self._jump_back_seen:
+            x = self._visible_x(state)
+            if x is not None and abs(x - self._go_target_x) > 1e-9:  # the target jumped back
+                self._on_jump_back(x, t)
+
         if phase == "TRIAL_ACTIVE" and state["grating"]["visible"] and not self._flash_seen:
             self._see_flash(state, t)
 
@@ -343,11 +372,35 @@ class SimulatedParticipant:
                 dur = self._rng.uniform(self._p.saccade_ms_min, self._p.saccade_ms_max) / 1000
                 self._eye_from = self._eye_x(t)
                 self._eye_to = x
+                self._prev_move = None
                 self._move_start = t + reaction
                 self._move_dur = dur
                 self.saccade_onset = t + reaction
+                if phase == "TRIAL_ACTIVE":
+                    self._go_target_x = x
                 self._log(t, "go-cue: target appeared")
                 self._log(t + reaction, f"[true] saccade onset (reaction {reaction * 1000:.0f} ms, flight {dur * 1000:.0f} ms)")
+
+    def _on_jump_back(self, x: float, t: float) -> None:
+        """The target jumped back to `x`: plan the return saccade (after the out saccade has ended). If the out saccade
+        has not even started (a forced jump after a very slow start), it is cancelled and the eye simply stays put."""
+        self._jump_back_seen = True
+        if t < self._move_start:
+            self._fixate(self._eye_from, t)
+            self.saccade_onset = None
+            self._log(t, "jump-back seen before the out saccade started: out saccade cancelled")
+            return
+        p = self._p
+        latency_ms = max(80.0, self._rng.gauss(p.return_reaction_mean_ms, p.return_reaction_sd_ms))
+        self.return_cues.append(CueRecord(t, "RETURN", len(self.return_cues), latency_ms, p.return_reaction_mean_ms, "normal"))
+        start = max(t + latency_ms / 1000, self._move_start + self._move_dur)
+        dur = self._rng.uniform(p.saccade_ms_min, p.saccade_ms_max) / 1000
+        self._prev_move = (self._eye_from, self._eye_to, self._move_start, self._move_dur)
+        self._eye_from, self._eye_to = self._eye_to, x
+        self._move_start, self._move_dur = start, dur
+        self.saccade_onset = start  # a later (return-leg) flash is judged against this saccade
+        self._log(t, "jump-back: target reappeared at the start")
+        self._log(start, f"[true] return saccade onset (latency {(start - t) * 1000:.0f} ms, flight {dur * 1000:.0f} ms)")
 
     def _draw_reaction_ms(self, rightward: bool) -> tuple[float, float, str]:
         """(latency ms, true mean ms, kind) for the next go-cue. With every realism field at its
@@ -422,13 +475,17 @@ def simulate_session(
     seed: int = 0,
     test_mode: bool = True,
     skip_practice_trials: bool = True,
+    return_jump: bool | None = None,
 ) -> SimulationResult:
     """Runs the real ExperimentSession end-to-end against a simulated
     participant until `max_trials` saccade-phase trials have been logged (or
     the session completes on its own). Deterministic for a given seed. The
     global `random` state is saved and restored, since the session draws
-    foreperiods and trial sequences from it."""
+    foreperiods and trial sequences from it. `return_jump` None = RETURN_JUMP_DEFAULT,
+    read at call time (so a constant override such as `--set RETURN_JUMP_DEFAULT=false` switches it)."""
     profile = profile or ParticipantProfile()
+    if return_jump is None:
+        return_jump = RETURN_JUMP_DEFAULT
     saved_state = random.getstate()
     random.seed(seed)
     try:
@@ -437,7 +494,8 @@ def simulate_session(
         logger = MemoryLogger()
         events: list[tuple[float, str]] = []
         session = ExperimentSession(
-            gaze, logger=logger, clock=clock, test_mode=test_mode, skip_practice_trials=skip_practice_trials
+            gaze, logger=logger, clock=clock, test_mode=test_mode, skip_practice_trials=skip_practice_trials,
+            return_jump=return_jump,
         )
         if profile.head_spikes:
             gaze.head_motion = HeadMotionTracker()
@@ -509,6 +567,7 @@ def print_trial_timeline(sim: SimulationResult) -> None:
     for name in (
         "outcome", "grating_shown", "contrast", "orientation", "responded", "response_time_ms",
         "reaction_latency_ms", "onset_detection_lag_ms", "timing_offset_ms", "flash_during_saccade", "tracking_ok",
+        "flash_leg", "jump_back_ms_after_go_cue", "return_reaction_ms", "jump_back_forced",
     ):
         print(f"  {name:24s} {getattr(result, name)}")
     print(f"\n(Simulated {sim.duration_s:.1f} s of session time, including calibration and the RT test.)")

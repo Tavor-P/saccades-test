@@ -1,5 +1,6 @@
 """TutorialSession: the narrated first-timer on-ramp (calibration, how to answer, practice trials). Scoped-down mirror of ExperimentSession's trial logic."""
 
+import math
 import random
 from enum import Enum, auto
 
@@ -15,6 +16,8 @@ from include.experiment.constants import (
     GAZE_LATENCY_MAX_MS,
     GRATING_DURATION_FRAMES,
     RESPONSE_WINDOW_MS,
+    RETURN_JUMP_LANDING_TIMEOUT_MS,
+    RETURN_LEG_FLASH_FRACTION,
     SACCADE_TIMEOUT_MS,
     TUTORIAL_PRACTICE_ATTEMPTS,
     TUTORIAL_PRACTICE_CONTRAST,
@@ -27,7 +30,14 @@ from src.experiment.calibration import CalibrationRounds
 from src.experiment.geometry import Geometry
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.space_input import SpaceTally
-from src.experiment.trial_mechanics import OnsetDetector, RollingReactionTime, line_position, sample_capture_time
+from src.experiment.trial_mechanics import (
+    OnsetDetector,
+    RollingReactionTime,
+    ShuffledBag,
+    flash_leg_pool,
+    line_position,
+    sample_capture_time,
+)
 from src.experiment.trial_mechanics import random_orientation as _random_orientation
 from src.experiment.trial_mechanics import zone_for as _zone_for
 
@@ -49,6 +59,17 @@ class Phase(Enum):
 _CALIBRATION_PHASES = (Phase.CALIBRATE_LEFT, Phase.CALIBRATE_CENTER, Phase.CALIBRATE_RIGHT)
 
 
+def _update_landing(sample, zone, now: float, since: float | None, landed: bool) -> tuple[float | None, bool]:
+    """One tick of the tutorial's landing check (latest sample only): in `zone` for GAZE_LANDING_STABILITY_MS."""
+    if landed:
+        return since, landed
+    if sample.face_found and sample.zone is zone:
+        if since is None:
+            return now, False
+        return since, now - since >= GAZE_LANDING_STABILITY_MS / 1000
+    return None, False
+
+
 class TutorialSession:
     """A one-time, narrated on-ramp for first-time participants, run before both real phases. Stages:
 
@@ -59,15 +80,24 @@ class TutorialSession:
     3. PRACTICE - TUTORIAL_PRACTICE_ATTEMPTS trials that look like real saccade trials (SPACE -> dot -> cross -> visible flash
        -> key). The flash fires at the rolling robust average of this stage's own reaction times
        (DEFAULT_REACTION_TIME_MS until there are 3); each trial's onset latency is kept in `rt_samples_ms` to seed
-       ExperimentSession's average instead of a separate RT test.
+       ExperimentSession's average instead of a separate RT test. With `return_jump` the practice trials also jump back
+       (like the real ones): the flash goes on the out or the return leg, and the return latencies
+       (`return_rt_samples_ms`) seed the saccade phase's return-latency average.
 
     A short narrated INTRO (what you will see, what to do) runs before the calibration. There is no feedback on answers.
 
     Framework-agnostic like the other sessions; never logs to the results CSV (none of this counts as data).
     """
 
-    def __init__(self, gaze_source: GazeSource, clock: PausableClock, geometry: Geometry | None = None) -> None:
+    def __init__(
+        self, gaze_source: GazeSource, clock: PausableClock, geometry: Geometry | None = None, return_jump: bool = False
+    ) -> None:
         self._gaze = gaze_source
+        self._return_jump = bool(return_jump)
+        intro = words.TUTORIAL_INTRO
+        self._intro_lines: tuple[str, ...] = (
+            intro[:1] + (words.TUTORIAL_INTRO_RETURN_JUMP,) + intro[1:] if self._return_jump else intro
+        )
         self._geometry = geometry or Geometry.default()
         self._clock = clock
         self._phase = Phase.WAITING_TO_START
@@ -106,6 +136,17 @@ class TutorialSession:
         self._response_orientation: Side | None = None
         self._landed = False
         self._trial_start = 0.0
+        # -- return jump (see ExperimentSession._tick_return_jump; this is its scoped-down mirror) --
+        self._return_rt = RollingReactionTime(DEFAULT_REACTION_TIME_MS)
+        self._leg_bag: ShuffledBag[str] | None = (
+            ShuffledBag(flash_leg_pool(RETURN_LEG_FLASH_FRACTION)) if self._return_jump else None
+        )
+        self._flash_leg = "out"
+        self._jump_at: float | None = None
+        self._jump_forced = False
+        self._return_onset_detector: OnsetDetector | None = None
+        self._return_landed_since: float | None = None
+        self._return_landed = False
 
     @property
     def calibration_ratios(self) -> tuple[float, float, float] | None:
@@ -116,6 +157,11 @@ class TutorialSession:
         """Saccade-onset latency (target appears -> eye leaves the source) of every practice trial that had one."""
         return self._rt.samples
 
+    @property
+    def return_rt_samples_ms(self) -> list[float]:
+        """Return-saccade latency (jump back -> eye leaves the target) of every practice trial that had one (not forced)."""
+        return self._return_rt.samples
+
     # -- key handling ------------------------------------------------------
 
     def on_space(self) -> None:
@@ -124,7 +170,7 @@ class TutorialSession:
             self._phase = Phase.INTRO
         elif self._phase is Phase.INTRO:
             self._intro_step += 1
-            if self._intro_step >= len(words.TUTORIAL_INTRO):
+            if self._intro_step >= len(self._intro_lines):
                 self._calibration.start()
                 self._phase = Phase.CALIBRATE_LEFT
         elif self._phase is Phase.PRACTICE_INTRO:
@@ -175,6 +221,7 @@ class TutorialSession:
     def _enter_practice(self) -> None:
         self._attempt = 0
         self._rt = RollingReactionTime(DEFAULT_REACTION_TIME_MS)
+        self._return_rt = RollingReactionTime(DEFAULT_REACTION_TIME_MS)
         self._source = Target.DOT
         self._dot_visible = True
         self._cross_visible = False
@@ -196,6 +243,12 @@ class TutorialSession:
         self._responded = False
         self._response_orientation = None
         self._landed = False
+        self._flash_leg = self._leg_bag.draw() if self._leg_bag is not None else "out"
+        self._jump_at = None
+        self._jump_forced = False
+        self._return_onset_detector = None
+        self._return_landed_since = None
+        self._return_landed = False
 
     def _start_foreperiod(self) -> None:
         self._phase = Phase.PRACTICE_FOREPERIOD
@@ -211,6 +264,8 @@ class TutorialSession:
             # Open-loop, like the real saccade phase: scheduled off the rolling average of the reaction
             # times measured so far (updated at every detected eye movement; the default until there are 3).
             self._flash_scheduled_at = self._trial_start + self._rt.average / 1000
+            if self._flash_leg == "return":
+                self._flash_scheduled_at = math.inf  # scheduled at the jump back
 
     def _sample_time(self, sample, now: float) -> float:
         """Capture time of `sample` on the session clock (same rule as ExperimentSession): minus the tracker's latency unless
@@ -228,7 +283,8 @@ class TutorialSession:
         target_zone = _zone_for(self._target)
         sample_t = self._sample_time(sample, now)
 
-        if not self._onset_detector.confirmed and sample_t >= self._trial_start:
+        before_jump = self._jump_at is None or sample_t < self._jump_at
+        if not self._onset_detector.confirmed and sample_t >= self._trial_start and before_jump:
             if self._onset_detector.update(sample, sample_t):
                 self._rt.add((self._onset_detector.since - self._trial_start) * 1000)
 
@@ -250,14 +306,14 @@ class TutorialSession:
         if self._response_window_open and now > self._response_deadline:
             self._response_window_open = False
 
+        if self._return_jump:
+            self._tick_return_jump(sample, sample_t, now)
+            return
+
         if not self._landed:
-            if sample.face_found and sample.zone is target_zone:
-                if self._target_landed_since is None:
-                    self._target_landed_since = now
-                elif now - self._target_landed_since >= GAZE_LANDING_STABILITY_MS / 1000:
-                    self._landed = True
-            else:
-                self._target_landed_since = None
+            self._target_landed_since, self._landed = _update_landing(
+                sample, target_zone, now, self._target_landed_since, self._landed
+            )
 
             if now - self._trial_start >= SACCADE_TIMEOUT_MS / 1000:
                 self._finish_attempt()
@@ -266,9 +322,51 @@ class TutorialSession:
         if self._landed and self._flash_decided and (self._responded or not self._response_window_open):
             self._finish_attempt()
 
+    def _tick_return_jump(self, sample, sample_t: float, now: float) -> None:
+        if self._jump_at is None:
+            self._target_landed_since, self._landed = _update_landing(
+                sample, _zone_for(self._target), now, self._target_landed_since, self._landed
+            )
+            out_flash_done = self._flash_leg == "return" or (self._flash_decided and not self._grating_visible)
+            if out_flash_done:
+                if self._landed:
+                    self._jump_back(now, forced=False)
+                elif now - self._trial_start >= RETURN_JUMP_LANDING_TIMEOUT_MS / 1000:
+                    self._jump_back(now, forced=True)
+            return
+
+        detector = self._return_onset_detector
+        if not detector.confirmed and sample_t >= self._jump_at and detector.update(sample, sample_t):
+            if not self._jump_forced:
+                self._return_rt.add((detector.since - self._jump_at) * 1000)
+        was_landed = self._return_landed
+        self._return_landed_since, self._return_landed = _update_landing(
+            sample, _zone_for(self._source), now, self._return_landed_since, self._return_landed
+        )
+        if self._return_landed and not was_landed and self._flash_decided and not self._responded:
+            self._response_window_open = True
+            self._response_deadline = max(self._response_deadline, now + RESPONSE_WINDOW_MS / 1000)
+
+        if not self._return_landed and now - self._jump_at >= SACCADE_TIMEOUT_MS / 1000:
+            self._finish_attempt()
+            return
+        if self._return_landed and self._flash_decided and (self._responded or not self._response_window_open):
+            self._finish_attempt()
+
+    def _jump_back(self, now: float, forced: bool) -> None:
+        self._jump_at = now
+        self._jump_forced = forced
+        self._dot_visible = self._source is Target.DOT
+        self._cross_visible = self._source is Target.CROSS
+        self._return_onset_detector = OnsetDetector(_zone_for(self._target))
+        if self._flash_leg == "return":
+            average_ms = self._return_rt.average if self._return_rt.has_estimate else self._rt.average
+            self._flash_scheduled_at = now + average_ms / 1000
+
     def _finish_attempt(self) -> None:
         self._grating_visible = False
-        self._source = self._target
+        if not self._return_jump:  # with return jump the eye is back on the start symbol: every trial starts there
+            self._source = self._target
         self._attempt += 1
         if self._attempt >= TUTORIAL_PRACTICE_ATTEMPTS:
             self._phase = Phase.COMPLETE
@@ -290,7 +388,7 @@ class TutorialSession:
         if self._phase is Phase.WAITING_TO_START:
             return words.TUTORIAL_WELCOME
         if self._phase is Phase.INTRO:
-            return words.TUTORIAL_INTRO[self._intro_step]
+            return self._intro_lines[self._intro_step]
         if self._phase in (Phase.CALIBRATE_LEFT, Phase.CALIBRATE_CENTER, Phase.CALIBRATE_RIGHT):
             # Only round 1 is narrated: later rounds would just re-speak the same drill.
             if self._calibration.round > 1:
@@ -306,7 +404,9 @@ class TutorialSession:
             return words.PRACTICE_INTRO
         if self._phase in (Phase.PRACTICE_AWAITING_SPACE, Phase.PRACTICE_FOREPERIOD, Phase.PRACTICE_ACTIVE):
             # Said once, before the first trial; silent afterwards (the narrator re-speaks on every text change).
-            return words.RT_TEST_INTRO if self._attempt == 0 else ""
+            if self._attempt > 0:
+                return ""
+            return words.PRACTICE_START_RETURN_JUMP if self._return_jump else words.RT_TEST_INTRO
         return words.PRACTICE_DONE
 
     def _tutorial_text(self) -> tuple[str | None, str]:
@@ -318,7 +418,7 @@ class TutorialSession:
         if self._phase is Phase.WAITING_TO_START:
             return words.TUTORIAL_WELCOME, "center"
         if self._phase is Phase.INTRO:
-            return words.TUTORIAL_INTRO[self._intro_step], "center"
+            return self._intro_lines[self._intro_step], "center"
         if self._phase is Phase.PRACTICE_INTRO:
             return words.PRACTICE_INTRO, "center"
         return None, "center"
@@ -342,7 +442,8 @@ class TutorialSession:
         if self._phase is Phase.QUIZ:
             x, y = line_position(DOT_POSITION, self._quiz_orientation or Side.ABOVE, self._geometry)
             return {"visible": True, "x": x, "y": y, "contrast": TUTORIAL_QUIZ_CONTRAST, "orientation": self._quiz_orientation}
-        target_position = DOT_POSITION if self._target is Target.DOT else CROSS_POSITION
+        aim = self._source if self._flash_leg == "return" else self._target  # the target of the flash's leg
+        target_position = DOT_POSITION if aim is Target.DOT else CROSS_POSITION
         x, y = line_position(target_position, self._orientation or Side.ABOVE, self._geometry)
         if self._phase is Phase.PRACTICE_ACTIVE:
             return {
