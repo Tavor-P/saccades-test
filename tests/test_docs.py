@@ -8,8 +8,8 @@ ROOT = Path(__file__).resolve().parents[1]
 DOC = (ROOT / "CLAUDE.md").read_text(encoding="utf8")
 
 # Runtime output / user-local / generated paths the doc may mention without them being in git.
-_EXEMPT_PREFIXES = ("data/", "models/", "results_", "C:", "%", "$", "include/**", "tests/.../")
-_RUNTIME_FILES = {"_meta.json", "settings.json", "session.json", "trials.csv", "gaze_trace.csv", "video_sync.json", "flash_video_times.csv", "neon_check_report.txt"}  # written at run time (data/, or git-ignored in the root)
+_EXEMPT_PREFIXES = ("data/", "results_", "C:", "%", "$", "include/**", "tests/.../")
+_RUNTIME_FILES = {"_meta.json", "settings.json", "session.json", "trials.csv", "gaze_trace.csv", "video_sync.json", "flash_video_times.csv"}  # written under data/ at run time
 _PATH_RE = re.compile(r"`([A-Za-z0-9_./\-]+\.(?:py|md|ps1|sh|csv|txt|json|ini)|[A-Za-z0-9_.-]+/(?:[A-Za-z0-9_.-]+/)*)(?:::[\w]+)?`")
 
 

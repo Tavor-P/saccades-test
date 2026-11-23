@@ -252,7 +252,6 @@ def resolve_neon_address(
 
 
 FAILURE_TITLE = "Neon glasses not found"
-CHECK_COMMAND = r"neon_check.bat (or .\scripts\py.ps1 -m src.eye_tracking.neon_check)"
 CHECKS = (
     "Check:",
     "  1. The phone and this PC are on the same network.",
@@ -278,7 +277,5 @@ def failure_message(resolution: Resolution, network: dict | None = None) -> str:
         f"  Gateway:       {', '.join(network.get('gateways') or []) or 'none'}",
         "",
         *CHECKS,
-        "",
-        f"For a full report (saved to neon_check_report.txt), run {CHECK_COMMAND}.",
     ]
     return "\n".join(lines)

@@ -28,7 +28,7 @@ backend. Participant/experimenter docs: [README.md](README.md).
   (never `git add -A` / `commit -a`); don't touch other sessions' files, tell the user instead.
 - PowerShell 5.1 has no `&&`; keep each file's line endings (CRLF). `.gitignore` has `data/`, which matches any `data` folder (tests: use `tests/fixtures/`).
 - `data/` is git-ignored runtime output and participant data is personal data: never commit or print it, never write to it from tests/simulations, never copy real sessions into `tests/fixtures/`.
-- Report test results truthfully (ran / skipped). Suite: 300 tests pass, none skipped, ~3-4 min.
+- Report test results truthfully (ran / skipped). Suite: 293 tests pass, none skipped, ~3-4 min.
 
 ## Commands (all through the wrapper)
 
@@ -45,9 +45,8 @@ backend. Participant/experimenter docs: [README.md](README.md).
 .\scripts\py.ps1 -m src.experiment.compare "P01,P02" "group:control" [--include-test] [--out D]   # -> data/comparisons/
 .\scripts\py.ps1 -m src.experiment.study_summary [--include-test]   # data/study_summary.csv + .txt
 .\scripts\py.ps1 -m src.experiment.import_glasses_video <run-folder> <exported.mp4>
-.\scripts\py.ps1 -m src.eye_tracking.neon_check [address]      # contacts the real Neon: human only; writes neon_check_report.txt
 ```
-Double-click launchers in the repo root: `run_experiment.bat`, `analyze_latest.bat`, `analyze_participant.bat`, `compare.bat`, `study_summary.bat`, `run_tests.bat`, `neon_check.bat`.
+Double-click launchers: `run_experiment.bat` in the repo root; `analyze_latest.bat`, `analyze_participant.bat`, `compare.bat`, `study_summary.bat`, `run_tests.bat` in `launchers/`.
 
 ## Status and next steps (2026-11-22)
 
@@ -98,7 +97,6 @@ Paths are checked by `tests/test_docs.py` - keep them real.
 | `src/experiment/narrator.py`, `study_summary.py`, `run_summary.py`, `src/eye_tracking/gaze_factory.py` | SAPI TTS; study CSV; end-of-run summary; `build_gaze_source()` |
 | `src/eye_tracking/neon_source.py`, `head_monitor.py` | `NeonGazeSource` (stream + quality stats + IMU thread); `HeadMotionTracker` (flags only) |
 | `src/eye_tracking/neon_address.py` | start-up check: dialog address -> auto-discovery -> PC's default gateway (hotspot); `failure_message` |
-| `src/eye_tracking/neon_check.py` | standalone connection check (no window): same resolution + adapters, phone status, 3 s gaze rate -> `neon_check_report.txt` (git-ignored) |
 | `src/eye_tracking/gaze_mapping.py` | `GazeMapper`: ratio -> calibrated position / zone / smoothing |
 | `src/eye_tracking/gaze_trace.py` | raw gaze recording + `ReplayGazeSource` |
 | `src/dashboard/app.py` | Flask dashboard (separate process, `127.0.0.1` only; `data_access.py` reads/writes `data/`) |

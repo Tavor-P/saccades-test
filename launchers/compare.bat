@@ -5,7 +5,7 @@ set "SETA=%~1"
 set "SETB=%~2"
 if not defined SETA set /p "SETA=Set A (IDs separated by commas, or group:TBI): "
 if not defined SETB set /p "SETB=Set B (IDs separated by commas, or group:control): "
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\py.ps1" -m src.experiment.compare "%SETA%" "%SETB%" %3 %4 %5 %6 %7 %8 %9
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0..\scripts\py.ps1" -m src.experiment.compare "%SETA%" "%SETB%" %3 %4 %5 %6 %7 %8 %9
 set RC=%ERRORLEVEL%
 pause
 exit /b %RC%

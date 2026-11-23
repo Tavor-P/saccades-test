@@ -2,7 +2,6 @@ __pycache__/
 *.pyc
 .venv/
 venv/
-models/
 data/
 node_modules/
 .git/
@@ -10,4 +9,3 @@ dist/
 build/
 .cache/
 *.log
-neon_check_report.txt

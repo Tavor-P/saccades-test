@@ -24,7 +24,7 @@ Once per computer.
 5. **Measure your screen** (once per monitor and seat position): the visible picture's height (cm) and the eye-to-screen distance (cm). You type them into the startup dialog; the line's offset
    (2 deg) and thickness, and the saccade size in degrees, follow them. Until you do, the dialog warns that the values are placeholders (26 cm / 50 cm).
 
-You can double-click `run_experiment.bat`, `analyze_latest.bat` or `run_tests.bat`. Typing `scripts\py.ps1` into Command Prompt or Explorer opens it in an editor instead; from any shell use
+You can double-click `run_experiment.bat` (in the project folder) or `analyze_latest.bat` / `run_tests.bat` (in `launchers\`). Typing `scripts\py.ps1` into Command Prompt or Explorer opens it in an editor instead; from any shell use
 `powershell -ExecutionPolicy Bypass -File scripts\py.ps1 -m src.experiment.run_experiment`.
 
 ## Run day
@@ -38,7 +38,7 @@ Printable version: [docs/experimenter_checklist.md](docs/experimenter_checklist.
 4. Read the participant script below, then follow the narrated tutorial (SPACE advances; Esc quits and keeps the data).
 5. At the end the console and `RUN_SUMMARY.txt` in the run folder show what happened and the next commands; SPACE closes the window.
 6. Export the scene video from the phone and attach it (see [Glasses video](#glasses-video)).
-7. Analyse: dashboard **Analyse** button, or `analyze_latest.bat`; after several runs of one person, `analyze_participant.bat`.
+7. Analyse: dashboard **Analyse** button, or `launchersnalyze_latest.bat`; after several runs of one person, `launchersnalyze_participant.bat`.
 
 > **Participant script.** "Look at the dot and press SPACE when you are ready. After a moment, with a beep, it jumps to the other side of the screen: look at it as fast as you can.
 > Around then a very faint thin line flashes for an instant above or below it. Press UP if it was above, DOWN if below, and guess if you are not sure.
@@ -124,10 +124,10 @@ For anyone who does not program. The numbers are exploratory (feasibility pilot)
 
 | Launcher | Does | Output |
 |---|---|---|
-| `analyze_latest.bat` | analyses the newest run | `analysis/` in that run folder |
-| `analyze_participant.bat` | asks for an ID, pools all their runs | `data/<participant id>/analysis/` |
-| `compare.bat` | asks for Set A and Set B (e.g. `P01` and `group:control`; set labels first with `participants set`) | `data/comparisons/...` |
-| `study_summary.bat` | the one-CSV overview | `data/study_summary.csv` |
+| `launchersnalyze_latest.bat` | analyses the newest run | `analysis/` in that run folder |
+| `launchersnalyze_participant.bat` | asks for an ID, pools all their runs | `data/<participant id>/analysis/` |
+| `launchers\compare.bat` | asks for Set A and Set B (e.g. `P01` and `group:control`; set labels first with `participants set`) | `data/comparisons/...` |
+| `launchers\study_summary.bat` | the one-CSV overview | `data/study_summary.csv` |
 
 ### How to read the numbers
 
@@ -207,7 +207,7 @@ participant's pooled analysis with it).
 | `No module named 'src'` | Run from the project folder, or through `scripts/py.ps1` |
 | `No module named 'flask'` | The install did not take (often non-writable `Program Files`): rerun the terminal as Administrator and reinstall |
 | `_ARRAY_API not found` / `numpy.core.multiarray failed to import` | numpy/opencv drifted: reinstall `requirements.txt` (it pins working versions) |
-| "Neon glasses not found" at start | Read the list of addresses tried. Phone and PC on one network (guest/campus Wi-Fi often blocks devices: use the phone's hotspot). Hotspot: join it from the PC, keep the Companion app open with the glasses plugged in, type the address the app shows into **Neon address** (or leave it blank); if the PC can't see the hotspot, turn on its 2.4 GHz / "Maximise compatibility" option. For a full report double-click `neon_check.bat` (or `.\scripts\py.ps1 -m src.eye_tracking.neon_check`): it opens no window, tries the same addresses, reads the phone's battery/glasses status and the gaze rate, and saves `neon_check_report.txt` (no participant data) to pass on |
+| "Neon glasses not found" at start | Read the list of addresses tried. Phone and PC on one network (guest/campus Wi-Fi often blocks devices: use the phone's hotspot). Hotspot: join it from the PC, keep the Companion app open with the glasses plugged in, type the address the app shows into **Neon address** (or leave it blank); if the PC can't see the hotspot, turn on its 2.4 GHz / "Maximise compatibility" option |
 | Eye tracking seems inaccurate | Redo calibration, looking steadily at each target; keep the head still afterwards |
 | SPACE seems to do nothing | Presses during a trial's wait are ignored by design; they are counted in the console summary and `ignored_space_presses` |
 | Glasses recording `failed` in `session.json` | The recording may need the Companion app open with a wearer and workspace selected (not verified); other data is unaffected |
