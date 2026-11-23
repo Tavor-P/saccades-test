@@ -5,6 +5,7 @@ Candidates, in order, each checked with one Real-Time API status request (GET /a
 Neon port - on a phone hotspot the phone IS the gateway. Stdlib only; `pupil_labs` is imported lazily inside discovery, so the
 simulator and tests never need it. Every network call is injectable for tests."""
 
+import http.client
 import ipaddress
 import json
 import re
@@ -46,6 +47,7 @@ class Resolution:
     port: int | None
     source: str | None
     attempts: tuple[Attempt, ...] = field(default_factory=tuple)
+    warning: str | None = None  # the Neon answered, but something is odd (e.g. gaze stream comes from another address)
 
     @property
     def ok(self) -> bool:
@@ -57,8 +59,9 @@ class Resolution:
 
 
 def parse_address(text: str | None, default_port: int = NEON_DEVICE_PORT) -> tuple[str | None, int]:
-    """'192.168.43.1' or '192.168.43.1:8080' (or a host name) -> (host, port); blank -> (None, default_port). Raises ValueError."""
+    """'192.168.43.1' or '192.168.43.1:8080' (or a host name; a leading http(s):// and trailing '/' are ignored) -> (host, port); blank -> (None, default_port). Raises ValueError."""
     text = (text or "").strip()
+    text = re.sub(r"^https?://", "", text, flags=re.IGNORECASE).rstrip("/").strip()  # pasted 'http://192.168.43.1:8080/'
     if not text:
         return None, default_port
     host, port = text, default_port
@@ -83,33 +86,63 @@ def parse_address(text: str | None, default_port: int = NEON_DEVICE_PORT) -> tup
 # -- the network calls (each replaceable in tests) -----------------------------------------------
 
 
-def probe_status(address: str, port: int, timeout_s: float = NEON_PROBE_TIMEOUT_S) -> str | None:
-    """None if a Neon Companion app answers GET /api/status at address:port; otherwise a short reason. Bypasses any system
-    proxy (a campus proxy must not be asked for a 192.168.x.x address)."""
+def _gaze_problem(body: dict, address: str) -> tuple[str | None, str | None]:
+    """(reason, note) from a status reply's component list. Sensor entries are {'model': 'Sensor', 'data': {sensor, connected, ip, ...}}.
+    No Sensor entries at all -> accepted (not stricter than the reply format); Sensor entries but no connected gaze sensor -> reason;
+    the gaze sensor's ip differing from the probed address -> note only."""
+    result = body.get("result")
+    if not isinstance(result, list):
+        return None, None
+    sensors = []
+    for component in result:
+        if isinstance(component, dict) and component.get("model") == "Sensor" and isinstance(component.get("data"), dict):
+            sensors.append(component["data"])
+    if not sensors:
+        return None, None
+    gaze = [d for d in sensors if d.get("sensor") == "gaze" and d.get("connected")]
+    if not gaze:
+        return "Companion app found, but the glasses are not connected to the phone", None
+    ip = gaze[0].get("ip")
+    if ip and str(ip) != address:
+        return None, f"the gaze stream will come from {ip}, not {address}"
+    return None, None
+
+
+def probe_status_note(address: str, port: int, timeout_s: float = NEON_PROBE_TIMEOUT_S) -> tuple[str | None, str | None]:
+    """(reason, note): reason is None if a Neon Companion app with connected glasses answers GET /api/status at address:port, else a
+    short reason; note is a warning for an answering Neon (or None). Bypasses any system proxy (a campus proxy must not be asked
+    for a 192.168.x.x address)."""
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     started = timebase.now()
     try:
         with opener.open(f"http://{address}:{port}/api/status", timeout=timeout_s) as response:
             body = json.loads(response.read().decode("utf-8", "replace"))
     except (socket.timeout, TimeoutError):
-        return f"no answer within {timeout_s:g} s"
+        return f"no answer within {timeout_s:g} s", None
     except urllib.error.HTTPError as exc:
-        return f"something answered, but not the Neon Companion app (HTTP {exc.code})"
+        return f"something answered, but not the Neon Companion app (HTTP {exc.code})", None
     except urllib.error.URLError as exc:
         reason = exc.reason
         if isinstance(reason, (socket.timeout, TimeoutError)):
-            return f"no answer within {timeout_s:g} s"
+            return f"no answer within {timeout_s:g} s", None
         if isinstance(reason, ConnectionRefusedError):
-            return "reachable, but nothing listens on this port (Companion app closed?)"
-        return f"cannot connect ({reason})"
+            return "reachable, but nothing listens on this port (Companion app closed?)", None
+        return f"cannot connect ({reason})", None
+    except http.client.HTTPException:
+        return "something answered, but not the Neon Companion app (not an HTTP status reply)", None
     except ValueError:
-        return "something answered, but not the Neon Companion app (not its status reply)"
+        return "something answered, but not the Neon Companion app (not its status reply)", None
     except OSError as exc:
         waited = timebase.now() - started
-        return f"cannot connect after {waited:.1f} s ({exc})"
+        return f"cannot connect after {waited:.1f} s ({exc})", None
     if not (isinstance(body, dict) and "result" in body):
-        return "something answered, but not the Neon Companion app (unexpected reply)"
-    return None
+        return "something answered, but not the Neon Companion app (unexpected reply)", None
+    return _gaze_problem(body, address)
+
+
+def probe_status(address: str, port: int, timeout_s: float = NEON_PROBE_TIMEOUT_S) -> str | None:
+    """None if a Neon Companion app with connected glasses answers at address:port; otherwise a short reason."""
+    return probe_status_note(address, port, timeout_s)[0]
 
 
 def discover_addresses(timeout_s: float = NEON_PREFLIGHT_DISCOVERY_S) -> list[tuple[str, int]]:
@@ -196,12 +229,13 @@ def resolve_neon_address(
     given: str | None,
     port: int = NEON_DEVICE_PORT,
     *,
-    probe=probe_status,
+    probe=probe_status_note,
     discover=discover_addresses,
     gateways=default_gateways,
     progress=None,
 ) -> Resolution:
-    """Try the given address, then discovery, then the default gateway(s); return the first that answers plus everything tried."""
+    """Try the given address, then discovery, then the default gateway(s); return the first that answers plus everything tried.
+    `probe` returns a reason (None = ok) or a (reason, note) pair; a note ends up in Resolution.warning."""
     attempts: list[Attempt] = []
     tried: set[tuple[str, int]] = set()
 
@@ -214,9 +248,14 @@ def resolve_neon_address(
             return None
         tried.add((address, port_))
         say(f"  trying {address}:{port_} ({source}) ...")
-        reason = probe(address, port_)
-        attempts.append(Attempt(source, address, port_, reason is None, "Neon answered" if reason is None else reason))
-        return Resolution(address, port_, source, tuple(attempts)) if reason is None else None
+        try:
+            result = probe(address, port_)
+            reason, note = result if isinstance(result, tuple) else (result, None)
+        except Exception as exc:  # one bad probe must never stop the search
+            reason, note = f"check failed ({type(exc).__name__}: {exc})", None
+        detail = reason if reason is not None else "Neon answered" + (f" ({note})" if note else "")
+        attempts.append(Attempt(source, address, port_, reason is None, detail))
+        return Resolution(address, port_, source, tuple(attempts), note) if reason is None else None
 
     if given:
         if found := check(SOURCE_GIVEN, given, port):

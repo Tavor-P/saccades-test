@@ -65,9 +65,16 @@ def test_parse_address_blank_ip_ip_port_and_errors():
     assert parse_address(" 192.168.43.1 ") == ("192.168.43.1", 8080)
     assert parse_address("192.168.43.1:9000") == ("192.168.43.1", 9000)
     assert parse_address("neon.local") == ("neon.local", 8080)
-    for bad in ("1.2.3", "1.2.3.256", "1.2.3.4:", "1.2.3.4:0", "1.2.3.4:65536", "x y", "http://1.2.3.4"):
+    for bad in ("1.2.3", "1.2.3.256", "1.2.3.4:", "1.2.3.4:0", "1.2.3.4:65536", "x y", "ftp://1.2.3.4"):
         with pytest.raises(ValueError, match="Neon address"):
             parse_address(bad)
+
+
+def test_parse_address_accepts_pasted_urls():
+    for text in ("http://192.168.43.1:8080", "http://192.168.43.1:8080/", "192.168.43.1:8080/", "HTTPS://192.168.43.1:8080/"):
+        assert parse_address(text) == ("192.168.43.1", 8080), text
+    assert parse_address("http://192.168.43.1/") == ("192.168.43.1", 8080)
+    assert parse_address("http://neon.local:9000/") == ("neon.local", 9000)
 
 
 def test_gateways_are_read_from_the_numeric_columns_of_a_non_english_route_print():
@@ -185,6 +192,60 @@ def test_probe_accepts_only_a_status_reply_and_explains_everything_else(local_se
     local_server.server_close()
     reason = probe_status("127.0.0.1", port, timeout_s=1)
     assert reason is not None and "Neon Companion" not in reason  # refused or (Windows retries a refused connect) timed out
+
+
+def _status(*sensors):
+    return json.dumps({"message": "Success", "result": [{"model": "Phone", "data": {"ip": "127.0.0.1"}},
+                                                          *({"model": "Sensor", "data": d} for d in sensors)]}).encode()
+
+
+def test_probe_requires_a_connected_gaze_sensor_but_accepts_a_reply_without_sensor_info(local_server):
+    port = local_server.server_address[1]
+    gaze = {"sensor": "gaze", "conn_type": "DIRECT", "connected": True, "ip": "127.0.0.1", "port": 8086}
+    _Handler.reply = (200, _status(gaze, {"sensor": "world", "conn_type": "DIRECT", "connected": True}))
+    assert probe_status("127.0.0.1", port, timeout_s=2) is None
+    assert neon_address.probe_status_note("127.0.0.1", port, timeout_s=2) == (None, None)
+    _Handler.reply = (200, _status({**gaze, "connected": False}, {"sensor": "world", "conn_type": "DIRECT", "connected": True}))
+    assert probe_status("127.0.0.1", port, timeout_s=2) == "Companion app found, but the glasses are not connected to the phone"
+    _Handler.reply = (200, _status())  # no Sensor entries at all: as before
+    assert probe_status("127.0.0.1", port, timeout_s=2) is None
+    _Handler.reply = (200, _status({**gaze, "ip": "10.1.2.3"}))
+    reason, note = neon_address.probe_status_note("127.0.0.1", port, timeout_s=2)
+    assert reason is None and "10.1.2.3" in note and "127.0.0.1" in note
+
+
+def test_probe_turns_a_malformed_http_reply_into_a_reason_not_a_crash():
+    import socket
+
+    server = socket.socket()
+    server.bind(("127.0.0.1", 0))
+    server.listen(1)
+
+    def serve():
+        conn, _ = server.accept()
+        conn.recv(4096)
+        conn.sendall(b"this is not http" + bytes([13, 10, 13, 10]))
+        conn.close()
+
+    thread = threading.Thread(target=serve, daemon=True)
+    thread.start()
+    try:
+        reason = probe_status("127.0.0.1", server.getsockname()[1], timeout_s=2)
+    finally:
+        server.close()
+    assert reason is not None and "not the Neon Companion app" in reason
+
+
+def test_an_unexpected_probe_exception_is_that_candidates_reason_and_a_note_becomes_the_warning():
+    def probe(address, port):
+        if address == "10.0.0.1":
+            raise RuntimeError("boom")
+        return None, "the gaze stream will come from 9.9.9.9, not 10.0.0.2"
+
+    r = resolve_neon_address("10.0.0.1", 8080, probe=probe, discover=lambda: [("10.0.0.2", 8080)], gateways=lambda: [])
+    assert r.ok and r.address == "10.0.0.2" and "9.9.9.9" in r.warning
+    assert not r.attempts[0].ok and "RuntimeError: boom" in r.attempts[0].detail
+    assert "9.9.9.9" in r.attempts[1].detail
 
 
 # -- NeonGazeSource never leaks the aiohttp chain or the half-built Device's __del__ noise ---------------------------
