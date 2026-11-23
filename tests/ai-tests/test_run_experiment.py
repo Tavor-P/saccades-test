@@ -212,3 +212,83 @@ def test_main_passes_the_found_address_to_both_gaze_sources_and_session_json(mon
     logger.set_neon_device.assert_called_once_with("192.168.43.1:8080 (PC's gateway (phone hotspot))")
     assert run_experiment._address_kwargs(("192.168.43.1", 8080)) == {"address": "192.168.43.1", "port": 8080}
     assert run_experiment._address_kwargs(None) == {}
+
+
+# -- the Neon lost mid-run, and cleanup that must always reach gaze.stop() ------------------------------------------
+
+
+def test_main_turns_a_lost_neon_into_a_plain_message_box_and_exit_2_after_closing_the_window(monkeypatch, capsys):
+    import pytest
+
+    from src.eye_tracking.neon_source import NeonConnectionError
+    from src.experiment import run_experiment
+    from src.experiment.geometry import Geometry
+
+    monkeypatch.setattr(run_experiment.sys, "setswitchinterval", lambda *_: None)
+    monkeypatch.setattr(run_experiment, "prompt_session_info", lambda: ("P01", False, False, False, (0.04,), Geometry.default(), 80.0, ""))
+    monkeypatch.setattr(run_experiment, "resolve_neon_address", lambda a, p, progress: _resolution(True))
+    logger = MagicMock()
+    monkeypatch.setattr(run_experiment, "ResultLogger", Mock(return_value=logger))
+    win = Mock()
+    monkeypatch.setattr(run_experiment, "build_window", Mock(return_value=win))
+    monkeypatch.setattr(run_experiment, "measure_refresh_hz", Mock(return_value=60.0))
+    monkeypatch.setattr(run_experiment, "build_stimuli", Mock(return_value={}))
+    monkeypatch.setattr(run_experiment, "Narrator", Mock())
+    monkeypatch.setattr(run_experiment, "finish_run_summary", Mock(return_value=True))
+    done_screen = Mock()
+    monkeypatch.setattr(run_experiment, "show_done_screen", done_screen)
+    monkeypatch.setattr(run_experiment, "run_saccade_phase", Mock(side_effect=NeonConnectionError("The Neon phone at 192.168.43.1:8080 does not answer.")))
+    boxes = []
+    monkeypatch.setattr(run_experiment, "show_error_box", lambda title, text: boxes.append((title, text, win.close.called)))
+    with pytest.raises(SystemExit) as info:
+        run_experiment.main()
+    assert info.value.code == 2
+    assert boxes and boxes[0][0] == run_experiment.NEON_LOST_TITLE and "does not answer" in boxes[0][1]
+    assert boxes[0][2], "the fullscreen window must be closed before the box is shown"
+    logger.close.assert_called_once()
+    done_screen.assert_not_called()
+    err = capsys.readouterr().err
+    assert "does not answer" in err and "Traceback" not in err
+
+
+def _saccade_phase_with(monkeypatch, gaze, **patches):
+    from src.experiment import run_experiment
+
+    monkeypatch.setattr(run_experiment, "build_gaze_source", Mock(return_value=gaze))
+    monkeypatch.setattr(run_experiment, "ExperimentSession", Mock(return_value=MagicMock()))
+    monkeypatch.setattr(run_experiment, "build_go_cue_tone", Mock())
+    monkeypatch.setattr(run_experiment, "run_sync_flashes", Mock())
+    monkeypatch.setattr(run_experiment, "FramePresenter", Mock())
+    monkeypatch.setattr(run_experiment, "drain_stale_space", Mock())
+    monkeypatch.setattr(run_experiment.event, "getKeys", Mock(return_value=["escape"]))  # quit on the first frame
+    for name, value in patches.items():
+        monkeypatch.setattr(run_experiment, name, value)
+    return run_experiment.run_saccade_phase(MagicMock(), {"aspect": 1.6}, MagicMock(), MagicMock())
+
+
+def test_saccade_phase_cleanup_still_stops_the_recording_and_gaze_when_an_earlier_step_fails(monkeypatch, capsys):
+    gaze = MagicMock()
+    gaze.start_recording.return_value = {"recording": "started"}
+    gaze.phone_ip = "192.168.43.1"
+    gaze.quality_summary.side_effect = RuntimeError("summary broke")
+    result = _saccade_phase_with(monkeypatch, gaze, report_space_presses=Mock(side_effect=RuntimeError("tally broke")))
+    assert result is None
+    gaze.stop_recording.assert_called_once()
+    gaze.stop.assert_called_once()
+    err = capsys.readouterr().err
+    assert "tally broke" in err and "summary broke" in err
+
+
+def test_tutorial_phase_stops_the_gaze_source_when_setting_up_the_session_fails(monkeypatch):
+    import pytest
+
+    from src.experiment import run_experiment
+
+    gaze = MagicMock()
+    monkeypatch.setattr(run_experiment, "build_gaze_source", Mock(return_value=gaze))
+    for name in ("TutorialSession", "build_go_cue_tone"):
+        with patch.object(run_experiment, name, Mock(side_effect=RuntimeError(name))):
+            gaze.reset_mock()
+            with pytest.raises(RuntimeError, match=name):
+                run_experiment.run_tutorial_phase(MagicMock(), {"aspect": 1.6}, MagicMock())
+            gaze.stop.assert_called_once()

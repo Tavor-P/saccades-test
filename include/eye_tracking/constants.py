@@ -61,6 +61,9 @@ NEON_LATENCY_WINDOW_SAMPLES = 200
 # an estimate noisier than the max std is ignored and a good one is blended 50/50 with the previous one.
 NEON_CLOCK_REESTIMATE_S = 60.0
 NEON_CLOCK_REESTIMATE_MAX_STD_MS = 10.0
+# The first clock-offset estimate (in start()) normally takes well under a second; if the phone's time-echo port does not answer
+# within this long, start() gives up on it (loud warning + session.json gaze_quality.clock_offset_status) instead of hanging.
+NEON_CLOCK_ESTIMATE_TIMEOUT_S = 10.0
 # Replaying a recorded trace (gaze_trace.py) has no clock offset; capture times come from the trace's device
 # timestamps, assuming this typical end-to-end latency (measured median on Neon, Oct 2026).
 NEON_REPLAY_LATENCY_MS = 16.0

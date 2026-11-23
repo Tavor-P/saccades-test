@@ -581,7 +581,9 @@ def analyze_run(
         clock_offset_ms = quality.get("clock_offset_ms")
         offset_history = quality.get("clock_offset_history")
         if clock_offset_ms is None:
-            raise ValueError("this session has no clock_offset_ms in its meta file; pass --offset-ms")
+            status = quality.get("clock_offset_status")  # absent in older session.json files
+            why = f" (clock_offset_status: {status})" if status else ""
+            raise ValueError(f"this session has no clock_offset_ms in its meta file{why}; pass --offset-ms")
     t, x = load_trace(ref.gaze_trace_path, clock_offset_ms / 1000, offset_history)
     saccades = detect_saccades(t, x, min_amplitude=min_amplitude)
     flashes = load_flashes(ref.trials_path)
