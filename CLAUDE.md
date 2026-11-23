@@ -15,6 +15,12 @@ backend. Participant/experimenter docs: [README.md](README.md).
 - **Contrasts are a guess**: `SACCADE_FIXED_CONTRASTS` 4/6/8 % (dialog min 4 / max 8, 3 levels) = ~5-10 grey steps on 8-bit (`HARDWARE_CONTRAST_FLOOR` 0.78 %), so levels are coarse. Re-pilot on glasses.
 - Rolling RT = `robust_average_ms` over the last `RT_AVERAGE_ROLLING_WINDOW` (12) latencies; fewer than `RT_MIN_SAMPLES_FOR_AVERAGE` (3) plausible samples keep the previous value
   (initially `DEFAULT_REACTION_TIME_MS`).
+- **Return jump** (dialog "Return jump", default `RETURN_JUMP_DEFAULT` on): after the out saccade the target jumps back to the start symbol (`RETURN_JUMP_TRIGGER` "arrival" (default)
+  or "onset"; `RETURN_JUMP_LANDING_TIMEOUT_MS` forces it), so each trial has an out and a return saccade but still ONE flash: `RETURN_LEG_FLASH_FRACTION` 0.8 on the return leg (timed
+  from the jump frame, spread `RETURN_FLASH_SPREAD_SD_MS` 40 = a guess, measure it), else the out leg. trials.csv: `flash_leg`, `out_arrival_ms_after_go_cue`, signed `return_reaction_ms`
+  (negative = left before the jump), `left_target_before_jump`. `analyze_session` gates each flash against its own leg's saccade (return must move back >= half the out amplitude),
+  reports out / return / pooled indices and a return-latency report; summary.json schema 2 pools only one run kind (`single` | `return_jump/<trigger>`); `compare` refuses mixed kinds.
+  Simulator `ParticipantProfile.return_mode="learned"` = predictive returns. Tests: `tests/ai-tests/test_return_jump.py`, `test_return_analysis.py` (`sim_runs.py` writes simulated runs as folders). Sim (150 trials): ~36 valid in-saccade flashes vs ~20 without the jump; the gain needs the narrow 40 ms spread. Unvalidated on glasses.
 
 ## Rules (read first)
 
@@ -28,7 +34,7 @@ backend. Participant/experimenter docs: [README.md](README.md).
   (never `git add -A` / `commit -a`); don't touch other sessions' files, tell the user instead.
 - PowerShell 5.1 has no `&&`; keep each file's line endings (CRLF). `.gitignore` has `data/`, which matches any `data` folder (tests: use `tests/fixtures/`).
 - `data/` is git-ignored runtime output and participant data is personal data: never commit or print it, never write to it from tests/simulations, never copy real sessions into `tests/fixtures/`.
-- Report test results truthfully (ran / skipped). Suite: 305 tests pass, none skipped, ~3-4 min.
+- Report test results truthfully (ran / skipped). Suite: 344 tests pass, none skipped, ~2-4 min.
 
 ## Commands (all through the wrapper)
 
@@ -59,7 +65,7 @@ Double-click launchers: `run_experiment.bat` in the repo root; `analyze_latest.b
   are tested only on simulator, fake devices and synthetic data.
 - **Known problems**: (1) the old ~95 ms gaze delay looks fixed (now ~13-20 ms, Gotchas); live `flash_during_saccade` is unvalidated, post-hoc analysis is the judgement. (2) RT SD ~60-80 ms: only ~2/7 of flashes land within +-50 ms of onset
   (simulator: ~55 fixation / ~31 saccade flashes per 150 trials). (3) Geometry is the 26 cm / 50 cm placeholder until the user measures their monitor (dialog says so).
-- **Next**: (1) Test run, then several 150-trial Real runs per person on glasses; (2) measure real screen geometry; (3) confirm gaze latency stays ~15 ms on long real runs; (4) one-page grant figure; (5) clinical metadata fields (needs IRB).
+- **Next**: (0) on glasses, measure the real return-latency spread (`analyze_session` return-latency report) and set `RETURN_FLASH_SPREAD_SD_MS` from it; (1) Test run, then several 150-trial Real runs per person on glasses; (2) measure real screen geometry; (3) confirm gaze latency stays ~15 ms on long real runs; (4) one-page grant figure; (5) clinical metadata fields (needs IRB).
 
 ## Repo map
 
@@ -90,7 +96,7 @@ Paths are checked by `tests/test_docs.py` - keep them real.
 | `src/experiment/glasses_video.py`, `import_glasses_video.py` | sync-flash detection/offset; CLI that attaches the exported video |
 | `src/experiment/flash_gates.py` | pre-specified gates (Braun 2021): `saccade`, `fixation`, else `excluded`; controls from `CONTROL_OFFSETS_MS` |
 | `src/experiment/analyze_session.py` | post-hoc analysis from the raw gaze trace; `analyze_run()` = pipeline without writing files |
-| `src/experiment/analyze_participant.py` | pooled per-person index (equal `saccade_contrasts_pct` + geometry); summary.json (`SUMMARY_KEYS`, `schema_version` 1) |
+| `src/experiment/analyze_participant.py` | pooled per-person index (equal `saccade_contrasts_pct` + geometry + run kind); summary.json (`SUMMARY_KEYS`, `schema_version` 2, per-leg `by_leg`) |
 | `src/experiment/participants.py` | group labels (`data/participants.json`): `set_label`, `resolve_set` ("P01,group:TBI,all"), `everyone_else` |
 | `src/experiment/compare.py` | `compare()` -> `ComparisonResult`: 1v1 (bootstrap CI), group vs group (Mann-Whitney), 1-vs-group (percentile, no p) |
 | `src/experiment/simulation.py` | headless simulator |
