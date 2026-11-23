@@ -13,7 +13,8 @@ The mode follows from how many usable people each side has (after exclusions):
   bootstrap 95 % CI (people resampled), a two-sided Mann-Whitney U p-value and the rank-biserial effect size.
 - 1 vs group: where the single person falls among the group (rank and percentile), the group's median and range. No
   p-value: one person gives no estimate of how much people vary, so there is nothing to test against.
-Always: people whose runs used other contrasts or screen geometry, whose index could not be computed, or (groups) who
+The index compared is always the pooled one (summary.json `index`; for return-jump runs both legs together, not by_leg).
+Always: people whose runs used other contrasts, screen geometry or run kind (single vs return-jump/<trigger>), whose index could not be computed, or (groups) who
 used a different method from the majority are excluded and listed with the reason. Everything with fewer than
 EXPLORATORY_BELOW people per side is labelled exploratory (feasibility pilot).
 
@@ -44,6 +45,7 @@ from src.experiment.analyze_participant import (
     _GEOMETRY_FIELDS,
     ANALYSIS_DIR,
     SCHEMA_VERSION,
+    SINGLE_RUN_KIND,
     NoRunsError,
     analyze_participant,
     find_runs,
@@ -88,6 +90,7 @@ class Person:
     correct_fixation: int = 0
     contrasts_pct: list | None = None
     geometry: dict | None = None
+    run_kind: str = SINGLE_RUN_KIND  # "single" | "return_jump/<trigger>"; schema-1 summaries have none = single
     runs_used: int = 0
     runs_excluded: int = 0
     notes: list = field(default_factory=list)  # the analysis' own notes
@@ -103,7 +106,7 @@ class Person:
     @property
     def compat_key(self) -> tuple:
         geometry = self.geometry or {}
-        return (tuple(self.contrasts_pct or ()), tuple(geometry.get(k) for k in _GEOMETRY_FIELDS))
+        return (tuple(self.contrasts_pct or ()), tuple(geometry.get(k) for k in _GEOMETRY_FIELDS), self.run_kind)
 
     def to_dict(self) -> dict:
         out = asdict(self)
@@ -190,6 +193,7 @@ def load_person(participant: str, data_dir: Path = DATA_DIR, include_test: bool 
     person.n_saccade, person.n_fixation, person.n_total = int(n.get(SACCADE, 0)), int(n.get(FIXATION, 0)), int(n.get("total", 0))
     person.correct_saccade, person.correct_fixation = int(k.get(SACCADE, 0)), int(k.get(FIXATION, 0))
     person.contrasts_pct, person.geometry = summary.get("contrasts_pct"), summary.get("geometry")
+    person.run_kind = summary.get("run_kind") or SINGLE_RUN_KIND  # schema 1 / no runs pooled: single
     person.runs_used, person.runs_excluded = len(summary.get("runs_used") or []), len(summary.get("runs_excluded") or [])
     person.notes = list(summary.get("notes") or [])
     person.by_contrast = list(summary.get("by_contrast") or [])
@@ -374,11 +378,11 @@ def _exclude(person: Person, reason: str) -> None:
 
 
 def _fmt_key(key: tuple) -> str:
-    contrasts, geometry = key
+    contrasts, geometry, kind = key
     text = "contrasts " + ("/".join(f"{c:g}" for c in contrasts) + " %" if contrasts else "not recorded")
     if geometry and geometry[0] is not None and geometry[1] is not None:
         text += f", screen {geometry[0]:g} cm high at {geometry[1]:g} cm"
-    return text
+    return text + f", run kind {kind}"
 
 
 def _apply_compatibility(people: list, one_vs_one: bool) -> tuple | None:
