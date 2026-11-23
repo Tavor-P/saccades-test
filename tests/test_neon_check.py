@@ -39,13 +39,13 @@ def missing_resolution(given, port, progress=None):
 def test_connected_report_has_network_attempts_discovery_status_and_gaze_rate():
     ok, text = neon_check.build_report(
         "192.168.0.60", resolve=found_resolution, adapters=lambda: ADAPTERS, network=lambda: pytest.fail("not needed"),
-        status=lambda a, p: STATUS, gaze_rate=lambda a, p: (585, 3.0), stamp="2026-11-23T10:00:00+01:00",
+        status=lambda a, p: STATUS, gaze_rate=lambda a, p: (585, 3.0, 1.4), stamp="2026-11-23T10:00:00+01:00",
     )
     assert ok
     for needle in ("2026-11-23T10:00:00+01:00", "192.168.43.57", "gw 192.168.43.1", "Pixel_1234", "Public",
                    "FAIL 192.168.0.60:8080", "OK   192.168.43.1:8080", "Auto-discovery found a Neon: no", "CONNECTED to 192.168.43.1:8080",
                    "Phone battery: 81 %", "Glasses connected: yes", "gaze(DIRECT)=on", "world(DIRECT)=off",
-                   "585 samples in 3.0 s = 195 per second (OK", "type 192.168.43.1 into 'Neon address'"):
+                   "first sample after 1.4 s; then 585 samples in 3.0 s = 195 per second (OK", "unverified on hardware", 'raw Hardware: {"glasses_serial": "-1"', "raw Sensor", "type 192.168.43.1 into 'Neon address'"):
         assert needle in text, needle
 
 
@@ -75,6 +75,9 @@ def test_summaries_of_odd_replies():
     assert "not understood" in neon_check.summarize_status({"message": "x"})[0]
     lines = neon_check.summarize_status({"result": [{"model": "Hardware", "data": {"glasses_serial": "-1", "module_serial": ""}}]})
     assert any("NO - plug the glasses" in line for line in lines)
+    _, text = neon_check.build_report("192.168.43.1", resolve=found_resolution, adapters=lambda: [], network=lambda: {},
+                                      status=lambda a, p: STATUS, gaze_rate=lambda a, p: (0, 0.0, None), stamp="t")
+    assert "NO GAZE within" in text and "Neon Companion" not in text  # the phone's name is not reported
     assert neon_check.parse_adapters('{"name": "WLAN"}') == [{"name": "WLAN"}]
     assert neon_check.parse_adapters('[{"name": "A"}, {"name": "B"}]')[1]["name"] == "B"
     assert neon_check.parse_adapters("not json") == [] and neon_check.parse_adapters("") == []
@@ -85,17 +88,35 @@ def test_gaze_rate_counts_samples_from_a_fake_device_and_closes_it(monkeypatch):
 
     class FakeDevice:
         def __init__(self, address, port):
-            pass
+            self.calls = 0
 
         def receive_gaze_datum(self, timeout_seconds):
+            self.calls += 1
+            if self.calls <= 3:  # stream still being set up
+                fake_clock[0] += 1.0
+                return None
+            fake_clock[0] += 0.005
             return object()
 
         def close(self):
             closed.append(True)
 
     monkeypatch.setitem(sys.modules, "pupil_labs.realtime_api.simple", SimpleNamespace(Device=FakeDevice))
-    count, seconds = neon_check.measure_gaze_rate("192.168.43.1", 8080, seconds=0.05)
-    assert count > 0 and seconds >= 0.05 and closed == [True]
+    fake_clock = [0.0]
+    monkeypatch.setattr(neon_check.timebase, "now", lambda: fake_clock[0])
+    count, seconds, first = neon_check.measure_gaze_rate("192.168.43.1", 8080, seconds=3.0)
+    assert first == pytest.approx(3.005) and seconds == pytest.approx(3.0, abs=0.01)
+    assert count / seconds == pytest.approx(200, rel=0.01)  # set-up time does not lower the rate
+    assert closed == [True]
+
+    class SilentDevice(FakeDevice):
+        def receive_gaze_datum(self, timeout_seconds):
+            fake_clock[0] += 0.5
+            return None
+
+    monkeypatch.setitem(sys.modules, "pupil_labs.realtime_api.simple", SimpleNamespace(Device=SilentDevice))
+    assert neon_check.measure_gaze_rate("192.168.43.1", 8080, start_timeout_s=10.0) == (0, 0.0, None)
+    assert closed == [True, True]
 
 
 def test_main_prints_and_saves_the_report_and_exits_1_when_not_found(monkeypatch, tmp_path, capsys):

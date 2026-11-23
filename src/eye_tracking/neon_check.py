@@ -19,6 +19,7 @@ from src.eye_tracking.neon_address import parse_address, resolve_neon_address
 
 REPORT_PATH = Path(__file__).resolve().parents[2] / "neon_check_report.txt"
 GAZE_SAMPLE_S = 3.0
+GAZE_START_TIMEOUT_S = 10.0  # the stream is set up on the first receive call; give up if no sample by then
 ADAPTERS_TIMEOUT_S = 20.0  # Get-NetIPConfiguration took ~11 s on the lab PC
 _ADAPTERS_PS = (
     "Get-NetIPConfiguration | Where-Object { $_.IPv4Address } | ForEach-Object { [pscustomobject]@{"
@@ -59,6 +60,7 @@ def summarize_status(status: dict) -> list[str]:
     if not isinstance(items, list):
         return ["  (status reply not understood)"]
     sensors = []
+    raw = []
     glasses = None
     for item in items:
         if not isinstance(item, dict):
@@ -67,33 +69,43 @@ def summarize_status(status: dict) -> list[str]:
         if model == "Phone":
             lines.append(f"  Phone battery: {data.get('battery_level', '?')} % ({data.get('battery_state', '?')})")
             lines.append(f"  Phone memory:  {data.get('memory_state', '?')}")
-        elif model == "Hardware":
+        if model in ("Hardware", "Sensor"):
+            raw.append(f"  raw {model}: {json.dumps(data, sort_keys=True)}")
+        if model == "Hardware":
             # Neon reports its module serial; Invisible its glasses serial; "-1"/blank = not plugged in
             serials = (str(data.get(key) or "").strip() for key in ("module_serial", "glasses_serial"))
             glasses = any(s and s not in ("-1", "unknown", "default") for s in serials)
         elif model == "Sensor":
             sensors.append(f"{data.get('sensor', '?')}({data.get('conn_type', '?')})={'on' if data.get('connected') else 'off'}")
     if glasses is not None:
-        lines.append(f"  Glasses connected: {'yes' if glasses else 'NO - plug the glasses into the phone'}")
+        lines.append(f"  Glasses connected: {'yes' if glasses else 'NO - plug the glasses into the phone'} (guessed from the serials; unverified on hardware)")
     if sensors:
         lines.append(f"  Sensors: {', '.join(sensors)}")
-    return lines or ["  (status reply had no phone/glasses information)"]
+    return (lines + raw) or ["  (status reply had no phone/glasses information)"]
 
 
-def measure_gaze_rate(address: str, port: int, seconds: float = GAZE_SAMPLE_S) -> tuple[int, float]:
-    """(samples received, seconds) from the Real-Time gaze stream. Lazy device import; raises NeonConnectionError on failure."""
+def measure_gaze_rate(
+    address: str, port: int, seconds: float = GAZE_SAMPLE_S, start_timeout_s: float = GAZE_START_TIMEOUT_S
+) -> tuple[int, float, float | None]:
+    """(samples, seconds counted, seconds until the first sample or None) from the Real-Time gaze stream. Counting starts at the
+    first sample, so the stream's set-up time doesn't lower the rate. Lazy device import; raises NeonConnectionError on failure."""
     from pupil_labs.realtime_api.simple import Device
 
     from src.eye_tracking.neon_source import _build_device
 
     device = _build_device(Device, address, port)
     try:
-        count = 0
+        opened = timebase.now()
+        while device.receive_gaze_datum(timeout_seconds=0.5) is None:
+            if timebase.now() - opened >= start_timeout_s:
+                return 0, 0.0, None
         start = timebase.now()
+        first_sample_s = start - opened
+        count = 0
         while (elapsed := timebase.now() - start) < seconds:
             if device.receive_gaze_datum(timeout_seconds=0.5) is not None:
                 count += 1
-        return count, elapsed
+        return count, elapsed, first_sample_s
     finally:
         device.close()
 
@@ -119,6 +131,8 @@ def build_report(
         "",
         "Network adapters (IPv4 / gateway / network / category):",
     ]
+    if progress is not None:
+        progress("  reading the network adapters (can take ~15 s) ...")
     try:
         adapter_list = adapters()
     except Exception as exc:  # report, never crash
@@ -152,10 +166,14 @@ def build_report(
     except Exception as exc:
         out.append(f"  could not read the status ({type(exc).__name__}: {exc})")
     try:
-        count, seconds = gaze_rate(resolution.address, resolution.port)
-        rate = count / seconds if seconds > 0 else 0.0
-        verdict = "OK" if rate >= 100 else ("LOW - glasses worn and plugged in?" if count else "NO GAZE - glasses plugged in and worn?")
-        out.append(f"Gaze stream: {count} samples in {seconds:.1f} s = {rate:.0f} per second ({verdict}; Neon streams ~200)")
+        count, seconds, first_sample_s = gaze_rate(resolution.address, resolution.port)
+        if first_sample_s is None:
+            out.append(f"Gaze stream: NO GAZE within {GAZE_START_TIMEOUT_S:g} s - glasses plugged in and worn?")
+        else:
+            rate = count / seconds if seconds > 0 else 0.0
+            verdict = "OK" if rate >= 100 else "LOW - glasses worn and plugged in?"
+            out.append(f"Gaze stream: first sample after {first_sample_s:.1f} s; then {count} samples in {seconds:.1f} s = "
+                       f"{rate:.0f} per second ({verdict}; Neon streams ~200)")
     except Exception as exc:
         out.append(f"Gaze stream: failed ({type(exc).__name__}: {exc})")
     if address_text is None or resolution.address != host:
