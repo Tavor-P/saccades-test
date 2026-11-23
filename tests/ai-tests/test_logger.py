@@ -62,7 +62,7 @@ def test_session_json_sections_and_what_the_setters_record(tmp_path, monkeypatch
     assert "constants" not in meta  # the giant constants snapshot is gone
 
     other = tmp_path / "other"
-    log = _make_logger(other, monkeypatch, camera_label="Camera 2", test_mode=True)
+    log = _make_logger(other, monkeypatch, gaze_source_label="Neon", test_mode=True)
     log.set_calibration(0.3, 0.5, 0.7)
     log.set_saccade_contrasts((0.10, 0.15, 0.20))
     log.set_gaze_quality({"samples": 10, "latency_ms_median": 16.0})
@@ -71,7 +71,7 @@ def test_session_json_sections_and_what_the_setters_record(tmp_path, monkeypatch
     log.add_sync_flash("start 2", 1_700_000_000_450.0)
     log.close()
     meta = _meta(other)
-    assert meta["settings"]["gaze_source"] == "Camera 2"
+    assert meta["settings"]["gaze_source"] == "Neon"
     assert meta["run"]["mode"] == "test"
     assert meta["settings"]["calibration"] == {"left_ratio": 0.3, "center_ratio": 0.5, "right_ratio": 0.7}
     assert meta["settings"]["saccade_contrasts_pct"] == [10.0, 15.0, 20.0]

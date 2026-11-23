@@ -10,10 +10,7 @@ from include.experiment.constants import (
     CROSS_POSITION,
     DOT_POSITION,
     LINE_OFFSET_DEG,
-    LINE_OFFSET_HEIGHT_UNITS,
     LINE_SD_DEG,
-    LINE_SD_HEIGHT_UNITS,
-    SCREEN_HEIGHT_DEG,
     TUTORIAL_QUIZ_STREAK_TARGET,
 )
 from include.experiment.types import Side, Target
@@ -42,14 +39,16 @@ def test_side_enum_constants_and_line_position_shifted_up_or_down_with_the_geome
     assert {s.value for s in Side} == {"above", "below"}
     assert {random_orientation() for _ in range(200)} == {Side.ABOVE, Side.BELOW}
     assert LINE_OFFSET_DEG == 2.0 and LINE_SD_DEG == 0.15
-    assert LINE_OFFSET_HEIGHT_UNITS == pytest.approx(LINE_OFFSET_DEG / SCREEN_HEIGHT_DEG)
-    assert LINE_SD_HEIGHT_UNITS == pytest.approx(LINE_SD_DEG / SCREEN_HEIGHT_DEG)
+    default = Geometry.default()
+    offset = default.line_offset_height_units
+    assert offset == pytest.approx(LINE_OFFSET_DEG / default.height_deg)
+    assert default.line_sd_height_units == pytest.approx(LINE_SD_DEG / default.height_deg)
 
     x_a, y_a = line_position(DOT_POSITION, Side.ABOVE)
     x_b, y_b = line_position(DOT_POSITION, Side.BELOW)
     assert x_a == x_b == DOT_POSITION[0]
-    assert y_a == pytest.approx(DOT_POSITION[1] - LINE_OFFSET_HEIGHT_UNITS)  # y grows downwards: above = smaller y
-    assert y_b == pytest.approx(DOT_POSITION[1] + LINE_OFFSET_HEIGHT_UNITS)
+    assert y_a == pytest.approx(DOT_POSITION[1] - offset)  # y grows downwards: above = smaller y
+    assert y_b == pytest.approx(DOT_POSITION[1] + offset)
     assert y_a < DOT_POSITION[1] < y_b
 
     g = Geometry(13, 40)
@@ -79,7 +78,7 @@ def test_saccade_phase_line_sits_next_to_the_target_not_the_source_at_the_sessio
     geometry = Geometry(screen_height_cm=13.0, viewing_distance_cm=40.0)
     line = _flashed_line(fake_gaze, fake_time, Target.DOT, Target.CROSS, Side.ABOVE, geometry=geometry)
     assert line["y"] == pytest.approx(CROSS_POSITION[1] - LINE_OFFSET_DEG / geometry.height_deg)
-    assert line["y"] != pytest.approx(CROSS_POSITION[1] - LINE_OFFSET_HEIGHT_UNITS)
+    assert line["y"] != pytest.approx(CROSS_POSITION[1] - Geometry.default().line_offset_height_units)
 
 
 def test_answer_keys_scoring_and_instructions_are_up_down_only(fake_gaze, fake_time):

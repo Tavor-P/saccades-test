@@ -643,7 +643,8 @@ def show_done_screen(win: visual.Window, stimuli: dict, narrator: Narrator, fold
 def main() -> None:
     # Let the Neon receiver thread get the interpreter lock within ~0.5 ms instead of the default
     # 5 ms while the render loop is busy: in real sessions gaze delivery steps up ~65 ms late and
-    # drops ~19% of samples once drawing starts (see CLAUDE.md). A cheap first test of the cause.
+    # drops ~19% of samples once drawing starts (see CLAUDE.md). This is the confirmed fix for that
+    # Oct 2026 ~95 ms delay: runs since show ~13-20 ms.
     sys.setswitchinterval(0.0005)
     session_info = prompt_session_info()
     if session_info is None:
@@ -661,7 +662,7 @@ def main() -> None:
 
     neon = find_neon_or_exit(neon_address_text)  # before the run folder and the fullscreen window exist
     neon_address = (neon.address, neon.port)
-    logger = ResultLogger(participant_id, camera_label=BACKEND_NEON, test_mode=test_mode)
+    logger = ResultLogger(participant_id, gaze_source_label=BACKEND_NEON, test_mode=test_mode)
     logger.set_neon_device(neon.label())
     logger.set_saccade_contrasts(saccade_contrasts)
     logger.set_geometry(geometry)

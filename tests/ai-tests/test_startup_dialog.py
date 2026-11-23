@@ -149,8 +149,10 @@ def test_geometry_default_scaling_and_settings_record():
 
     g = Geometry.default()
     assert g.is_placeholder
-    assert (g.height_deg, g.line_offset_height_units, g.line_sd_height_units, g.line_height_height_units) == (
-        c.SCREEN_HEIGHT_DEG, c.LINE_OFFSET_HEIGHT_UNITS, c.LINE_SD_HEIGHT_UNITS, c.LINE_HEIGHT_HEIGHT_UNITS)
+    assert (g.screen_height_cm, g.viewing_distance_cm) == (c.SCREEN_HEIGHT_CM, c.VIEWING_DISTANCE_CM)
+    assert g.line_offset_height_units == pytest.approx(c.LINE_OFFSET_DEG / g.height_deg)
+    assert g.line_sd_height_units == pytest.approx(c.LINE_SD_DEG / g.height_deg)
+    assert g.line_height_height_units == pytest.approx(6 * c.LINE_SD_DEG / g.height_deg)
 
     small = Geometry(screen_height_cm=13.0, viewing_distance_cm=50.0)
     assert not small.is_placeholder
