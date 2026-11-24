@@ -114,7 +114,7 @@ class ReplayGazeSource(GazeSource):
         self._latest = GazeSample(zone=GazeZone.UNKNOWN, ratio=None, face_found=False, timestamp=0.0)
         self._has_device_time = any(row.device_unix_s is not None for row in trace)
         self._assumed_latency_ms = assumed_latency_ms
-        self._capture_rel = self._capture_offsets(assumed_latency_ms / 1000)
+        self._capture_rel = self._capture_offsets(timebase.ms_to_s(assumed_latency_ms))
 
     def _capture_offsets(self, latency_s: float) -> list[float]:
         """Per row: capture time in seconds after the first row's arrival (see class docstring)."""
@@ -131,7 +131,7 @@ class ReplayGazeSource(GazeSource):
             capture = arrival_rel[i]
             if row.device_unix_s is not None:
                 raw = (row.device_unix_s - dev0) + median_d - latency_s
-                if 0.0 <= arrival_rel[i] - raw <= NEON_MAX_PLAUSIBLE_LATENCY_MS / 1000:
+                if 0.0 <= arrival_rel[i] - raw <= timebase.ms_to_s(NEON_MAX_PLAUSIBLE_LATENCY_MS):
                     capture = raw
             capture = max(capture, last + 1e-6)
             out.append(capture)

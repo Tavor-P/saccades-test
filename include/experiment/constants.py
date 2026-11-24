@@ -275,6 +275,9 @@ SHARP_GO_CUE = True
 RT_MIN_PLAUSIBLE_MS = 100.0
 RT_OUTLIER_MAD_K = 3.0
 RT_OUTLIER_MAD_FLOOR_MS = 25.0
+# A median absolute deviation times this estimates the SD of normally distributed data (1 / the 75th-percentile z-score, 0.6745).
+# Used by the RT outlier rule above and by the analysis' robust SD of return latencies (leg_gating._robust_sd).
+MAD_TO_SD_FACTOR = 1.4826
 
 # For sources that stamp samples with the PC arrival time, the eye actually moved
 # (measured gaze latency) earlier, so the latency is subtracted; it is clamped to

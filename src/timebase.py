@@ -51,5 +51,15 @@ def unix_now() -> float:
     return _anchor.to_unix(_clock())
 
 
+def ms_to_s(ms: float) -> float:
+    """Milliseconds -> seconds. The one place the factor 1000 is written for time, so a name ending _ms or _s says which unit it holds."""
+    return ms / 1000
+
+
+def s_to_ms(s: float) -> float:
+    """Seconds -> milliseconds."""
+    return s * 1000
+
+
 def unix_ms() -> float:
-    return unix_now() * 1000
+    return s_to_ms(unix_now())

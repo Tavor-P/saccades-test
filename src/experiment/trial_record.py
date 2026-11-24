@@ -3,6 +3,7 @@ TrialLegs onto a TrialResult. Pure: scoring, the tracking/head gate and logging 
 
 from include.experiment.types import Side, TrialResult, TrialSpec
 from src.experiment.trial_legs import TrialLegs
+from src.timebase import ms_to_s, s_to_ms
 
 
 def saccade_trial_result(
@@ -49,7 +50,7 @@ def saccade_trial_result(
         flash_unix_ms=flash_unix_ms,
         tracking_ok=tracking_ok,
         flash_relative_to_onset_ms=(
-            (flash_scheduled_at - flash_onset_at) * 1000 if flash_shown and flash_onset_at is not None else None
+            s_to_ms(flash_scheduled_at - flash_onset_at) if flash_shown and flash_onset_at is not None else None
         ),
         avg_rt_used_ms=avg_rt_used_ms,
         scheduled_delay_ms=scheduled_delay_ms,

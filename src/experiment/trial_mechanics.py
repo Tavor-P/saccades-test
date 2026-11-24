@@ -9,6 +9,7 @@ from typing import Generic, Sequence, TypeVar
 from include.eye_tracking.constants import CENTER_POSITION, LEFT_POSITION, RIGHT_POSITION
 from include.eye_tracking.types import GazeZone
 from include.experiment.constants import (
+    MAD_TO_SD_FACTOR,
     ONSET_BASELINE_NEAR_SOURCE,
     ONSET_BASELINE_WINDOW_MS,
     RT_AVERAGE_ROLLING_WINDOW,
@@ -21,6 +22,7 @@ from include.experiment.constants import (
 )
 from include.experiment.types import Side, Target
 from src.experiment.geometry import Geometry
+from src.timebase import ms_to_s, s_to_ms
 
 
 
@@ -62,7 +64,7 @@ def robust_kept_ms(samples: Sequence[float], min_plausible_ms=_DEFAULT_MIN) -> l
     if not plausible:
         return []
     median = statistics.median(plausible)
-    mad = statistics.median(abs(s - median) for s in plausible) * 1.4826
+    mad = statistics.median(abs(s - median) for s in plausible) * MAD_TO_SD_FACTOR
     limit = median + RT_OUTLIER_MAD_K * max(mad, RT_OUTLIER_MAD_FLOOR_MS)
     return [s for s in plausible if s <= limit]
 
@@ -197,14 +199,14 @@ class OnsetDetector:
         if self._displacement(position, baseline) > SACCADE_ONSET_DISPLACEMENT:
             if self.since is None:
                 self.since = now
-            if now - self.since >= SACCADE_ONSET_STABILITY_MS / 1000 - 1e-9:  # epsilon: 0.21 - 0.20 < 0.01 in floats
+            if now - self.since >= ms_to_s(SACCADE_ONSET_STABILITY_MS) - 1e-9:  # epsilon: 0.21 - 0.20 < 0.01 in floats
                 self.confirmed = True
                 return True
             return False
         self.since = None
         if abs(position - self._source_position) <= ONSET_BASELINE_NEAR_SOURCE:
             self._baseline.append((now, position))
-        cutoff = now - ONSET_BASELINE_WINDOW_MS / 1000
+        cutoff = now - ms_to_s(ONSET_BASELINE_WINDOW_MS)
         while self._baseline and self._baseline[0][0] < cutoff:
             self._baseline.popleft()
         return False

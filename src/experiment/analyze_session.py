@@ -90,6 +90,7 @@ from src.experiment.analysis_report import (  # noqa: F401 (re-exported)
     thresholds_record,
 )
 from src.experiment.analysis_output import plot_report, write_flash_rows  # noqa: F401 (re-exported)
+from src.timebase import ms_to_s
 
 
 # -- driver --------------------------------------------------------------------------------------
@@ -158,7 +159,7 @@ def analyze_run(
             status = quality.get("clock_offset_status")  # absent in older session.json files
             why = f" (clock_offset_status: {status})" if status else ""
             raise ValueError(f"this session has no clock_offset_ms in its meta file{why}; pass --offset-ms")
-    t, x = load_trace(ref.gaze_trace_path, clock_offset_ms / 1000, offset_history)
+    t, x = load_trace(ref.gaze_trace_path, ms_to_s(clock_offset_ms), offset_history)
     saccades = detect_saccades(t, x, min_amplitude=min_amplitude)
     flashes = load_flashes(ref.trials_path)
     trials = find_trial_saccades(flashes, saccades) if is_return_jump(flashes) else None

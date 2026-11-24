@@ -32,6 +32,7 @@ from src.experiment.trial_legs import SampleFeed, TrialLegs, clamped_gaze_latenc
 from src.experiment.trial_mechanics import RollingReactionTime, ShuffledBag, flash_leg_pool, line_position
 from src.experiment.trial_mechanics import random_side as _random_side
 from src.experiment.trial_mechanics import zone_for as _zone_for
+from src.timebase import ms_to_s, s_to_ms
 
 
 class Phase(Enum):
@@ -91,7 +92,7 @@ class TutorialSession:
         self._dot_visible = False
         self._cross_visible = False
         self._foreperiod_start = 0.0
-        self._foreperiod_duration = 0.0
+        self._foreperiod_duration_s = 0.0
 
         # -- quiz --
         self._quiz_streak = 0
@@ -237,10 +238,10 @@ class TutorialSession:
     def _start_foreperiod(self) -> None:
         self._phase = Phase.PRACTICE_FOREPERIOD
         self._foreperiod_start = self._clock.now()
-        self._foreperiod_duration = random.uniform(FOREPERIOD_MIN_MS, FOREPERIOD_MAX_MS) / 1000
+        self._foreperiod_duration_s = ms_to_s(random.uniform(FOREPERIOD_MIN_MS, FOREPERIOD_MAX_MS))
 
     def _tick_foreperiod(self) -> None:
-        if self._clock.now() - self._foreperiod_start >= self._foreperiod_duration:
+        if self._clock.now() - self._foreperiod_start >= self._foreperiod_duration_s:
             self._dot_visible = self._target is Target.DOT
             self._cross_visible = self._target is Target.CROSS
             self._phase = Phase.PRACTICE_ACTIVE
@@ -254,7 +255,7 @@ class TutorialSession:
             )
             # Open-loop, like the real saccade phase: scheduled off the rolling average of the reaction
             # times measured so far (updated at every detected eye movement; the default until there are 3).
-            self._flash_scheduled_at = self._trial_start + self._rt.average / 1000
+            self._flash_scheduled_at = self._trial_start + ms_to_s(self._rt.average)
             if self._flash_leg == "return":
                 self._flash_scheduled_at = math.inf  # scheduled at the jump back
 
@@ -272,7 +273,7 @@ class TutorialSession:
             self._flash_decided = True
             flash_fired_this_tick = True
             self._response_window_open = True
-            self._response_deadline = now + RESPONSE_WINDOW_MS / 1000
+            self._response_deadline = now + ms_to_s(RESPONSE_WINDOW_MS)
             self._line_visible = True
             self._line_frames_remaining = LINE_DURATION_FRAMES
             self._line_actually_shown = True
@@ -312,7 +313,7 @@ class TutorialSession:
             return
         if just_landed and self._flash_decided and not self._responded:
             self._response_window_open = True
-            self._response_deadline = max(self._response_deadline, now + RESPONSE_WINDOW_MS / 1000)
+            self._response_deadline = max(self._response_deadline, now + ms_to_s(RESPONSE_WINDOW_MS))
 
         if legs.return_timed_out(now):
             self._finish_attempt()
@@ -326,7 +327,7 @@ class TutorialSession:
         self._cross_visible = self._source is Target.CROSS
         if self._flash_leg == "return":
             average_ms = self._return_rt.average if self._return_rt.has_estimate else self._rt.average
-            self._flash_scheduled_at = now + max(0.0, average_ms) / 1000  # early returns: at the jump frame at the earliest
+            self._flash_scheduled_at = now + ms_to_s(max(0.0, average_ms))  # early returns: at the jump frame at the earliest
 
     def _finish_attempt(self) -> None:
         self._line_visible = False

@@ -12,6 +12,7 @@ from include.experiment.analysis_constants import MIN_AMPLITUDE, SPEED_HIGH, SPE
 from include.eye_tracking.constants import NEON_SCENE_WIDTH
 from src import textio
 from src.experiment.logger import read_trial_rows
+from src.timebase import ms_to_s, s_to_ms
 
 
 @dataclass(frozen=True)
@@ -24,7 +25,7 @@ class Saccade:
 
     @property
     def duration_ms(self) -> float:
-        return 1000 * (self.offset - self.onset)
+        return s_to_ms(self.offset - self.onset)
 
     @property
     def amplitude(self) -> float:
@@ -75,7 +76,7 @@ def load_trace(path: Path, clock_offset_s: float, offset_history: list[dict] | N
     t, x = np.asarray(times), np.asarray(xs)
     if offset_history is not None and len(offset_history) >= 2:
         history = sorted(offset_history, key=lambda h: h["phone_unix_s"])
-        t = t + np.interp(t, [h["phone_unix_s"] for h in history], [h["offset_ms"] / 1000 for h in history])  # held constant beyond the ends
+        t = t + np.interp(t, [h["phone_unix_s"] for h in history], [ms_to_s(h["offset_ms"]) for h in history])  # held constant beyond the ends
     else:
         t = t + clock_offset_s
     keep = np.concatenate(([True], np.diff(t) > 0)) if len(t) else np.asarray([], dtype=bool)
@@ -91,8 +92,8 @@ def load_flashes(path: Path) -> list[Flash]:
             continue
         if not row.get("grating_shown_at_unix_ms") or not row.get("contrast"):
             continue
-        shown = float(row["grating_shown_at_unix_ms"]) / 1000
-        delay = row.get("scheduled_delay_ms")
+        shown_s = ms_to_s(float(row["grating_shown_at_unix_ms"]))
+        delay_ms = row.get("scheduled_delay_ms")
         outcome = row["outcome"]
         if outcome == "timeout":
             # The live trial ended on its no-saccade timeout although the line was shown (and maybe answered): score the answer.
@@ -100,21 +101,21 @@ def load_flashes(path: Path) -> list[Flash]:
                 outcome = "miss"
             else:
                 outcome = "correct" if row.get("response_orientation") == row.get("orientation") else "incorrect"
-        go_cue = shown - float(delay) / 1000 if delay else None
+        go_cue = shown_s - ms_to_s(float(delay_ms)) if delay_ms else None
         jump_ms = row.get("jump_back_ms_after_go_cue")
-        reaction = row.get("return_reaction_ms")
+        reaction_ms = row.get("return_reaction_ms")
         flashes.append(
             Flash(
                 trial=int(row["trial_index"]),
-                time=shown,
+                time=shown_s,
                 contrast=float(row["contrast"]),
                 line_side=row.get("orientation", ""),
                 outcome=outcome,
                 go_cue=go_cue,
                 leg=row.get("flash_leg") or None,
-                jump=go_cue + float(jump_ms) / 1000 if jump_ms and go_cue is not None else None,
+                jump=go_cue + ms_to_s(float(jump_ms)) if jump_ms and go_cue is not None else None,
                 jump_forced=row.get("jump_back_forced") == "True",
-                return_reaction_ms=float(reaction) if reaction else None,
+                return_reaction_ms=float(reaction_ms) if reaction_ms else None,
             )
         )
     return flashes
@@ -159,8 +160,8 @@ def place_flashes(flashes: list[Flash], saccades: list[Saccade], flash_delay_ms:
     onsets = np.asarray([s.onset for s in saccades])
     placed = []
     for f in flashes:
-        when = f.time + flash_delay_ms / 1000
+        when = f.time + ms_to_s(flash_delay_ms)
         k = int(np.argmin(np.abs(onsets - when)))
         s = saccades[k]
-        placed.append(Placed(f, 1000 * (when - s.onset), s.onset <= when <= s.offset))
+        placed.append(Placed(f, s_to_ms(when - s.onset), s.onset <= when <= s.offset))
     return placed

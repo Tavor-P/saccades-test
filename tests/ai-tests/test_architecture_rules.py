@@ -62,6 +62,52 @@ def test_only_the_timebase_reads_the_coarse_or_raw_clocks():
     assert not forbidden, forbidden
 
 
+# datetime.now() reads the coarse system clock (15.6 ms ticks on Windows), so it must never time an event. These are the legitimate
+# human-readable wall-clock STAMPS (text in a file name or a report); each is a count of `datetime.now()`-style calls in that file.
+WALL_CLOCK_STAMPS = {
+    "src/experiment/logger.py": (1, "session.json run.started_at: a readable label (the exact start is `unix_timestamp`, from timebase)"),
+    "src/experiment/analyze_participant.py": (1, "summary.json generated_at: when the analysis was run, never compared with an event time"),
+    "src/experiment/compare.py": (2, "comparison.json generated time and the comparison folder's name: when the report was made"),
+    "src/experiment/participants.py": (1, "suffix of the backup copy of a damaged participants.json"),
+}
+_NOW_METHODS = {"now", "utcnow", "today"}
+
+
+def _wall_clock_calls(tree: ast.AST) -> list[int]:
+    """Line numbers of datetime.now() / datetime.utcnow() / date.today() / datetime.datetime.now() style calls."""
+    lines = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in _NOW_METHODS:
+            owner = node.func.value
+            name = owner.id if isinstance(owner, ast.Name) else owner.attr if isinstance(owner, ast.Attribute) else None
+            if name in {"datetime", "date"}:
+                lines.append(node.lineno)
+    return lines
+
+
+def test_datetime_now_is_only_used_for_the_listed_human_readable_stamps():
+    """Why: event timing comes from src/timebase.py. datetime.now()/utcnow() read the coarse system clock, so a slip like
+    `datetime.now().timestamp()` as an event time would be off by up to 15.6 ms. Only the stamps in WALL_CLOCK_STAMPS are allowed
+    (a new one needs a reason there); a listed file whose count changed fails too, so the list cannot go stale."""
+    found = {}
+    for path in (ROOT / "src").rglob("*.py"):
+        lines = _wall_clock_calls(_tree(path))
+        if lines:
+            found[path.relative_to(ROOT).as_posix()] = lines
+    unexpected = {f: lines for f, lines in found.items() if f not in WALL_CLOCK_STAMPS}
+    assert not unexpected, f"datetime.now()/utcnow()/today() outside the allow-list (use timebase for timing): {unexpected}"
+    changed = {f: (len(found.get(f, [])), n) for f, (n, _why) in WALL_CLOCK_STAMPS.items() if len(found.get(f, [])) != n}
+    assert not changed, f"allow-list out of date (file: (found, listed)): {changed}"
+
+
+def test_the_datetime_rule_catches_the_calls_it_forbids():
+    """The rule's detector itself: every spelling it must flag, and a method call that is not a clock read."""
+    for source in ("datetime.now()", "datetime.utcnow()", "date.today()", "datetime.datetime.now()", "datetime.now(tz)"):
+        assert _wall_clock_calls(ast.parse(source)) == [1], source
+    for source in ("datetime.fromtimestamp(t)", "clock.now()", "timebase.now()", "now()"):
+        assert _wall_clock_calls(ast.parse(source)) == [], source
+
+
 def test_timebase_uses_a_fine_resolution_clock_and_its_anchor_gives_sub_tick_unix_time():
     """The unix time derived from the perf counter must advance smoothly (not in 15.6 ms steps) and agree with the system clock."""
     import time

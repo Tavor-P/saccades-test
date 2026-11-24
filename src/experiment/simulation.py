@@ -31,6 +31,7 @@ from src.experiment.pausable_clock import PausableClock
 from src.experiment.scoring import is_valid_for_saccadic_analysis
 from src.experiment.session import ExperimentSession
 from src.experiment.session_config import SessionConfig
+from src.timebase import ms_to_s, s_to_ms
 from src.eye_tracking.gaze_mapping import GazeMapper
 
 GAZE_HZ = 240  # simulated tracker rate
@@ -187,7 +188,7 @@ class SimulatedClock(PausableClock):
         return timestamp  # simulated gaze samples are already stamped in this clock's time
 
     def unix_ms(self) -> float:
-        return 1_700_000_000_000.0 + self._t * 1000  # simulated wall clock, never the real one
+        return 1_700_000_000_000.0 + s_to_ms(self._t)  # simulated wall clock, never the real one
 
 
 class SimulatedGazeSource(GazeSource):
@@ -311,10 +312,10 @@ class SimulatedParticipant:
             self._gaze.push(None, t)
             return
         if self._p.dropout_rate_per_s and self._rng.random() < self._p.dropout_rate_per_s / GAZE_HZ:
-            self._dropout_until = t + self._p.dropout_ms / 1000
+            self._dropout_until = t + ms_to_s(self._p.dropout_ms)
             self._gaze.push(None, t)
             return
-        x = self._eye_x(t - self._p.tracker_latency_ms / 1000)
+        x = self._eye_x(t - ms_to_s(self._p.tracker_latency_ms))
         ratio = 0.5 + (x - 0.5) * 0.5 + self._p.gaze_offset_ratio + self._rng.gauss(0, self._p.gaze_noise_ratio)
         self._gaze.push(ratio, t)
 
@@ -379,8 +380,8 @@ class SimulatedParticipant:
                 rightward = x > self._eye_x(t)  # dot -> cross
                 latency_ms, true_mean_ms, kind = self._draw_reaction_ms(rightward)
                 self.cues.append(CueRecord(t, phase, len(self.cues), latency_ms, true_mean_ms, kind))
-                reaction = latency_ms / 1000
-                dur = self._rng.uniform(self._p.saccade_ms_min, self._p.saccade_ms_max) / 1000
+                reaction = ms_to_s(latency_ms)
+                dur = ms_to_s(self._rng.uniform(self._p.saccade_ms_min, self._p.saccade_ms_max))
                 self._eye_from = self._eye_x(t)
                 self._eye_to = x
                 self._prev_move = None
@@ -390,7 +391,7 @@ class SimulatedParticipant:
                 if phase == "TRIAL_ACTIVE":
                     self._go_target_x = x
                 self._log(t, "go-cue: target appeared")
-                self._log(t + reaction, f"[true] saccade onset (reaction {reaction * 1000:.0f} ms, flight {dur * 1000:.0f} ms)")
+                self._log(t + reaction, f"[true] saccade onset (reaction {s_to_ms(reaction):.0f} ms, flight {s_to_ms(dur):.0f} ms)")
                 if phase == "TRIAL_ACTIVE" and self._p.return_mode == "learned" and self.return_cues:
                     self._plan_learned_return(t)
 
@@ -403,13 +404,13 @@ class SimulatedParticipant:
         latency_ms = max(0.0, self._rng.gauss(mean, sd))
         landing = self._move_start + self._move_dur
         self.return_cues.append(CueRecord(landing, "RETURN", n, latency_ms, mean, "learned"))
-        start = landing + latency_ms / 1000
-        dur = self._rng.uniform(p.saccade_ms_min, p.saccade_ms_max) / 1000
+        start = landing + ms_to_s(latency_ms)
+        dur = ms_to_s(self._rng.uniform(p.saccade_ms_min, p.saccade_ms_max))
         self._prev_move = (self._eye_from, self._eye_to, self._move_start, self._move_dur)
         self._eye_from, self._eye_to = self._eye_to, self._eye_from
         self._move_start, self._move_dur = start, dur
         self._return_planned = True
-        self._log(start, f"[true] learned return saccade onset ({latency_ms:.0f} ms after the true landing, flight {dur * 1000:.0f} ms)")
+        self._log(start, f"[true] learned return saccade onset ({latency_ms:.0f} ms after the true landing, flight {s_to_ms(dur):.0f} ms)")
 
     def _on_jump_back(self, x: float, t: float) -> None:
         """The target jumped back to `x`: plan the return saccade (after the out saccade has ended). If the out saccade
@@ -432,14 +433,14 @@ class SimulatedParticipant:
         p = self._p
         latency_ms = max(80.0, self._rng.gauss(p.return_reaction_mean_ms, p.return_reaction_sd_ms))
         self.return_cues.append(CueRecord(t, "RETURN", len(self.return_cues), latency_ms, p.return_reaction_mean_ms, "normal"))
-        start = max(t + latency_ms / 1000, self._move_start + self._move_dur)
-        dur = self._rng.uniform(p.saccade_ms_min, p.saccade_ms_max) / 1000
+        start = max(t + ms_to_s(latency_ms), self._move_start + self._move_dur)
+        dur = ms_to_s(self._rng.uniform(p.saccade_ms_min, p.saccade_ms_max))
         self._prev_move = (self._eye_from, self._eye_to, self._move_start, self._move_dur)
         self._eye_from, self._eye_to = self._eye_to, x
         self._move_start, self._move_dur = start, dur
         self.saccade_onset = start  # a later (return-leg) flash is judged against this saccade
         self._log(t, "jump-back: target reappeared at the start")
-        self._log(start, f"[true] return saccade onset (latency {(start - t) * 1000:.0f} ms, flight {dur * 1000:.0f} ms)")
+        self._log(start, f"[true] return saccade onset (latency {s_to_ms(start - t):.0f} ms, flight {s_to_ms(dur):.0f} ms)")
 
     def _draw_reaction_ms(self, rightward: bool) -> tuple[float, float, str]:
         """(latency ms, true mean ms, kind) for the next go-cue. With every realism field at its
@@ -490,7 +491,7 @@ class SimulatedParticipant:
             answer = self._rng.choice([Side.ABOVE, Side.BELOW])
         else:
             return  # no response -> "miss"
-        delay = max(0.15, self._rng.gauss(self._p.response_ms_mean, self._p.response_ms_sd)) / 1000
+        delay = ms_to_s(max(0.15, self._rng.gauss(self._p.response_ms_mean, self._p.response_ms_sd)))
         self._pending_response = (t + delay, answer)
 
 
@@ -607,7 +608,7 @@ def print_trial_timeline(sim: SimulationResult) -> None:
     print("Event timeline of the trial (ms relative to the go-cue):")
     for t, text in sim.events:
         if t >= go - 0.001:
-            print(f"  {1000 * (t - go):8.1f}  {text}")
+            print(f"  {s_to_ms(t - go):8.1f}  {text}")
     print("\nLogged result:")
     for name in (
         "outcome", "flash_shown", "contrast", "line_side", "responded", "response_time_ms",

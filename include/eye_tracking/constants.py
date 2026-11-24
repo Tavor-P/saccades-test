@@ -57,6 +57,16 @@ NEON_MAX_PLAUSIBLE_LATENCY_MS = 150.0
 # Recent samples kept for samples_since() (~2 s at 200 Hz) and the window of the rolling median behind gaze_latency_ms.
 NEON_HISTORY_SAMPLES = 400
 NEON_LATENCY_WINDOW_SAMPLES = 200
+# The rolling-median latency is recomputed on every Nth sample (a median of the window per sample would be wasted work at 200 Hz).
+NEON_LATENCY_MEDIAN_EVERY_N_SAMPLES = 20
+# Bounds on what the receiver keeps: every latency of the run for the end-of-run quality stats (~8 min at 200 Hz; older ones drop off,
+# so memory stays bounded) and how many distinct error signatures are remembered so the same error is logged only once.
+NEON_MAX_LATENCY_SAMPLES = 100_000
+NEON_MAX_LOGGED_ERROR_KINDS = 50
+# The receive thread sleeps this long (s) when no gaze sample arrived (so an idle device does not spin a core) and after an ingest
+# error (so a persistent error cannot flood the log or the CPU).
+NEON_RECEIVE_IDLE_SLEEP_S = 0.005
+NEON_INGEST_ERROR_SLEEP_S = 0.005
 # The phone-vs-PC clock offset is re-estimated this often in the background (phone and PC clocks drift apart);
 # an estimate noisier than the max std is ignored and a good one is blended 50/50 with the previous one.
 NEON_CLOCK_REESTIMATE_S = 60.0

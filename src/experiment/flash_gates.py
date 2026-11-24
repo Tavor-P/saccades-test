@@ -21,6 +21,7 @@ from include.experiment.analysis_constants import (
     RETURN_LATENCY_MAX_MS,
     TRACKING_GAP_MS,
 )
+from src.timebase import ms_to_s, s_to_ms
 
 SACCADE, FIXATION, EXCLUDED = "saccade", "fixation", "excluded"
 
@@ -43,12 +44,12 @@ def speed_at(t: np.ndarray, x: np.ndarray, when: float) -> float | None:
 
 def has_tracking_gap(t: np.ndarray, when: float, half_window_ms: float = FIXATION_EXCLUSION_MS) -> bool:
     """True if the trace has no samples, or a hole longer than TRACKING_GAP_MS, within +-half_window of `when`."""
-    lo, hi = when - half_window_ms / 1000, when + half_window_ms / 1000
+    lo, hi = when - ms_to_s(half_window_ms), when + ms_to_s(half_window_ms)
     if len(t) == 0 or t[0] > lo or t[-1] < hi:
         return True
     i, j = np.searchsorted(t, lo), np.searchsorted(t, hi)
     window = t[max(i - 1, 0) : min(j + 1, len(t))]  # include the samples that bracket the window
-    return bool(len(window) < 2 or np.max(np.diff(window)) * 1000 > TRACKING_GAP_MS)
+    return bool(len(window) < 2 or s_to_ms(np.max(np.diff(window))) > TRACKING_GAP_MS)
 
 
 def classify_flash(
@@ -67,24 +68,24 @@ def classify_flash(
         return GateResult(EXCLUDED, "no saccade in the session")
     speed = speed_at(t, x, when)
     nearest = min(saccades, key=lambda s: 0.0 if s.onset <= when <= s.offset else min(abs(when - s.onset), abs(when - s.offset)))
-    gap_ms = 0.0 if nearest.onset <= when <= nearest.offset else 1000 * min(abs(when - nearest.onset), abs(when - nearest.offset))
-    latency = None if go_cue is None else 1000 * (nearest.onset - go_cue)
+    gap_ms = 0.0 if nearest.onset <= when <= nearest.offset else s_to_ms(min(abs(when - nearest.onset), abs(when - nearest.offset)))
+    latency_ms = None if go_cue is None else s_to_ms(nearest.onset - go_cue)
 
     if gap_ms > FIXATION_EXCLUSION_MS:
-        return GateResult(FIXATION, f"{gap_ms:.0f} ms from the nearest saccade", speed, latency)
+        return GateResult(FIXATION, f"{gap_ms:.0f} ms from the nearest saccade", speed, latency_ms)
 
     # Within +-FIXATION_EXCLUSION_MS of a saccade: it is neither clean fixation nor yet a saccade flash.
     if speed is None or speed < MIN_FLASH_SPEED:
-        return GateResult(EXCLUDED, "near a saccade but the eye was not moving fast at the flash", speed, latency)
+        return GateResult(EXCLUDED, "near a saccade but the eye was not moving fast at the flash", speed, latency_ms)
     if speed > MAX_FLASH_SPEED:
-        return GateResult(EXCLUDED, "gaze speed at the flash is implausibly high", speed, latency)
-    if latency is not None and not LATENCY_RANGE_MS[0] <= latency <= LATENCY_RANGE_MS[1]:
-        return GateResult(EXCLUDED, f"saccade latency {latency:.0f} ms outside {LATENCY_RANGE_MS[0]:.0f}-{LATENCY_RANGE_MS[1]:.0f}", speed, latency)
+        return GateResult(EXCLUDED, "gaze speed at the flash is implausibly high", speed, latency_ms)
+    if latency_ms is not None and not LATENCY_RANGE_MS[0] <= latency_ms <= LATENCY_RANGE_MS[1]:
+        return GateResult(EXCLUDED, f"saccade latency {latency_ms:.0f} ms outside {LATENCY_RANGE_MS[0]:.0f}-{LATENCY_RANGE_MS[1]:.0f}", speed, latency_ms)
     if median_amplitude:
         rel = nearest.amplitude / median_amplitude
         if not AMPLITUDE_RANGE_REL[0] <= rel <= AMPLITUDE_RANGE_REL[1]:
-            return GateResult(EXCLUDED, f"saccade amplitude {rel:.2f}x the session median", speed, latency)
-    return GateResult(SACCADE, "fast gaze movement at the flash", speed, latency)
+            return GateResult(EXCLUDED, f"saccade amplitude {rel:.2f}x the session median", speed, latency_ms)
+    return GateResult(SACCADE, "fast gaze movement at the flash", speed, latency_ms)
 
 
 def classify_flashes(placed: list, saccades: list, t: np.ndarray, x: np.ndarray, flash_delay_ms: float = 0.0, go_cues: list | None = None) -> list[GateResult]:
@@ -93,7 +94,7 @@ def classify_flashes(placed: list, saccades: list, t: np.ndarray, x: np.ndarray,
     out = []
     for i, p in enumerate(placed):
         cue = go_cues[i] if go_cues is not None else None
-        out.append(classify_flash(p.flash.time + flash_delay_ms / 1000, saccades, t, x, cue, median_amp))
+        out.append(classify_flash(p.flash.time + ms_to_s(flash_delay_ms), saccades, t, x, cue, median_amp))
     return out
 
 
@@ -128,29 +129,29 @@ def classify_leg_flash(
         return GateResult(EXCLUDED, "return leg of a forced jump (the out landing was never seen)")
     speed = speed_at(t, x, when)
     nearest = min(saccades, key=lambda s: 0.0 if s.onset <= when <= s.offset else min(abs(when - s.onset), abs(when - s.offset)))
-    gap_ms = 0.0 if nearest.onset <= when <= nearest.offset else 1000 * min(abs(when - nearest.onset), abs(when - nearest.offset))
-    latency = None if own is None or anchor is None else 1000 * (own.onset - anchor)
+    gap_ms = 0.0 if nearest.onset <= when <= nearest.offset else s_to_ms(min(abs(when - nearest.onset), abs(when - nearest.offset)))
+    latency_ms = None if own is None or anchor is None else s_to_ms(own.onset - anchor)
 
     if gap_ms > FIXATION_EXCLUSION_MS:
-        return GateResult(FIXATION, f"{gap_ms:.0f} ms from the nearest saccade", speed, latency)
+        return GateResult(FIXATION, f"{gap_ms:.0f} ms from the nearest saccade", speed, latency_ms)
     if own is None:
-        return GateResult(EXCLUDED, f"near a saccade but no {leg} saccade was found in this trial", speed, latency)
+        return GateResult(EXCLUDED, f"near a saccade but no {leg} saccade was found in this trial", speed, latency_ms)
     if nearest is not own:
-        return GateResult(EXCLUDED, f"near a saccade other than this trial's {leg} saccade", speed, latency)
+        return GateResult(EXCLUDED, f"near a saccade other than this trial's {leg} saccade", speed, latency_ms)
     if speed is None or speed < MIN_FLASH_SPEED:
-        return GateResult(EXCLUDED, "near a saccade but the eye was not moving fast at the flash", speed, latency)
+        return GateResult(EXCLUDED, "near a saccade but the eye was not moving fast at the flash", speed, latency_ms)
     if speed > MAX_FLASH_SPEED:
-        return GateResult(EXCLUDED, "gaze speed at the flash is implausibly high", speed, latency)
-    if latency is not None:
-        if leg == "return" and latency > RETURN_LATENCY_MAX_MS:
-            return GateResult(EXCLUDED, f"return latency {latency:.0f} ms after the jump, over {RETURN_LATENCY_MAX_MS:.0f}", speed, latency)
-        if leg != "return" and not LATENCY_RANGE_MS[0] <= latency <= LATENCY_RANGE_MS[1]:
-            return GateResult(EXCLUDED, f"saccade latency {latency:.0f} ms outside {LATENCY_RANGE_MS[0]:.0f}-{LATENCY_RANGE_MS[1]:.0f}", speed, latency)
+        return GateResult(EXCLUDED, "gaze speed at the flash is implausibly high", speed, latency_ms)
+    if latency_ms is not None:
+        if leg == "return" and latency_ms > RETURN_LATENCY_MAX_MS:
+            return GateResult(EXCLUDED, f"return latency {latency_ms:.0f} ms after the jump, over {RETURN_LATENCY_MAX_MS:.0f}", speed, latency_ms)
+        if leg != "return" and not LATENCY_RANGE_MS[0] <= latency_ms <= LATENCY_RANGE_MS[1]:
+            return GateResult(EXCLUDED, f"saccade latency {latency_ms:.0f} ms outside {LATENCY_RANGE_MS[0]:.0f}-{LATENCY_RANGE_MS[1]:.0f}", speed, latency_ms)
     if median_amplitude:
         rel = own.amplitude / median_amplitude
         if not AMPLITUDE_RANGE_REL[0] <= rel <= AMPLITUDE_RANGE_REL[1]:
-            return GateResult(EXCLUDED, f"{leg} saccade amplitude {rel:.2f}x the session's {leg} median", speed, latency)
-    return GateResult(SACCADE, f"fast gaze movement at the flash ({leg} saccade)", speed, latency)
+            return GateResult(EXCLUDED, f"{leg} saccade amplitude {rel:.2f}x the session's {leg} median", speed, latency_ms)
+    return GateResult(SACCADE, f"fast gaze movement at the flash ({leg} saccade)", speed, latency_ms)
 
 
 def summarize_gates(placed: list, results: list[GateResult]) -> dict:

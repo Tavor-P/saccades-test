@@ -532,11 +532,11 @@ def test_trial_waits_for_space_then_swaps_500_to_1000_ms_later_and_repeat_presse
 
     session.on_space()
     assert session.render_state()["hud"]["phase"] == "FOREPERIOD"
-    start, duration = session._foreperiod_start, session._foreperiod_duration
+    start, duration = session._foreperiod_start, session._foreperiod_duration_s
     assert FOREPERIOD_MIN_MS / 1000 <= duration <= FOREPERIOD_MAX_MS / 1000
     fake_time(0.2)
     session.on_space()  # ignored: does not restart the foreperiod
-    assert (session._foreperiod_start, session._foreperiod_duration) == (start, duration)
+    assert (session._foreperiod_start, session._foreperiod_duration_s) == (start, duration)
     fake_time(FOREPERIOD_MIN_MS / 1000 - 0.21)
     session.tick()
     assert session.render_state()["hud"]["phase"] == "FOREPERIOD"  # never earlier than the minimum
