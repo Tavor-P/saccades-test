@@ -432,3 +432,25 @@ def test_geometry_is_one_line_with_a_short_placeholder_note():
     assert "placeholder" not in an.format_geometry(Geometry(19.5, 60).as_settings())
     assert "Screen geometry: not recorded" in an.format_report(an.summarize([], []) | {"gates": {"saccade": [0, 0], "fixation": [0, 0], "excluded": [0, 0], "reasons": {}},
                                                                                        "suppression": an.suppression_index([])}, geometry=None)
+
+
+def test_a_run_stopped_before_the_first_trial_says_so_instead_of_blaming_the_clock(tmp_path):
+    from src.experiment import session_files
+
+    folder = sr.write_run(tmp_path, "EMPTY", 1_790_000_000.0, n_trials=20, seed=5)
+    trials = folder / session_files.TRIALS_FILE
+    header = trials.read_text(encoding="utf-8").splitlines()[0]
+    trials.write_text(header + "\n", encoding="utf-8")  # header only: no trial was run
+    ref = session_files.find_session(tmp_path, f"{folder.parent.name}/{folder.name}")
+    with pytest.raises(ValueError, match="no saccade-phase flashes in trials.csv"):
+        an.analyze_run(ref)
+
+
+def test_a_run_with_flashes_but_no_gaze_recording_says_so(tmp_path):
+    from src.experiment import session_files
+
+    folder = sr.write_run(tmp_path, "NOTRACE", 1_790_000_000.0, n_trials=20, seed=6)
+    ref = session_files.find_session(tmp_path, f"{folder.parent.name}/{folder.name}")
+    ref.gaze_trace_path.unlink()
+    with pytest.raises(ValueError, match="no gaze recording"):
+        an.analyze_run(ref)
