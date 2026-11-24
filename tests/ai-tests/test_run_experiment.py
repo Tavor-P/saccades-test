@@ -1,4 +1,4 @@
-﻿from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 from src.experiment.run_experiment import (
     _second_monitor_screen_index,
@@ -190,8 +190,6 @@ def test_main_stops_before_the_run_folder_and_window_when_the_neon_is_missing(mo
 
 
 def test_main_passes_the_found_address_to_both_gaze_sources_and_session_json(monkeypatch):
-    import pytest
-
     from src.experiment import run_experiment
     from src.experiment.geometry import Geometry
 
