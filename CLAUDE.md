@@ -35,7 +35,7 @@ backend. Participant/experimenter docs: [README.md](README.md).
   (never `git add -A` / `commit -a`); don't touch other sessions' files, tell the user instead.
 - PowerShell 5.1 has no `&&`; keep each file's line endings (CRLF). `.gitignore` has `data/`, which matches any `data` folder (tests: use `tests/fixtures/`).
 - `data/` is git-ignored runtime output and participant data is personal data: never commit or print it, never write to it from tests/simulations, never copy real sessions into `tests/fixtures/`.
-- Report test results truthfully (ran / skipped). Suite: 369 tests pass, none skipped, ~30 s (pytest-xdist: pytest.ini runs 6 workers, `--dist loadgroup`; was ~2 min serial).
+- Report test results truthfully (ran / skipped). Suite: 380 tests pass, none skipped, ~30-35 s (pytest-xdist: pytest.ini runs 6 workers, `--dist loadgroup`; was ~2 min serial).
   Keep it fast: share expensive setup (module-scoped fixtures), keep simulated runs small, and do not render real plots or run 1000 bootstrap refits where a test only needs a file or a CI to exist
   (see tests/ai-tests/conftest.py: PNGs are stubbed except in `REAL_PLOT_TESTS`, `suppression_index` runs 300 resamples). Tests must not share paths or global state (xdist): use `tmp_path`.
   A module-scoped fixture is built once per worker, and importing `run_experiment` costs seconds: tests sharing an expensive fixture are grouped onto one worker (`pytest_collection_modifyitems`
@@ -112,7 +112,8 @@ Paths are checked by `tests/test_docs.py` - keep them real.
 | `src/experiment/analyze_session.py` | post-hoc analysis from the raw gaze trace: `analyze_run()` = pipeline without writing files, the CLI; re-exports the names below |
 | `include/experiment/analysis_constants.py` | every analysis threshold (detection, windows, gates, index), written into each report and summary.json `analysis_thresholds` |
 | `src/experiment/saccade_detection.py`, `suppression_stats.py`, `leg_gating.py` | saccades + flash placement; `summarize`/`suppression_index`; return-jump per-leg gating and return latency |
-| `src/experiment/analysis_report.py`, `analysis_output.py` | report text (`format_*`, `thresholds_record`); plot and per-flash CSV |
+| `src/experiment/analysis_report.py`, `analysis_output.py` | report text (`format_*`, `thresholds_record`): report.txt is human-first (QUALITY/RESULT/AMOUNT top block, fixed sections, only non-default thresholds); machines read suppression.json / flashes.csv. Plot (red near-saccade bars, then blue away bars) and per-flash CSV |
+| `src/experiment/run_quality.py` | quality rules for the report top block and the dashboard quality lights (one place) |
 | `src/experiment/analyze_participant.py` | pooled per-person index (equal `saccade_contrasts_pct` + geometry + run kind); summary.json (`SUMMARY_KEYS`, `schema_version` 3, per-leg `by_leg`, `analysis_thresholds`) |
 | `src/experiment/participants.py` | group labels (`data/participants.json`): `set_label`, `resolve_set` ("P01,group:TBI,all"), `everyone_else` |
 | `src/experiment/compare.py` | `compare()` -> `ComparisonResult`: 1v1 (bootstrap CI), group vs group (Mann-Whitney), 1-vs-group (percentile, no p) |
