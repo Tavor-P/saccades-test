@@ -21,14 +21,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-import matplotlib
-
-matplotlib.use("Agg")  # headless: only renders PNG files
-import matplotlib.pyplot as plt
 import numpy as np
 
 from src.experiment import session_files
+from src.experiment.analysis_output import plot_timecourse_figure
 from src.experiment.analysis_report import (
+    format_companion,
     format_excluded,
     format_index_fit,
     format_leg_suppression,
@@ -46,24 +44,23 @@ from src.experiment.analyze_session import (
     MIN_AMPLITUDE,
     RunAnalysis,
     _contrast_counts,
-    _weibull,
     analyze_run,
     fit_pair_with_slope,
     load_flashes,
     return_latency_stats,
-    summarize,
     suppression_by_leg,
     suppression_index,
     thresholds_record,
-    wilson,
     write_flash_rows,
 )
 from src.experiment.flash_gates import EXCLUDED, FIXATION, SACCADE, summarize_gates
 from src.experiment.logger import read_trial_rows
+from src.experiment.relative_suppression import companion_numbers
 from src.experiment.run_quality import quality_line, run_facts
 from src.experiment.run_summary import trial_counts
+from src.experiment.timecourse import timecourse_curve
 
-SCHEMA_VERSION = 3  # 2: run_kind, by_leg, return_latency (return-jump runs); 3: analysis_thresholds
+SCHEMA_VERSION = 4  # 2: run_kind, by_leg, return_latency (return-jump runs); 3: analysis_thresholds; 4: companion, timecourse
 ANALYSIS_DIR = "analysis"  # data/<participant>/analysis/
 CONDITIONS = (SACCADE, FIXATION, EXCLUDED)
 # summary.json top-level keys. A comparison module reads these; add keys only with a SCHEMA_VERSION bump.
@@ -72,7 +69,7 @@ SUMMARY_KEYS = (
     "index", "ci", "method", "label", "threshold_saccade", "threshold_fixation", "slope", "notes",
     "n_flashes", "correct", "by_contrast", "exclusion_reasons",
     "contrasts_pct", "geometry", "runs_used", "runs_excluded", "flashes_csv", "analysis",
-    "run_kind", "by_leg", "return_latency", "analysis_thresholds",
+    "run_kind", "by_leg", "return_latency", "analysis_thresholds", "companion", "timecourse",
 )
 # Run kinds never pool across each other: "single" (no return jump) and "return_jump/<trigger>" (the trigger changes the
 # movement itself). The return flash spread SD and leg fraction only change flash scheduling, so they do not split runs.
@@ -132,6 +129,7 @@ class ParticipantResult:
     placed: list  # pooled flashes (analyze_session.Placed), in run order
     gates: list  # flash_gates.GateResult per pooled flash
     run_of_flash: list[str]  # run folder name per pooled flash
+    saccades: list = field(default_factory=list)  # every saccade of the pooled runs (the plot's median saccade duration)
     paths: dict = field(default_factory=dict)  # report / png / csv / summary (empty when write=False)
 
 
@@ -323,6 +321,8 @@ def analyze_participant(
         gates += analysis.gates
         run_of_flash += [e.name] * len(analysis.placed)
     suppression = suppression_index(placed, gates=gates, n_boot=n_boot)
+    timecourse = timecourse_curve(placed, gates, n_boot=n_boot)
+    companion = companion_numbers(placed, gates, suppression, n_boot=n_boot)
     gate_counts = summarize_gates(placed, gates)
     slope = _pooled_slope(placed, gates) if suppression["method"] == "psychometric" else None
     kind = used[0].run_kind if used else None
@@ -368,9 +368,11 @@ def analyze_participant(
         "by_leg": by_leg,  # return-jump pools: {out, return, pooled}; each leg = its saccade flashes vs all fixation flashes
         "return_latency": return_latency,  # return-jump pools: return onset minus the jump (raw trace), all pooled trials
         "analysis_thresholds": thresholds_record(min_amplitude, flash_delay_ms),  # every rule that made this result (analysis_constants.py)
+        "companion": companion,  # accuracy difference (pp), relative suppression S, log10 threshold ratio (relative_suppression.py)
+        "timecourse": timecourse,  # kernel accuracy-vs-onset-time curve, band, baseline (timecourse.py)
     }
     assert tuple(summary) == SUMMARY_KEYS
-    result = ParticipantResult(pid, summary, "", used, excluded, placed, gates, run_of_flash)
+    result = ParticipantResult(pid, summary, "", used, excluded, placed, gates, run_of_flash, [s for _, a in used_analyses for s in a.saccades])
     result.report = format_participant_report(result)
     if write:
         out = Path(out_dir) if out_dir is not None else data_dir / pid / ANALYSIS_DIR
@@ -483,6 +485,7 @@ def format_participant_report(result: ParticipantResult) -> str:
     lines += format_index_fit(pooled)
     if s["slope"] is not None:
         lines.append(f"  Shared Weibull slope: {s['slope']:g}")
+    lines += format_companion(s["companion"], s["timecourse"])
     lines += heading("Accuracy by contrast")
     rows = []
     for c in sorted({row["contrast_pct"] for row in s["by_contrast"]}):
@@ -501,59 +504,12 @@ def format_participant_report(result: ParticipantResult) -> str:
 
 
 def plot_participant(result: ParticipantResult, out_path: Path) -> Path:
+    """The pooled figure (the one to read): the same time-course figure as a run's, over every pooled flash."""
     s = result.summary
-    fig, (ax_time, ax_psy) = plt.subplots(1, 2, figsize=(13, 4.8), layout="constrained")
-
-    timed = summarize(result.placed, []) if result.placed else None
-    bins = [b for b in (timed["bins"] if timed else []) if b["n"]]
-    if bins:
-        centres = [(b["lo_ms"] + b["hi_ms"]) / 2 for b in bins]
-        acc = [b["correct"] / b["n"] for b in bins]
-        ax_time.errorbar(centres, [100 * a for a in acc], yerr=[[100 * (a - b["ci"][0]) for a, b in zip(acc, bins)], [100 * (b["ci"][1] - a) for a, b in zip(acc, bins)]],
-                         fmt="o-", color="#4C72B0", capsize=4)
-        for x, b in zip(centres, bins):
-            ax_time.annotate(f"n={b['n']}", (x, 3), ha="center", fontsize=8)
-    ax_time.axvline(0, color="#999999", linewidth=1)
-    ax_time.axhline(50, color="#999999", linestyle=":", linewidth=1)
-    ax_time.set_ylim(0, 105)
-    ax_time.set_xlim(-200, 200)
-    ax_time.set_xlabel("flash time relative to saccade onset (ms)")
-    ax_time.set_ylabel("correct (%), with 95% CI")
-    ax_time.set_title("Accuracy vs flash time (all pooled flashes)")
-    ax_time.grid(True, alpha=0.3)
-
-    colours = {SACCADE: "#C44E52", FIXATION: "#4C72B0"}
-    rows = s["by_contrast"]
-    max_c = max([r["contrast_pct"] for r in rows], default=10.0)
-    for cond, colour in colours.items():
-        pts = [(r["contrast_pct"], r["correct"], r["n"]) for r in rows if r["condition"] == cond and r["n"]]
-        if pts:
-            cs = [c for c, _, _ in pts]
-            acc = [k / n for _, k, n in pts]
-            cis = [wilson(k, n) for _, k, n in pts]
-            ax_psy.errorbar(cs, [100 * a for a in acc], yerr=[[100 * (a - lo) for a, (lo, _) in zip(acc, cis)], [100 * (hi - a) for a, (_, hi) in zip(acc, cis)]],
-                            fmt="o", color=colour, capsize=4, label=f"{cond} (n={sum(n for _, _, n in pts)})")
-        threshold = s[f"threshold_{cond}"]
-        if s["method"] == "psychometric" and threshold is not None:
-            grid = np.linspace(max_c / 200, max_c * 1.5, 200)
-            ax_psy.plot(grid, 100 * _weibull(grid / 100, np.asarray(threshold), np.asarray(s["slope"])), color=colour, linewidth=1.5)
-            ax_psy.axvline(100 * threshold, color=colour, linestyle="--", linewidth=1, alpha=0.6)
-    ax_psy.axhline(50, color="#999999", linestyle=":", linewidth=1)
-    ax_psy.set_ylim(0, 105)
-    ax_psy.set_xlim(0, max_c * 1.5)
-    ax_psy.set_xlabel("line contrast (%)")
-    ax_psy.set_ylabel("correct (%), with 95% CI")
-    ax_psy.set_title("By contrast and condition" + (" (curves: Weibull fit, dashed: thresholds)" if s["method"] == "psychometric" else ""))
-    ax_psy.grid(True, alpha=0.3)
-    if rows:
-        ax_psy.legend(fontsize=8, loc="lower right")
-
-    fig.suptitle(f"Participant {s['participant']}: {headline(s)}", fontsize=10)
-    out_path = Path(out_path)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_path, dpi=150, bbox_inches="tight")
-    plt.close(fig)
-    return out_path
+    durations = [x.duration_ms for x in result.saccades]
+    suppression = {k: s[k] for k in ("method", "threshold_saccade", "threshold_fixation")}
+    return plot_timecourse_figure(result.placed, result.gates, s["timecourse"], suppression, float(np.median(durations)) if durations else None,
+                                  out_path, title=f"Participant {s['participant']}: {headline(s)}", pooled=True)
 
 
 # -- CLI -----------------------------------------------------------------------------------------

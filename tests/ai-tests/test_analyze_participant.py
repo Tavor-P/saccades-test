@@ -105,10 +105,12 @@ def test_summary_json_schema_is_stable(pooled):
         "index", "ci", "method", "label", "threshold_saccade", "threshold_fixation", "slope", "notes",
         "n_flashes", "correct", "by_contrast", "exclusion_reasons",
         "contrasts_pct", "geometry", "runs_used", "runs_excluded", "flashes_csv", "analysis",
-        "run_kind", "by_leg", "return_latency", "analysis_thresholds",
+        "run_kind", "by_leg", "return_latency", "analysis_thresholds", "companion", "timecourse",
     ]
-    assert s["schema_version"] == 3 and s["participant"] == PID
+    assert s["schema_version"] == 4 and s["participant"] == PID
     assert s["run_kind"] == "single" and s["by_leg"] is None and s["return_latency"] is None
+    assert s["companion"]["accuracy_difference_pp"] is not None and s["timecourse"]["sigma_ms"] == 20.0  # schema 4
+    assert s["analysis_thresholds"]["timecourse_sigma_ms"] == 20.0
     assert set(s["n_flashes"]) == {"saccade", "fixation", "excluded", "total"}
     assert set(s["correct"]) == {"saccade", "fixation", "excluded"}
     assert len(s["ci"]) == 2 and s["ci"][0] < s["index"] < s["ci"][1]

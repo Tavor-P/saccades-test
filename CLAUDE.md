@@ -20,7 +20,7 @@ backend. Participant/experimenter docs: [README.md](README.md).
   or "onset"; `RETURN_JUMP_LANDING_TIMEOUT_MS` forces it), so each trial has an out and a return saccade but still ONE flash: `RETURN_LEG_FLASH_FRACTION` 0.8 on the return leg (timed
   from the jump frame, spread `RETURN_FLASH_SPREAD_SD_MS` 40 = a guess, measure it), else the out leg. trials.csv: `flash_leg`, `out_arrival_ms_after_go_cue`, signed `return_reaction_ms`
   (negative = left before the jump), `left_target_before_jump`. `analyze_session` gates each flash against its own leg's saccade (return must move back >= half the out amplitude),
-  reports out / return / pooled indices and a return-latency report; summary.json schema 3 (adds `analysis_thresholds`) pools only one run kind (`single` | `return_jump/<trigger>`); `compare` refuses mixed kinds.
+  reports out / return / pooled indices and a return-latency report; summary.json schema 4 (3 added `analysis_thresholds`, 4 adds `companion` + `timecourse`) pools only one run kind (`single` | `return_jump/<trigger>`); `compare` refuses mixed kinds.
   Simulator `ParticipantProfile.return_mode="learned"` = predictive returns. Tests: `tests/ai-tests/test_return_jump.py`, `test_return_analysis.py` (`sim_runs.py` writes simulated runs as folders). Sim (150 trials): ~36 valid in-saccade flashes vs ~20 without the jump; the gain needs the narrow 40 ms spread. Unvalidated on glasses.
 
 ## Rules (read first)
@@ -35,7 +35,7 @@ backend. Participant/experimenter docs: [README.md](README.md).
   (never `git add -A` / `commit -a`); don't touch other sessions' files, tell the user instead.
 - PowerShell 5.1 has no `&&`; keep each file's line endings (CRLF). `.gitignore` has `data/`, which matches any `data` folder (tests: use `tests/fixtures/`).
 - `data/` is git-ignored runtime output and participant data is personal data: never commit or print it, never write to it from tests/simulations, never copy real sessions into `tests/fixtures/`.
-- Report test results truthfully (ran / skipped). Suite: 380 tests pass, none skipped, ~30-35 s (pytest-xdist: pytest.ini runs 6 workers, `--dist loadgroup`; was ~2 min serial).
+- Report test results truthfully (ran / skipped). Suite: 394 tests pass, none skipped, ~30-35 s (pytest-xdist: pytest.ini runs 6 workers, `--dist loadgroup`; was ~2 min serial).
   Keep it fast: share expensive setup (module-scoped fixtures), keep simulated runs small, and do not render real plots or run 1000 bootstrap refits where a test only needs a file or a CI to exist
   (see tests/ai-tests/conftest.py: PNGs are stubbed except in `REAL_PLOT_TESTS`, `suppression_index` runs 300 resamples). Tests must not share paths or global state (xdist): use `tmp_path`.
   A module-scoped fixture is built once per worker, and importing `run_experiment` costs seconds: tests sharing an expensive fixture are grouped onto one worker (`pytest_collection_modifyitems`
@@ -110,11 +110,13 @@ Paths are checked by `tests/test_docs.py` - keep them real.
 | `src/experiment/glasses_video.py`, `import_glasses_video.py` | sync-flash detection/offset; CLI that attaches the exported video |
 | `src/experiment/flash_gates.py` | pre-specified gates (Braun 2021): `saccade`, `fixation`, else `excluded`; controls from `CONTROL_OFFSETS_MS` |
 | `src/experiment/analyze_session.py` | post-hoc analysis from the raw gaze trace: `analyze_run()` = pipeline without writing files, the CLI; re-exports the names below |
-| `include/experiment/analysis_constants.py` | every analysis threshold (detection, windows, gates, index), written into each report and summary.json `analysis_thresholds` |
+| `include/experiment/analysis_constants.py` | every analysis threshold (detection, windows, gates, index, time-course figure, companion numbers), written into each report and summary.json `analysis_thresholds` |
 | `src/experiment/saccade_detection.py`, `suppression_stats.py`, `leg_gating.py` | saccades + flash placement; `summarize`/`suppression_index`; return-jump per-leg gating and return latency |
-| `src/experiment/analysis_report.py`, `analysis_output.py` | report text (`format_*`, `thresholds_record`): report.txt is human-first (QUALITY/RESULT/AMOUNT top block, fixed sections, only non-default thresholds); machines read suppression.json / flashes.csv. Plot (red near-saccade bars, then blue away bars) and per-flash CSV |
+| `src/experiment/analysis_report.py`, `analysis_output.py` | report text (`format_*`, `thresholds_record`): report.txt is human-first (QUALITY/RESULT/AMOUNT top block, fixed sections, only non-default thresholds); machines read suppression.json / flashes.csv. plot.png = the literature figure (`plot_timecourse_figure`: time-course curve + band + fixation band + rug + flash-count histogram, beside accuracy vs contrast with Weibull curves; one drawing for a run and for the pooled person) and the per-flash CSV; report.txt has a "Companion numbers" section |
+| `src/experiment/timecourse.py` | the figure's numbers: Gaussian-kernel (Nadaraya-Watson, SD `TIMECOURSE_SIGMA_MS` 20) accuracy vs flash time from its OWN saccade onset (-150..+200 ms every 5), pointwise bootstrap band, Kish effective-n masking (<10 hidden, 10-19 dashed grey, >= 20 solid), fixation-gate baseline (Wilson). Contrasts pooled (drawn independently of time, tested) |
+| `src/experiment/relative_suppression.py` | `companion_numbers()`: contrast-stratified accuracy difference (pp) and relative suppression S = (p_fix - p_sac)/(p_fix - 0.5) with stratified bootstrap CIs (no S below 15 saccade flashes or p_fix < 0.65, reason returned), log10 threshold ratio from the index's own CI. Additive: the headline index is unchanged |
 | `src/experiment/run_quality.py` | quality rules for the report top block and the dashboard quality lights (one place) |
-| `src/experiment/analyze_participant.py` | pooled per-person index (equal `saccade_contrasts_pct` + geometry + run kind); summary.json (`SUMMARY_KEYS`, `schema_version` 3, per-leg `by_leg`, `analysis_thresholds`) |
+| `src/experiment/analyze_participant.py` | pooled per-person index (equal `saccade_contrasts_pct` + geometry + run kind); summary.json (`SUMMARY_KEYS`, `schema_version` 4, per-leg `by_leg`, `analysis_thresholds`, `companion`, `timecourse`; schema-3 files still load, `compare` re-analyses them on refresh) |
 | `src/experiment/participants.py` | group labels (`data/participants.json`): `set_label`, `resolve_set` ("P01,group:TBI,all"), `everyone_else` |
 | `src/experiment/compare.py` | `compare()` -> `ComparisonResult`: 1v1 (bootstrap CI), group vs group (Mann-Whitney), 1-vs-group (percentile, no p) |
 | `src/experiment/simulation.py` | headless simulator |

@@ -1,4 +1,8 @@
-"""The post-hoc analysis' file outputs besides the report text: the plot (matplotlib, headless) and the per-flash CSV."""
+"""The post-hoc analysis' file outputs besides the report text: the plot (matplotlib, headless) and the per-flash CSV.
+
+The plot is the literature's standard figure (Diamond et al. 2000; Idrees et al. 2020; Braun et al. 2021): accuracy against flash time
+from saccade ONSET (kernel curve, bootstrap band, fixation baseline, raw trials, flash-count histogram) beside accuracy against
+contrast for the saccade and the fixation gate. The numbers behind it come from timecourse.py; this module only draws them."""
 
 import csv
 from pathlib import Path
@@ -7,91 +11,159 @@ import matplotlib
 
 matplotlib.use("Agg")  # headless: only renders PNG files
 import matplotlib.pyplot as plt
+import numpy as np
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 
-from include.experiment.analysis_constants import FAR_MS, NEAR_ONSET_MS
+from include.experiment.analysis_constants import FAR_MS, NEAR_ONSET_MS, TIMECOURSE_RANGE_MS
 from src.experiment.saccade_detection import Placed, Saccade
-from src.experiment.suppression_stats import wilson
+from src.experiment.suppression_stats import _contrast_counts, _select_conditions, _weibull, fit_pair_with_slope, wilson
+from src.experiment.timecourse import LOW, OK, timecourse_curve, timed_flashes
 
 # -- plot ----------------------------------------------------------------------------------------
 
 
-NEAR_COLOUR, AWAY_COLOUR = "#C44E52", "#4C72B0"  # red = during / near a saccade, blue = away from saccades
+SACCADE_COLOUR, FIXATION_COLOUR, CURVE_COLOUR, CHANCE_COLOUR = "#C44E52", "#4C72B0", "#1B1B1B", "#555555"  # red = saccade, blue = fixation
+HIST_BIN_MS = 25.0
+RUN_NOTE = "Per-run plots are an indication only; the pooled per-person plot is the one to read."
+POOLED_NOTE = "This pooled per-person plot is the one to read; single-run plots are an indication only."
+Y_LIMITS = (-14.0, 114.0)  # room for the raw-trial rug above 100 % and below 0 %
+RUG_BAND = 7.0  # height of the rug's jitter
 
 
-def _condition_bars(ax, summary: dict) -> None:
-    """Accuracy per condition: the two 'during / near a saccade' bars (red) side by side, a gap, then the two 'away' bars (blue)."""
-    bars = [  # (x, label, (correct, n), colour)
-        (0.0, f"within +/-{NEAR_ONSET_MS:.0f} ms\nof saccade onset", summary["near_onset"], NEAR_COLOUR),
-        (1.0, "inside a\nsaccade", summary["inside"], NEAR_COLOUR),
-        (2.7, f"{NEAR_ONSET_MS:.0f}-{FAR_MS:.0f} ms from\nsaccade onset", summary["beyond"], AWAY_COLOUR),
-        (3.7, "outside a\nsaccade", summary["outside"], AWAY_COLOUR),
-    ]
-    for x, _, (k, n), colour in bars:
-        pct = 100 * k / n if n else 0.0
-        ax.bar(x, pct, width=0.8, color=colour, zorder=2)
-        if n:
-            lo, hi = wilson(k, n)
-            ax.errorbar(x, pct, yerr=[[100 * (k / n - lo)], [100 * (hi - k / n)]], color="black", capsize=4, linewidth=1.5, zorder=3)
-            ax.text(x, 100 * hi + 2, f"{pct:.0f}%\nn={n}", ha="center", va="bottom", fontsize=9, fontweight="bold")
-        else:
-            ax.text(x, 3, "no\nflashes", ha="center", va="bottom", fontsize=9, color="#555555")
-    ax.axhline(50, color="#555555", linestyle="--", linewidth=1, zorder=1)
-    ax.set_xticks([x for x, *_ in bars], [label for _, label, *_ in bars], fontsize=8)
-    ax.set_xlim(-0.7, 4.4)
-    ax.set_ylim(0, 118)
+def _arr(values: list) -> np.ndarray:
+    return np.asarray([np.nan if v is None else v for v in values], dtype=float)
+
+
+def _draw_time_course(ax, ax_hist, tc: dict, rel: np.ndarray, ok: np.ndarray, median_saccade_ms: float | None) -> None:
+    lo_x, hi_x = TIMECOURSE_RANGE_MS
+    grid, p, lo, hi = (_arr(tc[k]) for k in ("grid_ms", "p", "lo", "hi"))
+    status = np.asarray(tc["status"])
+    shown = np.isin(status, (LOW, OK)) & np.isfinite(p)
+    solid = (status == OK) & np.isfinite(p)
+
+    if median_saccade_ms:
+        ax.axvspan(0, median_saccade_ms, color=SACCADE_COLOUR, alpha=0.10, zorder=0)
+    ax.axvline(0, color="#777777", linewidth=1, zorder=1)
+    ax.axhline(50, color=CHANCE_COLOUR, linestyle="--", linewidth=1, zorder=1)
+    base = tc["baseline"]
+    if base["n"]:
+        b_lo, b_hi = (100 * v for v in base["ci"])
+        ax.axhspan(b_lo, b_hi, color=FIXATION_COLOUR, alpha=0.18, zorder=1)
+        ax.axhline(100 * base["p"], color=FIXATION_COLOUR, linewidth=1.2, zorder=2)
+
+    band = np.isfinite(lo) & np.isfinite(hi)
+    ax.fill_between(grid, 100 * lo, 100 * hi, where=shown & band, color="#999999", alpha=0.18, linewidth=0, zorder=2)
+    ax.fill_between(grid, 100 * lo, 100 * hi, where=solid & band, color=CURVE_COLOUR, alpha=0.14, linewidth=0, zorder=2)
+    ax.plot(grid, np.where(shown, 100 * p, np.nan), color="#8A8A8A", linestyle="--", linewidth=1.6, zorder=3)  # "low" and "ok"; the solid line covers the "ok" part
+    ax.plot(grid, np.where(solid, 100 * p, np.nan), color=CURVE_COLOUR, linewidth=2.2, zorder=4)
+
+    in_range = (rel >= lo_x) & (rel <= hi_x)
+    jitter = np.random.default_rng(0).random(len(rel)) * RUG_BAND
+    y = np.where(ok > 0, 100 + 2 + jitter, 0 - 2 - jitter)
+    ax.scatter(rel[in_range], y[in_range], s=7, color=CURVE_COLOUR, alpha=0.35, linewidths=0, zorder=3, clip_on=False)
+    if not in_range.any():
+        ax.text(0.5, 0.5, "no flash with a known saccade onset", transform=ax.transAxes, ha="center", va="center", color="#777777")
+
+    ax.set_xlim(lo_x, hi_x)
+    ax.set_ylim(*Y_LIMITS)
     ax.set_yticks(range(0, 101, 20))
-    ax.set_ylabel("Accuracy (%)")
-    ax.grid(True, alpha=0.3, axis="y", zorder=0)
-    ax.legend(handles=[Patch(color=NEAR_COLOUR, label="During / near a saccade"), Patch(color=AWAY_COLOUR, label="Away from saccades"),
-                       Line2D([], [], color="#555555", linestyle="--", label="chance (50%)")],
-              loc="upper center", bbox_to_anchor=(0.5, -0.17), ncol=3, fontsize=8, frameon=False)
-    p = summary["p_near_vs_beyond"]
-    ax.set_title("Accuracy near vs away from saccades" + (f"\n(Fisher p = {p:.3f}, near onset vs further away)" if p is not None else ""), fontsize=10)
+    ax.set_ylabel("correct (%)")
+    ax.set_title("Accuracy vs flash time from saccade onset", fontsize=10)
+    ax.grid(True, alpha=0.3)
+    ax.tick_params(labelbottom=False)
+
+    edges = np.arange(lo_x, hi_x + HIST_BIN_MS / 2, HIST_BIN_MS)
+    counts, _ = np.histogram(rel[in_range], bins=edges)
+    ax_hist.bar(edges[:-1], counts, width=HIST_BIN_MS * 0.9, align="edge", color="#9AA5B1")
+    ax_hist.axvline(0, color="#777777", linewidth=1)
+    ax_hist.set_xlim(lo_x, hi_x)
+    ax_hist.set_ylabel("flashes", fontsize=8)
+    ax_hist.set_xlabel("flash time relative to saccade onset (ms)")
+    ax_hist.tick_params(labelsize=8)
+    ax_hist.grid(True, alpha=0.3, axis="x")
 
 
-def plot_report(placed: list[Placed], saccades: list[Saccade], summary: dict, out_path: Path, title: str = "") -> Path:
-    fig, (ax_curve, ax_scatter, ax_bars) = plt.subplots(1, 3, figsize=(16, 4.8), layout="constrained")
-    duration = summary["median_saccade_ms"] or 0.0
+def _draw_by_contrast(ax, sac: list[Placed], fix: list[Placed], suppression: dict | None) -> None:
+    """Accuracy per contrast level for the two gates with Wilson CIs; the fitted Weibull curves when the index came from the fit."""
+    contrasts = sorted({p.flash.contrast for p in sac + fix})
+    top = 100 * max(contrasts, default=0.1)
+    fit = suppression is not None and suppression.get("method") == "psychometric" and suppression.get("threshold_saccade") is not None
+    slope = fit_pair_with_slope(*_contrast_counts(sac), *_contrast_counts(fix))[3] if fit and sac and fix else None
+    for name, group, colour, dx, key in (("saccade gate", sac, SACCADE_COLOUR, -0.04, "threshold_saccade"), ("fixation gate", fix, FIXATION_COLOUR, 0.04, "threshold_fixation")):
+        points = []
+        for c in contrasts:
+            members = [p for p in group if p.flash.contrast == c]
+            if members:
+                points.append((100 * c, sum(p.flash.correct for p in members), len(members)))
+        if points:
+            xs = np.asarray([x for x, _, _ in points]) * (1 + dx)
+            acc = np.asarray([k / n for _, k, n in points])
+            cis = [wilson(k, n) for _, k, n in points]
+            ax.errorbar(xs, 100 * acc, yerr=[[100 * (a - lo) for a, (lo, _) in zip(acc, cis)], [100 * (hi - a) for a, (_, hi) in zip(acc, cis)]],
+                        fmt="o", color=colour, capsize=4, zorder=3, label=f"{name} (n={len(group)})")
+        threshold = (suppression or {}).get(key)
+        if slope is not None and threshold is not None:
+            grid = np.linspace(top / 200, top * 1.4, 200)
+            ax.plot(grid, 100 * _weibull(grid / 100, np.asarray(threshold), np.asarray(slope)), color=colour, linewidth=1.5, alpha=0.8, zorder=2)
+    ax.axhline(50, color=CHANCE_COLOUR, linestyle="--", linewidth=1, zorder=1)
+    ax.set_xlim(0, top * 1.4)
+    ax.set_xticks([100 * c for c in contrasts])
+    ax.set_xticklabels([f"{100 * c:g}" for c in contrasts])
+    ax.set_ylim(0, 105)
+    ax.set_xlabel("line contrast (%)")
+    ax.set_ylabel("correct (%), with 95% CI")
+    ax.set_title("Accuracy vs contrast" + (" (curves: fitted Weibull)" if slope is not None else ""), fontsize=10)
+    ax.grid(True, alpha=0.3)
+    if contrasts:
+        ax.legend(fontsize=8, loc="lower right")
 
-    for ax in (ax_curve, ax_scatter):
-        ax.axvspan(0, duration, color="#C44E52", alpha=0.12, label=f"typical saccade (~{duration:.0f} ms)" if duration else None)
-        ax.axvline(0, color="#999999", linewidth=1)
-        ax.set_xlabel("flash time relative to saccade onset (ms)")
-        ax.grid(True, alpha=0.3)
 
-    centres = [(b["lo_ms"] + b["hi_ms"]) / 2 for b in summary["bins"] if b["n"]]
-    acc = [b["correct"] / b["n"] for b in summary["bins"] if b["n"]]
-    err = [[a - b["ci"][0] for a, b in zip(acc, [b for b in summary["bins"] if b["n"]])], [b["ci"][1] - a for a, b in zip(acc, [b for b in summary["bins"] if b["n"]])]]
-    ax_curve.errorbar(centres, [100 * a for a in acc], yerr=[[100 * e for e in err[0]], [100 * e for e in err[1]]], fmt="o-", color="#4C72B0", capsize=4)
-    for x, b in zip(centres, [b for b in summary["bins"] if b["n"]]):
-        ax_curve.annotate(f"n={b['n']}", (x, 3), ha="center", fontsize=8)
-    ax_curve.axhline(50, color="#999999", linestyle=":", linewidth=1)
-    ax_curve.set_ylim(0, 105)
-    ax_curve.set_ylabel("correct (%), with 95% CI")
-    ax_curve.set_title("Accuracy vs flash time")
-    if duration:
-        ax_curve.legend(loc="lower center", bbox_to_anchor=(0.5, 0.07), fontsize=8)
+def plot_timecourse_figure(
+    placed: list[Placed],
+    gates: list | None,
+    timecourse: dict | None,
+    suppression: dict | None,
+    median_saccade_ms: float | None,
+    out_path: Path,
+    title: str = "",
+    pooled: bool = False,
+) -> Path:
+    """The figure: accuracy vs time from onset (main panel, flash-count histogram beneath) and accuracy vs contrast (side panel).
+    `timecourse` is timecourse.timecourse_curve() (computed here when None), `suppression` the index result of the same flashes."""
+    tc = timecourse if timecourse is not None else timecourse_curve(placed, gates)
+    sac, fix, _ = _select_conditions(placed, NEAR_ONSET_MS, FAR_MS, gates)
+    rel, ok = timed_flashes(placed, gates)
+    fig = plt.figure(figsize=(14, 6.4), layout="constrained")
+    grid = fig.add_gridspec(2, 2, width_ratios=[2.5, 1], height_ratios=[4.2, 1])
+    ax_main = fig.add_subplot(grid[0, 0])
+    ax_hist = fig.add_subplot(grid[1, 0], sharex=ax_main)
+    ax_side = fig.add_subplot(grid[:, 1])
+    _draw_time_course(ax_main, ax_hist, tc, rel, ok, median_saccade_ms)
+    _draw_by_contrast(ax_side, sac, fix, suppression)
 
-    marker = {"correct": ("o", "#55A868"), "incorrect": ("x", "#C44E52"), "miss": ("s", "#999999")}
-    for outcome, (m, colour) in marker.items():
-        pts = [(p.rel_ms, 100 * p.flash.contrast) for p in placed if p.rel_ms is not None and p.flash.outcome == outcome and abs(p.rel_ms) <= 400]
-        if pts:
-            ax_scatter.scatter(*zip(*pts), marker=m, color=colour, alpha=0.8, label=outcome, s=34)
-    ax_scatter.set_ylabel("contrast (%)")
-    ax_scatter.set_xlim(-400, 400)
-    ax_scatter.set_title("Every flash")
-    ax_scatter.legend(fontsize=8, loc="best")
-
-    _condition_bars(ax_bars, summary)
-
-    fig.suptitle(title or "Saccadic suppression analysis")
+    base = tc["baseline"]
+    handles = [
+        Line2D([], [], color=CURVE_COLOUR, linewidth=2.2, label=f"accuracy (Gaussian kernel, SD {tc['sigma_ms']:g} ms; shaded: 95% bootstrap band)"),
+        Line2D([], [], color="#8A8A8A", linestyle="--", linewidth=1.6, label=f"fewer than {tc['min_effective_n_solid']:g} effective flashes (hidden below {tc['min_effective_n_drawn']:g})"),
+        Patch(color=FIXATION_COLOUR, alpha=0.4, label=(f"fixation flashes: {100 * base['p']:.0f}% correct, n={base['n']} (95% CI band)" if base["n"] else "fixation flashes: none")),
+        Line2D([], [], color=CHANCE_COLOUR, linestyle="--", label="chance (50%)"),
+    ]
+    if median_saccade_ms:
+        handles.append(Patch(color=SACCADE_COLOUR, alpha=0.18, label=f"typical saccade (~{median_saccade_ms:.0f} ms)"))
+    fig.legend(handles=handles, loc="outside lower center", ncol=3, fontsize=8, frameon=False)
+    fig.suptitle(f"{title or 'Saccadic suppression analysis'}\n{POOLED_NOTE if pooled else RUN_NOTE}", fontsize=11)
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
     return out_path
+
+
+def plot_report(placed: list[Placed], saccades: list[Saccade], summary: dict, out_path: Path, title: str = "", gates: list | None = None) -> Path:
+    """The per-run figure from analyze_session's `summary` (summarize() plus "timecourse" and "suppression" when present;
+    `gates` as in suppression_index, None: the index's time windows decide the conditions)."""
+    return plot_timecourse_figure(placed, gates, summary.get("timecourse"), summary.get("suppression"), summary.get("median_saccade_ms"), out_path, title)
 
 
 def write_flash_rows(path: Path, placed: list[Placed], gates: list, extra: dict[str, list] | None = None) -> Path:

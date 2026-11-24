@@ -37,3 +37,15 @@ BOOT_MIN_IDENTIFIED_SHARE = 0.75  # the bootstrap CI needs at least this share o
 BOOT_MIN_IDENTIFIED = 200  # ...and at least this many of them
 ACCURACY_FLOOR_MARGIN = 0.1  # accuracy fallback refused when fixation accuracy is below CHANCE + this (flashes not visible at all)
 ACCURACY_CEILING = 0.95  # both conditions at or above this accuracy -> noted: the accuracy index cannot show suppression
+
+# -- time-course figure (timecourse.py, analysis_output.plot_timecourse_figure) ----------------------------------------------
+TIMECOURSE_SIGMA_MS = 20.0  # Gaussian kernel SD of the accuracy-vs-time curve (Nadaraya-Watson); 15 / 20 / 25 were compared in the simulator
+TIMECOURSE_STEP_MS = 5.0  # the curve is evaluated every this many ms...
+TIMECOURSE_RANGE_MS = (-150.0, 200.0)  # ...from the first to the last of these (ms from the flash's own saccade onset)
+TIMECOURSE_MIN_EFFECTIVE_N_DRAWN = 10.0  # kernel effective n (Kish) below this: the curve is not drawn there
+TIMECOURSE_MIN_EFFECTIVE_N_SOLID = 20.0  # from the line above up to this: drawn grey and dashed ("low"); this or more: solid
+
+# -- companion numbers next to the index (relative_suppression.py) -----------------------------------------------------------
+STRATUM_MIN_SACCADE_FLASHES = 5  # a contrast enters the stratified accuracies only with at least this many saccade-gate flashes
+RELATIVE_SUPPRESSION_MIN_SACCADE_FLASHES = 15  # fewer saccade-gate flashes in total: no relative suppression S, counts only
+RELATIVE_SUPPRESSION_MIN_FIXATION_ACCURACY = 0.65  # stratified fixation accuracy below this: no S (the line is not clearly visible even without a saccade)

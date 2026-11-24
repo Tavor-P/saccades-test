@@ -432,21 +432,3 @@ def test_geometry_is_one_line_with_a_short_placeholder_note():
     assert "placeholder" not in an.format_geometry(Geometry(19.5, 60).as_settings())
     assert "Screen geometry: not recorded" in an.format_report(an.summarize([], []) | {"gates": {"saccade": [0, 0], "fixation": [0, 0], "excluded": [0, 0], "reasons": {}},
                                                                                        "suppression": an.suppression_index([])}, geometry=None)
-
-
-def test_condition_bars_put_the_two_red_bars_together_and_the_two_blue_bars_together():
-    import matplotlib.pyplot as plt
-    from matplotlib.colors import to_hex
-
-    from src.experiment.analysis_output import AWAY_COLOUR, NEAR_COLOUR, _condition_bars
-
-    summary = {"near_onset": (4, 10), "beyond": (13, 14), "inside": (3, 6), "outside": (20, 24), "p_near_vs_beyond": 0.009}
-    fig, ax = plt.subplots()
-    _condition_bars(ax, summary)
-    bars = sorted(ax.patches, key=lambda b: b.get_x())
-    assert [to_hex(b.get_facecolor()) for b in bars] == [NEAR_COLOUR.lower(), NEAR_COLOUR.lower(), AWAY_COLOUR.lower(), AWAY_COLOUR.lower()]
-    centres = [b.get_x() + b.get_width() / 2 for b in bars]
-    assert centres[3] - centres[2] == centres[1] - centres[0] < centres[2] - centres[1]  # a visible gap between the groups
-    assert [round(b.get_height()) for b in bars] == [40, 50, 93, 83]
-    assert "p = 0.009" in ax.get_title() and ax.get_ylabel() == "Accuracy (%)"
-    plt.close(fig)

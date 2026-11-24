@@ -30,6 +30,7 @@ def no_flash_jitter(monkeypatch):
 REAL_PLOT_TESTS = (
     "test_full_analysis_reproduces_a_planted_suppression_dip",  # run plot, size check
     "test_plot_report_handles_all_correct_all_wrong_and_single_flash_bins",  # the odd bin shapes
+    "test_timecourse_figure_draws_run_pooled_and_sparse_data",  # the time-course figure: planted dip, pooled note, empty / sparse data
     "test_outputs_are_written_in_the_participant_analysis_folder",  # participant plot, size check
     "test_end_to_end_one_vs_one_analyses_once_reuses_then_refreshes_when_a_run_changes",  # comparison plot
 )
@@ -59,19 +60,25 @@ def _fast_png_plots(request, monkeypatch):
 
 # -- fewer bootstrap refits ------------------------------------------------------------------------------------------------
 # suppression_index() refits 1000 bootstrap resamples per call, and the analysis tests call it a hundred times. The CI logic is
-# the same with fewer (it needs >= BOOT_MIN_IDENTIFIED = 200 identified refits, so 300 is the practical floor).
+# the same with fewer (it needs >= BOOT_MIN_IDENTIFIED = 200 identified refits, so 300 is the practical floor). The time-course band
+# and the companion numbers (their n_boot defaults are 1000 too) go through the same stub.
 TEST_BOOTSTRAP_RESAMPLES = 300
 
 
 @pytest.fixture(scope="session", autouse=True)
 def _fewer_bootstrap_resamples():
+    import src.experiment.relative_suppression as companion
     import src.experiment.suppression_stats as stats
+    import src.experiment.timecourse as timecourse
 
-    original = stats.suppression_index.__defaults__
-    assert original is not None and 1000 in original
-    stats.suppression_index.__defaults__ = tuple(TEST_BOOTSTRAP_RESAMPLES if v == 1000 else v for v in original)
+    functions = (stats.suppression_index, companion.companion_numbers, timecourse.timecourse_curve)
+    originals = [f.__defaults__ for f in functions]
+    for f, original in zip(functions, originals):
+        assert original is not None and 1000 in original
+        f.__defaults__ = tuple(TEST_BOOTSTRAP_RESAMPLES if v == 1000 else v for v in original)
     yield
-    stats.suppression_index.__defaults__ = original
+    for f, original in zip(functions, originals):
+        f.__defaults__ = original
 
 
 # -- parallel runs (pytest-xdist, `--dist loadgroup` in pytest.ini) ----------------------------------------------------------

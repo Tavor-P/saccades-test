@@ -75,6 +75,7 @@ from src.experiment.leg_gating import (  # noqa: F401 (re-exported)
     suppression_by_leg,
 )
 from src.experiment.logger import read_trial_rows
+from src.experiment.relative_suppression import companion_numbers
 from src.experiment.run_quality import quality_line, run_facts
 from src.experiment.run_summary import trial_counts
 from src.experiment.saccade_detection import Flash, Placed, Saccade, detect_saccades, load_flashes, load_trace, place_flashes  # noqa: F401
@@ -94,6 +95,7 @@ from src.experiment.suppression_stats import (  # noqa: F401 (re-exported)
     suppression_index,
     wilson,
 )
+from src.experiment.timecourse import timecourse_curve
 from src.timebase import ms_to_s
 
 # -- driver --------------------------------------------------------------------------------------
@@ -191,6 +193,8 @@ def analyze_run(
     summary["gates"] = summarize_gates(placed, gates)
     suppression = suppression_index(placed, near_ms, far_ms, gates=gates)
     summary["suppression"] = suppression
+    summary["timecourse"] = timecourse_curve(placed, gates)
+    summary["companion"] = companion_numbers(placed, gates, suppression)
     meta = meta or {}
     try:
         geometry_line = format_geometry(meta.get("settings"))
@@ -232,14 +236,14 @@ def analyze(
         leg_flashes = {leg: sum((p.flash.leg or "out") == leg for p in placed) for leg in LEGS}
     report = format_report(summary, label=f"(session {stamp})", geometry=run.geometry_line, thresholds=thresholds, test_run=run.is_test,
                            quality=run.quality_line(), leg_flashes=leg_flashes, speed=speed_exclusions(placed, gates))
-    saved = suppression
+    saved = {**suppression, "companion": summary["companion"], "timecourse": summary["timecourse"]}
     if run.return_jump:
         assert run.return_latency is not None and run.by_leg is not None  # always set for return-jump runs
-        saved = {**suppression, "by_leg": {leg: run.by_leg[leg] for leg in LEGS}, "return_latency": run.return_latency}
+        saved = {**saved, "by_leg": {leg: run.by_leg[leg] for leg in LEGS}, "return_latency": run.return_latency}
 
     out_dir = Path(out_dir) if out_dir is not None else ref.analysis_dir
     out_dir.mkdir(parents=True, exist_ok=True)
-    png = plot_report(placed, run.saccades, summary, out_dir / "plot.png", title=f"Session {stamp}")
+    png = plot_report(placed, run.saccades, summary, out_dir / "plot.png", title=f"Session {stamp}", gates=gates)
     csv_path = write_flash_rows(out_dir / "flashes.csv", placed, gates)
     json_path = out_dir / "suppression.json"
     json_path.write_text(json.dumps(saved, indent=2), encoding="utf-8")
