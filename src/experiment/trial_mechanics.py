@@ -9,6 +9,7 @@ from typing import Generic, Sequence, TypeVar
 from include.eye_tracking.constants import CENTER_POSITION, LEFT_POSITION, RIGHT_POSITION
 from include.eye_tracking.types import GazeZone
 from include.experiment.constants import (
+    MAD_TO_SD_FACTOR,
     ONSET_BASELINE_NEAR_SOURCE,
     ONSET_BASELINE_WINDOW_MS,
     RT_AVERAGE_ROLLING_WINDOW,
@@ -63,7 +64,7 @@ def robust_kept_ms(samples: Sequence[float], min_plausible_ms=_DEFAULT_MIN) -> l
     if not plausible:
         return []
     median = statistics.median(plausible)
-    mad = statistics.median(abs(s - median) for s in plausible) * 1.4826
+    mad = statistics.median(abs(s - median) for s in plausible) * MAD_TO_SD_FACTOR
     limit = median + RT_OUTLIER_MAD_K * max(mad, RT_OUTLIER_MAD_FLOOR_MS)
     return [s for s in plausible if s <= limit]
 

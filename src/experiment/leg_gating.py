@@ -8,6 +8,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from include.experiment.analysis_constants import OUT_SEARCH_S, RETURN_MIN_AMPLITUDE_REL, RETURN_SEARCH_AFTER_JUMP_S
+from include.experiment.constants import MAD_TO_SD_FACTOR
 from src.experiment.flash_gates import FIXATION, SACCADE, classify_leg_flash
 from src.experiment.saccade_detection import Flash, Placed, Saccade
 from src.experiment.suppression_stats import suppression_index
@@ -110,7 +111,7 @@ def suppression_by_leg(placed: list[Placed], gates: list, **kwargs) -> dict:
 
 
 def _robust_sd(values: np.ndarray) -> float:
-    return float(1.4826 * np.median(np.abs(values - np.median(values))))
+    return float(MAD_TO_SD_FACTOR * np.median(np.abs(values - np.median(values))))
 
 
 def return_latency_stats(flashes: list[Flash], trials: list[TrialSaccades], settings: dict | None = None) -> dict:
