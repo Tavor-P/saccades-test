@@ -13,7 +13,7 @@ backend. Participant/experimenter docs: [README.md](README.md).
 - Geometry: the startup dialog asks for screen height and viewing distance; `geometry.Geometry` (built once in `main`) gives the line's offset/SD in screen-height units, passed to
   `ExperimentSession`/`TutorialSession` (`trial_mechanics.line_position`) and `build_stimuli(geometry=)`. `Geometry.default()` = the placeholder constants
   (`VIEWING_DISTANCE_CM`/`SCREEN_HEIGHT_CM`). Used geometry is in `session.json` `settings` and the `analyze_session` header.
-- **Contrasts are a guess**: `SACCADE_FIXED_CONTRASTS` 4/6/8 % (dialog min 4 / max 8, 3 levels) = ~5-10 grey steps on 8-bit (`HARDWARE_CONTRAST_FLOOR` 0.78 %), so levels are coarse. Re-pilot on glasses.
+- **Contrasts are a guess**: `SACCADE_FIXED_CONTRASTS` 4/6/8 % (dialog min 4 / max 8, 3 levels), `HARDWARE_CONTRAST_FLOOR` 0.78 % (README "Known limitations").
 - Rolling RT = `robust_average_ms` over the last `RT_AVERAGE_ROLLING_WINDOW` (12) latencies; fewer than `RT_MIN_SAMPLES_FOR_AVERAGE` (3) plausible samples keep the previous value
   (initially `DEFAULT_REACTION_TIME_MS`).
 - **Return jump** (dialog "Return jump", default `RETURN_JUMP_DEFAULT` on): after the out saccade the target jumps back to the start symbol (`RETURN_JUMP_TRIGGER` "arrival" (default)
@@ -66,8 +66,8 @@ Double-click launchers: `run_experiment.bat` in the repo root; `analyze_latest.b
   it costs in-saccade flashes). A slow first-time starter costs only ~1 usable flash (8 practice trials + the window of 12 absorb it). The centre stays on the average RT.
 - **Nothing has run on glasses since the last refactors**: line rendering, quiz/captions, every contrast level, results layout, phone video + sync flashes, head monitor and the new analysis/dashboard pages
   are tested only on simulator, fake devices and synthetic data.
-- **Known problems**: (1) the old ~95 ms gaze delay looks fixed (now ~13-20 ms, Gotchas); live `flash_during_saccade` is unvalidated, post-hoc analysis is the judgement. (2) RT SD ~60-80 ms: only ~2/7 of flashes land within +-50 ms of onset
-  (simulator: ~55 fixation / ~31 saccade flashes per 150 trials). (3) Geometry is the 26 cm / 50 cm placeholder until the user measures their monitor (dialog says so).
+- **Known problems** (numbers in README "Known limitations"): (1) gaze delay is ~13-20 ms now (Gotchas); live `flash_during_saccade` is unvalidated, post-hoc analysis is the judgement. (2) RT SD ~60-80 ms: few flashes land near onset.
+  (3) Geometry is the 26 cm / 50 cm placeholder until the user measures their monitor (dialog says so).
 - **Next**: (0) on glasses, measure the real return-latency spread (`analyze_session` return-latency report) and set `RETURN_FLASH_SPREAD_SD_MS` from it; (1) Test run, then several 150-trial Real runs per person on glasses; (2) measure real screen geometry; (3) confirm gaze latency stays ~15 ms on long real runs; (4) one-page grant figure; (5) clinical metadata fields (needs IRB).
 
 ## Repo map
@@ -146,10 +146,9 @@ Paths are checked by `tests/test_docs.py` - keep them real.
 
 ## On-disk contracts
 
-- `data/<participant>/<YYYY-MM-DD_HH-MM-SS>[_test]/`: `trials.csv`, `session.json`, `gaze_trace.csv`, head-motion CSV (IMU), RUN_SUMMARY.txt, analysis/ and glasses/ subfolders.
+- Folder layout (`data/<participant>/<YYYY-MM-DD_HH-MM-SS>[_test]/`, pooled/comparison/study files): README "Output". The head-motion CSV is the IMU one.
 - `trials.csv`: one row per trial (`phase` column: saccade / rt_test; old runs also baseline, read via `PHASE_WORDS`), schema `TRIAL_COLUMNS` with plain names. `DROPPED_FROM_CSV` lists fields kept out and why.
-- `session.json` sections: participant, run, settings, hardware, results, gaze_quality, head_motion, ignored_space_presses, glasses_video. The results phase summary includes
-  `rt_samples_total/_in_window/_dropped_in_window`.
+- `session.json` sections: listed in README "Output". The results phase summary includes `rt_samples_total/_in_window/_dropped_in_window`.
 - Readers (`read_trial_rows`/`read_trials`, `data_access`, `analyze_session`, replay) take run folders only: the loose `data/results_<ts>.csv` layout was removed on 2026-11-24 (none existed on disk).
   Kept for old run folders, each with a comment saying who needs it: `_LEGACY_SIDES`, the baseline `PHASE_WORDS`, `_CANONICAL_NAMES` + the `trial_index` branch of `read_trial_rows`, and traces holding
   screen-ratio x `NEON_SCENE_WIDTH` in `x_px` (why that constant stays).
@@ -169,9 +168,9 @@ Paths are checked by `tests/test_docs.py` - keep them real.
 - **Test doubles**: `FakeGazeSource` (set `.zone`/`.face_found`/`.position`; `position` must move with `.zone`) and `fake_time` (patches `timebase._clock`, never the global `time`).
 - **Simulator**: `simulation.py` runs the real `ExperimentSession` against `SimulatedParticipant` (reads only `render_state()`), `SimulatedClock`, `SimulatedGazeSource`; no PsychoPy, no files,
   deterministic per `seed`. `ParticipantProfile` = knobs (RT, thresholds incl. suppression, tracker noise/latency, dropouts, `head_spikes`); `simulate_session()` returns `flash_truth`.
-- **Tracking-quality gate**: a flash is `tracking_ok=False` (excluded) if tracking dropped within `TRACKING_LOSS_WINDOW_MS` of it, or head speed exceeded `HEAD_MAX_SPEED_DPS` there
-  (`ExperimentSession._head_speed_spike_near_flash`, `head_flagged_trials`). Head drift > `HEAD_DRIFT_WARN_DEG` is warned (spoken) between trials at most once per `HEAD_WARN_MIN_INTERVAL_S` (`pop_head_warning`).
-  The IMU is polled at `HEAD_POLL_HZ` on its own thread; no IMU -> off with one warning (`head_motion.status` = `unavailable (...)`). **Unvalidated on glasses**: thresholds, rate, IMU-vs-gaze clock alignment.
+- **Tracking-quality gate** (behaviour and thresholds: README "Head movement"): a flash is `tracking_ok=False` if tracking dropped within `TRACKING_LOSS_WINDOW_MS` of it, or head speed exceeded `HEAD_MAX_SPEED_DPS` there
+  (`ExperimentSession._head_speed_spike_near_flash`, `head_flagged_trials`); drift warnings via `pop_head_warning`. The IMU is polled at `HEAD_POLL_HZ` on its own thread; no IMU -> off with one warning
+  (`head_motion.status` = `unavailable (...)`). **Unvalidated on glasses**: thresholds, rate, IMU-vs-gaze clock alignment.
 - **Flash timing is open-loop (`"scheduled"`)**: each trial draws from a bag of `TIMING_OFFSETS_MS` + `CONTROL_OFFSETS_MS`; an offset label is one of 9 equal-probability slices of the normal curve (mean avg RT,
   SD `FLASH_SPREAD_SD_MS`, cut to `FLASH_WINDOW_MIN_MS`..`FLASH_WINDOW_MAX_MS`), drawn by inverse CDF (`trial_mechanics.spread_flash_delay_ms`). The real delay is `scheduled_delay_ms`; `timing_offset_ms` keeps the label.
   The live classifier measures `reaction_latency_ms` and computes `flash_during_saccade` post hoc (`True`/`False`/`None`; `None` = landing never confirmed; only `True` is valid). The real judgement is `analyze_session`.
@@ -203,8 +202,8 @@ SPACE presses are never silently dropped; every ignored one is counted in `sessi
   (`timestamps_are_capture_time`). Check `gaze_quality.latency_ms_median` after each run. If the start-up offset estimate fails (or exceeds `NEON_CLOCK_ESTIMATE_TIMEOUT_S`)
   a WARNING is printed and `gaze_quality.clock_offset_status` = `failed (...)` (else `ok`): stamps fall back to arrival time and `analyze_session` needs `--offset-ms`.
 - **Neon geometry**: the scene camera is head-mounted, so head movement shifts gaze x with no eye movement; calibration assumes a still head (chin rest). The address comes from the dialog's "Neon address" field (first-time default `NEON_DEVICE_ADDRESS`, remembered in `data/settings.json`).
-- **Neon start-up check**: `run_experiment.main` calls `find_neon_or_exit` BEFORE the run folder and window: it probes (GET `/api/status`, `NEON_PROBE_TIMEOUT_S`) the dialog address, then
-  auto-discovery (`NEON_PREFLIGHT_DISCOVERY_S`), then the PC's default gateway (on a phone hotspot the phone is the gateway). Nothing answers -> plain message on stderr + message box, exit 2.
+- **Neon start-up check** (search order: README "First-time setup" step 4): `run_experiment.main` calls `find_neon_or_exit` BEFORE the run folder and window; it probes GET `/api/status` (`NEON_PROBE_TIMEOUT_S`),
+  discovery takes `NEON_PREFLIGHT_DISCOVERY_S`. Nothing answers -> plain message on stderr + message box, exit 2.
   The found address goes to `NeonGazeSource` and `session.json` `hardware.neon_device` (None until `set_neon_device()`; the `NEON_DEVICE_ADDRESS` default is not recorded). `NeonGazeSource.start()` raises one `NeonConnectionError` (no aiohttp chain) and swallows the half-built `Device.__del__` noise.
   The probe also requires a connected gaze `Sensor` when the status lists sensors; a malformed reply never crashes the search. The phone's self-reported IP
   (time echo + gaze stream use it) is saved as `hardware.neon_phone_ip` (warned if it differs). A `NeonConnectionError` later in the run -> window closes, "Lost the Neon glasses" box, exit 2.
