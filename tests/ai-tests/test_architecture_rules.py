@@ -4,6 +4,7 @@ cost real debugging time (or would make the headless simulation/tests impossible
 import ast
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -145,18 +146,25 @@ def test_only_run_experiment_and_rendering_need_psychopy_among_experiment_module
 def test_backends_are_imported_lazily():
     """Why: the device library (pupil_labs) loads only when a gaze source is built, so the simulator, tests and analysis run without it.
     Checked in a fresh interpreter per module so other tests' imports can't mask a violation."""
-    for module, forbidden in [
+    cases = [
         ("src.eye_tracking.gaze_factory", {"PySpin", "mediapipe", "cv2", "pupil_labs"}),
         ("src.eye_tracking.neon_source", {"PySpin", "mediapipe", "psychopy"}),
         ("src.eye_tracking.neon_address", {"pupil_labs", "PySpin", "mediapipe", "psychopy", "cv2"}),
         ("src.eye_tracking.gaze_trace", {"PySpin", "mediapipe", "psychopy", "cv2"}),
         ("src.experiment.simulation", {"PySpin", "mediapipe", "psychopy", "pyglet", "cv2"}),
-    ]:
+    ]
+
+    def run(case):
+        module, forbidden = case
         code = (
             f"import sys, importlib; importlib.import_module({module!r}); "
             f"print(sorted(m for m in {sorted(forbidden)!r} if m in sys.modules))"
         )
-        out = subprocess.run([sys.executable, "-c", code], cwd=ROOT, capture_output=True, text=True)
+        return subprocess.run([sys.executable, "-c", code], cwd=ROOT, capture_output=True, text=True)
+
+    with ThreadPoolExecutor(len(cases)) as pool:  # the interpreters are independent: start them together
+        outputs = list(pool.map(run, cases))
+    for (module, _), out in zip(cases, outputs):
         assert out.returncode == 0, (module, out.stderr[-500:])
         assert out.stdout.strip() == "[]", f"{module} eagerly imported {out.stdout.strip()}"
 

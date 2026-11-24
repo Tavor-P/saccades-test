@@ -3,7 +3,6 @@
 import re
 
 from include.experiment import participant_text as words
-from src.experiment import run_experiment
 
 
 def _all_strings() -> list[str]:
@@ -27,6 +26,8 @@ def test_every_string_is_short_and_uses_plain_words():
 
 
 def test_dots_are_named_by_position_and_the_sync_step_line_says_what_is_coming():
+    from src.experiment import run_experiment  # here: importing it (PsychoPy) costs every test worker seconds at collection
+
     assert "left" in words.CALIBRATE_LEFT and "right" in words.CALIBRATE_RIGHT and "middle" in words.CALIBRATE_CENTER
     assert "left" in words.RT_TEST_INTRO
     assert run_experiment.SYNC_FLASH_ANNOUNCEMENT == words.SYNC_FLASH

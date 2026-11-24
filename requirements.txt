@@ -17,3 +17,4 @@ pupil-labs-realtime-api
 # Dev tools (not needed to run the experiment): lint + type check, kept clean by tests/test_lint.py.
 ruff>=0.6
 mypy>=1.10
+pytest-xdist>=3.5      # parallel test runs (pytest.ini addopts); -n0 runs in one process

@@ -11,7 +11,6 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from scipy.stats import mannwhitneyu
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from synthetic_runs import write_run  # noqa: E402
@@ -127,6 +126,8 @@ def test_separated_groups_give_a_small_p_and_identical_groups_do_not():
 
 
 def test_mann_whitney_exact_matches_scipy_without_ties_and_handles_ties():
+    from scipy.stats import mannwhitneyu  # here, not at the top: importing scipy.stats costs a second of every test worker's start-up
+
     a, b = [0.61, 0.42, 0.55, 0.7], [0.31, 0.45, 0.2, 0.12, 0.5]
     ours = cmp.mann_whitney(a, b)
     ref = mannwhitneyu(a, b, alternative="two-sided", method="exact")

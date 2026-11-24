@@ -34,12 +34,18 @@ class GateResult:
     latency_ms: float | None = None  # nearest saccade's onset minus the go-cue
 
 
+_speed_trace_cache: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None  # (t, x, speed) of the last trace asked about
+
+
 def speed_at(t: np.ndarray, x: np.ndarray, when: float) -> float | None:
     """3-sample-smoothed gaze speed interpolated at `when`; None outside the trace."""
+    global _speed_trace_cache
     if len(t) < 5 or when < t[0] or when > t[-1]:
         return None
-    speed = np.abs(np.gradient(np.convolve(x, np.ones(3) / 3, mode="same"), t))
-    return float(np.interp(when, t, speed))
+    if _speed_trace_cache is None or _speed_trace_cache[0] is not t or _speed_trace_cache[1] is not x:
+        # One speed trace per gaze trace, not per flash (the gradient of a whole recording is the expensive part).
+        _speed_trace_cache = (t, x, np.abs(np.gradient(np.convolve(x, np.ones(3) / 3, mode="same"), t)))
+    return float(np.interp(when, t, _speed_trace_cache[2]))
 
 
 def has_tracking_gap(t: np.ndarray, when: float, half_window_ms: float = FIXATION_EXCLUSION_MS) -> bool:
