@@ -215,22 +215,36 @@ def test_a_missing_raising_silent_or_malformed_imu_switches_the_monitor_off_with
         source.stop()
 
 
-def _gaze_reads_in(seconds: float, imu: str) -> int:
+def _gaze_reads_per_s(seconds: float, imu: str) -> float:
+    """Gaze reads per second of real elapsed time (not of the requested sleep, which overshoots on a busy machine)."""
     device = FakeNeon(imu=imu)
     source = NeonGazeSource(device=device)
     source.start()
+    started = time.perf_counter()
     time.sleep(seconds)
     source.stop()
-    return device.gaze_reads
+    elapsed = time.perf_counter() - started
+    return device.gaze_reads / elapsed
 
 
 def test_imu_polling_overhead_on_the_gaze_loop_is_small():
     """Measured, not just asserted: the gaze loop here is paced by a 1 ms sleep, so reads/s shows what the extra thread costs it.
-    The bound is generous (CI noise); the real number is printed with -s."""
-    baseline = _gaze_reads_in(1.0, "missing")
-    with_imu = _gaze_reads_in(1.0, "ok")
-    print(f"\ngaze reads/s without IMU thread: {baseline}, with IMU thread: {with_imu}")
-    assert with_imu >= 0.7 * baseline
+    Wall-clock rates are noisy on a busy machine, so each attempt interleaves the two modes (both see the same load) and keeps the
+    best of three runs per mode: a load spike can only lower a rate. A busy spell can still outlast one attempt (the 1 ms sleep then
+    degrades to the ~15 ms Windows timer tick), so a failed attempt is re-measured, up to three attempts. A real slowdown from the
+    IMU thread would fail every attempt. The bound is generous; the real numbers are printed with -s."""
+    attempts = []
+    for _ in range(3):
+        baseline, with_imu = [], []
+        for _ in range(3):
+            baseline.append(_gaze_reads_per_s(1.0, "missing"))
+            with_imu.append(_gaze_reads_per_s(1.0, "ok"))
+        best_baseline, best_with_imu = max(baseline), max(with_imu)
+        attempts.append(f"without IMU thread {baseline} (best {best_baseline:.0f}), with IMU thread {with_imu} (best {best_with_imu:.0f})")
+        print(f"\ngaze reads/s {attempts[-1]}")
+        if best_with_imu >= 0.7 * best_baseline:
+            return
+    pytest.fail("IMU thread slowed the gaze loop in every attempt:\n" + "\n".join(attempts))
 
 
 # -- the real session ------------------------------------------------------------------------------
