@@ -57,9 +57,11 @@ backend. Participant/experimenter docs: [README.md](README.md).
 ```
 Double-click launchers: `run_experiment.bat` in the repo root; `analyze_latest.bat`, `analyze_participant.bat`, `compare.bat`, `study_summary.bat`, `run_tests.bat` in `launchers/`.
 
-## Status and next steps (2026-11-22)
+## Status and next steps (2026-11-24)
 
 - **Goal**: grant to test saccadic suppression in TBI vs non-TBI; present as a *feasibility pilot (n=1)*, never a group result.
+- **Code-quality pass 2026-11-24** (behaviour unchanged, sim output byte-identical): session split (`trial_legs`, `session_config`, `trial_record`), line naming, IO cleanup (`session_files`, `textio`),
+  run/analyze split (`rendering`, analysis modules, `analysis_constants`, summary.json schema 3), test cleanup, ms/s helpers + named constants, ruff + mypy at zero findings, docs deduped against README.
 - **Shipped setup**: flash times on a bell curve centred on the average RT (SD `FLASH_SPREAD_SD_MS` 80, dialog "Flash timing spread"), cut to 0-500 ms after the go cue; controls at avg RT +400/+500 +/-10 ms;
   fixed saccade contrasts; plain Neon, chin rest. Onboarding: calibration -> quiz -> 8 practice trials seeding the RT average. Every trial waits for SPACE.
 - **Simulation 2026-11-22** (code not kept): shifting the bell curve's centre earlier than the average RT gains almost nothing in the 50 ms before onset (spread is ~110 ms SD anyway; beyond -20 ms
