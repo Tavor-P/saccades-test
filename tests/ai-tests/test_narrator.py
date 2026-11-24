@@ -1,16 +1,11 @@
-import time
 from unittest.mock import Mock
 
+from helpers import wait_until
 from src.experiment.narrator import Narrator
 
 
 def _wait_until(predicate, timeout: float = 2.0) -> None:
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        if predicate():
-            return
-        time.sleep(0.01)
-    raise AssertionError("condition never became true within timeout")
+    assert wait_until(predicate, timeout), "condition never became true within timeout"
 
 
 def test_speak_reaches_sapi_in_order_on_the_background_thread_and_stop_ends_it(monkeypatch):
