@@ -1,0 +1,64 @@
+Participant GOLD: pooled saccadic-suppression analysis
+======================================================
+
+QUALITY  CHECK     gaze delay 18 ms · clock offset unknown in 2 of 2 runs · head unknown · 0 flashes lost to tracking
+RESULT   +0.37     suppression index, 95% CI not available
+AMOUNT   OK        38 saccade / 82 fixation flashes usable of 120 (need 12+ each for a threshold fit) · 2 runs pooled
+
+All analysed runs were pooled.
+
+RUNS POOLED
+-----------
+  run                    date             mode  saccade fixation excluded  run index        gaze delay longest gap
+  <RUN>    <RUN> real       18       42        0  +0.37                 18 ms       12 ms
+  <RUN>    <RUN> real       20       40        0  +0.37                 18 ms       12 ms
+
+DATA QUALITY
+------------
+  Excluded: 0
+  Excluded as not moving fast yet: 0 before saccade onset, 0 after
+
+INDEX FIT
+---------
+  Threshold contrast: saccade 7.4%, fixation 4.6%
+  Note: no CI: only 99 of 100 bootstrap fits were identified (need >= 75% and >= 200)
+  Note: 1% of bootstrap fits were unidentified and excluded from the CI
+  Shared Weibull slope: 3
+
+COMPANION NUMBERS
+-----------------
+  Extra to the RESULT line above, which stays the headline. Accuracies are stratified: equal weight over the contrasts with at least 5 saccade flashes.
+  Accuracy, fixation minus saccade: +16.9 percentage points (95% CI +3.7 to +33.1)
+    fixation 88% vs saccade 71% correct, contrasts 4/6/8%
+  Relative suppression S: 0.44 (95% CI +0.11 to +0.82); 0 = none, 1 = guessing during saccades while seen in fixation
+  Threshold ratio saccade / fixation: log10 +0.2 (x1.58; 95% CI not available)
+  Time curve (descriptive): lowest point 62% correct at +65 ms from onset, fixation baseline 89% (n=82)
+
+ACCURACY BY CONTRAST
+--------------------
+  Contrast   Saccade   Fixation   Excluded
+      4%   10 / 16    17 / 24          0
+      6%     6 / 9    29 / 31          0
+      8%   11 / 13    27 / 27          0
+
+SUPPRESSION INDEX BY LEG
+------------------------
+  Leg      Flashes   In a saccade   Saccade   Fixation   Index   95% CI   Method
+  out           31             13   10 / 13    73 / 82   +0.5            psychometric
+  return        89             25   17 / 25    73 / 82   +0.32            psychometric
+  pooled       120             38   27 / 38    73 / 82   +0.37            psychometric
+
+RETURN LATENCY
+--------------
+  Trials jumped: 120 (0 forced jumps left out, no return saccade found in 0)
+  n 120: median 153 ms, SD 2 ms (robust SD 2 ms), predictive 0%
+  Live classifier (return_reaction_ms): n 120, median 150 ms, SD 0 ms
+  Return flash spread SD (RETURN_FLASH_SPREAD_SD_MS): 40 ms; trigger arrival
+  CHECK: measured 2 ms vs set 40 ms: consider lowering RETURN_FLASH_SPREAD_SD_MS
+
+TECHNICAL DETAILS
+-----------------
+  Screen 26 cm high at 50 cm, line 2 deg off, SD 0.15 deg; contrasts 4/6/8 %; run kind return_jump/arrival
+  Analysis thresholds: defaults (analysis_constants.py)
+
+Files: report.txt (this), plot.png, flashes.csv (every pooled flash with its run), summary.json (machine-readable).

@@ -1,0 +1,57 @@
+Participant GOLD: pooled saccadic-suppression analysis
+======================================================
+
+QUALITY  CHECK     gaze delay 18 ms · clock offset unknown in 2 of 2 runs · head unknown · 0 flashes lost to tracking
+RESULT   +0.66     suppression index, 95% CI not available
+AMOUNT   OK        47 saccade / 73 fixation flashes usable of 120 (need 12+ each for a threshold fit) · 2 runs pooled
+
+All analysed runs were pooled.
+
+RUNS POOLED
+-----------
+  run                    date             mode  saccade fixation excluded  run index        gaze delay longest gap
+  <RUN>    <RUN> real       23       37        0  +0.46                 18 ms       12 ms
+  <RUN>    <RUN> real       24       36        0  +0.47 (accuracy)      18 ms       12 ms
+
+DATA QUALITY
+------------
+  Excluded: 0
+  Excluded as not moving fast yet: 0 before saccade onset, 0 after
+
+INDEX FIT
+---------
+  Threshold contrast: saccade 10.8%, fixation 3.7%
+  Note: no CI: only 75 of 100 bootstrap fits were identified (need >= 75% and >= 200)
+  Note: 25% of bootstrap fits were unidentified and excluded from the CI
+  Shared Weibull slope: 3
+
+COMPANION NUMBERS
+-----------------
+  Extra to the RESULT line above, which stays the headline. Accuracies are stratified: equal weight over the contrasts with at least 5 saccade flashes.
+  Accuracy, fixation minus saccade: +35.6 percentage points (95% CI +22.5 to +51.2)
+    fixation 95% vs saccade 59% correct, contrasts 4/6/8%
+  Relative suppression S: 0.8 (95% CI +0.51 to +1.13); 0 = none, 1 = guessing during saccades while seen in fixation
+  Threshold ratio saccade / fixation: log10 +0.47 (x2.93; 95% CI not available)
+  Time curve (descriptive): lowest point 55% correct at +70 ms from onset, fixation baseline 95% (n=73)
+
+ACCURACY BY CONTRAST
+--------------------
+  Contrast   Saccade   Fixation   Excluded
+      4%    7 / 15    21 / 25          0
+      6%   12 / 17    23 / 23          0
+      8%    9 / 15    25 / 25          0
+
+SUPPRESSION INDEX BY LEG
+------------------------
+  no return jump in these runs
+
+RETURN LATENCY
+--------------
+  no return jump in these runs
+
+TECHNICAL DETAILS
+-----------------
+  Screen 26 cm high at 50 cm, line 2 deg off, SD 0.15 deg; contrasts 4/6/8 %; run kind single
+  Analysis thresholds: defaults (analysis_constants.py)
+
+Files: report.txt (this), plot.png, flashes.csv (every pooled flash with its run), summary.json (machine-readable).

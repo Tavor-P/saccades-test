@@ -92,7 +92,7 @@ AREAS = {
          "test_tracking_quality", "test_fast_paths", "test_ai_tools", "test_participant_text"), "session"),
     **dict.fromkeys(
         ("test_analyze_session", "test_analyze_participant", "test_compare", "test_flash_gates", "test_return_analysis",
-         "test_glasses_video", "test_participant_labels", "test_timecourse"), "analysis"),
+         "test_glasses_video", "test_participant_labels", "test_timecourse", "test_golden_analysis"), "analysis"),
     **dict.fromkeys(
         ("test_dashboard_app", "test_dashboard_compare", "test_dashboard_data_access", "test_dashboard_results"), "dashboard"),
     **dict.fromkeys(("test_neon_source", "test_gaze_trace", "test_neon_address", "test_head_monitor"), "gaze"),

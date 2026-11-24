@@ -1,0 +1,61 @@
+trial,contrast,orientation,outcome,flash_rel_onset_ms,inside_saccade,condition,gate_reason,flash_leg,saccade_latency_ms
+0,0.04,above,correct,-165.9,False,fixation,166 ms from the nearest saccade,out,205.1
+1,0.06,below,correct,572.4,False,fixation,502 ms from the nearest saccade,return,155.1
+2,0.08,above,correct,548.6,False,fixation,479 ms from the nearest saccade,return,155.2
+3,0.04,below,correct,414.5,False,fixation,345 ms from the nearest saccade,return,155.2
+4,0.06,above,incorrect,540.2,False,fixation,470 ms from the nearest saccade,return,155.3
+5,0.08,below,incorrect,43.7,True,saccade,fast gaze movement at the flash (out saccade),out,205.3
+6,0.04,above,correct,-176.8,False,fixation,177 ms from the nearest saccade,out,205.4
+7,0.06,below,correct,571.9,False,fixation,502 ms from the nearest saccade,return,155.5
+8,0.08,above,correct,17.9,True,saccade,fast gaze movement at the flash (out saccade),out,205.5
+9,0.04,below,correct,52.6,True,saccade,fast gaze movement at the flash (out saccade),out,205.6
+10,0.06,above,incorrect,18.9,True,saccade,fast gaze movement at the flash (return saccade),return,155.6
+11,0.08,below,correct,466.5,False,fixation,397 ms from the nearest saccade,return,155.7
+12,0.04,above,incorrect,411.3,False,fixation,341 ms from the nearest saccade,return,155.7
+13,0.06,below,incorrect,408.9,False,fixation,339 ms from the nearest saccade,return,155.8
+14,0.08,above,correct,515.6,False,fixation,446 ms from the nearest saccade,return,155.9
+15,0.04,below,correct,551.2,False,fixation,481 ms from the nearest saccade,return,155.9
+16,0.06,above,correct,22.8,True,saccade,fast gaze movement at the flash (out saccade),out,206
+17,0.08,below,correct,563.5,False,fixation,493 ms from the nearest saccade,return,156
+18,0.04,above,incorrect,45.8,True,saccade,fast gaze movement at the flash (return saccade),return,156.1
+19,0.06,below,correct,-185.2,False,fixation,185 ms from the nearest saccade,out,206.1
+20,0.08,above,correct,-167.7,False,fixation,168 ms from the nearest saccade,out,201.2
+21,0.04,below,correct,428.7,False,fixation,354 ms from the nearest saccade,return,151.3
+22,0.06,above,correct,426.3,False,fixation,351 ms from the nearest saccade,return,151.3
+23,0.08,below,correct,439.1,False,fixation,364 ms from the nearest saccade,return,151.4
+24,0.04,above,incorrect,447.6,False,fixation,373 ms from the nearest saccade,return,151.4
+25,0.06,below,correct,557.8,False,fixation,483 ms from the nearest saccade,return,151.5
+26,0.08,above,correct,39.4,True,saccade,fast gaze movement at the flash (return saccade),return,151.5
+27,0.04,below,correct,-197.9,False,fixation,198 ms from the nearest saccade,out,201.6
+28,0.06,above,correct,-156.5,False,fixation,157 ms from the nearest saccade,out,201.7
+29,0.08,below,correct,28.8,True,saccade,fast gaze movement at the flash (out saccade),out,201.7
+30,0.04,above,correct,546.8,False,fixation,472 ms from the nearest saccade,return,151.8
+31,0.06,below,correct,438.4,False,fixation,363 ms from the nearest saccade,return,151.8
+32,0.08,above,correct,478.8,False,fixation,404 ms from the nearest saccade,return,151.9
+33,0.04,below,correct,391.6,False,fixation,317 ms from the nearest saccade,return,151.9
+34,0.06,above,correct,568.5,False,fixation,493 ms from the nearest saccade,return,152
+35,0.08,below,correct,45.2,True,saccade,fast gaze movement at the flash (return saccade),return,152.1
+36,0.04,above,correct,44.2,True,saccade,fast gaze movement at the flash (out saccade),out,202.1
+37,0.06,below,correct,538.9,False,fixation,464 ms from the nearest saccade,return,152.2
+38,0.08,above,correct,567.1,False,fixation,492 ms from the nearest saccade,return,152.2
+39,0.04,below,correct,536.4,False,fixation,461 ms from the nearest saccade,return,152.3
+40,0.06,above,correct,29.1,True,saccade,fast gaze movement at the flash (return saccade),return,152.3
+41,0.08,below,correct,532.2,False,fixation,457 ms from the nearest saccade,return,152.4
+42,0.04,above,incorrect,-179.7,False,fixation,180 ms from the nearest saccade,out,202.5
+43,0.06,below,correct,424.7,False,fixation,350 ms from the nearest saccade,return,152.5
+44,0.08,above,correct,34.2,True,saccade,fast gaze movement at the flash (return saccade),return,152.6
+45,0.04,below,incorrect,44.7,True,saccade,fast gaze movement at the flash (return saccade),return,152.6
+46,0.06,above,correct,-187.2,False,fixation,187 ms from the nearest saccade,out,202.7
+47,0.08,below,incorrect,51.2,True,saccade,fast gaze movement at the flash (out saccade),out,202.7
+48,0.04,above,correct,46.3,True,saccade,fast gaze movement at the flash (return saccade),return,152.8
+49,0.06,below,correct,542.9,False,fixation,468 ms from the nearest saccade,return,152.9
+50,0.08,above,correct,37.8,True,saccade,fast gaze movement at the flash (return saccade),return,152.9
+51,0.04,below,incorrect,-162.3,False,fixation,162 ms from the nearest saccade,out,203
+52,0.06,above,correct,21.6,True,saccade,fast gaze movement at the flash (return saccade),return,153
+53,0.08,below,correct,-200.5,False,fixation,200 ms from the nearest saccade,out,203.1
+54,0.04,above,correct,48.3,True,saccade,fast gaze movement at the flash (out saccade),out,203.1
+55,0.06,below,correct,517.9,False,fixation,443 ms from the nearest saccade,return,153.2
+56,0.08,above,correct,401,False,fixation,326 ms from the nearest saccade,return,153.3
+57,0.04,below,incorrect,47.2,True,saccade,fast gaze movement at the flash (return saccade),return,153.3
+58,0.06,above,correct,454.3,False,fixation,379 ms from the nearest saccade,return,153.4
+59,0.08,below,correct,20,True,saccade,fast gaze movement at the flash (return saccade),return,153.4

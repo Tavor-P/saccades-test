@@ -225,19 +225,6 @@ def test_fixation_at_floor_is_not_computable():
     assert any("floor" in n for n in r["notes"])
 
 
-def test_analyze_writes_the_index_to_report_and_json(tmp_path):
-    flashes = [(rel, "correct", c) for rel in (0, 10, -10, 20) for c in (0.1, 0.2)]
-    stamp = _write_session(tmp_path, ONSETS, flashes)
-    result = an.analyze(stamp, tmp_path)
-    assert "suppression index" in result["report"]
-    saved = json.loads(result["suppression_json"].read_text())
-    rows = list(csv.DictReader(result["csv"].open()))
-    assert saved["conditions_from"] == "gates" and "notes" in saved
-    assert saved["n_saccade"] == sum(r["condition"] == "saccade" for r in rows)
-    assert saved["n_fixation"] == sum(r["condition"] == "fixation" for r in rows)
-    assert "Excluded: " in result["report"] and "AMOUNT" in result["report"]
-
-
 def test_gates_decide_the_conditions_and_excluded_flashes_are_left_out():
     from src.experiment.flash_gates import EXCLUDED, FIXATION, SACCADE, GateResult
 
