@@ -51,7 +51,7 @@ def test_runs_with_other_contrasts_or_geometry_are_excluded_with_the_reason(pool
     assert any("contrasts 2/4/6 % differ" in why for why in reasons.values())
     assert any("screen geometry" in why and "60 cm" in why for why in reasons.values())
     report = result.report
-    assert report.index("NOT POOLED: 2 runs left out") < report.index("Runs pooled:")  # visible right under the headline
+    assert report.index("NOT POOLED: 2 runs left out") < report.index("RUNS POOLED")  # visible right under the headline
 
 
 def test_test_runs_are_skipped_unless_asked_for(tmp_path, pooled):
@@ -84,7 +84,7 @@ def test_outputs_are_written_in_the_participant_analysis_folder(pooled):
     out = data / PID / "analysis"
     assert result.paths["summary"] == out / "summary.json"
     report = (out / "report.txt").read_text(encoding="utf-8")
-    assert report.splitlines()[2].startswith("Suppression index 0.") and "from 3 runs" in report.splitlines()[2]
+    assert report.splitlines()[4].startswith("RESULT") and "3 runs pooled" in report.splitlines()[5]
     assert (out / "plot.png").stat().st_size > 10_000
     saved = json.loads((out / "summary.json").read_text())
     rows = list(csv.DictReader((out / saved["flashes_csv"]).open()))  # flashes_csv is relative to summary.json

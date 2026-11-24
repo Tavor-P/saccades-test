@@ -140,7 +140,7 @@ def test_runs_without_a_logged_jump_take_the_old_path_unchanged(tmp_path):
     again = an.analyze_run(ref)
     assert not again.return_jump and again.gates == run.gates and [p.rel_ms for p in again.placed] == [p.rel_ms for p in run.placed]
     result = an.analyze(f"{folder.parent.name}/{folder.name}", tmp_path)
-    assert "RETURN LATENCY" not in result["report"] and "by_leg" not in json.loads(result["suppression_json"].read_text())
+    assert "no return jump in this run" in result["report"] and "by_leg" not in json.loads(result["suppression_json"].read_text())
     assert {r["flash_leg"] for r in csv.DictReader(result["csv"].open())} == {""}
 
 
@@ -149,7 +149,7 @@ def test_analyze_writes_the_leg_report_and_json(tmp_path):
     result = an.analyze(f"{folder.parent.name}/{folder.name}", tmp_path)
     report = result["report"]
     assert "SUPPRESSION INDEX BY LEG" in report and "RETURN LATENCY" in report
-    assert report.index("MAIN COMPARISON") < report.index("SUPPRESSION INDEX BY LEG") < report.index("RETURN LATENCY") < report.index("TECHNICAL DETAILS")
+    assert report.index("DATA QUALITY") < report.index("SUPPRESSION INDEX BY LEG") < report.index("RETURN LATENCY") < report.index("TECHNICAL DETAILS")
     saved = json.loads(result["suppression_json"].read_text())
     assert set(saved["by_leg"]) == {"out", "return"} and saved["return_latency"]["n"] == 80
     assert saved["index"] == result["summary"]["suppression"]["index"]
@@ -186,7 +186,7 @@ def test_participant_report_and_summary_file_carry_the_leg_results(tmp_path):
     for i in range(2):
         sr.write_run(tmp_path, "P", START + i * DAY, n_trials=60, seed=20 + i, return_jump=True)
     result = ap.analyze_participant("P", tmp_path, n_boot=100)
-    assert "Return-jump runs (return_jump/arrival):" in result.report and "SUPPRESSION INDEX BY LEG" in result.report
+    assert "run kind return_jump/arrival" in result.report and "SUPPRESSION INDEX BY LEG" in result.report and "no return jump" not in result.report
     saved = json.loads(result.paths["summary"].read_text())
     assert saved["schema_version"] == ap.SCHEMA_VERSION == 3 and list(saved) == list(ap.SUMMARY_KEYS)
     assert saved["return_latency"]["n"] == 120

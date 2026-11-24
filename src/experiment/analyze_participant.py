@@ -28,7 +28,18 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from src.experiment import session_files
-from src.experiment.analysis_report import format_table, heading, index_details, index_meaning
+from src.experiment.analysis_report import (
+    format_excluded,
+    format_index_fit,
+    format_leg_suppression,
+    format_return_latency,
+    format_table,
+    format_technical,
+    format_top_block,
+    heading,
+    index_meaning,
+    speed_exclusions,
+)
 from src.experiment.analyze_session import (
     DATA_DIR,
     LEGS,
@@ -38,10 +49,6 @@ from src.experiment.analyze_session import (
     _weibull,
     analyze_run,
     fit_pair_with_slope,
-    format_gate_report,
-    format_leg_suppression,
-    format_return_latency,
-    format_thresholds,
     load_flashes,
     return_latency_stats,
     summarize,
@@ -52,6 +59,9 @@ from src.experiment.analyze_session import (
     write_flash_rows,
 )
 from src.experiment.flash_gates import EXCLUDED, FIXATION, SACCADE, summarize_gates
+from src.experiment.logger import read_trial_rows
+from src.experiment.run_quality import quality_line, run_facts
+from src.experiment.run_summary import trial_counts
 
 SCHEMA_VERSION = 3  # 2: run_kind, by_leg, return_latency (return-jump runs); 3: analysis_thresholds
 ANALYSIS_DIR = "analysis"  # data/<participant>/analysis/
@@ -429,9 +439,26 @@ def _num(v, fmt="{:.0f}") -> str:
     return "?" if v is None else fmt.format(v)
 
 
+def _quality(result: ParticipantResult) -> tuple[str, str]:
+    """The QUALITY line over the pooled runs: the worst status, delay range, clock / head / tracking totals."""
+    facts = []
+    for e in result.runs_used:
+        try:
+            counts = trial_counts(list(read_trial_rows(e.ref.trials_path)))
+            lost, shown = counts["tracking_lost"], counts["shown"]
+        except (OSError, ValueError, KeyError, TypeError):
+            lost = shown = None
+        facts.append(run_facts(e.analysis.meta if e.analysis else None, lost, shown))
+    return quality_line(facts) if facts else ("CHECK", "no pooled runs")
+
+
 def format_participant_report(result: ParticipantResult) -> str:
     s = result.summary
-    lines = [f"Participant {s['participant']}: pooled saccadic-suppression analysis", "", headline(s)]
+    n_sac, n_fix = s["n_flashes"][SACCADE], s["n_flashes"][FIXATION]
+    title = f"Participant {s['participant']}: pooled saccadic-suppression analysis"
+    tail = f" \u00b7 {_plural(len(s['runs_used']), 'run')} pooled" + (" \u00b7 includes TEST runs" if any(r["mode"] == "test" for r in s["runs_used"]) else "")
+    suppression = {k: s[k] for k in ("index", "ci", "method", "notes", "threshold_saccade", "threshold_fixation")}
+    lines = [title, "=" * len(title), "", format_top_block(_quality(result), suppression, n_sac, n_fix, s["n_flashes"]["total"], tail)]
     skipped = s["analysis"]["test_runs_skipped"]
     if s["runs_excluded"]:
         lines += ["", f"NOT POOLED: {_plural(len(s['runs_excluded']), 'run')} left out:"]
@@ -441,7 +468,7 @@ def format_participant_report(result: ParticipantResult) -> str:
     if skipped:
         lines.append(f"{_plural(skipped, 'test run')} skipped (add --include-test to include them).")
 
-    lines += ["", "Runs pooled:"]
+    lines += heading("Runs pooled")
     header = f"  {'run':<22} {'date':<16} {'mode':<5} {'saccade':>7} {'fixation':>8} {'excluded':>8}  {'run index':<16} {'gaze delay':>10} {'longest gap':>11}"
     lines.append(header)
     for r in s["runs_used"]:
@@ -450,24 +477,22 @@ def format_participant_report(result: ParticipantResult) -> str:
     if not s["runs_used"]:
         lines.append("  (none)")
 
-    if s["runs_used"]:
-        lines += ["", f"Settings shared by the pooled runs: contrasts {_fmt_contrasts(s['contrasts_pct'])}; screen {_fmt_geometry(s['geometry'])}."]
-    lines.append(format_gate_report({**{c: (s["correct"][c], s["n_flashes"][c]) for c in CONDITIONS}, "reasons": s["exclusion_reasons"]}))
-    lines += heading("Accuracy by contrast (correct / flashes)")
+    gates = {EXCLUDED: (s["correct"][EXCLUDED], s["n_flashes"][EXCLUDED]), "reasons": s["exclusion_reasons"]}
+    lines += heading("Data quality") + format_excluded(gates, speed_exclusions(result.placed, result.gates))
+    pooled = {**suppression}
+    lines += format_index_fit(pooled)
+    if s["slope"] is not None:
+        lines.append(f"  Shared Weibull slope: {s['slope']:g}")
+    lines += heading("Accuracy by contrast")
     rows = []
     for c in sorted({row["contrast_pct"] for row in s["by_contrast"]}):
         cells = {row["condition"]: row for row in s["by_contrast"] if row["contrast_pct"] == c}
         rows.append([f"{c:.1f}%", f"{cells[SACCADE]['correct']} / {cells[SACCADE]['n']}", f"{cells[FIXATION]['correct']} / {cells[FIXATION]['n']}", str(cells[EXCLUDED]["n"])])
     lines += format_table(["Contrast", "Saccade", "Fixation", "Excluded"], rows, "rrrr")
-    pooled = {"conditions_from": "gates", "near_ms": 0, "far_ms": 0, **{k: s[k] for k in ("index", "label", "threshold_saccade", "threshold_fixation", "notes")},
-              "ci": s["ci"], "n_saccade": s["n_flashes"][SACCADE], "n_fixation": s["n_flashes"][FIXATION],
-              "correct_saccade": s["correct"][SACCADE], "correct_fixation": s["correct"][FIXATION]}
-    details = index_details(pooled) + ([f"  Shared Weibull slope: {s['slope']:g}"] if s["slope"] is not None else [])
-    lines += ["", *details] if details else []
-    if s["by_leg"] is not None:
-        lines += ["", f"Return-jump runs ({s['run_kind']}):", format_return_latency(s["return_latency"]), format_leg_suppression(s["by_leg"])]
-    if s.get("analysis_thresholds"):
-        lines += heading("Technical details") + [format_thresholds(s["analysis_thresholds"])]
+    leg_flashes = {leg: sum((p.flash.leg or "out") == leg for p in result.placed) for leg in LEGS} if s["by_leg"] is not None else None
+    lines += [format_leg_suppression(s["by_leg"], leg_flashes, "these runs"), format_return_latency(s["return_latency"], "these runs")]
+    geometry = f"  Screen {_fmt_geometry(s['geometry'])}; contrasts {_fmt_contrasts(s['contrasts_pct'])}; run kind {s['run_kind']}" if s["runs_used"] else None
+    lines += format_technical(geometry, s.get("analysis_thresholds"))
     lines += ["", "Files: report.txt (this), plot.png, flashes.csv (every pooled flash with its run), summary.json (machine-readable)."]
     return "\n".join(lines)
 

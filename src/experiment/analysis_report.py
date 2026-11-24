@@ -1,12 +1,14 @@
-"""The text of the post-hoc analysis report, written for the experimenter who runs the study (so terse, no explanations): a summary
-first, then headed sections with aligned tables, then a "Technical details" appendix (one geometry line; the analysis thresholds that
-differ from the defaults). The building blocks (gate counts, suppression index, return latency, per-leg indices, thresholds) are
-shared with analyze_participant. Only ASCII (the report is also printed to Windows consoles). Presentation only: no number is computed here."""
+"""The text of the post-hoc analysis report, for the experimenter who reads one after every run (machines read the CSV / JSON files):
+a three-line top block (QUALITY, RESULT, AMOUNT), then the same headed sections in the same order every run (a section with nothing
+to show says so in one line), ending in "Technical details" (one geometry line; the thresholds that differ from the defaults).
+The building blocks are shared with analyze_participant. Presentation only: no analysis number is computed here."""
 
 from include.experiment import analysis_constants
 from include.experiment.analysis_constants import FAR_MS, MIN_AMPLITUDE, MIN_FIT_TRIALS, NEAR_ONSET_MS
-from src.experiment.flash_gates import EXCLUDED, FIXATION, SACCADE
+from src.experiment.flash_gates import EXCLUDED, FIXATION, NOT_MOVING_REASON, SACCADE
 from src.experiment.leg_gating import LEGS
+
+SPREAD_FLAG_SHARE = 0.25  # flag a return-flash spread SD that is off from the measured robust SD by more than this share
 
 
 def _pct(k_n: tuple[int, int]) -> str:
@@ -106,51 +108,89 @@ def format_thresholds(record: dict) -> str:
 
 # -- the shared blocks -----------------------------------------------------------------------------------------------------
 
-
-def _index_text(s: dict) -> str:
-    if s["index"] is None:
-        return "cannot be computed"
-    return f"{s['index']:+.2f}  ({_ci_text(s['ci'])})" + ("  [accuracy fallback]" if s["method"] == "accuracy" else "")
+LABEL_WIDTH, STATUS_WIDTH = 9, 10  # the left columns of the three-line top block
 
 
-def index_details(s: dict) -> list[str]:
-    """The index' threshold contrasts and notes (one line each)."""
-    lines = []
-    if s["index"] is not None and s["threshold_saccade"] is not None:
-        lines.append(f"  Threshold contrast: saccade {100 * s['threshold_saccade']:.1f}%, fixation {100 * s['threshold_fixation']:.1f}%")
-    lines += [f"  Note: {n}" for n in s["notes"]]
-    return lines
+def _top_line(label: str, status: str, text: str) -> str:
+    return f"{label:<{LABEL_WIDTH}}{status:<{STATUS_WIDTH}}{text}"
 
 
 def format_suppression(s: dict) -> str:
-    """The suppression index with its 95% CI, threshold contrasts and notes."""
-    return "\n".join([f"  Suppression index: {_index_text(s)}", *index_details(s)])
+    """The RESULT line: the index and its 95% CI (a suppression_index() result, or the pooled equivalent)."""
+    if s["index"] is None:
+        why = f" ({s['notes'][-1]})" if s["notes"] else ""
+        return _top_line("RESULT", "n/a", f"suppression index cannot be computed{why}")
+    fallback = " (accuracy fallback)" if s["method"] == "accuracy" else ""
+    return _top_line("RESULT", f"{s['index']:+.2f}", f"suppression index, {_ci_text(s['ci'])}{fallback}")
 
 
-def format_gate_report(gates: dict) -> str:
-    """The pre-specified gating (src/experiment/flash_gates.py): saccade vs fixation flashes and exclusions."""
-    sac, fix = _correct_cells(tuple(gates[SACCADE])), _correct_cells(tuple(gates[FIXATION]))
-    lines = heading("Main comparison (pre-specified gates)")
-    lines += format_table(["Group", "Correct", "Accuracy"], [["Saccade", sac[0], sac[1]], ["Fixation", fix[0], fix[1]]], "lrr")
-    lines.append(f"  Excluded: {gates[EXCLUDED][1]}" + "".join(f"\n    {n} x {reason}" for reason, n in gates["reasons"].items()))
-    return "\n".join(lines)
+def format_top_block(quality: tuple[str, str] | None, suppression: dict, n_saccade: int, n_fixation: int, total: int, tail: str = "") -> str:
+    """The three lines read first, always in this order and format: QUALITY (OK / CHECK / BAD), RESULT (the index),
+    AMOUNT (OK / TOO FEW). `quality` is run_quality.quality_line() (None: unknown)."""
+    q_status, q_text = quality if quality is not None else ("CHECK", "quality unknown (no session data)")
+    few = n_saccade < MIN_FIT_TRIALS or n_fixation < MIN_FIT_TRIALS
+    amount = f"{n_saccade} saccade / {n_fixation} fixation flashes usable of {total} (need {MIN_FIT_TRIALS}+ each for a threshold fit)" + tail
+    return "\n".join([_top_line("QUALITY", q_status, q_text), format_suppression(suppression), _top_line("AMOUNT", "TOO FEW" if few else "OK", amount)])
 
 
-def format_leg_suppression(by_leg: dict) -> str:
-    """Suppression index for the out leg, the return leg (each: its saccade flashes vs ALL fixation flashes) and both pooled."""
+def format_index_fit(s: dict) -> list[str]:
+    """INDEX FIT section: the threshold contrasts of the index and its notes (always present)."""
+    fitted = s["index"] is not None and s["threshold_saccade"] is not None
+    lines = heading("Index fit")
+    lines.append(f"  Threshold contrast: saccade {100 * s['threshold_saccade']:.1f}%, fixation {100 * s['threshold_fixation']:.1f}%" if fitted
+                 else "  Threshold contrast: no threshold fit")
+    lines += [f"  Note: {n}" for n in s["notes"]] or ["  Notes: none"]
+    return lines
+
+
+def speed_exclusions(placed: list, gates: list) -> tuple[int, int, int]:
+    """Flashes excluded as 'near a saccade but not moving fast yet': (before onset, after onset, no onset known)."""
+    before = after = unknown = 0
+    for p, g in zip(placed, gates, strict=True):
+        if g.condition == EXCLUDED and g.reason == NOT_MOVING_REASON:
+            if p.rel_ms is None:
+                unknown += 1
+            elif p.rel_ms < 0:
+                before += 1
+            else:
+                after += 1
+    return before, after, unknown
+
+
+def format_excluded(gates: dict, speed: tuple[int, int, int] | None = None) -> list[str]:
+    """One line with the excluded-flash breakdown, and one line on those excluded for 'not moving fast yet'."""
+    n = gates[EXCLUDED][1]
+    reasons = "; ".join(f"{k} x {reason}" for reason, k in gates["reasons"].items())
+    lines = [f"  Excluded: {n}" + (f" ({reasons})" if reasons else "")]
+    if speed is not None:
+        before, after, unknown = speed
+        lines.append(f"  Excluded as not moving fast yet: {before} before saccade onset, {after} after" + (f", {unknown} with no onset" if unknown else ""))
+    return lines
+
+
+def format_leg_suppression(by_leg: dict | None, leg_flashes: dict | None = None, what: str = "this run") -> str:
+    """Suppression index for the out leg, the return leg (each: its saccade flashes vs ALL fixation flashes) and both pooled, with
+    each leg's flash count. A run without return jumps (`by_leg` None) prints one line."""
+    lines = heading("Suppression index by leg")
+    if not by_leg:
+        return "\n".join([*lines, f"  no return jump in {what}"])
     rows = []
     for leg in (*LEGS, "pooled"):
         s = by_leg[leg]
-        rows.append([leg, f"{s['correct_saccade']} / {s['n_saccade']}", f"{s['correct_fixation']} / {s['n_fixation']}",
+        flashes = None if leg_flashes is None else sum(leg_flashes.values()) if leg == "pooled" else leg_flashes.get(leg, 0)
+        rows.append([leg, "?" if flashes is None else str(flashes), str(s["n_saccade"]), f"{s['correct_saccade']} / {s['n_saccade']}", f"{s['correct_fixation']} / {s['n_fixation']}",
                      "cannot be computed" if s["index"] is None else f"{s['index']:+.2f}",
                      "" if s["ci"] is None else f"{s['ci'][0]:+.2f} to {s['ci'][1]:+.2f}",
                      "" if s["index"] is None else s["method"]])
-    return "\n".join([*heading("Suppression index by leg"), *format_table(["Leg", "Saccade", "Fixation", "Index", "95% CI", "Method"], rows, "lrrrrl")])
+    lines += format_table(["Leg", "Flashes", "In a saccade", "Saccade", "Fixation", "Index", "95% CI", "Method"], rows, "lrrrrrrl")
+    return "\n".join(lines)
 
 
-def format_return_latency(r: dict) -> str:
-    """The return-latency block of a return-jump run (what RETURN_FLASH_SPREAD_SD_MS should be set from)."""
+def format_return_latency(r: dict | None, what: str = "this run") -> str:
+    """The return-latency block of a return-jump run (what RETURN_FLASH_SPREAD_SD_MS should be set from); one line without a jump."""
     lines = heading("Return latency")
+    if not r:
+        return "\n".join([*lines, f"  no return jump in {what}"])
     lines.append(f"  Trials jumped: {r['trials_jumped']} ({r['forced_jumps']} forced jumps left out, no return saccade found in {r['no_return_found']})")
     if r["n"]:
         lines.append(f"  n {r['n']}: median {_ms(r['median_ms'])}, SD {_ms(r['sd_ms'])} (robust SD {_ms(r['robust_sd_ms'])}), predictive {100 * r['share_predictive']:.0f}%")
@@ -158,34 +198,24 @@ def format_return_latency(r: dict) -> str:
         lines.append("  No return saccade found: no latency")
     if r["live_n"]:
         lines.append(f"  Live classifier (return_reaction_ms): n {r['live_n']}, median {_ms(r['live_median_ms'])}, SD {_ms(r['live_sd_ms'])}")
-    if r.get("return_flash_spread_sd_ms") is not None:
-        lines.append(f"  Return flash spread SD (RETURN_FLASH_SPREAD_SD_MS): {r['return_flash_spread_sd_ms']:g} ms; trigger {r.get('return_jump_trigger') or '?'}")
+    spread = r.get("return_flash_spread_sd_ms")
+    if spread is not None:
+        lines.append(f"  Return flash spread SD (RETURN_FLASH_SPREAD_SD_MS): {spread:g} ms; trigger {r.get('return_jump_trigger') or '?'}")
+        measured = r.get("robust_sd_ms")
+        if r["n"] and measured is not None and spread > 0 and abs(measured - spread) / spread > SPREAD_FLAG_SHARE:
+            lines.append(f"  CHECK: measured {measured:.0f} ms vs set {spread:g} ms: consider {'raising' if measured > spread else 'lowering'} RETURN_FLASH_SPREAD_SD_MS")
     return "\n".join(lines)
 
 
 # -- the per-run report ----------------------------------------------------------------------------------------------------
 
 
-def _summary(s: dict, test_run: bool) -> list[str]:
-    """The top of the report: the main result, the usable-flash count and the short warnings."""
-    gates = s["gates"]
-    sac, fix = _correct_cells(tuple(gates[SACCADE])), _correct_cells(tuple(gates[FIXATION]))
-    n_sac, n_fix, n_excl = gates[SACCADE][1], gates[FIXATION][1], gates[EXCLUDED][1]
-    lines = heading("Summary")
-    if test_run:
-        lines.append("  TEST run, not a real recording")
-    lines += [f"  Saccade:   {sac[0]} correct ({sac[1]})", f"  Fixation:  {fix[0]} correct ({fix[1]})", format_suppression(s["suppression"]),
-              f"  Usable flashes: {n_sac + n_fix} of {s['flashes']} ({n_sac} saccade, {n_fix} fixation, {n_excl} excluded)"]
-    if n_sac < MIN_FIT_TRIALS or n_fix < MIN_FIT_TRIALS:
-        lines.append(f"  WARNING: only {n_sac} saccade and {n_fix} fixation flashes, too few for a firm conclusion (threshold fit needs {MIN_FIT_TRIALS}+ each)")
-    return lines
-
-
-def _data_quality(s: dict) -> list[str]:
+def _data_quality(s: dict, speed: tuple[int, int, int] | None) -> list[str]:
     lines = heading("Data quality")
     found = f"{s['saccades']}" + (f" (median duration {s['median_saccade_ms']:.0f} ms, amplitude {s['median_amplitude']:.2f} of the width)" if s["median_saccade_ms"] else "")
-    lines += [f"  Saccades found: {found}", f"  Flashes: {s['flashes']}; correct {_pct(s['overall'])}; no answer {s['misses']}"]
-    return lines
+    lines += [f"  Saccades found: {found}", f"  Flashes: {s['flashes']}; correct {_pct(s['overall'])}",
+              f"  No answer: {s['misses']} (scored as not correct, like a wrong answer; not excluded)"]
+    return lines + format_excluded(s["gates"], speed)
 
 
 def _time_windows(s: dict) -> list[str]:
@@ -214,19 +244,30 @@ def _by_contrast(s: dict) -> list[str]:
     return lines
 
 
-def format_report(summary: dict, label: str = "", geometry: str | None = None, thresholds: dict | None = None, test_run: bool = False) -> str:
+def format_technical(geometry: str | None, thresholds: dict | None) -> list[str]:
+    """TECHNICAL DETAILS section: one geometry line, then the thresholds that differ from the defaults."""
+    return [*heading("Technical details"), geometry or "  Screen geometry: not recorded",
+            format_thresholds(thresholds) if thresholds is not None else "  Analysis thresholds: not recorded"]
+
+
+def format_report(
+    summary: dict,
+    label: str = "",
+    geometry: str | None = None,
+    thresholds: dict | None = None,
+    test_run: bool = False,
+    quality: tuple[str, str] | None = None,
+    leg_flashes: dict | None = None,
+    speed: tuple[int, int, int] | None = None,
+) -> str:
     """The whole per-run report from analyze_session's `summary` (summarize() plus "gates", "suppression" and, for return-jump
-    runs, "by_leg" and "return_latency"). `geometry` is format_geometry()'s text, `thresholds` thresholds_record()."""
+    runs, "by_leg" and "return_latency"): the three-line top block, then the same sections in the same order every run.
+    `quality` is run_quality.quality_line(); `leg_flashes` {leg: flash count}; `speed` is speed_exclusions(); `geometry` is
+    format_geometry()'s text, `thresholds` thresholds_record()."""
     title = f"Saccade-phase analysis {label}".strip()
-    lines = [title, "=" * len(title), *_summary(summary, test_run), *_data_quality(summary), format_gate_report(summary["gates"]),
-             *_time_windows(summary), *_by_contrast(summary)]
-    if summary.get("by_leg"):
-        lines.append(format_leg_suppression(summary["by_leg"]))
-    if summary.get("return_latency"):
-        lines.append(format_return_latency(summary["return_latency"]))
-    lines += heading("Technical details")
-    if geometry:
-        lines.append(geometry)
-    if thresholds is not None:
-        lines.append(format_thresholds(thresholds))
+    gates = summary["gates"]
+    top = format_top_block(quality, summary["suppression"], gates[SACCADE][1], gates[FIXATION][1], summary["flashes"], " · TEST run" if test_run else "")
+    lines = [title, "=" * len(title), "", top, *_data_quality(summary, speed), *format_index_fit(summary["suppression"]), *_time_windows(summary),
+             *_by_contrast(summary), format_leg_suppression(summary.get("by_leg"), leg_flashes), format_return_latency(summary.get("return_latency")),
+             *format_technical(geometry, thresholds)]
     return "\n".join(lines)

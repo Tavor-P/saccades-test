@@ -42,13 +42,14 @@ from src.experiment.analysis_output import plot_report, write_flash_rows  # noqa
 from src.experiment.analysis_report import (  # noqa: F401 (re-exported)
     _ms,
     _pct,
-    format_gate_report,
+    format_excluded,
     format_geometry,
     format_leg_suppression,
     format_report,
     format_return_latency,
     format_suppression,
     format_thresholds,
+    speed_exclusions,
     thresholds_record,
 )
 from src.experiment.flash_gates import (  # noqa: F401 (re-exported)
@@ -73,6 +74,9 @@ from src.experiment.leg_gating import (  # noqa: F401 (re-exported)
     return_latency_stats,
     suppression_by_leg,
 )
+from src.experiment.logger import read_trial_rows
+from src.experiment.run_quality import quality_line, run_facts
+from src.experiment.run_summary import trial_counts
 from src.experiment.saccade_detection import Flash, Placed, Saccade, detect_saccades, load_flashes, load_trace, place_flashes  # noqa: F401
 from src.experiment.session_files import DATA_DIR  # patched per module in tests, so always used by this bare name
 from src.experiment.suppression_stats import (  # noqa: F401 (re-exported)
@@ -134,6 +138,15 @@ class RunAnalysis:
     @property
     def stamp(self) -> str:
         return self.ref.label
+
+    def quality_line(self) -> tuple[str, str]:
+        """(status, text) of report.txt's QUALITY line: session.json's gaze / head quality and the flashes lost to tracking."""
+        try:
+            counts = trial_counts(list(read_trial_rows(self.ref.trials_path)))
+            lost, shown = counts["tracking_lost"], counts["shown"]
+        except (OSError, ValueError, KeyError, TypeError):
+            lost = shown = None
+        return quality_line([run_facts(self.meta, lost, shown)])
 
     @property
     def is_test(self) -> bool:
@@ -214,7 +227,11 @@ def analyze(
     run = analyze_run(ref, clock_offset_ms, flash_delay_ms, min_amplitude, near_ms, far_ms)
     stamp, summary, suppression, placed, gates = run.stamp, run.summary, run.suppression, run.placed, run.gates
     thresholds = thresholds_record(min_amplitude, flash_delay_ms, near_ms, far_ms)
-    report = format_report(summary, label=f"(session {stamp})", geometry=run.geometry_line, thresholds=thresholds, test_run=run.is_test)
+    leg_flashes = None
+    if run.return_jump:
+        leg_flashes = {leg: sum((p.flash.leg or "out") == leg for p in placed) for leg in LEGS}
+    report = format_report(summary, label=f"(session {stamp})", geometry=run.geometry_line, thresholds=thresholds, test_run=run.is_test,
+                           quality=run.quality_line(), leg_flashes=leg_flashes, speed=speed_exclusions(placed, gates))
     saved = suppression
     if run.return_jump:
         assert run.return_latency is not None and run.by_leg is not None  # always set for return-jump runs

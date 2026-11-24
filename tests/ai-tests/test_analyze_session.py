@@ -236,13 +236,13 @@ def test_analyze_writes_the_index_to_report_and_json(tmp_path):
     flashes = [(rel, "correct", c) for rel in (0, 10, -10, 20) for c in (0.1, 0.2)]
     stamp = _write_session(tmp_path, ONSETS, flashes)
     result = an.analyze(stamp, tmp_path)
-    assert "Suppression index" in result["report"]
+    assert "suppression index" in result["report"]
     saved = json.loads(result["suppression_json"].read_text())
     rows = list(csv.DictReader(result["csv"].open()))
     assert saved["conditions_from"] == "gates" and "notes" in saved
     assert saved["n_saccade"] == sum(r["condition"] == "saccade" for r in rows)
     assert saved["n_fixation"] == sum(r["condition"] == "fixation" for r in rows)
-    assert "Main comparison (pre-specified gates)".upper() in result["report"]
+    assert "Excluded: " in result["report"] and "AMOUNT" in result["report"]
 
 
 def test_gates_decide_the_conditions_and_excluded_flashes_are_left_out():
@@ -327,20 +327,25 @@ def test_clock_offset_history_is_interpolated_over_the_trace(tmp_path):
     assert t - np.asarray([1000.0, 1060.0, 1120.0, 1180.0]) == pytest.approx([0.25] * 4)
 
 
-# -- the terse report and the grouped bar chart ------------------------------------------------------------------------------------
+# -- the human-first report: the same layout every run -----------------------------------------------------------------------------
+
+SECTIONS = ["DATA QUALITY", "INDEX FIT", "ACCURACY BY FLASH TIME", "ACCURACY BY CONTRAST", "SUPPRESSION INDEX BY LEG", "RETURN LATENCY", "TECHNICAL DETAILS"]
+GOOD_META = {"gaze_quality": {"latency_ms_median": 14.0, "longest_gap_ms": 20.0, "clock_offset_status": "ok"}, "head_motion": {"status": "ok", "flagged_trials": 0}}
 
 
-def test_report_opens_with_the_summary_and_ends_with_the_technical_details(tmp_path):
+def test_report_has_the_three_line_top_block_then_the_same_sections_every_run(tmp_path):
     stamp = _write_session(tmp_path, ONSETS, [(rel, "correct", c) for rel in (0, 10, -10, 20) for c in (0.1, 0.2)])
     report = an.analyze(stamp, tmp_path, out_dir=tmp_path / "out")["report"]
-    heads = ["SUMMARY", "DATA QUALITY", "MAIN COMPARISON", "ACCURACY BY FLASH TIME", "ACCURACY BY CONTRAST", "TECHNICAL DETAILS"]
-    assert [report.index(h) for h in heads] == sorted(report.index(h) for h in heads)
-    summary, details = report[: report.index("DATA QUALITY")], report[report.index("TECHNICAL DETAILS"):]
-    assert "Saccade:" in summary and "Fixation:" in summary and "Suppression index:" in summary and "too few for a firm conclusion" in summary
-    assert report.count("Suppression index:") == 1  # the index is stated once, in the summary
-    assert "Fisher p" in report and "What it means" not in report and "Reading the statistics" not in report
-    assert "defaults (analysis_constants.py)" in details and "min_amplitude" not in details
-    assert all(len(line) < 160 for line in report.splitlines()) and report.isascii()
+    lines = report.splitlines()
+    top = lines[3:6]
+    assert [ln.split()[0] for ln in top] == ["QUALITY", "RESULT", "AMOUNT"]
+    assert top[2].split()[1:3] == ["TOO", "FEW"] and "usable of 8 (need 12+ each for a threshold fit)" in top[2]
+    assert [report.index(h) for h in SECTIONS] == sorted(report.index(h) for h in SECTIONS)
+    assert "no return jump in this run" in report and report.count("no return jump in this run") == 2  # legs and return latency still have their section
+    assert "WARNING" not in report and "MAIN COMPARISON" not in report and report.count("Suppression index") == 0  # said once, in RESULT
+    assert "No answer: 0 (scored as not correct, like a wrong answer; not excluded)" in report
+    assert "Excluded as not moving fast yet:" in report and report.encode("cp1252")
+    assert all(len(line) < 170 for line in lines)
 
 
 def test_report_says_when_it_is_a_test_run_and_only_then(tmp_path):
@@ -349,6 +354,66 @@ def test_report_says_when_it_is_a_test_run_and_only_then(tmp_path):
     assert "TEST run" not in an.analyze(stamp, tmp_path, out_dir=tmp_path / "a")["report"]
     summary = an.analyze(stamp, tmp_path, out_dir=tmp_path / "b")["summary"]
     assert "TEST run" in an.format_report(summary, test_run=True) and "TEST run" not in an.format_report(summary)
+
+
+def test_quality_line_reads_session_json_and_says_unknown_for_missing_fields():
+    from src.experiment.run_quality import quality_line, run_facts
+
+    status, text = quality_line([run_facts(GOOD_META, 0, 30)])
+    assert status == "OK" and text == "gaze delay 14 ms · clock offset ok · head still · 0 flashes lost to tracking"
+    status, text = quality_line([run_facts({}, None, None)])  # an old or damaged session.json: never a crash
+    assert status == "CHECK" and "gaze delay unknown" in text and "clock offset unknown" in text and "head unknown" in text and "tracking loss unknown" in text
+    assert quality_line([run_facts("damaged", 0, 30)])[0] == "CHECK"
+    bad_clock = {**GOOD_META, "gaze_quality": {**GOOD_META["gaze_quality"], "clock_offset_status": "failed (timeout)"}}
+    assert quality_line([run_facts(bad_clock, 0, 30)])[0] == "BAD"
+    slow = {**GOOD_META, "gaze_quality": {**GOOD_META["gaze_quality"], "latency_ms_median": 400.0}}
+    assert quality_line([run_facts(slow, 0, 30)])[0] == "CHECK"
+    flagged = {**GOOD_META, "head_motion": {"status": "ok", "flagged_trials": 2}}
+    assert quality_line([run_facts(flagged, 1, 30)])[0] == "CHECK" and "1 flashes lost to tracking" in quality_line([run_facts(flagged, 1, 30)])[1]
+    assert quality_line([run_facts(GOOD_META, 10, 30)])[0] == "BAD"  # a third of the flashes lost to tracking
+
+
+def test_pooled_quality_line_takes_the_worst_run_and_a_delay_range():
+    from src.experiment.run_quality import quality_line, run_facts
+
+    slow = {**GOOD_META, "gaze_quality": {**GOOD_META["gaze_quality"], "latency_ms_median": 20.0}}
+    status, text = quality_line([run_facts(GOOD_META, 0, 30), run_facts(slow, 2, 30)])
+    assert status == "CHECK" and "gaze delay 14-20 ms" in text and "2 flashes lost to tracking" in text
+
+
+def test_dashboard_lights_and_report_quality_share_the_same_rules():
+    from src.dashboard import results
+    from src.experiment import run_quality
+
+    assert results.latency_light is run_quality.latency_light and results.LATENCY_RULE is run_quality.LATENCY_RULE
+
+
+def test_return_latency_flags_a_spread_that_is_off_by_more_than_a_quarter():
+    base = {"trials_jumped": 80, "forced_jumps": 0, "no_return_found": 0, "n": 80, "median_ms": 150.0, "sd_ms": 70.0, "robust_sd_ms": 64.0,
+            "share_predictive": 0.0, "live_n": 0, "return_flash_spread_sd_ms": 40.0, "return_jump_trigger": "arrival"}
+    assert "measured 64 ms vs set 40 ms: consider raising RETURN_FLASH_SPREAD_SD_MS" in an.format_return_latency(base)
+    assert "consider lowering" in an.format_return_latency({**base, "robust_sd_ms": 20.0})
+    assert "CHECK" not in an.format_return_latency({**base, "robust_sd_ms": 45.0})  # within 25 %
+    assert "no return jump in these runs" in an.format_return_latency(None, "these runs")
+
+
+def test_leg_table_gives_each_legs_flash_count_and_saccade_flashes():
+    leg = {"index": None, "ci": None, "method": None, "n_saccade": 0, "n_fixation": 9, "correct_saccade": 0, "correct_fixation": 8}
+    text = an.format_leg_suppression({"out": leg, "return": {**leg, "n_saccade": 4, "correct_saccade": 3}, "pooled": {**leg, "n_saccade": 4}}, {"out": 6, "return": 24})
+    out_row = next(ln for ln in text.splitlines() if ln.split()[:1] == ["out"])
+    assert out_row.split()[1:3] == ["6", "0"] and next(ln for ln in text.splitlines() if ln.split()[:1] == ["pooled"]).split()[1:3] == ["30", "4"]
+
+
+def test_not_moving_fast_exclusions_are_split_into_before_and_after_onset():
+    from src.experiment.flash_gates import EXCLUDED, NOT_MOVING_REASON, GateResult
+
+    def placed(rel):
+        return an.Placed(an.Flash(0, 1000.0, 0.06, "above", "correct"), rel, False)
+
+    gates = [GateResult(EXCLUDED, NOT_MOVING_REASON)] * 4 + [GateResult(EXCLUDED, "tracking gap around the flash")]
+    assert an.speed_exclusions([placed(-30.0), placed(-5.0), placed(20.0), placed(None), placed(10.0)], gates) == (2, 1, 1)
+    text = "\n".join(an.format_excluded({"excluded": [0, 5], "reasons": {"x": 5}}, (2, 1, 0)))
+    assert "2 before saccade onset, 1 after" in text and "Excluded: 5 (5 x x)" in text
 
 
 def test_only_thresholds_that_differ_from_the_defaults_are_printed():
@@ -365,6 +430,8 @@ def test_geometry_is_one_line_with_a_short_placeholder_note():
     text = an.format_geometry(Geometry.default().as_settings())
     assert text.count("\n") == 0 and "Screen 26 cm @ 50 cm (29.1 deg)" in text and text.endswith("[placeholder, not measured]")
     assert "placeholder" not in an.format_geometry(Geometry(19.5, 60).as_settings())
+    assert "Screen geometry: not recorded" in an.format_report(an.summarize([], []) | {"gates": {"saccade": [0, 0], "fixation": [0, 0], "excluded": [0, 0], "reasons": {}},
+                                                                                       "suppression": an.suppression_index([])}, geometry=None)
 
 
 def test_condition_bars_put_the_two_red_bars_together_and_the_two_blue_bars_together():

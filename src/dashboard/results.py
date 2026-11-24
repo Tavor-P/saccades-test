@@ -13,19 +13,32 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 
-from include.eye_tracking.constants import NEON_GAP_THRESHOLD_MS
 from src import textio
 from src.dashboard import data_access
 from src.experiment import analyze_participant as ap
 from src.experiment import analyze_session as an
 from src.experiment import session_files
 from src.experiment.analyze_participant import N_BOOT  # read at call time (tests lower it)
-from src.experiment.flash_gates import FIXATION, SACCADE, TRACKING_GAP_MS
-from src.experiment.run_summary import MAX_GAP_MS, MAX_LATENCY_MS
+from src.experiment.flash_gates import FIXATION, SACCADE
+from src.experiment.run_quality import (  # the data-quality rules live there, shared with report.txt's QUALITY line
+    AMBER,
+    FLASH_RULE,
+    GAP_RULE,
+    GREEN,
+    GREY,
+    HEAD_RULE,
+    LATENCY_RULE,
+    RED,
+    flash_light,
+    gap_light,
+    gap_text,
+    head_status,
+    latency_light,
+    ms_text,
+)
 
 _LOCK = threading.Lock()
 
-GREEN, AMBER, RED, GREY = "green", "amber", "red", "grey"
 _SEVERITY = {GREY: -1, GREEN: 0, AMBER: 1, RED: 2}
 LIGHT_WORDS = {GREEN: "OK", AMBER: "Check", RED: "Problem", GREY: "Not recorded"}
 
@@ -107,58 +120,10 @@ def _worst(lights) -> str:
     return max(lights, key=lambda light: _SEVERITY[light]) if lights else GREY
 
 
-LATENCY_RULE = (f"Green: the median gaze delay (phone to this computer) is at most {MAX_LATENCY_MS:.0f} ms. Amber: longer, or not recorded. "
-                "Never red: the analysis times saccades with the phone's own capture times, so the delay only affects the live display "
-                "(typical is about 15 ms in full runs).")
-GAP_RULE = (f"Green: the longest pause in the gaze stream is at most {MAX_GAP_MS:.0f} ms. Amber: longer, or not recorded. "
-            f"Never red: any flash with a pause over {TRACKING_GAP_MS:.0f} ms around it is already left out by the analysis.")
-HEAD_RULE = ("Green: the head monitor ran and no trial was flagged. Amber: the monitor was unavailable, or some trials were flagged "
-             "(those trials are already left out). Grey: not recorded (older runs, or a run made before the head monitor existed).")
-FLASH_RULE = (f"Green: at least {an.MIN_FIT_TRIALS} saccade and {an.MIN_FIT_TRIALS} fixation flashes (enough for the threshold fit). "
-              f"Amber: {an.MIN_ACCURACY_TRIALS}-{an.MIN_FIT_TRIALS - 1} in the smaller group (only the simpler accuracy index is possible). "
-              f"Red: fewer than {an.MIN_ACCURACY_TRIALS} (no index at all). These are the limits the analysis itself uses.")
 METHOD_RULE = ("Green: the index comes from the threshold fit (the main method). Amber: only the accuracy fallback could be computed. "
                "Red: no index could be computed.")
 POOL_RULE = ("Green: every analysed run was pooled. Amber: some runs were left out (reasons listed). Red: no run could be pooled. "
              "Test runs are only included when the box is ticked.")
-
-
-def _latency_light(latency) -> str:
-    return AMBER if latency is None or latency > MAX_LATENCY_MS else GREEN
-
-
-def _gap_light(gap) -> str:
-    return AMBER if gap is None or gap > MAX_GAP_MS else GREEN
-
-
-def _ms(v) -> str:
-    return "not recorded" if v is None else f"{v:.0f} ms"
-
-
-def _gap_text(gap, count) -> str:
-    if gap is None:
-        return "not recorded"
-    return f"longest {gap:.0f} ms" + ("" if count is None else f", {count} pauses over {NEON_GAP_THRESHOLD_MS:.0f} ms")
-
-
-def _head(meta: dict) -> tuple[str, str]:
-    head = meta.get("head_motion")
-    if not isinstance(head, dict):
-        return GREY, "not recorded"
-    status = str(head.get("status") or "unknown")
-    flagged = head.get("flagged_trials")
-    drift = head.get("max_drift_deg")
-    extra = "" if drift is None else f", largest drift from the calibration position {drift:g} deg"
-    if status != "ok":
-        return AMBER, f"monitor {status}"
-    if flagged:
-        return AMBER, f"{flagged} trial(s) flagged for head movement and left out{extra}"
-    return GREEN, f"ok, no trial flagged{extra}"
-
-
-def _flash_light(n_sac: int, n_fix: int) -> str:
-    smaller = min(n_sac, n_fix)
-    return GREEN if smaller >= an.MIN_FIT_TRIALS else (AMBER if smaller >= an.MIN_ACCURACY_TRIALS else RED)
 
 
 def _method_rule(method, notes) -> dict:
@@ -172,13 +137,13 @@ def _method_rule(method, notes) -> dict:
 def run_quality(meta: dict, suppression: dict) -> dict:
     q = meta.get("gaze_quality") or {}
     latency, gap = q.get("latency_ms_median"), q.get("longest_gap_ms")
-    head_light, head_text = _head(meta)
+    head_light, head_text = head_status(meta)
     n_sac, n_fix = suppression.get("n_saccade", 0), suppression.get("n_fixation", 0)
     rules = [
-        _rule("Gaze delay", _latency_light(latency), _ms(latency), LATENCY_RULE),
-        _rule("Tracking gaps", _gap_light(gap), _gap_text(gap, q.get("gaps_over_threshold")), GAP_RULE),
+        _rule("Gaze delay", latency_light(latency), ms_text(latency), LATENCY_RULE),
+        _rule("Tracking gaps", gap_light(gap), gap_text(gap, q.get("gaps_over_threshold")), GAP_RULE),
         _rule("Head movement", head_light, head_text, HEAD_RULE),
-        _rule("Flashes per condition", _flash_light(n_sac, n_fix), f"{n_sac} saccade, {n_fix} fixation", FLASH_RULE),
+        _rule("Flashes per condition", flash_light(n_sac, n_fix), f"{n_sac} saccade, {n_fix} fixation", FLASH_RULE),
         _method_rule(suppression.get("method"), suppression.get("notes") or []),
     ]
     return {"overall": _worst(r["light"] for r in rules), "rules": rules}
@@ -192,9 +157,9 @@ def participant_quality(pid: str, summary: dict) -> dict:
         text = "; ".join(f"{r['run']}: {text_of(r)}" for r in used) or "no pooled runs"
         return _worst(lights) if used else GREY, text
 
-    lat = per_run(lambda r: _latency_light(r.get("gaze_latency_ms_median")), lambda r: _ms(r.get("gaze_latency_ms_median")))
-    gap = per_run(lambda r: _gap_light(r.get("longest_gap_ms")), lambda r: _gap_text(r.get("longest_gap_ms"), r.get("gaps_over_threshold")))
-    heads = {r["run"]: _head(session_files.read_json(_data_dir() / pid / r["run"] / session_files.SESSION_FILE) or {}) for r in used}
+    lat = per_run(lambda r: latency_light(r.get("gaze_latency_ms_median")), lambda r: ms_text(r.get("gaze_latency_ms_median")))
+    gap = per_run(lambda r: gap_light(r.get("longest_gap_ms")), lambda r: gap_text(r.get("longest_gap_ms"), r.get("gaps_over_threshold")))
+    heads = {r["run"]: head_status(session_files.read_json(_data_dir() / pid / r["run"] / session_files.SESSION_FILE) or {}) for r in used}
     head = per_run(lambda r: heads[r["run"]][0], lambda r: heads[r["run"]][1])
     n = summary.get("n_flashes") or {}
     n_sac, n_fix = n.get(SACCADE, 0), n.get(FIXATION, 0)
@@ -211,7 +176,7 @@ def participant_quality(pid: str, summary: dict) -> dict:
         _rule("Gaze delay", lat[0], lat[1], LATENCY_RULE),
         _rule("Tracking gaps", gap[0], gap[1], GAP_RULE),
         _rule("Head movement", head[0], head[1], HEAD_RULE),
-        _rule("Flashes per condition", _flash_light(n_sac, n_fix), f"{n_sac} saccade, {n_fix} fixation (all pooled runs)", FLASH_RULE),
+        _rule("Flashes per condition", flash_light(n_sac, n_fix), f"{n_sac} saccade, {n_fix} fixation (all pooled runs)", FLASH_RULE),
         _method_rule(summary.get("method"), summary.get("notes") or []),
         pool,
     ]
