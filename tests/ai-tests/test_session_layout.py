@@ -169,3 +169,13 @@ def test_analysis_accepts_the_folder_name_and_latest_looks_at_every_run(tmp_path
     stamp = _write_session(tmp_path, ONSETS, PLAN[:2], stamp="1700000001")  # an older run with the old column names
     assert an.latest_timestamp(tmp_path) == str(log._timestamp)
     assert an.analyze(stamp, data_dir=tmp_path)["summary"]["flashes"] == 2
+
+
+def test_every_module_that_uses_data_dir_shares_the_one_definition():
+    """DATA_DIR/REPO_ROOT are defined once in session_files; each module keeps its own importable name (tests patch it per module)."""
+    from src.dashboard import data_access as da
+    from src.experiment import import_glasses_video, run_summary, settings
+
+    for module in (da, an, import_glasses_video, logger_module, run_summary, settings):
+        assert module.DATA_DIR is session_files.DATA_DIR, module.__name__
+    assert session_files.DATA_DIR == session_files.REPO_ROOT / "data" and (session_files.REPO_ROOT / "src").is_dir()

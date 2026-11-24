@@ -14,9 +14,7 @@ from pathlib import Path
 from include.experiment.constants import SACCADE_FIXED_TRIALS_REAL, SACCADE_FIXED_TRIALS_TEST
 from src.experiment import session_files
 from src.experiment.logger import read_trial_rows
-
-DATA_DIR = Path(__file__).resolve().parents[2] / "data"
-ROOT = Path(__file__).resolve().parents[2]
+from src.experiment.session_files import DATA_DIR, REPO_ROOT
 SUMMARY_FILE = "RUN_SUMMARY.txt"
 
 MIN_SAMPLE_RATE_HZ = 100.0  # Neon streams ~200 Hz; below this the saccade timing gets coarse
@@ -123,7 +121,7 @@ def _recording_line(glasses: dict | None) -> tuple[str, str | None]:
 def _command_folder(folder: Path) -> str:
     """The run folder as typed in the commands: relative to the repo root when inside it, quoted if it has spaces."""
     try:
-        text = str(Path(folder).resolve().relative_to(ROOT))
+        text = str(Path(folder).resolve().relative_to(REPO_ROOT))
     except ValueError:
         text = str(Path(folder).resolve())
     return f'"{text}"' if " " in text else text

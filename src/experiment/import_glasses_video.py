@@ -17,8 +17,7 @@ from pathlib import Path
 from src.experiment import session_files
 from src.experiment.glasses_video import compute_offset, find_sync_flash_events, video_time_for_pc_unix_ms
 from src.experiment.logger import read_trial_rows
-
-DATA_DIR = Path(__file__).resolve().parents[2] / "data"
+from src.experiment.session_files import DATA_DIR
 
 
 def _resolve_folder(identifier: str, data_dir: Path) -> Path:

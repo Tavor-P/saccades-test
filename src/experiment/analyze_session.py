@@ -27,6 +27,7 @@ import numpy as np
 from include.eye_tracking.constants import NEON_SCENE_WIDTH
 from src.experiment import session_files
 from src.experiment.logger import read_trial_rows
+from src.experiment.session_files import DATA_DIR  # patched per module in tests, so always used by this bare name
 from src.experiment.flash_gates import (
     EXCLUDED,
     FIXATION,
@@ -37,8 +38,6 @@ from src.experiment.flash_gates import (
     classify_leg_flash,
     summarize_gates,
 )
-
-DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 
 # Saccade detection: a movement counts once its (3-sample smoothed) speed exceeds HIGH; its edges are where the
 # speed falls back under LOW; only movements of at least MIN_AMPLITUDE (ratio of the width) are kept.

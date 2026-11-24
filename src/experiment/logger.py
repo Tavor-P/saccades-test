@@ -24,8 +24,7 @@ from include.experiment.constants import (
 from include.experiment.types import Side, Target, TrialResult
 from src import timebase
 from src.experiment import session_files
-
-DATA_DIR = Path(__file__).resolve().parents[2] / "data"
+from src.experiment.session_files import DATA_DIR  # patched per module in tests, so always used by this bare name
 
 
 # -- trials.csv schema ----------------------------------------------------------------------------
@@ -222,9 +221,8 @@ def read_trials(path: Path) -> list[TrialResult]:
 def _git_state() -> dict:
     """Commit SHA + whether the tree had uncommitted changes, so a results file
     can be tied back to the exact code that produced it. Best effort."""
-    root = Path(__file__).resolve().parents[2]
     try:
-        run = lambda *args: subprocess.run(["git", *args], cwd=root, capture_output=True, text=True, timeout=5, check=True).stdout.strip()
+        run = lambda *args: subprocess.run(["git", *args], cwd=session_files.REPO_ROOT, capture_output=True, text=True, timeout=5, check=True).stdout.strip()
         return {"sha": run("rev-parse", "HEAD"), "dirty": bool(run("status", "--porcelain"))}
     except Exception:
         return {"sha": None, "dirty": None}

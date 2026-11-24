@@ -8,8 +8,7 @@ from include.experiment.constants import (
     SACCADE_CONTRAST_LEVELS,
     SACCADE_FIXED_CONTRASTS,
 )
-
-DATA_DIR = Path(__file__).resolve().parents[2] / "data"
+from src.experiment.session_files import DATA_DIR  # patched per module in tests, so always used by this bare name
 
 
 def _settings_path() -> Path:

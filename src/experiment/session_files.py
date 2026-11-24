@@ -12,6 +12,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+DATA_DIR = REPO_ROOT / "data"  # git-ignored runtime output; each module that reads or writes under it imports this name (tests patch it per module)
+
 ANONYMOUS = "anonymous"
 TRIALS_FILE = "trials.csv"
 SESSION_FILE = "session.json"

@@ -9,8 +9,7 @@ from pathlib import Path
 
 from src.experiment import session_files
 from src.experiment.logger import read_trials
-
-DATA_DIR = Path(__file__).resolve().parents[2] / "data"
+from src.experiment.session_files import DATA_DIR  # patched per module in tests, so always used by this bare name
 
 _NO_SUCH_SESSION = "no_such_session"  # folder name of the (never existing) paths handed out for an unknown key
 
