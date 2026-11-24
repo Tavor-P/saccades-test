@@ -166,6 +166,11 @@ def analyze_run(
     """The analysis numbers for one session (no files written). Raises ValueError when the meta file has no clock
     offset and none is given, OSError when a file is missing."""
     offset_history = None
+    flashes = load_flashes(ref.trials_path)  # OSError when trials.csv is missing
+    if not flashes:
+        raise ValueError("this run has no saccade-phase flashes in trials.csv (it was stopped before the first trial): nothing to analyse")
+    if not ref.gaze_trace_path.exists():
+        raise ValueError(f"this run has no gaze recording ({ref.gaze_trace_path.name}): the gaze source never started, nothing to analyse")
     meta = session_files.read_json(ref.meta_path)  # None: missing or damaged
     if clock_offset_ms is None:
         if meta is None:
@@ -179,7 +184,6 @@ def analyze_run(
             raise ValueError(f"this session has no clock_offset_ms in its meta file{why}; pass --offset-ms")
     t, x = load_trace(ref.gaze_trace_path, ms_to_s(clock_offset_ms), offset_history)
     saccades = detect_saccades(t, x, min_amplitude=min_amplitude)
-    flashes = load_flashes(ref.trials_path)
     trials = find_trial_saccades(flashes, saccades) if is_return_jump(flashes) else None
     if trials is None:
         placed = place_flashes(flashes, saccades, flash_delay_ms)

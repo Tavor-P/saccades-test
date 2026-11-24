@@ -450,3 +450,25 @@ def test_condition_bars_put_the_two_red_bars_together_and_the_two_blue_bars_toge
     assert [round(b.get_height()) for b in bars] == [40, 50, 93, 83]
     assert "p = 0.009" in ax.get_title() and ax.get_ylabel() == "Accuracy (%)"
     plt.close(fig)
+
+
+def test_a_run_stopped_before_the_first_trial_says_so_instead_of_blaming_the_clock(tmp_path):
+    from src.experiment import session_files
+
+    folder = sr.write_run(tmp_path, "EMPTY", 1_790_000_000.0, n_trials=20, seed=5)
+    trials = folder / session_files.TRIALS_FILE
+    header = trials.read_text(encoding="utf-8").splitlines()[0]
+    trials.write_text(header + "\n", encoding="utf-8")  # header only: no trial was run
+    ref = session_files.find_session(tmp_path, f"{folder.parent.name}/{folder.name}")
+    with pytest.raises(ValueError, match="no saccade-phase flashes in trials.csv"):
+        an.analyze_run(ref)
+
+
+def test_a_run_with_flashes_but_no_gaze_recording_says_so(tmp_path):
+    from src.experiment import session_files
+
+    folder = sr.write_run(tmp_path, "NOTRACE", 1_790_000_000.0, n_trials=20, seed=6)
+    ref = session_files.find_session(tmp_path, f"{folder.parent.name}/{folder.name}")
+    ref.gaze_trace_path.unlink()
+    with pytest.raises(ValueError, match="no gaze recording"):
+        an.analyze_run(ref)
