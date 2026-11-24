@@ -5,7 +5,7 @@ import math
 import random
 from enum import Enum, auto
 
-from include.eye_tracking.interfaces import GazeSource
+from include.experiment import participant_text as words
 from include.experiment.constants import (
     CENTER_POSITION,
     CROSS_POSITION,
@@ -22,8 +22,8 @@ from include.experiment.constants import (
     TUTORIAL_QUIZ_CONTRAST,
     TUTORIAL_QUIZ_STREAK_TARGET,
 )
-from include.experiment import participant_text as words
 from include.experiment.types import Side, Target
+from include.eye_tracking.interfaces import GazeSource
 from src.experiment.calibration import CalibrationRounds
 from src.experiment.geometry import Geometry
 from src.experiment.pausable_clock import PausableClock
@@ -32,7 +32,7 @@ from src.experiment.trial_legs import SampleFeed, TrialLegs, clamped_gaze_latenc
 from src.experiment.trial_mechanics import RollingReactionTime, ShuffledBag, flash_leg_pool, line_position
 from src.experiment.trial_mechanics import random_side as _random_side
 from src.experiment.trial_mechanics import zone_for as _zone_for
-from src.timebase import ms_to_s, s_to_ms
+from src.timebase import ms_to_s
 
 
 class Phase(Enum):
@@ -126,6 +126,12 @@ class TutorialSession:
             ShuffledBag(flash_leg_pool(RETURN_LEG_FLASH_FRACTION)) if self._return_jump else None
         )
         self._flash_leg = "out"
+
+    @property
+    def _active_legs(self) -> TrialLegs:
+        """The running attempt's legs; only valid between the go cue and the attempt's end."""
+        assert self._legs is not None, "no attempt running"
+        return self._legs
 
     # Read-only views of the current attempt's legs (tests and the HUD read these).
     @property
@@ -261,7 +267,7 @@ class TutorialSession:
 
     def _tick_active(self) -> None:
         now = self._clock.now()
-        legs = self._legs
+        legs = self._active_legs
         new_samples = self._feed.new_samples(self._gaze.latest_sample())
 
         measured = legs.measure_out_onset(new_samples)
@@ -299,7 +305,7 @@ class TutorialSession:
 
     def _tick_return_jump(self, new_samples, now: float) -> None:
         """Same steps as ExperimentSession._tick_return_jump (shared TrialLegs rules); only the logging differs."""
-        legs = self._legs
+        legs = self._active_legs
         legs.track_arrival(new_samples)
         out_flash_done = self._flash_leg == "return" or (self._flash_decided and not self._line_visible)
         forced = legs.jump_due(now, out_flash_done)
@@ -322,7 +328,7 @@ class TutorialSession:
             self._finish_attempt()
 
     def _jump_back(self, now: float, forced: bool) -> None:
-        self._legs.mark_jump(now, forced)
+        self._active_legs.mark_jump(now, forced)
         self._dot_visible = self._source is Target.DOT
         self._cross_visible = self._source is Target.CROSS
         if self._flash_leg == "return":

@@ -14,6 +14,7 @@ from include.experiment.constants import SACCADE_FIXED_TRIALS_REAL, SACCADE_FIXE
 from src.experiment import session_files
 from src.experiment.logger import read_trial_rows
 from src.experiment.session_files import DATA_DIR, REPO_ROOT
+
 SUMMARY_FILE = "RUN_SUMMARY.txt"
 
 MIN_SAMPLE_RATE_HZ = 100.0  # Neon streams ~200 Hz; below this the saccade timing gets coarse
@@ -91,7 +92,7 @@ def gaze_quality_lines(quality: dict | None) -> tuple[list[str], list[str]]:
 
 
 def _ignored_space_total(meta: dict) -> int:
-    total = 0
+    total: float = 0
     for counts in (meta.get("ignored_space_presses") or {}).values():
         if isinstance(counts, dict):
             total += sum(v for v in counts.values() if isinstance(v, (int, float)))

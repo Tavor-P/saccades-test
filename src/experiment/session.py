@@ -5,18 +5,18 @@ runs of this class: src/experiment/simulation.py."""
 import math
 import random
 from enum import Enum, auto
+from typing import Protocol
 
-from include.eye_tracking.constants import HEAD_DRIFT_WARN_DEG, HEAD_MAX_SPEED_DPS, HEAD_WARN_MIN_INTERVAL_S, HEAD_WARN_TEXT
-from include.eye_tracking.interfaces import GazeSource
+from include.experiment import participant_text as words
 from include.experiment.constants import (
-    CONTROL_OFFSETS_MS,
-    FLASH_SPREAD_SD_MS,
-    FLASH_WINDOW_MAX_MS,
-    FLASH_WINDOW_MIN_MS,
     CENTER_POSITION,
+    CONTROL_OFFSETS_MS,
     CROSS_POSITION,
     DEFAULT_REACTION_TIME_MS,
     DOT_POSITION,
+    FLASH_SPREAD_SD_MS,
+    FLASH_WINDOW_MAX_MS,
+    FLASH_WINDOW_MIN_MS,
     FOREPERIOD_MAX_MS,
     FOREPERIOD_MIN_MS,
     LINE_DURATION_FRAMES,
@@ -32,25 +32,23 @@ from include.experiment.constants import (
     SACCADE_FIXED_CONTRASTS,
     SACCADE_FIXED_TRIALS_REAL,
     SACCADE_FIXED_TRIALS_TEST,
-    SHARP_GO_CUE,
     SACCADE_TIMEOUT_MS,
+    SHARP_GO_CUE,
     TIMING_JITTER_MS,
     TIMING_OFFSETS_MS,
     TRACKING_LOSS_WINDOW_MS,
 )
-from include.experiment import participant_text as words
 from include.experiment.types import Side, Target, TrialResult, TrialSpec
+from include.eye_tracking.constants import HEAD_DRIFT_WARN_DEG, HEAD_MAX_SPEED_DPS, HEAD_WARN_MIN_INTERVAL_S, HEAD_WARN_TEXT
+from include.eye_tracking.interfaces import GazeSource
 from src.experiment.calibration import CalibrationRounds
 from src.experiment.geometry import Geometry
-from src.experiment.logger import ResultLogger
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.scoring import is_valid_for_saccadic_analysis, score_outcome
 from src.experiment.session_config import SessionConfig, TutorialHandoff
 from src.experiment.space_input import SpaceTally
 from src.experiment.trial_factory import build_saccade_sequence, generate_next_saccade_trial
 from src.experiment.trial_legs import SampleFeed, TrialLegs, clamped_gaze_latency_ms, timestamp_latency_s
-from src.experiment.trial_record import saccade_trial_result
-from src.timebase import ms_to_s, s_to_ms
 from src.experiment.trial_mechanics import (
     OnsetDetector,
     RollingReactionTime,
@@ -60,6 +58,8 @@ from src.experiment.trial_mechanics import (
     spread_flash_delay_ms,
     zone_for,
 )
+from src.experiment.trial_record import saccade_trial_result
+from src.timebase import ms_to_s, s_to_ms
 
 
 class Phase(Enum):
@@ -86,6 +86,12 @@ _TRIAL_PHASES = _RT_TEST_PHASES + _MAIN_TRIAL_PHASES
 _ANSWER_TEXT = words.ANSWER
 
 
+class TrialLogger(Protocol):
+    """What the session needs from a logger: ResultLogger, or the simulator's in-memory stand-in."""
+
+    def log(self, result: TrialResult) -> None: ...
+
+
 class ExperimentSession:
     """Gaze-contingent saccade experiment: calibration, an alternating dot/cross trial loop, perisaccadic line flashes,
     response scoring and logging.
@@ -104,7 +110,7 @@ class ExperimentSession:
     def __init__(
         self,
         gaze_source: GazeSource,
-        logger: ResultLogger,
+        logger: TrialLogger,
         clock: PausableClock,
         config: SessionConfig | None = None,
         handoff: TutorialHandoff | None = None,
@@ -245,6 +251,24 @@ class ExperimentSession:
         self._foreperiod_start = 0.0
         self._foreperiod_duration_s = 0.0
         self._flash_leg: str | None = None  # 'out' | 'return': which leg this trial's flash goes on ('out' with return jump off)
+
+    @property
+    def _active_legs(self) -> TrialLegs:
+        """The running trial's legs; only valid between the go cue and the trial's end."""
+        assert self._legs is not None, "no trial running"
+        return self._legs
+
+    @property
+    def _average_ms(self) -> float:
+        """The out-leg average reaction time; set (calibration / RT test / seed) before any main trial starts."""
+        assert self._avg_reaction_time_ms is not None, "no reaction-time average yet"
+        return self._avg_reaction_time_ms
+
+    @property
+    def _active_trial(self) -> TrialSpec:
+        """The running trial's spec; only valid once a trial has been started."""
+        assert self._current_trial_spec is not None, "no trial started"
+        return self._current_trial_spec
 
     # Read-only views of the trial's legs (tests and the rendering code read these names).
     @property
@@ -394,7 +418,9 @@ class ExperimentSession:
             if sample_t < self._rt_test_start_time:
                 continue  # captured before the go-cue (it just arrived after it): cannot be a reaction to it
             if self._rt_test_onset_detector.update(sample, sample_t):
-                self._finish_rt_test_attempt(s_to_ms(self._rt_test_onset_detector.since - self._rt_test_start_time))
+                since = self._rt_test_onset_detector.since
+                assert since is not None  # update() returned True
+                self._finish_rt_test_attempt(s_to_ms(since - self._rt_test_start_time))
                 return
 
         if now - self._rt_test_start_time >= ms_to_s(SACCADE_TIMEOUT_MS):
@@ -505,7 +531,7 @@ class ExperimentSession:
         self._clear_trial_state()
         self._phase = Phase.AWAITING_SPACE
         # Explicit: the previous phase may have been the RT test, which tracks no TrialSpec.
-        trial = self._current_trial_spec
+        trial = self._active_trial
         self._dot_visible = trial.source is Target.DOT
         self._cross_visible = trial.source is Target.CROSS
 
@@ -513,7 +539,7 @@ class ExperimentSession:
         self._start_foreperiod_timer(Phase.FOREPERIOD)
 
     def _reveal_target_and_start_trial(self) -> None:
-        trial = self._current_trial_spec
+        trial = self._active_trial
         if trial.target is Target.DOT:
             self._dot_visible = True
         else:
@@ -533,6 +559,7 @@ class ExperimentSession:
         self._feed.latency_s = timestamp_latency_s(self._gaze, self._trial_gaze_latency_ms)
         if self._return_jump:
             bag = self._practice_flash_leg_bag if trial.practice else self._flash_leg_bag
+            assert bag is not None  # built whenever the return jump is on
             self._flash_leg = bag.draw()
         else:
             self._flash_leg = "out"
@@ -540,7 +567,7 @@ class ExperimentSession:
             self._flash_scheduled_at = math.inf  # scheduled at the jump back
             return
         self._trial_avg_rt_ms = self._avg_reaction_time_ms
-        self._trial_scheduled_delay_ms = self._flash_delay_ms(trial, self._avg_reaction_time_ms)
+        self._trial_scheduled_delay_ms = self._flash_delay_ms(trial, self._average_ms)
         self._flash_scheduled_at = self._trial_start_time + ms_to_s(self._trial_scheduled_delay_ms)
 
     def _flash_delay_ms(self, trial: TrialSpec, average_ms: float, sd_ms: float | None = None) -> float:
@@ -558,7 +585,7 @@ class ExperimentSession:
 
     def _return_average_ms(self) -> float:
         """Centre for a return-leg flash: the return-saccade average once it rests on enough samples, else the out-leg one."""
-        return self._return_rt.average if self._return_rt.has_estimate else self._avg_reaction_time_ms
+        return self._return_rt.average if self._return_rt.has_estimate else self._average_ms
 
     def tick(self) -> None:
         self._on_calibration(self._calibration.poll())
@@ -577,7 +604,7 @@ class ExperimentSession:
             self._reveal_target_and_start_trial()
 
     def _tick_trial_active(self) -> None:
-        trial = self._current_trial_spec
+        trial = self._active_trial
         sample = self._gaze.latest_sample()
         now = self._clock.now()
         new_samples = self._feed.new_samples(sample)
@@ -607,9 +634,9 @@ class ExperimentSession:
 
         # Landing is flagged at once but the trial is not finalized: a real reaction time can outlast how quickly landing is
         # detected, so ending the trial here would cut off a still-valid response.
-        self._legs.track_out_landing(new_samples)
+        self._active_legs.track_out_landing(new_samples)
 
-        if self._legs.out_timed_out(now):
+        if self._active_legs.out_timed_out(now):
             self._finish_trial()
             return
 
@@ -620,7 +647,7 @@ class ExperimentSession:
 
     def _tick_return_jump(self, trial: TrialSpec, new_samples, now: float) -> None:
         """The rest of a return-jump trial tick: out arrival / onset -> jump back -> return onset/landing -> finish."""
-        legs = self._legs
+        legs = self._active_legs
         legs.track_arrival(new_samples)
         # An out-leg flash is drawn (and gone) before the target jumps, so the jump never overlaps it.
         out_flash_done = self._flash_leg == "return" or (self._flash_decided and not self._line_visible)
@@ -650,7 +677,7 @@ class ExperimentSession:
     def _jump_back(self, trial: TrialSpec, now: float, forced: bool) -> None:
         """The target jumps back: the start symbol reappears (the new saccade target), the one just reached disappears.
         A return-leg flash is scheduled from this frame."""
-        self._legs.mark_jump(now, forced)
+        self._active_legs.mark_jump(now, forced)
         if forced and not trial.practice:
             self.forced_jump_backs += 1
         self._dot_visible = trial.source is Target.DOT
@@ -699,7 +726,7 @@ class ExperimentSession:
     def _measure_reaction(self, new_samples) -> None:
         """Onset detection runs every tick purely as a measurement (reaction_latency_ms, the rolling RT average and one
         bound of the flash_during_saccade window); it no longer triggers the flash. Out leg only (TrialLegs.measure_out_onset)."""
-        measured = self._legs.measure_out_onset(new_samples)
+        measured = self._active_legs.measure_out_onset(new_samples)
         if measured is not None:
             self._reaction_latency_ms, lag_ms = measured
             self._record_reaction_time(self._reaction_latency_ms)
@@ -724,7 +751,7 @@ class ExperimentSession:
         return True
 
     def _hide_source_symbol(self) -> None:
-        trial = self._current_trial_spec
+        trial = self._active_trial
         if trial.source is Target.DOT:
             self._dot_visible = False
         else:
@@ -732,7 +759,7 @@ class ExperimentSession:
 
     def _flash_leg_onset_landing(self) -> tuple[float | None, float | None]:
         """(onset, first-in-zone landing) capture times of the saccade on the flash's leg."""
-        return self._legs.onset_landing(self._flash_leg)
+        return self._active_legs.onset_landing(self._flash_leg)
 
     def _compute_flash_during_saccade(self) -> bool | None:
         """Whether the scheduled flash time fell within [onset, landing] (the "first observed" capture times) of the flash's
@@ -748,8 +775,8 @@ class ExperimentSession:
         return onset <= self._flash_scheduled_at <= landed_since
 
     def _finish_trial(self) -> None:
-        trial = self._current_trial_spec
-        if not self._legs.leg_moved(self._flash_leg) or not self._line_actually_shown:
+        trial = self._active_trial
+        if not self._active_legs.leg_moved(self._flash_leg) or not self._line_actually_shown:
             outcome = "timeout"  # no saccade (on the flash's leg), or the trial ended before its flash fired
         else:
             outcome = score_outcome(self._responded, self._answer_side, trial.line_side)
@@ -762,7 +789,7 @@ class ExperimentSession:
         if not trial.practice:
             result = saccade_trial_result(
                 trial,
-                self._legs,
+                self._active_legs,
                 outcome=outcome,
                 flash_shown=self._line_actually_shown,
                 flash_leg=self._flash_leg,
@@ -830,7 +857,7 @@ class ExperimentSession:
     def _trial_label(self) -> str:
         if self._phase in _RT_TEST_PHASES:
             return f"RT test {self._rt_test_attempt + 1}/{self._rt_test_target_attempts}"
-        trial = self._current_trial_spec
+        trial = self._active_trial
         if trial.practice:
             return f"practice {self._practice_index}/{self._num_practice}"
         return f"trial {self._main_trial_counter} (valid: {self._valid_trial_count})"
@@ -912,7 +939,7 @@ class ExperimentSession:
         Not on the very first screen of the block (after the tutorial there are no practice trials), which must say to press SPACE."""
         if self._phase is Phase.AWAITING_SPACE and self._is_first_trial():
             return False
-        return self._phase in _MAIN_TRIAL_PHASES and not self._current_trial_spec.practice
+        return self._phase in _MAIN_TRIAL_PHASES and not self._active_trial.practice
 
     def _has_trial_label(self) -> bool:
         return self._phase in _TRIAL_PHASES

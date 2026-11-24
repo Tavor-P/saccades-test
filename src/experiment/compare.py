@@ -162,9 +162,12 @@ def load_person(participant: str, data_dir: Path = DATA_DIR, include_test: bool 
     summary = session_files.read_json(summary_path)
     try:
         why = stale_reason(pid, data_dir, include_test, summary, summary_path) if (refresh or summary is None) else None
-        if why is None and _read_flash_csv(summary_path.parent / str(summary.get("flashes_csv") or "flashes.csv")) is None:
-            why = "saved flashes.csv is unreadable"
         if why is None:
+            assert summary is not None  # stale_reason() always gives a reason when there is no summary
+            if _read_flash_csv(summary_path.parent / str(summary.get("flashes_csv") or "flashes.csv")) is None:
+                why = "saved flashes.csv is unreadable"
+        if why is None:
+            assert summary is not None
             flashes = _read_flash_csv(summary_path.parent / str(summary.get("flashes_csv") or "flashes.csv"))
             person.analysis_source = "saved"
         else:
@@ -180,6 +183,7 @@ def load_person(participant: str, data_dir: Path = DATA_DIR, include_test: bool 
         person.included, person.reason = False, f"could not be analysed ({type(exc).__name__}: {exc})"
         return person
 
+    assert summary is not None  # either read from disk above or (re)computed in the else branch
     n, k = summary.get("n_flashes") or {}, summary.get("correct") or {}
     person.index, person.ci, person.method = summary.get("index"), summary.get("ci"), summary.get("method")
     person.n_saccade, person.n_fixation, person.n_total = int(n.get(SACCADE, 0)), int(n.get(FIXATION, 0)), int(n.get("total", 0))
@@ -280,10 +284,10 @@ def effect_size_words(r: float, name_a: str, name_b: str) -> str:
 
 def median_difference_ci(a: list[float], b: list[float], n_boot: int, rng: np.random.Generator) -> list:
     """95 % percentile bootstrap CI of median(A) - median(B), people resampled with replacement within each group."""
-    a, b = np.asarray(a, dtype=float), np.asarray(b, dtype=float)
-    ia = rng.integers(0, len(a), (n_boot, len(a)))
-    ib = rng.integers(0, len(b), (n_boot, len(b)))
-    diff = np.median(a[ia], axis=1) - np.median(b[ib], axis=1)
+    arr_a, arr_b = np.asarray(a, dtype=float), np.asarray(b, dtype=float)
+    ia = rng.integers(0, len(arr_a), (n_boot, len(arr_a)))
+    ib = rng.integers(0, len(arr_b), (n_boot, len(arr_b)))
+    diff = np.median(arr_a[ia], axis=1) - np.median(arr_b[ib], axis=1)
     return [float(v) for v in np.percentile(diff, [2.5, 97.5])]
 
 
@@ -519,6 +523,7 @@ def _tail(result: ComparisonResult) -> str:
 
 def _one_vs_one(result: ComparisonResult, rng, n_boot: int) -> None:
     (pa,), (pb,) = result.included("A"), result.included("B")
+    assert result.method is not None  # a 1v1 comparison only runs once the method was agreed
     boot_a, boot_b = bootstrap_index(pa, result.method, n_boot, rng), bootstrap_index(pb, result.method, n_boot, rng)
     ci, usable, note = difference_ci(boot_a, boot_b)
     diff = pa.index - pb.index
@@ -614,7 +619,7 @@ def _caveats(result: ComparisonResult) -> list:
 
 
 def format_report(result: ComparisonResult) -> str:
-    title = f"Comparison ({MODE_NAMES.get(result.mode, 'not possible')}): set {result.name_a} vs set {result.name_b}"
+    title = f"Comparison ({MODE_NAMES.get(result.mode or '', 'not possible')}): set {result.name_a} vs set {result.name_b}"
     lines = [title, "", result.headline, ""]
     if result.warnings:
         lines += ["Warnings:"] + [f"  - {w}" for w in result.warnings] + [""]
@@ -672,7 +677,8 @@ def _num(v) -> str:
 
 
 def _time_curve(flashes: list) -> tuple[list, list, list]:
-    centres, acc, err = [], [], [[], []]
+    centres, acc = [], []
+    err: list[list] = [[], []]
     for lo, hi in zip(BIN_EDGES_MS[:-1], BIN_EDGES_MS[1:]):
         members = [c for rel, c, _ in flashes if rel is not None and lo <= rel < hi]
         if members:

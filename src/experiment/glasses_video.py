@@ -7,11 +7,13 @@ frames, `compute_offset` matches them to the logged PC times (by their spacing, 
 off) and returns the offset: PC unix time = video time + offset. NOT verified on real glasses footage yet (see README).
 """
 
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Any
 
 import numpy as np
+
 from src.timebase import ms_to_s, s_to_ms
 
 # The flash pattern (shown by run_experiment.run_sync_flashes): n flashes, each ON for SYNC_FLASH_ON_S then dark for SYNC_FLASH_GAP_S.
@@ -144,7 +146,7 @@ def compute_offset(video_flash_times_s: Iterable[float], pc_flash_unix_ms: Itera
     a worst residual under 100 ms (the video's frame spacing alone is ~33 ms), else "check manually"."""
     video = sorted(float(v) for v in video_flash_times_s)
     pc = sorted(ms_to_s(float(p)) for p in pc_flash_unix_ms)
-    result = {"offset_s": None, "matched": 0, "pc_flashes": len(pc), "video_events": len(video), "pairs": [], "residual_rms_ms": None, "residual_max_ms": None, "drift_ms_per_min": None, "status": "check manually", "notes": []}
+    result: dict[str, Any] = {"offset_s": None, "matched": 0, "pc_flashes": len(pc), "video_events": len(video), "pairs": [], "residual_rms_ms": None, "residual_max_ms": None, "drift_ms_per_min": None, "status": "check manually", "notes": []}
     if not pc:
         result["notes"].append("session.json has no logged sync flashes (recording or flash step did not run)")
         return result

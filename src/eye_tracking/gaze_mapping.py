@@ -76,7 +76,7 @@ class GazeMapper:
     def average_recent_ratio(self) -> float | None:
         # Full window required, same as GazeTracker - see its comment.
         with self._lock:
-            if len(self._ratio_history) < self._ratio_history.maxlen:
+            if len(self._ratio_history) < (self._ratio_history.maxlen or 0):
                 return None
             return sum(self._ratio_history) / len(self._ratio_history)
 

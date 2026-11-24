@@ -14,7 +14,6 @@ from src.experiment.saccade_detection import Flash, Placed, Saccade
 from src.experiment.suppression_stats import suppression_index
 from src.timebase import ms_to_s, s_to_ms
 
-
 # -- return-jump runs: the two saccades of each trial ----------------------------------------------
 # A trial whose row logs a jump-back has an out saccade (go cue -> target) and a return saccade (back to the start). Each
 # flash is placed against and gated by the saccade of its own leg (flash_gates.classify_leg_flash). Runs with no jump
@@ -83,7 +82,7 @@ def classify_leg_flashes(placed: list[Placed], trials: list[TrialSaccades], sacc
     """flash_gates.classify_leg_flash for every flash; the amplitude gate uses each leg's own run median."""
     medians = {}
     for leg in LEGS:
-        amps = [tr.of(leg).amplitude for tr in trials if tr.of(leg) is not None]
+        amps = [s.amplitude for tr in trials if (s := tr.of(leg)) is not None]
         medians[leg] = float(np.median(amps)) if amps else None
     out = []
     for p, tr in zip(placed, trials):
@@ -119,15 +118,15 @@ def return_latency_stats(flashes: list[Flash], trials: list[TrialSaccades], sett
     was on), forced jumps left out. Negative = the eye turned back before the jump was drawn (predictive). The logged live
     `return_reaction_ms` is summarised alongside as a cross-check. Caveat: the jump time is go cue + logged offset, and the go cue
     is the flash time minus its SCHEDULED delay, so the anchor can sit up to one frame late (latencies read up to ~17 ms short)."""
-    jumped = [(f, tr) for f, tr in zip(flashes, trials) if f.jump is not None]
-    usable = [(f, tr) for f, tr in jumped if not f.jump_forced]
-    latencies_ms = np.asarray([s_to_ms(tr.back.onset - f.jump) for f, tr in usable if tr.back is not None])
-    live = np.asarray([f.return_reaction_ms for f, _ in usable if f.return_reaction_ms is not None])
+    jumped = [(f, tr, f.jump) for f, tr in zip(flashes, trials) if f.jump is not None]
+    usable = [(f, tr, jump) for f, tr, jump in jumped if not f.jump_forced]
+    latencies_ms = np.asarray([s_to_ms(tr.back.onset - jump) for f, tr, jump in usable if tr.back is not None])
+    live = np.asarray([f.return_reaction_ms for f, _, _ in usable if f.return_reaction_ms is not None])
     s = settings or {}
     return {
         "trials_jumped": len(jumped),
         "forced_jumps": len(jumped) - len(usable),
-        "no_return_found": sum(tr.back is None for _, tr in usable),
+        "no_return_found": sum(tr.back is None for _, tr, _ in usable),
         "n": int(len(latencies_ms)),
         "median_ms": float(np.median(latencies_ms)) if len(latencies_ms) else None,
         "sd_ms": float(np.std(latencies_ms, ddof=1)) if len(latencies_ms) >= 2 else None,

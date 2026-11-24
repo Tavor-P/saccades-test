@@ -11,6 +11,7 @@ from src.experiment import session_files
 from src.experiment.logger import read_trials
 from src.experiment.session_files import DATA_DIR  # patched per module in tests, so always used by this bare name
 
+
 class DamagedSessionFile(Exception):
     """A session.json exists but cannot be read; the message is plain text for the user."""
 
@@ -75,12 +76,12 @@ def save_participant_info(timestamp: str, gender: str, age: str) -> None:
     ref = _ref(timestamp)
     if ref is None:
         raise FileNotFoundError(f"no session {timestamp!r}")
-    gender = gender.strip() or None
+    gender_value = gender.strip() or None
     age_value = int(age) if age.strip() else None
     raw = session_files.read_json(ref.meta_path) if ref.meta_path.exists() else {}
     if raw is None:  # never overwrite a damaged session.json with just these two fields
         raise DamagedSessionFile(f"{ref.label}/{session_files.SESSION_FILE} is damaged, so the participant details were not saved")
-    raw.setdefault("participant", {}).update(gender=gender, age=age_value)
+    raw.setdefault("participant", {}).update(gender=gender_value, age=age_value)
     ref.meta_path.write_text(json.dumps(raw, indent=2), encoding="utf-8")
 
 

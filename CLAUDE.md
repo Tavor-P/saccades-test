@@ -35,13 +35,15 @@ backend. Participant/experimenter docs: [README.md](README.md).
   (never `git add -A` / `commit -a`); don't touch other sessions' files, tell the user instead.
 - PowerShell 5.1 has no `&&`; keep each file's line endings (CRLF). `.gitignore` has `data/`, which matches any `data` folder (tests: use `tests/fixtures/`).
 - `data/` is git-ignored runtime output and participant data is personal data: never commit or print it, never write to it from tests/simulations, never copy real sessions into `tests/fixtures/`.
-- Report test results truthfully (ran / skipped). Suite: 364 tests pass, none skipped, ~2-4 min.
+- Report test results truthfully (ran / skipped). Suite: 366 tests pass, none skipped, ~2-4 min.
 
 ## Commands (all through the wrapper)
 
 ```
 .\scripts\py.ps1 -m pip install -r requirements.txt
 .\scripts\py.ps1 -m pytest -q                                   # full suite; one test: tests/ai-tests/test_session.py::name -v
+.\scripts\py.ps1 -m ruff check .                                # lint (ruff.toml: E F W I B UP); never `ruff format` (whole-repo reformat)
+.\scripts\py.ps1 -m mypy                                        # types for src/ + include/ (mypy.ini); both kept at 0 findings by tests/test_lint.py
 .\scripts\py.ps1 -m src.experiment.simulation                   # headless simulated trial timeline (AI-safe)
 .\scripts\py.ps1 tests/ai-tests/run_sim.py --help               # --scenario --set --profile --sweep --sweep-profile --seeds --timeline --json --real --list
 .\scripts\py.ps1 -m src.experiment.run_experiment               # REAL experiment (human only)
@@ -131,7 +133,7 @@ Paths are checked by `tests/test_docs.py` - keep them real.
 2. **Whole-session behaviour or a timing constant**: `run_sim.py` (`--set NAME=VALUE`, `--sweep NAME=a,b,c --seeds 5`, `--timeline`); trust relative comparisons only. After session/scoring changes also run `tests/ai-tests/find_bugs.py --sessions 300`.
 3. **Gaze source**: `tests/test_neon_source.py` / `tests/test_gaze_trace.py` patterns (fake device, or replay the fixture via `ReplayGazeSource`).
 4. **Needs real eyes/glasses/screen**: write the measurement script and ask the human; don't guess numbers.
-- Enforced by tests: schema sync (`test_schema_sync.py`), constant relations (`test_constants_sanity.py`), architecture (`test_architecture_rules.py`: no PsychoPy in session logic, no `time.monotonic()`/`time.time()` in `src/` outside
+- Enforced by tests: lint + types (`test_lint.py`: ruff and mypy report nothing), schema sync (`test_schema_sync.py`), constant relations (`test_constants_sanity.py`), architecture (`test_architecture_rules.py`: no PsychoPy in session logic, no `time.monotonic()`/`time.time()` in `src/` outside
   `timebase.py`, lazy backend imports, no logic in `include/`), known-bug reinjection (`test_bug_injection.py`).
 
 ## Recipes

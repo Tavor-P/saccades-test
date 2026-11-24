@@ -5,6 +5,7 @@ focus moves to another field. The settings model and validation are Qt-free and 
 
 import sys
 from pathlib import Path
+from typing import cast
 
 from PyQt6 import QtCore, QtGui, QtWidgets
 from PyQt6.QtCore import Qt
@@ -27,6 +28,11 @@ from src.experiment.startup_model import (
 BUBBLE_WIDTH_CHARS = 40  # word-wrap width of the help bubble, in average characters
 BUBBLE_CURSOR_OFFSET = (14, 18)  # gap between the pointer and the bubble's corner
 _HELP_TRIGGER_PROPERTY = "helpKey"
+
+
+def _application() -> QtWidgets.QApplication:
+    """The running QApplication (the dialog only exists inside one)."""
+    return cast(QtWidgets.QApplication, QtWidgets.QApplication.instance())
 
 
 class HelpBubble(QtWidgets.QLabel):
@@ -56,6 +62,7 @@ class HelpBubble(QtWidgets.QLabel):
     def _position_for(self, anchor: QtCore.QPoint) -> QtCore.QPoint:
         """Just below-right of the pointer, kept inside the screen under it (flipped to the other side if it would not fit)."""
         screen = QtGui.QGuiApplication.screenAt(anchor) or QtGui.QGuiApplication.primaryScreen()
+        assert screen is not None  # a running Qt app always has a primary screen
         area = screen.availableGeometry()
         x = anchor.x() + BUBBLE_CURSOR_OFFSET[0]
         y = anchor.y() + BUBBLE_CURSOR_OFFSET[1]
@@ -80,15 +87,15 @@ class HelpLabel(QtWidgets.QLabel):
         self.setAttribute(Qt.WidgetAttribute.WA_Hover)
         self._plain = text
 
-    def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:
-        if event.button() == Qt.MouseButton.LeftButton:
+    def mousePressEvent(self, event: QtGui.QMouseEvent | None) -> None:
+        if event is not None and event.button() == Qt.MouseButton.LeftButton:
             self.pressed.emit()
 
-    def enterEvent(self, event: QtGui.QEnterEvent) -> None:
+    def enterEvent(self, event: QtGui.QEnterEvent | None) -> None:
         self.setText(f"<u>{self._plain}</u>")
         super().enterEvent(event)
 
-    def leaveEvent(self, event: QtCore.QEvent) -> None:
+    def leaveEvent(self, event: QtCore.QEvent | None) -> None:
         self.setText(self._plain)
         super().leaveEvent(event)
 
@@ -190,8 +197,9 @@ class StartupDialog(QtWidgets.QDialog):
             edit.textChanged.connect(self._clear_error)
         for edit in (self.screen_height, self.viewing_distance):
             edit.textChanged.connect(self._refresh_note)
-        QtWidgets.QApplication.instance().focusChanged.connect(lambda *_: self.hide_help())
-        QtWidgets.QApplication.instance().installEventFilter(self)
+        app = _application()
+        app.focusChanged.connect(lambda *_: self.hide_help())
+        app.installEventFilter(self)
         self._update_participant_hint()
         self._refresh_note()
         self.participant.setFocus()
@@ -223,7 +231,9 @@ class StartupDialog(QtWidgets.QDialog):
     def set_advanced_visible(self, visible: bool) -> None:
         self.advanced_box.setVisible(visible)
         self.advanced_toggle.setText("Advanced ▾" if visible else "Advanced ▸")
-        self.layout().activate()
+        layout = self.layout()
+        assert layout is not None
+        layout.activate()
         self.adjustSize()
 
     # -- help bubble -----------------------------------------------------------------------------
@@ -245,9 +255,11 @@ class StartupDialog(QtWidgets.QDialog):
         self._bubble_owner = None
         self.bubble.hide()
 
-    def eventFilter(self, obj: QtCore.QObject, event: QtCore.QEvent) -> bool:
+    def eventFilter(self, obj: QtCore.QObject | None, event: QtCore.QEvent | None) -> bool:
         """While a bubble is open the next click anywhere (or Esc) closes it and is consumed, so it cannot also press the button under it; a click
         on another field's name or '?' closes this bubble and opens that field's instead."""
+        if event is None:
+            return False
         kind = event.type()
         if kind == QtCore.QEvent.Type.MouseButtonRelease and self._swallow_release:
             self._swallow_release = False
@@ -255,7 +267,7 @@ class StartupDialog(QtWidgets.QDialog):
         if not self.bubble.isVisible():
             return False
         if kind == QtCore.QEvent.Type.MouseButtonPress:
-            target = QtWidgets.QApplication.widgetAt(event.globalPosition().toPoint())
+            target = QtWidgets.QApplication.widgetAt(cast(QtGui.QMouseEvent, event).globalPosition().toPoint())
             is_other_trigger = (
                 target is not None
                 and target.property(_HELP_TRIGGER_PROPERTY) not in (None, self._bubble_owner)
@@ -265,7 +277,7 @@ class StartupDialog(QtWidgets.QDialog):
                 return False
             self._swallow_release = True
             return True
-        if kind == QtCore.QEvent.Type.KeyPress and event.key() == Qt.Key.Key_Escape:
+        if kind == QtCore.QEvent.Type.KeyPress and cast(QtGui.QKeyEvent, event).key() == Qt.Key.Key_Escape:
             self.hide_help()
             return True
         if kind == QtCore.QEvent.Type.WindowDeactivate and obj is self:
@@ -274,7 +286,7 @@ class StartupDialog(QtWidgets.QDialog):
 
     def done(self, result: int) -> None:
         self.hide_help()
-        QtWidgets.QApplication.instance().removeEventFilter(self)
+        _application().removeEventFilter(self)
         super().done(result)
 
     # -- behaviour -------------------------------------------------------------------------------

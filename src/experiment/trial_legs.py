@@ -3,14 +3,14 @@
 session clock. The sessions keep the policy: which leg flashes, when the flash fires, symbol visibility, the response window
 and when a trial is logged."""
 
-from include.eye_tracking.interfaces import GazeSource
 from include.experiment.constants import (
     GAZE_LANDING_STABILITY_MS,
     GAZE_LATENCY_MAX_MS,
     RETURN_JUMP_LANDING_TIMEOUT_MS,
     SACCADE_TIMEOUT_MS,
 )
-from include.eye_tracking.types import GazeZone
+from include.eye_tracking.interfaces import GazeSource
+from include.eye_tracking.types import GazeSample, GazeZone
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.trial_mechanics import OnsetDetector, sample_capture_time
 from src.timebase import ms_to_s, s_to_ms
@@ -51,7 +51,7 @@ class SampleFeed:
         """Capture time of `sample` on the session clock, minus the snapshotted gaze latency (see sample_capture_time)."""
         return sample_capture_time(sample, now, self.latency_s, self._clock.from_perf_counter)
 
-    def new_samples(self, latest) -> list[tuple[object, float]]:
+    def new_samples(self, latest) -> list[tuple[GazeSample, float]]:
         """Sources with a short history (`samples_since`, e.g. Neon) hand over all new samples; others contribute just the
         latest one, which is harmless to re-read."""
         now = self._clock.now()
@@ -136,7 +136,9 @@ class TrialLegs:
             if self.jump_at is not None and s_t >= self.jump_at and not arrived_before_jump:
                 break  # a late arrival after a FORCED jump must not let a > 1.5 s "reaction" into the RT average
             if not self.onset.confirmed and self.onset.update(s, s_t):
-                return s_to_ms(self.onset.since - self.go_cue_at), s_to_ms(s_t - self.onset.since)
+                since = self.onset.since
+                assert since is not None  # update() returned True
+                return s_to_ms(since - self.go_cue_at), s_to_ms(s_t - since)
         return None
 
     def track_out_landing(self, samples) -> None:
@@ -195,6 +197,7 @@ class TrialLegs:
             detector.update(s, s_t)
         measured = None
         if detector.confirmed and self.jump_at is not None and self.return_reaction_ms is None:
+            assert detector.since is not None  # confirmed
             self.return_reaction_ms = measured = s_to_ms(detector.since - self.jump_at)  # signed: < 0 = left before the jump
         was_landed = self.return_landing.landed
         self.return_landing.feed(feed)

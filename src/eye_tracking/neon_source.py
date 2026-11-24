@@ -5,37 +5,36 @@ import sys
 import threading
 import time
 from collections import deque
+from pathlib import Path
 
 from include.eye_tracking.constants import (
+    HEAD_MAX_CONSECUTIVE_ERRORS,
+    HEAD_NO_DATA_TIMEOUT_S,
+    HEAD_POLL_HZ,
+    NEON_CLOCK_ESTIMATE_TIMEOUT_S,
+    NEON_CLOCK_REESTIMATE_MAX_STD_MS,
+    NEON_CLOCK_REESTIMATE_S,
     NEON_DEVICE_ADDRESS,
     NEON_DEVICE_PORT,
+    NEON_DISCOVERY_TIMEOUT_S,
     NEON_GAP_THRESHOLD_MS,
-    NEON_STALE_TIMEOUT_S,
-    NEON_MAX_PLAUSIBLE_LATENCY_MS,
     NEON_HISTORY_SAMPLES,
-    NEON_LATENCY_WINDOW_SAMPLES,
+    NEON_INGEST_ERROR_SLEEP_S,
     NEON_LATENCY_MEDIAN_EVERY_N_SAMPLES,
+    NEON_LATENCY_WINDOW_SAMPLES,
     NEON_MAX_LATENCY_SAMPLES,
     NEON_MAX_LOGGED_ERROR_KINDS,
+    NEON_MAX_PLAUSIBLE_LATENCY_MS,
     NEON_RECEIVE_IDLE_SLEEP_S,
-    NEON_INGEST_ERROR_SLEEP_S,
-    NEON_CLOCK_REESTIMATE_S,
-    NEON_CLOCK_REESTIMATE_MAX_STD_MS,
-    NEON_CLOCK_ESTIMATE_TIMEOUT_S,
-    NEON_DISCOVERY_TIMEOUT_S,
     NEON_SCENE_WIDTH,
-    HEAD_POLL_HZ,
-    HEAD_NO_DATA_TIMEOUT_S,
-    HEAD_MAX_CONSECUTIVE_ERRORS,
+    NEON_STALE_TIMEOUT_S,
 )
 from include.eye_tracking.interfaces import GazeSource
 from include.eye_tracking.types import GazeSample, GazeZone
-from pathlib import Path
-
+from src import timebase
 from src.eye_tracking.gaze_mapping import GazeMapper
 from src.eye_tracking.gaze_trace import GazeTraceWriter
 from src.eye_tracking.head_monitor import HeadMotionTracker
-from src import timebase
 
 
 class NeonConnectionError(RuntimeError):
@@ -367,6 +366,7 @@ class NeonGazeSource(GazeSource):
         """Remembers the offset now in force and the phone-clock time (PC unix time minus the offset) it was measured at: the two clocks drift
         apart (~1 ms/min), so the post-hoc analysis interpolates over this history instead of applying the final offset to the whole trace.
         Caller holds self._lock (or is single-threaded)."""
+        assert self._clock_offset_ms is not None  # both callers have just set it
         self._offset_history.append({"phone_unix_s": round(timebase.unix_now() - timebase.ms_to_s(self._clock_offset_ms), 3), "offset_ms": round(self._clock_offset_ms, 3)})
 
     def _start_offset_thread(self) -> None:
@@ -458,7 +458,7 @@ class NeonGazeSource(GazeSource):
         usable = worn and x is not None and not math.isnan(x)
         with self._lock:
             stamp = self._stamp(arrival, device_timestamp_s)
-            if usable:
+            if usable and x is not None:
                 sample = self._mapper.map(x / NEON_SCENE_WIDTH, stamp)
             else:
                 sample = GazeSample(zone=GazeZone.UNKNOWN, ratio=None, face_found=False, timestamp=stamp)

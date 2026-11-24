@@ -3,6 +3,7 @@ saccadic suppression index (`suppression_index`: Weibull threshold fit with a bo
 Thresholds: include/experiment/analysis_constants.py."""
 
 import math
+from typing import Any
 
 import numpy as np
 
@@ -22,7 +23,6 @@ from include.experiment.analysis_constants import (
 )
 from src.experiment.flash_gates import FIXATION, SACCADE
 from src.experiment.saccade_detection import Placed, Saccade
-
 
 # -- statistics ----------------------------------------------------------------------------------
 
@@ -55,17 +55,23 @@ def _count(placed: list[Placed]) -> tuple[int, int]:
     return sum(p.flash.correct for p in placed), len(placed)
 
 
+def _rel(p: Placed) -> float:
+    """`p.rel_ms` of a flash already filtered to those that have one."""
+    assert p.rel_ms is not None
+    return p.rel_ms
+
+
 def summarize(placed: list[Placed], saccades: list[Saccade]) -> dict:
     """Counts and accuracy by condition; the numbers behind the printed report."""
     timed = [p for p in placed if p.rel_ms is not None]
-    near = [p for p in timed if abs(p.rel_ms) < NEAR_ONSET_MS]
-    beyond = [p for p in timed if NEAR_ONSET_MS <= abs(p.rel_ms) < FAR_MS]
-    far = [p for p in timed if abs(p.rel_ms) >= FAR_MS]
+    near = [p for p in timed if abs(_rel(p)) < NEAR_ONSET_MS]
+    beyond = [p for p in timed if NEAR_ONSET_MS <= abs(_rel(p)) < FAR_MS]
+    far = [p for p in timed if abs(_rel(p)) >= FAR_MS]
     inside = [p for p in timed if p.inside]
     outside = [p for p in timed if not p.inside]
     bins = []
     for lo, hi in zip(BIN_EDGES_MS[:-1], BIN_EDGES_MS[1:]):
-        members = [p for p in timed if lo <= p.rel_ms < hi]
+        members = [p for p in timed if lo <= _rel(p) < hi]
         k, n = _count(members)
         bins.append({"lo_ms": lo, "hi_ms": hi, "n": n, "correct": k, "ci": wilson(k, n)})
     by_contrast = {}
@@ -152,8 +158,8 @@ def _select_conditions(placed: list[Placed], near_ms: float, far_ms: float, gate
         fix = [p for p, g in zip(placed, gates) if g.condition == FIXATION]
         return sac, fix, "gates"
     timed = [p for p in placed if p.rel_ms is not None]
-    sac = [p for p in timed if abs(p.rel_ms) < near_ms]
-    fix = [p for p in timed if abs(p.rel_ms) >= far_ms]
+    sac = [p for p in timed if abs(_rel(p)) < near_ms]
+    fix = [p for p in timed if abs(_rel(p)) >= far_ms]
     return sac, fix, "windows"
 
 
@@ -236,7 +242,7 @@ def suppression_index(
     near_ms = NEAR_ONSET_MS if near_ms is None else near_ms
     far_ms = FAR_MS if far_ms is None else far_ms
     sac, fix, source = _select_conditions(placed, near_ms, far_ms, gates)
-    out = {
+    out: dict[str, Any] = {
         "conditions_from": source, "near_ms": near_ms, "far_ms": far_ms, "n_saccade": len(sac), "n_fixation": len(fix),
         "correct_saccade": sum(p.flash.correct for p in sac), "correct_fixation": sum(p.flash.correct for p in fix),
         "method": None, "index": None, "ci": None, "label": "", "threshold_saccade": None, "threshold_fixation": None,
