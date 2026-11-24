@@ -322,6 +322,24 @@ def test_schema_2_summary_without_analysis_thresholds_still_loads(tmp_path):
     assert cmp.load_person("S01", tmp_path).analysis_source != "saved"  # refresh=True re-analyses the stale file
 
 
+def test_schema_3_summary_without_companion_and_timecourse_still_loads_and_compares(tmp_path):
+    write_run(tmp_path, "S01", 1790000000, n_trials=90, seed=1)
+    write_run(tmp_path, "S02", 1790000000, n_trials=90, seed=2, threshold_saccade=0.12)
+    fresh = {pid: cmp.load_person(pid, tmp_path) for pid in ("S01", "S02")}
+    for pid in fresh:
+        path = tmp_path / pid / "analysis" / "summary.json"
+        summary = json.loads(path.read_text())
+        assert summary["schema_version"] == 4 and "companion" in summary and "timecourse" in summary
+        summary.pop("companion"), summary.pop("timecourse")
+        summary["schema_version"] = 3
+        path.write_text(json.dumps(summary), encoding="utf-8")
+    old = {pid: cmp.load_person(pid, tmp_path, refresh=False) for pid in fresh}  # the saved schema-3 files are used as they are
+    assert all(p.included and p.analysis_source == "saved" and p.index == fresh[pid].index for pid, p in old.items())
+    result = cmp.compare(["S01"], ["S02"], tmp_path, n_boot=50, refresh=False)
+    assert result.comparable and all(p.analysis_source == "saved" for p in result.people)
+    assert cmp.load_person("S01", tmp_path).analysis_source.startswith("re-analysed")  # refresh=True brings a schema-3 file up to schema 4
+
+
 def test_end_to_end_single_vs_return_jump_is_refused(tmp_path):
     write_run(tmp_path, "S01", 1790000000, n_trials=90, seed=1)
     write_run(tmp_path, "S02", 1790000000, n_trials=90, seed=2, return_jump=True)

@@ -25,6 +25,7 @@ from src.timebase import ms_to_s, s_to_ms
 
 SACCADE, FIXATION, EXCLUDED = "saccade", "fixation", "excluded"
 NOT_MOVING_REASON = "near a saccade but the eye was not moving fast at the flash"  # the exclusion reason report.txt counts before / after onset
+TRACKING_GAP_REASON = "tracking gap around the flash"  # the exclusion reason the time-course figure leaves out (no valid data at all)
 
 
 @dataclass(frozen=True)
@@ -72,7 +73,7 @@ def classify_flash(
     """Label one flash drawn at PC time `when` (display delay already added). `go_cue` is the trial's target
     onset (PC unix s) for the latency gate; without it that gate is skipped."""
     if has_tracking_gap(t, when):
-        return GateResult(EXCLUDED, "tracking gap around the flash")
+        return GateResult(EXCLUDED, TRACKING_GAP_REASON)
     if not saccades:
         return GateResult(EXCLUDED, "no saccade in the session")
     speed = speed_at(t, x, when)
@@ -131,7 +132,7 @@ def classify_leg_flash(
     when none was found; `anchor` the latency reference (go cue for 'out', jump-back frame for 'return'; PC unix s);
     `median_amplitude` the run's median for that leg. Return-leg flashes of a forced jump (no landing seen) are excluded."""
     if has_tracking_gap(t, when):
-        return GateResult(EXCLUDED, "tracking gap around the flash")
+        return GateResult(EXCLUDED, TRACKING_GAP_REASON)
     if not saccades:
         return GateResult(EXCLUDED, "no saccade in the session")
     if leg == "return" and jump_forced:

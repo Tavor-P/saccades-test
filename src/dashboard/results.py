@@ -18,6 +18,7 @@ from src.dashboard import data_access
 from src.experiment import analyze_participant as ap
 from src.experiment import analyze_session as an
 from src.experiment import session_files
+from src.experiment.analysis_report import companion_lines
 from src.experiment.analyze_participant import N_BOOT  # read at call time (tests lower it)
 from src.experiment.flash_gates import FIXATION, SACCADE
 from src.experiment.run_quality import (  # the data-quality rules live there, shared with report.txt's QUALITY line
@@ -43,7 +44,8 @@ _SEVERITY = {GREY: -1, GREEN: 0, AMBER: 1, RED: 2}
 LIGHT_WORDS = {GREEN: "OK", AMBER: "Check", RED: "Problem", GREY: "Not recorded"}
 
 # kind -> file name in the run's analysis/ folder. "plot" is shown inline, the others are downloads.
-RUN_FILES = {"report": "report.txt", "plot": "plot.png", "flashes": "flashes.csv", "suppression": "suppression.json"}
+# "gaze" (gaze_timeline.png) is shown inline under the plot; an analysis folder without it counts as stale and is re-analysed.
+RUN_FILES = {"report": "report.txt", "plot": "plot.png", "gaze": "gaze_timeline.png", "flashes": "flashes.csv", "suppression": "suppression.json"}
 PARTICIPANT_FILES = {"report": "report.txt", "plot": "plot.png", "flashes": "flashes.csv", "summary": "summary.json"}
 # kind -> link text of a downloadable file, for the run, participant and comparison pages (comparison.py reuses it)
 DOWNLOAD_LABELS = {
@@ -54,6 +56,7 @@ DOWNLOAD_LABELS = {
     "json": "comparison.json (every number, machine-readable)",
     "report": "report.txt (the full text report)",
     "plot": "plot.png (save the figure)",
+    "gaze": "gaze_timeline.png (eye position over the run, with every flash)",
 }
 
 
@@ -233,6 +236,13 @@ def _run_headline_summary(s: dict) -> dict:
             "method": s.get("method"), "index": s.get("index"), "ci": s.get("ci"), "notes": s.get("notes") or []}
 
 
+def _companion_text(saved: dict) -> list[str] | None:
+    """The report's companion-number lines from a suppression.json / summary.json (None when the analysis predates them)."""
+    if not saved.get("companion"):
+        return None
+    return [line.strip() for line in companion_lines(saved["companion"], saved.get("timecourse"))]
+
+
 def run_page(timestamp: str, force: bool = False) -> dict:
     """Everything the results page shows for one run, analysing it first if forced or if no fresh analysis exists."""
     ref = run_ref(timestamp)
@@ -253,7 +263,8 @@ def run_page(timestamp: str, force: bool = False) -> dict:
         "analysed_at": _stamp(_mtime(run_file(ref, "suppression"))),
         "quality": run_quality(meta, suppression),
         "runs": None,
-        "downloads": [k for k in ("flashes", "suppression", "report", "plot") if run_file(ref, k).exists()],
+        "downloads": [k for k in ("flashes", "suppression", "report", "plot", "gaze") if run_file(ref, k).exists()],
+        "companion": _companion_text(suppression),
         "report_text": _read_text(run_file(ref, "report")),
         "include_test": None,
     }
@@ -290,6 +301,8 @@ def participant_is_fresh(pid: str, include_test: bool) -> bool:
     summary = session_files.read_json(participant_file(pid, "summary")) or {}
     if not summary or bool(summary.get("include_test")) != include_test:
         return False
+    if summary.get("schema_version") != ap.SCHEMA_VERSION:
+        return False  # an analysis from an older version is simply re-run
     try:
         candidates = _candidates(pid, include_test)
     except ap.NoRunsError:
@@ -361,6 +374,7 @@ def participant_page(pid: str, include_test: bool = False, force: bool = False) 
         "quality": participant_quality(pid, summary),
         "runs": runs,
         "downloads": [k for k in ("flashes", "summary", "report", "plot") if participant_file(pid, k).exists()],
+        "companion": _companion_text(summary),
         "report_text": _read_text(participant_file(pid, "report")),
         "include_test": include_test,
     }

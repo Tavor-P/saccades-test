@@ -143,6 +143,53 @@ def format_index_fit(s: dict) -> list[str]:
     return lines
 
 
+def _pp_ci(ci) -> str:
+    return "95% CI not available" if ci is None else f"95% CI {ci[0]:+.1f} to {ci[1]:+.1f}"
+
+
+def format_companion(companion: dict | None, timecourse: dict | None = None) -> list[str]:
+    """COMPANION NUMBERS section: extra numbers beside the RESULT index (which stays the headline): the accuracy difference in
+    percentage points, relative suppression S, the log threshold ratio (with a threshold fit) and the time curve's lowest point."""
+    return [*heading("Companion numbers"), *companion_lines(companion, timecourse)]
+
+
+def companion_lines(companion: dict | None, timecourse: dict | None = None) -> list[str]:
+    """The lines under the COMPANION NUMBERS heading (the dashboard shows them too; an old analysis without them says so)."""
+    if companion is None:
+        return ["  not computed (an analysis from before these numbers existed)"]
+    lines = []
+    lines.append("  Extra to the RESULT line above, which stays the headline. Accuracies are stratified: equal weight over the contrasts "
+                 f"with at least {analysis_constants.STRATUM_MIN_SACCADE_FLASHES} saccade flashes.")
+    levels = "/".join(f"{c:g}" for c in companion["strata_contrasts_pct"])
+    if companion["accuracy_difference_pp"] is None:
+        lines.append(f"  Accuracy, fixation minus saccade: n/a ({companion['relative_suppression_note']})")
+    else:
+        lines.append(f"  Accuracy, fixation minus saccade: {companion['accuracy_difference_pp']:+.1f} percentage points ({_pp_ci(companion['accuracy_difference_ci_pp'])})")
+        lines.append(f"    fixation {100 * companion['p_fixation']:.0f}% vs saccade {100 * companion['p_saccade']:.0f}% correct, contrasts {levels}%")
+    if companion["relative_suppression"] is not None:
+        lines.append(f"  Relative suppression S: {companion['relative_suppression']:.2f} ({_ci_text(companion['relative_suppression_ci'])}); "
+                     "0 = none, 1 = guessing during saccades while seen in fixation")
+    if companion["relative_suppression_note"]:
+        lines.append(f"  {'Relative suppression S: ' if companion['relative_suppression'] is None else 'Note: '}{companion['relative_suppression_note']}")
+    if companion["log10_threshold_ratio"] is not None:
+        r = companion["log10_threshold_ratio"]
+        lines.append(f"  Threshold ratio saccade / fixation: log10 {r:+.2f} (x{10 ** r:.2f}; {_ci_text(companion['log10_threshold_ratio_ci'])})")
+    else:
+        lines.append("  Threshold ratio saccade / fixation: n/a (no threshold fit, see Index fit)")
+    lines += [f"  Contrast {d['contrast_pct']:g}% left out of the stratified accuracies: {d['why']} (saccade {d['n_saccade']}, fixation {d['n_fixation']})"
+              for d in companion["strata_dropped"]]
+    if timecourse is not None:
+        low = timecourse["lowest"]
+        base = timecourse["baseline"]
+        if low is None:
+            lines.append(f"  Time curve: no point has {timecourse['min_effective_n_drawn']:g} effective flashes yet, so no curve is drawn")
+        else:
+            lines.append(f"  Time curve (descriptive): lowest point {100 * low['p']:.0f}% correct at {low['ms']:+.0f} ms from onset"
+                         + (f", fixation baseline {100 * base['p']:.0f}% (n={base['n']})" if base["n"] else "")
+                         + ("" if low["status"] == "ok" else f" [only {low['n_eff']:g} effective flashes: low]"))
+    return lines
+
+
 def speed_exclusions(placed: list, gates: list) -> tuple[int, int, int]:
     """Flashes excluded as 'near a saccade but not moving fast yet': (before onset, after onset, no onset known)."""
     before = after = unknown = 0
@@ -267,7 +314,7 @@ def format_report(
     title = f"Saccade-phase analysis {label}".strip()
     gates = summary["gates"]
     top = format_top_block(quality, summary["suppression"], gates[SACCADE][1], gates[FIXATION][1], summary["flashes"], " · TEST run" if test_run else "")
-    lines = [title, "=" * len(title), "", top, *_data_quality(summary, speed), *format_index_fit(summary["suppression"]), *_time_windows(summary),
+    lines = [title, "=" * len(title), "", top, *_data_quality(summary, speed), *format_index_fit(summary["suppression"]), *format_companion(summary.get("companion"), summary.get("timecourse")), *_time_windows(summary),
              *_by_contrast(summary), format_leg_suppression(summary.get("by_leg"), leg_flashes), format_return_latency(summary.get("return_latency")),
              *format_technical(geometry, thresholds)]
     return "\n".join(lines)

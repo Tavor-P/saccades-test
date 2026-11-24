@@ -99,7 +99,7 @@ def run_file(timestamp: str, kind: str):
         abort(404)
     if not path.exists():
         abort(404)
-    return send_file(path, as_attachment=kind != "plot", download_name=path.name)
+    return send_file(path, as_attachment=kind not in ("plot", "gaze"), download_name=path.name)
 
 
 @app.get("/participants/<pid>/results")

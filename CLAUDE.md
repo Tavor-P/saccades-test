@@ -20,7 +20,7 @@ backend. Participant/experimenter docs: [README.md](README.md).
   or "onset"; `RETURN_JUMP_LANDING_TIMEOUT_MS` forces it), so each trial has an out and a return saccade but still ONE flash: `RETURN_LEG_FLASH_FRACTION` 0.8 on the return leg (timed
   from the jump frame, spread `RETURN_FLASH_SPREAD_SD_MS` 40 = a guess, measure it), else the out leg. trials.csv: `flash_leg`, `out_arrival_ms_after_go_cue`, signed `return_reaction_ms`
   (negative = left before the jump), `left_target_before_jump`. `analyze_session` gates each flash against its own leg's saccade (return must move back >= half the out amplitude),
-  reports out / return / pooled indices and a return-latency report; summary.json schema 3 (adds `analysis_thresholds`) pools only one run kind (`single` | `return_jump/<trigger>`); `compare` refuses mixed kinds.
+  reports out / return / pooled indices and a return-latency report; summary.json schema 4 (3 added `analysis_thresholds`, 4 adds `companion` + `timecourse`) pools only one run kind (`single` | `return_jump/<trigger>`); `compare` refuses mixed kinds.
   Simulator `ParticipantProfile.return_mode="learned"` = predictive returns. Tests: `tests/ai-tests/test_return_jump.py`, `test_return_analysis.py` (`sim_runs.py` writes simulated runs as folders). Sim (150 trials): ~36 valid in-saccade flashes vs ~20 without the jump; the gain needs the narrow 40 ms spread. Unvalidated on glasses.
 
 ## Rules (read first)
@@ -114,11 +114,14 @@ Paths are checked by `tests/test_docs.py` - keep them real.
 | `src/experiment/glasses_video.py`, `import_glasses_video.py` | sync-flash detection/offset; CLI that attaches the exported video |
 | `src/experiment/flash_gates.py` | pre-specified gates (Braun 2021): `saccade`, `fixation`, else `excluded`; controls from `CONTROL_OFFSETS_MS` |
 | `src/experiment/analyze_session.py` | post-hoc analysis from the raw gaze trace: `analyze_run()` = pipeline without writing files, the CLI; re-exports the names below |
-| `include/experiment/analysis_constants.py` | every analysis threshold (detection, windows, gates, index), written into each report and summary.json `analysis_thresholds` |
+| `include/experiment/analysis_constants.py` | every analysis threshold (detection, windows, gates, index, time-course figure, companion numbers), written into each report and summary.json `analysis_thresholds` |
 | `src/experiment/saccade_detection.py`, `suppression_stats.py`, `leg_gating.py` | saccades + flash placement; `summarize`/`suppression_index`; return-jump per-leg gating and return latency |
-| `src/experiment/analysis_report.py`, `analysis_output.py` | report text (`format_*`, `thresholds_record`): report.txt is human-first (QUALITY/RESULT/AMOUNT top block, fixed sections, only non-default thresholds); machines read suppression.json / flashes.csv. Plot (red near-saccade bars, then blue away bars) and per-flash CSV |
+| `src/experiment/analysis_report.py`, `analysis_output.py` | report text (`format_*`, `thresholds_record`): report.txt is human-first (QUALITY/RESULT/AMOUNT top block, fixed sections, only non-default thresholds); machines read suppression.json / flashes.csv. plot.png = the literature figure (`plot_timecourse_figure`: time-course curve + band + fixation band + rug + flash-count histogram, beside accuracy vs contrast with Weibull curves; one drawing for a run and for the pooled person) and the per-flash CSV; report.txt has a "Companion numbers" section |
+| `src/experiment/timecourse.py` | the figure's numbers: Gaussian-kernel (Nadaraya-Watson, SD `TIMECOURSE_SIGMA_MS` 20) accuracy vs flash time from its OWN saccade onset (-150..+200 ms every 5), pointwise bootstrap band, Kish effective-n masking (capped by the kernel mass; <10 hidden, 10-19 dashed grey, >= 20 solid), fixation-gate baseline (Wilson). Contrasts pooled (drawn independently of time, tested) |
+| `src/experiment/gaze_timeline.py` | gaze_timeline.png: eye position over the whole run (`GAZE_TIMELINE_BIN_MS` bins, `GAZE_TIMELINE_ROW_S` rows, at most `GAZE_TIMELINE_MAX_ROWS`), saccades shaded, flashes coloured by contrast |
+| `src/experiment/relative_suppression.py` | `companion_numbers()`: contrast-stratified accuracy difference (pp) and relative suppression S = (p_fix - p_sac)/(p_fix - 0.5) with stratified bootstrap CIs (no S below 15 saccade flashes or p_fix < 0.65, reason returned), log10 threshold ratio from the index's own CI. Additive: the headline index is unchanged |
 | `src/experiment/run_quality.py` | quality rules for the report top block and the dashboard quality lights (one place) |
-| `src/experiment/analyze_participant.py` | pooled per-person index (equal `saccade_contrasts_pct` + geometry + run kind); summary.json (`SUMMARY_KEYS`, `schema_version` 3, per-leg `by_leg`, `analysis_thresholds`) |
+| `src/experiment/analyze_participant.py` | pooled per-person index (equal `saccade_contrasts_pct` + geometry + run kind); summary.json (`SUMMARY_KEYS`, `schema_version` 4, per-leg `by_leg`, `analysis_thresholds`, `companion`, `timecourse`; schema-3 files still load, `compare` re-analyses them on refresh) |
 | `src/experiment/participants.py` | group labels (`data/participants.json`): `set_label`, `resolve_set` ("P01,group:TBI,all"), `everyone_else` |
 | `src/experiment/compare.py` | `compare()` -> `ComparisonResult`: 1v1 (bootstrap CI), group vs group (Mann-Whitney), 1-vs-group (percentile, no p) |
 | `src/experiment/simulation.py` | headless simulator |
@@ -128,7 +131,7 @@ Paths are checked by `tests/test_docs.py` - keep them real.
 | `src/eye_tracking/gaze_mapping.py` | `GazeMapper`: ratio -> calibrated position / zone / smoothing |
 | `src/eye_tracking/gaze_trace.py` | raw gaze recording + `ReplayGazeSource` |
 | `src/dashboard/app.py` | Flask dashboard (separate process, `127.0.0.1` only; `data_access.py` reads/writes `data/`) |
-| `src/dashboard/results.py` | results pages: freshness check, quality lights, `FriendlyError` |
+| `src/dashboard/results.py` | results pages: freshness check (an analysis folder without gaze_timeline.png, or a pooled summary below schema 4, is stale and re-run), quality lights, companion numbers, `FriendlyError` |
 | `src/dashboard/comparison.py` | compare / labels / study pages; always passes `data_dir=results._data_dir()` |
 | `tests/conftest.py`, `tests/helpers.py` | `FakeGazeSource`, `fake_time`, `NullLogger` |
 | `tests/ai-tests/README.md`, `run_sim.py` | headless-simulation guide and CLI |

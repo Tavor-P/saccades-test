@@ -6,7 +6,7 @@ nearest saccade onset, and reports detection accuracy as a function of flash tim
 saccadic-suppression curve - plus a plot and a per-flash CSV. The live `flash_during_saccade` flag is not used.
 
 Run it on the latest session with no arguments, or give a session timestamp (unix), a run folder name, `participant/folder`
-or a path. Output goes to the run folder's `analysis/` (report.txt, plot.png, flashes.csv, suppression.json).
+or a path. Output goes to the run folder's `analysis/` (report.txt, plot.png, gaze_timeline.png, flashes.csv, suppression.json).
 Units: gaze x is a 0-1 ratio of the scene (or screen) width per `x_px / NEON_SCENE_WIDTH` (traces recorded with the since-removed screen-mapped backends hold the screen ratio x NEON_SCENE_WIDTH in x_px, so old sessions analyse the same way); speeds are ratio/s.
 The steps live in saccade_detection (trace, flashes, saccades), flash_gates + leg_gating (conditions), suppression_stats (counts,
 index), analysis_report (text) and analysis_output (plot, per-flash CSV); thresholds in include/experiment/analysis_constants.py.
@@ -62,6 +62,7 @@ from src.experiment.flash_gates import (  # noqa: F401 (re-exported)
     classify_leg_flash,
     summarize_gates,
 )
+from src.experiment.gaze_timeline import plot_gaze_timeline
 from src.experiment.leg_gating import (  # noqa: F401 (re-exported)
     LEGS,
     TrialSaccades,
@@ -75,6 +76,7 @@ from src.experiment.leg_gating import (  # noqa: F401 (re-exported)
     suppression_by_leg,
 )
 from src.experiment.logger import read_trial_rows
+from src.experiment.relative_suppression import companion_numbers
 from src.experiment.run_quality import quality_line, run_facts
 from src.experiment.run_summary import trial_counts
 from src.experiment.saccade_detection import Flash, Placed, Saccade, detect_saccades, load_flashes, load_trace, place_flashes  # noqa: F401
@@ -94,6 +96,7 @@ from src.experiment.suppression_stats import (  # noqa: F401 (re-exported)
     suppression_index,
     wilson,
 )
+from src.experiment.timecourse import timecourse_curve
 from src.timebase import ms_to_s
 
 # -- driver --------------------------------------------------------------------------------------
@@ -191,6 +194,8 @@ def analyze_run(
     summary["gates"] = summarize_gates(placed, gates)
     suppression = suppression_index(placed, near_ms, far_ms, gates=gates)
     summary["suppression"] = suppression
+    summary["timecourse"] = timecourse_curve(placed, gates)
+    summary["companion"] = companion_numbers(placed, gates, suppression)
     meta = meta or {}
     try:
         geometry_line = format_geometry(meta.get("settings"))
@@ -219,7 +224,7 @@ def analyze(
     """Runs the whole analysis for one session (`timestamp`: anything session_files.find_session accepts; default the
     newest). Writes the report text, plot, per-flash CSV and suppression json to `out_dir` (default: the run folder's
     analysis/ folder) and returns
-    {"summary", "report", "report_path", "png", "csv", "suppression_json"}."""
+    {"summary", "report", "report_path", "png", "gaze_png", "csv", "suppression_json"}."""
     data_dir = Path(data_dir)
     ref = session_files.find_session(data_dir, timestamp or latest_timestamp(data_dir))
     if ref is None:
@@ -232,20 +237,21 @@ def analyze(
         leg_flashes = {leg: sum((p.flash.leg or "out") == leg for p in placed) for leg in LEGS}
     report = format_report(summary, label=f"(session {stamp})", geometry=run.geometry_line, thresholds=thresholds, test_run=run.is_test,
                            quality=run.quality_line(), leg_flashes=leg_flashes, speed=speed_exclusions(placed, gates))
-    saved = suppression
+    saved = {**suppression, "companion": summary["companion"], "timecourse": summary["timecourse"]}
     if run.return_jump:
         assert run.return_latency is not None and run.by_leg is not None  # always set for return-jump runs
-        saved = {**suppression, "by_leg": {leg: run.by_leg[leg] for leg in LEGS}, "return_latency": run.return_latency}
+        saved = {**saved, "by_leg": {leg: run.by_leg[leg] for leg in LEGS}, "return_latency": run.return_latency}
 
     out_dir = Path(out_dir) if out_dir is not None else ref.analysis_dir
     out_dir.mkdir(parents=True, exist_ok=True)
-    png = plot_report(placed, run.saccades, summary, out_dir / "plot.png", title=f"Session {stamp}")
+    png = plot_report(placed, run.saccades, summary, out_dir / "plot.png", title=f"Session {stamp}", gates=gates)
+    gaze_png = plot_gaze_timeline(run.t, run.x, run.saccades, placed, gates, out_dir / "gaze_timeline.png", title=f"Session {stamp}", flash_delay_ms=flash_delay_ms)
     csv_path = write_flash_rows(out_dir / "flashes.csv", placed, gates)
     json_path = out_dir / "suppression.json"
     json_path.write_text(json.dumps(saved, indent=2), encoding="utf-8")
     report_path = out_dir / "report.txt"
     report_path.write_text(report + "\n", encoding="utf-8")
-    return {"summary": summary, "report": report, "report_path": report_path, "png": png, "csv": csv_path, "suppression_json": json_path}
+    return {"summary": summary, "report": report, "report_path": report_path, "png": png, "gaze_png": gaze_png, "csv": csv_path, "suppression_json": json_path}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -264,7 +270,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
     print(result["report"])
-    print(f"\nreport: {result['report_path']}\nplot: {result['png']}\nper-flash rows: {result['csv']}\nsuppression index: {result['suppression_json']}")
+    print(f"\nreport: {result['report_path']}\nplot: {result['png']}\ngaze timeline: {result['gaze_png']}\nper-flash rows: {result['csv']}\nsuppression index: {result['suppression_json']}")
     return 0
 
 

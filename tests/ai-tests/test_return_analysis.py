@@ -188,7 +188,7 @@ def test_participant_report_and_summary_file_carry_the_leg_results(tmp_path):
     result = ap.analyze_participant("P", tmp_path, n_boot=100)
     assert "run kind return_jump/arrival" in result.report and "SUPPRESSION INDEX BY LEG" in result.report and "no return jump" not in result.report
     saved = json.loads(result.paths["summary"].read_text())
-    assert saved["schema_version"] == ap.SCHEMA_VERSION == 3 and list(saved) == list(ap.SUMMARY_KEYS)
+    assert saved["schema_version"] == ap.SCHEMA_VERSION == 4 and list(saved) == list(ap.SUMMARY_KEYS)
     assert saved["return_latency"]["n"] == 120
 
 
