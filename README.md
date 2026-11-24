@@ -248,5 +248,6 @@ participant's pooled analysis with it).
 
 ```
 .\scripts\py.ps1 -m pytest -q                 # about 30 s in parallel (-n0: one process), no glasses or window needed
+.\scripts\py.ps1 -m pytest -q -m analysis   # only one area: session, analysis, dashboard, gaze, run or checks
 .\scripts\py.ps1 -m src.experiment.simulation # headless simulated trial; see tests/ai-tests/README.md for run_sim.py
 ```
