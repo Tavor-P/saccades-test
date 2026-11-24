@@ -35,7 +35,7 @@ backend. Participant/experimenter docs: [README.md](README.md).
   (never `git add -A` / `commit -a`); don't touch other sessions' files, tell the user instead.
 - PowerShell 5.1 has no `&&`; keep each file's line endings (CRLF). `.gitignore` has `data/`, which matches any `data` folder (tests: use `tests/fixtures/`).
 - `data/` is git-ignored runtime output and participant data is personal data: never commit or print it, never write to it from tests/simulations, never copy real sessions into `tests/fixtures/`.
-- Report test results truthfully (ran / skipped). Suite: 380 tests pass, none skipped, ~30-35 s (pytest-xdist: pytest.ini runs 6 workers, `--dist loadgroup`; was ~2 min serial).
+- Report test results truthfully (ran / skipped). Suite: 382 tests pass, none skipped, ~30-35 s (pytest-xdist: pytest.ini runs 6 workers, `--dist loadgroup`; was ~2 min serial).
   Keep it fast: share expensive setup (module-scoped fixtures), keep simulated runs small, and do not render real plots or run 1000 bootstrap refits where a test only needs a file or a CI to exist
   (see tests/ai-tests/conftest.py: PNGs are stubbed except in `REAL_PLOT_TESTS`, `suppression_index` runs 300 resamples). Tests must not share paths or global state (xdist): use `tmp_path`.
   A module-scoped fixture is built once per worker, and importing `run_experiment` costs seconds: tests sharing an expensive fixture are grouped onto one worker (`pytest_collection_modifyitems`
@@ -168,7 +168,7 @@ Paths are checked by `tests/test_docs.py` - keep them real.
 - **`include/` = dataclasses, enums, constants only; no logic. `src/` mirrors it and holds all behaviour.**
 - **Sessions are PsychoPy-free state machines.** `ExperimentSession` exposes `on_space()`/`on_response_key()`/`tick()`/`render_state()`; the `run_experiment.py` frame loops (shared `FramePresenter` from `rendering.py`, `deliver_keys`)
   call `tick()` + `render_state()` once per frame and apply the plain dict (`apply_render_state()`/`draw_all()`). Test mode is a runtime choice (dialog Mode; Real needs a participant ID).
-  A run = tutorial (optional) -> saccade phase (`SACCADE_FIXED_TRIALS_TEST` 30 / `_REAL` 150) -> a console line naming the `analyze_session` command. No pause menu, rest break, session cap or recalibration.
+  A run = tutorial (optional) -> saccade phase (`SACCADE_FIXED_TRIALS_TEST` 30 / `_REAL` 150) -> the run is analysed automatically into its analysis folder (`_auto_analyze`, after the window closes; skipped after a lost Neon; never raises). No pause menu, rest break, session cap or recalibration.
 - **Gaze is behind `GazeSource`.** `NeonGazeSource` polls `receive_gaze_datum()` on a thread, turns scene gaze x / `NEON_SCENE_WIDTH` into a 0-1 ratio; `GazeMapper` does calibration fit, dead zone, smoothing.
   `build_gaze_source()` imports it lazily, so session logic and the simulator run without `pupil-labs-realtime-api`.
 - **Shared logic lives once**: `OnsetDetector`, `is_valid_for_saccadic_analysis()`, `RollingReactionTime`, `CalibrationLatch`, `TrialLegs`/`SampleFeed` (trial gaze legs, real and practice). Reuse them, don't hand-roll.
