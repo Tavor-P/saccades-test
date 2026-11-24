@@ -243,3 +243,36 @@ def test_a_planted_dip_survives_the_whole_file_pipeline(tmp_path, return_jump):
     assert low["p"] < saved["timecourse"]["baseline"]["ci"][0] - 0.1
     assert saved["companion"]["relative_suppression"] > 0.4 and saved["companion"]["relative_suppression_ci"][0] > 0
     assert saved["index"] is not None and saved["index"] > 0.3
+
+
+# -- gaze_timeline.png -------------------------------------------------------------------------------------------------------
+
+
+def test_the_gaze_trace_is_averaged_in_bins_and_rows_cover_the_run():
+    from include.experiment.analysis_constants import GAZE_TIMELINE_BIN_MS, GAZE_TIMELINE_ROW_S
+    from src.experiment.gaze_timeline import binned_trace, contrast_colours, row_count
+
+    assert GAZE_TIMELINE_BIN_MS == 10.0
+    t = 100.0025 + 0.005 * np.arange(10)  # 200 Hz, two samples per 10 ms bin (away from the bin edges)
+    x = np.array([0.0, 0.2, 0.4, 0.4, 1.0, 1.0, 0.1, 0.3, 0.5, 0.5])
+    bt, bx = binned_trace(t, x, 100.0, 101.0)
+    assert list(bx) == pytest.approx([0.1, 0.4, 1.0, 0.2, 0.5]) and list(bt) == pytest.approx([100.005 + 0.01 * i for i in range(5)])
+    assert len(binned_trace(t, x, 200.0, 201.0)[0]) == 0  # nothing in the window
+    assert row_count(0.0, 0.0) == 1 and row_count(0.0, 400.0) == 21  # 20 s rows with a 1 s lead-in and a 1.5 s tail
+    light, mid, dark = (np.mean(c[:3]) for c in contrast_colours([0.08, 0.04, 0.06]).values() if True)  # keyed by contrast: 0.04 / 0.06 / 0.08
+    assert light > mid > dark  # light = low contrast
+    assert GAZE_TIMELINE_ROW_S == 20.0
+
+
+def test_gaze_timeline_is_written_with_one_row_per_span_of_a_long_run(tmp_path):
+    from include.experiment.analysis_constants import GAZE_TIMELINE_ROW_S
+    from src.experiment.gaze_timeline import DPI, ROW_HEIGHT_IN
+
+    write_run(tmp_path, "S01", 1790000000, n_trials=50, seed=3, threshold_saccade=0.12)  # 2.5 s per trial = 125 s of trials
+    result = an.analyze("1790000000", data_dir=tmp_path, out_dir=tmp_path / "out")
+    png = result["gaze_png"]
+    assert png == tmp_path / "out" / "gaze_timeline.png" and png.exists()
+    data = png.read_bytes()
+    height = int.from_bytes(data[20:24], "big")  # PNG IHDR: width at 16, height at 20
+    rows = round((height / DPI - 1.8) / ROW_HEIGHT_IN)
+    assert rows >= math.ceil(125 / GAZE_TIMELINE_ROW_S) and rows > 1  # one row per 20 s of the run, stacked in one tall file

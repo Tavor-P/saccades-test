@@ -31,6 +31,7 @@ REAL_PLOT_TESTS = (
     "test_full_analysis_reproduces_a_planted_suppression_dip",  # run plot, size check
     "test_plot_report_handles_all_correct_all_wrong_and_single_flash_bins",  # the odd bin shapes
     "test_timecourse_figure_draws_run_pooled_and_sparse_data",  # the time-course figure: planted dip, pooled note, empty / sparse data
+    "test_gaze_timeline_is_written_with_one_row_per_span_of_a_long_run",  # gaze_timeline.png: rows of a long run
     "test_outputs_are_written_in_the_participant_analysis_folder",  # participant plot, size check
     "test_end_to_end_one_vs_one_analyses_once_reuses_then_refreshes_when_a_run_changes",  # comparison plot
 )

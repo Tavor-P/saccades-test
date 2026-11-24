@@ -49,3 +49,8 @@ TIMECOURSE_MIN_EFFECTIVE_N_SOLID = 20.0  # from the line above up to this: drawn
 STRATUM_MIN_SACCADE_FLASHES = 5  # a contrast enters the stratified accuracies only with at least this many saccade-gate flashes
 RELATIVE_SUPPRESSION_MIN_SACCADE_FLASHES = 15  # fewer saccade-gate flashes in total: no relative suppression S, counts only
 RELATIVE_SUPPRESSION_MIN_FIXATION_ACCURACY = 0.65  # stratified fixation accuracy below this: no S (the line is not clearly visible even without a saccade)
+
+# -- gaze timeline figure (gaze_timeline.py, gaze_timeline.png next to plot.png) -------------------------------------------------
+GAZE_TIMELINE_BIN_MS = 10.0  # the gaze trace is drawn as the mean x of every bin of this width
+GAZE_TIMELINE_ROW_S = 20.0  # each row of the stacked figure covers this many seconds
+GAZE_TIMELINE_MAX_ROWS = 80  # a longer run shows only its first rows (the figure keeps readable rows instead of squashing them)

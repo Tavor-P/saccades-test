@@ -147,7 +147,7 @@ def test_analysis_of_a_new_run_writes_into_its_analysis_folder_and_gives_the_old
     log = _new_layout_session(tmp_path, monkeypatch, PLAN)
     new = an.analyze(None, data_dir=tmp_path)  # the newest session, found without being named
     assert new["png"].parent == log.analysis_dir
-    assert {p.name for p in log.analysis_dir.iterdir()} == {"report.txt", "plot.png", "flashes.csv", "suppression.json"}
+    assert {p.name for p in log.analysis_dir.iterdir()} == {"report.txt", "plot.png", "gaze_timeline.png", "flashes.csv", "suppression.json"}
     assert new["summary"]["near_onset"] == (1, 5) and new["summary"]["flashes"] == 8  # same as the old-column planted-dip test
     assert (log.analysis_dir / "report.txt").read_text().startswith("Saccade-phase analysis")
 
