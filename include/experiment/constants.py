@@ -33,10 +33,10 @@ SCREEN_HEIGHT_CM = 26.0
 LINE_OFFSET_DEG = 2.0  # distance of the line's centre above/below the target
 LINE_SD_DEG = 0.15  # vertical standard deviation of the Gaussian profile
 LINE_WIDTH_SCREENS = 24.0  # drawn this many screen widths wide so the horizontal Gaussian edge-fade is invisible (~1 % at the screen edge)
-# The flash is drawn for this many frames (named before the line replaced the grating; the grating's own constants live on
-# the `grating` branch). A single frame, exactly as in the paper (their 120Hz CRT -> ~8ms;
+# The flash is drawn for this many frames (the grating's own constants live on the `grating` branch). A single frame,
+# exactly as in the paper (their 120Hz CRT -> ~8ms;
 # on a typical 60Hz display this is ~16.7ms instead - still "one frame", just a longer one)
-GRATING_DURATION_FRAMES = 1
+LINE_DURATION_FRAMES = 1
 
 # Whether a session is a quick test/smoke run (fewer trials) or a real
 # data-collection session is a runtime decision, not a constant to edit here
@@ -225,7 +225,7 @@ SACCADE_FIXED_TRIALS_TEST = 30
 SACCADE_FIXED_TRIALS_REAL = 150
 
 # Upfront reaction-time test: repeated beep+target-appear -> saccade-onset
-# attempts (no grating, no response), averaged into the initial
+# attempts (no line, no response), averaged into the initial
 # avg_reaction_time_ms. Real saccadic reaction time is genuinely variable trial to
 # trial, so a handful of samples is not enough to average out that noise -
 # 3 (the old NUM_RT_TEST_TRIALS_TEST) produced unreliable averages in

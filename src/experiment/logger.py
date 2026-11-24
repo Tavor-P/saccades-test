@@ -78,7 +78,14 @@ class Column:
         return None if self.field is None else _CANONICAL_NAMES.get(self.field, self.field)
 
 
-_CANONICAL_NAMES = {"index": "trial_index"}  # TrialResult field -> its column name in the old results_<ts>.csv
+# TrialResult field -> its column name in the old results_<ts>.csv (the stimulus was a grating then; read_trial_rows yields rows under these names)
+_CANONICAL_NAMES = {
+    "index": "trial_index",
+    "flash_shown": "grating_shown",
+    "line_side": "orientation",
+    "answer_side": "response_orientation",
+    "flash_unix_ms": "grating_shown_at_unix_ms",
+}
 
 # Left to right: who/what, stimulus contrast, the yes/no group (flash seen? answered? correct?), outcome, stimulus/answer pair,
 # the millisecond columns (then the wall-clock flash time), quality.
@@ -86,13 +93,13 @@ TRIAL_COLUMNS: list[Column] = [
     Column("phase", "phase", lambda r: PHASE_WORDS.get(r.phase, r.phase), _word_to_canonical(PHASE_WORDS)),
     Column("trial", "index", lambda r: str(r.index)),
     Column("contrast_pct", "contrast", lambda r: _num(None if r.contrast is None else r.contrast * 100, 4), _pct_to_fraction),
-    Column("flash_shown", "grating_shown", lambda r: _yes_no(r.grating_shown), _yes_no_to_canonical),
+    Column("flash_shown", "flash_shown", lambda r: _yes_no(r.flash_shown), _yes_no_to_canonical),
     Column("flash_during_saccade", "flash_during_saccade", lambda r: _yes_no(r.flash_during_saccade), _yes_no_to_canonical),
     Column("answered", "responded", lambda r: _yes_no(r.responded), _yes_no_to_canonical),
     Column("correct", None, _is_correct),
     Column("outcome", "outcome", lambda r: OUTCOME_WORDS.get(r.outcome, r.outcome), _word_to_canonical(OUTCOME_WORDS)),
-    Column("line_side", "orientation", lambda r: _enum_value(r.orientation)),
-    Column("answer_side", "response_orientation", lambda r: _enum_value(r.response_orientation)),
+    Column("line_side", "line_side", lambda r: _enum_value(r.line_side)),
+    Column("answer_side", "answer_side", lambda r: _enum_value(r.answer_side)),
     Column("flash_leg", "flash_leg", lambda r: r.flash_leg or ""),
     Column("flash_ms_after_go_cue", "scheduled_delay_ms", lambda r: _num(r.scheduled_delay_ms)),
     Column("out_arrival_ms_after_go_cue", "out_arrival_ms_after_go_cue", lambda r: _num(r.out_arrival_ms_after_go_cue)),
@@ -100,7 +107,7 @@ TRIAL_COLUMNS: list[Column] = [
     Column("reaction_ms", "reaction_latency_ms", lambda r: _num(r.reaction_latency_ms)),
     Column("return_reaction_ms", "return_reaction_ms", lambda r: _num(r.return_reaction_ms)),
     Column("answer_ms", "response_time_ms", lambda r: _num(r.response_time_ms)),
-    Column("flash_unix_ms", "grating_shown_at_unix_ms", lambda r: _num(r.grating_shown_at_unix_ms)),
+    Column("flash_unix_ms", "flash_unix_ms", lambda r: _num(r.flash_unix_ms)),
     Column("jump_back_forced", "jump_back_forced", lambda r: _yes_no(r.jump_back_forced), _yes_no_to_canonical),
     Column("left_target_before_jump", "left_target_before_jump", lambda r: _yes_no(r.left_target_before_jump), _yes_no_to_canonical),
     Column("tracking_ok", "tracking_ok", lambda r: _yes_no(r.tracking_ok), _yes_no_to_canonical),
@@ -176,18 +183,18 @@ def trial_from_row(row: dict) -> TrialResult:
         source=_parse_enum(Target, row.get("source")),
         target=_parse_enum(Target, row.get("target")),
         saccade_duration_ms=_parse_float(row.get("saccade_duration_ms")),
-        grating_shown=_parse_bool(row.get("grating_shown")),
+        flash_shown=_parse_bool(row.get("grating_shown")),
         contrast=_parse_float(row.get("contrast")),
-        orientation=_parse_side(row.get("orientation")),
+        line_side=_parse_side(row.get("orientation")),
         responded=_parse_bool(row.get("responded")),
-        response_orientation=_parse_side(row.get("response_orientation")),
+        answer_side=_parse_side(row.get("response_orientation")),
         response_time_ms=_parse_float(row.get("response_time_ms")),
         outcome=row["outcome"],
         reaction_latency_ms=_parse_float(row.get("reaction_latency_ms")),
         onset_detection_lag_ms=_parse_float(row.get("onset_detection_lag_ms")),
         flash_during_saccade=_parse_optional_bool(row.get("flash_during_saccade")),
         timing_offset_ms=int(float(offset)) if offset else None,
-        grating_shown_at_unix_ms=_parse_float(row.get("grating_shown_at_unix_ms")),
+        flash_unix_ms=_parse_float(row.get("grating_shown_at_unix_ms")),
         tracking_ok=_parse_optional_bool(row.get("tracking_ok")),
         flash_relative_to_onset_ms=_parse_float(row.get("flash_relative_to_onset_ms")),
         avg_rt_used_ms=_parse_float(row.get("avg_rt_used_ms")),
@@ -239,7 +246,7 @@ _SETTINGS_CONSTANTS = {
         "FOREPERIOD_MIN_MS",
         "FOREPERIOD_MAX_MS",
         "RESPONSE_WINDOW_MS",
-        "GRATING_DURATION_FRAMES",
+        "LINE_DURATION_FRAMES",
         "DOT_POSITION",
         "CROSS_POSITION",
         "SHARP_GO_CUE",
@@ -297,7 +304,7 @@ def _results_summary(rows: list[TrialResult]) -> dict:
     phases: dict[str, dict] = {}
     for phase in sorted({r.phase for r in rows}):
         mine = [r for r in rows if r.phase == phase]
-        flashes = [r for r in mine if r.grating_shown]
+        flashes = [r for r in mine if r.flash_shown]
         correct = sum(r.outcome == "correct" for r in flashes)
         phases[PHASE_WORDS.get(phase, phase)] = {
             "rows": len(mine),

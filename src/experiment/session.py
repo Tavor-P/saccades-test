@@ -21,7 +21,7 @@ from include.experiment.constants import (
     FOREPERIOD_MIN_MS,
     GAZE_LANDING_STABILITY_MS,
     GAZE_LATENCY_MAX_MS,
-    GRATING_DURATION_FRAMES,
+    LINE_DURATION_FRAMES,
     NUM_PRACTICE_TRIALS_REAL,
     NUM_PRACTICE_TRIALS_TEST,
     NUM_RT_TEST_TRIALS_REAL,
@@ -280,11 +280,11 @@ class ExperimentSession:
         self._target_landed_since: float | None = None
         self._flash_scheduled_at = 0.0
         self._flash_decided = False
-        self._grating_shown_at: float | None = None
-        self._grating_shown_at_unix_ms: float | None = None
-        self._grating_visible = False
-        self._grating_frames_remaining = 0
-        self._grating_actually_shown = False
+        self._flash_shown_at: float | None = None
+        self._flash_unix_ms: float | None = None
+        self._line_visible = False
+        self._line_frames_remaining = 0
+        self._line_actually_shown = False
         self._flash_during_saccade: bool | None = None
         self._tracking_lost_near_flash = False
         self._trial_contrast: float | None = None  # contrast actually used for this trial's flash, if any
@@ -293,7 +293,7 @@ class ExperimentSession:
         self._response_window_open = False
         self._response_deadline = 0.0
         self._responded = False
-        self._response_orientation: Side | None = None
+        self._answer_side: Side | None = None
         self._response_time_ms: float | None = None
         self._landed = False
         self._foreperiod_start = 0.0
@@ -359,20 +359,20 @@ class ExperimentSession:
             self.space_tally.record("early press, no trial left to start")
 
     def _line_state(self, trial: TrialSpec | None) -> dict:
-        side = trial.orientation if trial is not None else None
+        side = trial.line_side if trial is not None else None
         # The saccade target of the flash's leg: the start symbol for a return-leg flash.
         aim = None if trial is None else (trial.source if self._flash_leg == "return" else trial.target)
         target_position = DOT_POSITION if aim is None or aim is Target.DOT else CROSS_POSITION
         x, y = line_position(target_position, side or Side.ABOVE, self._geometry)
         return {
-            "visible": self._grating_visible,
+            "visible": self._line_visible,
             "x": x,
             "y": y,
-            "contrast": self._trial_contrast if self._grating_visible else 0,
-            "orientation": side,
+            "contrast": self._trial_contrast if self._line_visible else 0,
+            "side": side,
         }
 
-    def on_response_key(self, orientation: Side) -> None:
+    def on_response_key(self, answer: Side) -> None:
         """Called when an arrow key is pressed during a trial: UP reports
         `Side.ABOVE`, DOWN reports `Side.BELOW` - see run_experiment.py's key dispatch."""
         if self._phase is not Phase.TRIAL_ACTIVE:
@@ -382,8 +382,8 @@ class ExperimentSession:
         now = self._clock.now()
         if now <= self._response_deadline:
             self._responded = True
-            self._response_orientation = orientation
-            self._response_time_ms = (now - self._grating_shown_at) * 1000 if self._grating_shown_at else None
+            self._answer_side = answer
+            self._response_time_ms = (now - self._flash_shown_at) * 1000 if self._flash_shown_at else None
 
     def _begin_after_calibration(self) -> None:
         """Measures the participant's reaction time first, unless the tutorial already did (seeded
@@ -445,11 +445,11 @@ class ExperimentSession:
             source=Target.DOT,
             target=Target.CROSS,
             saccade_duration_ms=None,
-            grating_shown=False,
+            flash_shown=False,
             contrast=None,
-            orientation=None,
+            line_side=None,
             responded=False,
-            response_orientation=None,
+            answer_side=None,
             response_time_ms=None,
             outcome="timeout" if reaction_time_ms is None else "detected",
             reaction_latency_ms=reaction_time_ms,
@@ -623,10 +623,10 @@ class ExperimentSession:
 
         # Frame-counted (not time-based) so the flash lasts exactly N drawn frames whatever the refresh rate; skipped on the
         # tick that just turned it on, so it is not docked a frame before it has been drawn once.
-        if self._grating_visible and not flash_fired_this_tick:
-            self._grating_frames_remaining -= 1
-            if self._grating_frames_remaining <= 0:
-                self._grating_visible = False
+        if self._line_visible and not flash_fired_this_tick:
+            self._line_frames_remaining -= 1
+            if self._line_frames_remaining <= 0:
+                self._line_visible = False
 
         if self._response_window_open and now > self._response_deadline:
             self._response_window_open = False
@@ -666,7 +666,7 @@ class ExperimentSession:
 
         if self._jump_at is None:
             # An out-leg flash is drawn (and gone) before the target jumps, so the jump never overlaps it.
-            out_flash_done = self._flash_leg == "return" or (self._flash_decided and not self._grating_visible)
+            out_flash_done = self._flash_leg == "return" or (self._flash_decided and not self._line_visible)
             if self._return_jump_trigger == "onset":
                 triggered = self._onset_detector.confirmed  # like the RT test hiding its cross
             else:
@@ -741,7 +741,7 @@ class ExperimentSession:
         """True if head angular speed exceeded HEAD_MAX_SPEED_DPS within TRACKING_LOSS_WINDOW_MS of the flash: the scene-camera gaze is then
         shifted by head, not eye, movement, so the trial counts as tracking-not-ok (excluded by the same gates as a tracking loss)."""
         tracker = self._head_tracker()
-        if tracker is None or not self._grating_actually_shown:
+        if tracker is None or not self._line_actually_shown:
             return False
         window = TRACKING_LOSS_WINDOW_MS / 1000
         return tracker.speed_spike_between(self._flash_scheduled_at - window, self._flash_scheduled_at + window, HEAD_MAX_SPEED_DPS)
@@ -786,11 +786,11 @@ class ExperimentSession:
         self._flash_decided = True
         self._response_window_open = True
         self._response_deadline = now + RESPONSE_WINDOW_MS / 1000
-        self._grating_shown_at = now
-        self._grating_shown_at_unix_ms = self._clock.unix_ms()
-        self._grating_visible = True
-        self._grating_frames_remaining = GRATING_DURATION_FRAMES
-        self._grating_actually_shown = True
+        self._flash_shown_at = now
+        self._flash_unix_ms = self._clock.unix_ms()
+        self._line_visible = True
+        self._line_frames_remaining = LINE_DURATION_FRAMES
+        self._line_actually_shown = True
         if trial.practice:
             self._trial_contrast = PRACTICE_CONTRAST
         else:
@@ -820,7 +820,7 @@ class ExperimentSession:
         """Whether the scheduled flash time fell within [onset, landing] (the "first observed" capture times) of the flash's
         leg. Only meaningful for trials that flashed. False if onset was never detected; None if landing was never confirmed
         (undeterminable)."""
-        if not self._grating_actually_shown:
+        if not self._line_actually_shown:
             return None
         onset, landed_since = self._flash_leg_onset_landing()
         if onset is None:
@@ -847,15 +847,15 @@ class ExperimentSession:
         else:
             leg_moved = landed or self._onset_detector.confirmed
         flash_onset_at, _ = self._flash_leg_onset_landing()
-        if not leg_moved or not self._grating_actually_shown:
+        if not leg_moved or not self._line_actually_shown:
             outcome = "timeout"  # no saccade (on the flash's leg), or the trial ended before its flash fired
         else:
-            outcome = score_outcome(self._responded, self._response_orientation, trial.orientation)
+            outcome = score_outcome(self._responded, self._answer_side, trial.line_side)
         self._flash_during_saccade = self._compute_flash_during_saccade()
         head_moved = self._head_speed_spike_near_flash()
         if head_moved and not trial.practice:
             self.head_flagged_trials += 1
-        tracking_ok = (not (self._tracking_lost_near_flash or head_moved)) if self._grating_actually_shown else None
+        tracking_ok = (not (self._tracking_lost_near_flash or head_moved)) if self._line_actually_shown else None
 
         if not trial.practice:
             result = TrialResult(
@@ -864,28 +864,28 @@ class ExperimentSession:
                 source=trial.source,
                 target=trial.target,
                 saccade_duration_ms=saccade_duration_ms,
-                grating_shown=self._grating_actually_shown,
+                flash_shown=self._line_actually_shown,
                 contrast=self._trial_contrast,
-                orientation=trial.orientation if self._grating_actually_shown else None,
+                line_side=trial.line_side if self._line_actually_shown else None,
                 responded=self._responded,
-                response_orientation=self._response_orientation,
+                answer_side=self._answer_side,
                 response_time_ms=self._response_time_ms,
                 outcome=outcome,
                 reaction_latency_ms=self._reaction_latency_ms,
                 onset_detection_lag_ms=self._onset_detection_lag_ms,
                 flash_during_saccade=self._flash_during_saccade,
                 timing_offset_ms=trial.timing_offset_ms,
-                grating_shown_at_unix_ms=self._grating_shown_at_unix_ms,
+                flash_unix_ms=self._flash_unix_ms,
                 tracking_ok=tracking_ok,
                 flash_relative_to_onset_ms=(
                     (self._flash_scheduled_at - flash_onset_at) * 1000
-                    if self._grating_actually_shown and flash_onset_at is not None
+                    if self._line_actually_shown and flash_onset_at is not None
                     else None
                 ),
                 avg_rt_used_ms=self._trial_avg_rt_ms,
                 scheduled_delay_ms=self._trial_scheduled_delay_ms,
                 gaze_latency_ms=self._trial_gaze_latency_ms,
-                flash_leg=self._flash_leg if self._grating_actually_shown else None,
+                flash_leg=self._flash_leg if self._line_actually_shown else None,
                 jump_back_ms_after_go_cue=(self._jump_at - self._trial_start_time) * 1000 if self._jump_at is not None else None,
                 return_reaction_ms=self._return_reaction_ms,
                 jump_back_forced=self._jump_forced,
@@ -899,7 +899,7 @@ class ExperimentSession:
             self._logger.log(result)
             self._results.append(result)
 
-        self._grating_visible = False
+        self._line_visible = False
         self._begin_next_trial_or_complete()
 
     # -- rendering ----------------------------------------------------------
@@ -907,15 +907,15 @@ class ExperimentSession:
     def _summary(self) -> str:
         # Accuracy = (times the arrow-key response correctly reported the
         # line's side) divided by (times the line was actually
-        # shown) - "incorrect" (wrong orientation guessed) and "miss" (no
+        # shown) - "incorrect" (wrong side guessed) and "miss" (no
         # response at all) both count against it.
         correct = sum(1 for r in self._results if r.outcome == "correct")
         incorrect = sum(1 for r in self._results if r.outcome == "incorrect")
         misses = sum(1 for r in self._results if r.outcome == "miss")
 
-        grating_shown_count = correct + incorrect + misses
-        accuracy = correct / grating_shown_count if grating_shown_count else 0.0
-        return f"Accuracy: {correct}/{grating_shown_count} ({accuracy:.0%})"
+        flash_shown_count = correct + incorrect + misses
+        accuracy = correct / flash_shown_count if flash_shown_count else 0.0
+        return f"Accuracy: {correct}/{flash_shown_count} ({accuracy:.0%})"
 
     def _instructions(self) -> str:
         if self._phase is Phase.COMPLETE:
@@ -996,9 +996,9 @@ class ExperimentSession:
                 "x": CENTER_POSITION[0],
                 "y": CENTER_POSITION[1],
             },
-            # The flashed line (key kept as "grating" for the renderer/tests): centred 2 deg above/below the
+            # The flashed line: centred 2 deg above/below the
             # saccade TARGET (the symbol the eye is moving to), at the trial's contrast.
-            "grating": self._line_state(trial),
+            "line": self._line_state(trial),
             "gaze_indicator": self._gaze_indicator_state(sample),
             # Renderer hint: show/hide dot and cross instantly (no crossfade) so
             # the go-cue has a definite onset - see SHARP_GO_CUE. Calibration

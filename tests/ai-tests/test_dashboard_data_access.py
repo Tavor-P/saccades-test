@@ -52,7 +52,7 @@ def test_trials_csv_round_trips_rows_and_reads_missing_newer_columns_as_none(tmp
     monkeypatch.setattr(data_access, "DATA_DIR", tmp_path)
     _write_session(tmp_path, "111", rows=[_row()])  # _FIELDNAMES omits newer columns: a session logged before they existed
     (trial,) = read_trials(data_access.csv_path_for("111"))
-    assert trial.grating_shown is True and trial.contrast == 0.05 and trial.source is None and trial.outcome == "hit"
+    assert trial.flash_shown is True and trial.contrast == 0.05 and trial.source is None and trial.outcome == "hit"
     assert trial.flash_during_saccade is None and trial.timing_offset_ms is None
 
     fieldnames = _FIELDNAMES + ["flash_during_saccade", "timing_offset_ms"]

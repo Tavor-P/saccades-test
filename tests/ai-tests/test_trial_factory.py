@@ -30,12 +30,12 @@ def test_generated_trials_alternate_draw_offsets_from_the_bag_and_always_flash_a
     # Catch trials (no flash, false alarms) were removed: every trial has a side, and both sides occur.
     seen = set()
     for _ in range(20):
-        assert all(t.orientation in (Side.ABOVE, Side.BELOW) for t in build_saccade_sequence(num_practice=NUM_PRACTICE_TRIALS_TEST))
+        assert all(t.line_side in (Side.ABOVE, Side.BELOW) for t in build_saccade_sequence(num_practice=NUM_PRACTICE_TRIALS_TEST))
     bag, source = ShuffledBag(TIMING_OFFSETS_MS), Target.DOT
     for i in range(200):
         trial, source = generate_next_saccade_trial(i, source, bag)
-        assert trial.orientation in (Side.ABOVE, Side.BELOW)
-        seen.add(trial.orientation)
+        assert trial.line_side in (Side.ABOVE, Side.BELOW)
+        seen.add(trial.line_side)
     assert seen == {Side.ABOVE, Side.BELOW}
 
 

@@ -347,14 +347,14 @@ class SimulatedParticipant:
             if x is not None and abs(x - self._go_target_x) > 1e-9:  # the target jumped back
                 self._on_jump_back(x, t)
 
-        if phase == "TRIAL_ACTIVE" and state["grating"]["visible"] and not self._flash_seen:
+        if phase == "TRIAL_ACTIVE" and state["line"]["visible"] and not self._flash_seen:
             self._see_flash(state, t)
 
         if self._pending_response is not None and t >= self._pending_response[0]:
-            _, orientation = self._pending_response
+            _, answer = self._pending_response
             self._pending_response = None
-            self._log(t, f"key press: {orientation.value}")
-            self._session.on_response_key(orientation)
+            self._log(t, f"key press: {answer.value}")
+            self._session.on_response_key(answer)
 
     def _on_phase_entry(self, phase: str, state: dict, t: float) -> None:
         self._log(t, f"phase -> {phase}")
@@ -467,8 +467,8 @@ class SimulatedParticipant:
 
     def _see_flash(self, state: dict, t: float) -> None:
         self._flash_seen = True
-        contrast = state["grating"]["contrast"]
-        orientation = state["grating"]["orientation"]
+        contrast = state["line"]["contrast"]
+        line_side = state["line"]["side"]
         # In a saccade = inside the flight of the current move or of the one before it (a return planned while the out
         # saccade is still to come or in flight). A fixation is a "move" with from == to and never counts.
         moves = [(self._eye_from, self._eye_to, self._move_start, self._move_dur)]
@@ -484,7 +484,7 @@ class SimulatedParticipant:
         where = "during saccade (suppressed)" if suppressed else "outside saccade"
         self._log(t, f"flash shown: contrast {contrast:.3f}, {where}; P(seen)={p_seen:.2f} -> {'seen' if seen else 'not seen'}")
         if seen:
-            answer = orientation
+            answer = line_side
         elif self._rng.random() < self._p.guess_response_probability:
             answer = self._rng.choice([Side.ABOVE, Side.BELOW])
         else:
@@ -576,7 +576,7 @@ def simulate_session(
                     saccade_rows_logged += 1
                     if participant.cues:
                         trial_cues[(row.phase, row.index)] = participant.cues[-1]
-                    if row.grating_shown and participant.pending_flash_truth is not None:
+                    if row.flash_shown and participant.pending_flash_truth is not None:
                         flash_truth[(row.phase, row.index)] = participant.pending_flash_truth
                 logged += 1
                 events.append((t, f"trial logged: {row.phase} #{row.index} outcome={row.outcome}"))
@@ -609,7 +609,7 @@ def print_trial_timeline(sim: SimulationResult) -> None:
             print(f"  {1000 * (t - go):8.1f}  {text}")
     print("\nLogged result:")
     for name in (
-        "outcome", "grating_shown", "contrast", "orientation", "responded", "response_time_ms",
+        "outcome", "flash_shown", "contrast", "line_side", "responded", "response_time_ms",
         "reaction_latency_ms", "onset_detection_lag_ms", "timing_offset_ms", "flash_during_saccade", "tracking_ok",
         "flash_leg", "jump_back_ms_after_go_cue", "return_reaction_ms", "jump_back_forced",
     ):
@@ -629,7 +629,7 @@ def main() -> None:
     rows = sim.saccade_results
     print(f"{len(rows)} saccade trials, {sim.duration_s:.0f} s simulated")
     print("  outcome counts:", {o: sum(r.outcome == o for r in rows) for o in sorted({r.outcome for r in rows})})
-    flashed = [r for r in rows if r.grating_shown]
+    flashed = [r for r in rows if r.flash_shown]
     valid = [r for r in flashed if is_valid_for_saccadic_analysis(r.flash_during_saccade, r.tracking_ok)]
     print(f"  flashes: {len(flashed)}, flash during saccade & tracking ok: {len(valid)}")
     latencies = [r.reaction_latency_ms for r in rows if r.reaction_latency_ms]

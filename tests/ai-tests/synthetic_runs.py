@@ -91,10 +91,10 @@ def write_run(
             side = Side.ABOVE if i % 2 == 0 else Side.BELOW
             answer = side if correct else (Side.BELOW if side == Side.ABOVE else Side.ABOVE)
             result = TrialResult(
-                index=i, phase="saccade", source=None, target=None, saccade_duration_ms=SACCADE_S * 1000, grating_shown=True, contrast=contrast,
-                orientation=side, responded=True, response_orientation=answer, response_time_ms=600.0, outcome="correct" if correct else "incorrect",
+                index=i, phase="saccade", source=None, target=None, saccade_duration_ms=SACCADE_S * 1000, flash_shown=True, contrast=contrast,
+                line_side=side, responded=True, answer_side=answer, response_time_ms=600.0, outcome="correct" if correct else "incorrect",
                 reaction_latency_ms=LATENCY_S * 1000, flash_during_saccade=during, scheduled_delay_ms=round(1000 * (flash - cue), 1),
-                grating_shown_at_unix_ms=round(1000 * flash, 1), tracking_ok=True,
+                flash_unix_ms=round(1000 * flash, 1), tracking_ok=True,
             )
             w.writerow({c.name: c.write(result) for c in TRIAL_COLUMNS})
 
@@ -184,10 +184,10 @@ def _return_jump_run(data_dir, participant, start_unix, n_trials, contrasts_pct,
             side = Side.ABOVE if i % 2 == 0 else Side.BELOW
             answer = side if correct else (Side.BELOW if side == Side.ABOVE else Side.ABOVE)
             result = TrialResult(
-                index=i, phase="saccade", source=None, target=None, saccade_duration_ms=SACCADE_S * 1000, grating_shown=True, contrast=contrast,
-                orientation=side, responded=True, response_orientation=answer, response_time_ms=600.0, outcome="correct" if correct else "incorrect",
+                index=i, phase="saccade", source=None, target=None, saccade_duration_ms=SACCADE_S * 1000, flash_shown=True, contrast=contrast,
+                line_side=side, responded=True, answer_side=answer, response_time_ms=600.0, outcome="correct" if correct else "incorrect",
                 reaction_latency_ms=LATENCY_S * 1000, flash_during_saccade=during, scheduled_delay_ms=round(1000 * (flash - cue), 1),
-                grating_shown_at_unix_ms=round(1000 * flash, 1), tracking_ok=True,
+                flash_unix_ms=round(1000 * flash, 1), tracking_ok=True,
                 flash_leg=leg, jump_back_ms_after_go_cue=round(1000 * (jump - cue), 1), return_reaction_ms=round(1000 * (back_on - jump), 1),
                 jump_back_forced=False, out_arrival_ms_after_go_cue=round(1000 * (LATENCY_S + ARRIVAL_AFTER_ONSET_S), 1),
                 left_target_before_jump=back_on < jump,

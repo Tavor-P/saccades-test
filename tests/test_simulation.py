@@ -61,5 +61,5 @@ def test_no_catch_trials_every_simulated_trial_flashes():
         sim = simulate_session(max_trials=12, seed=seed, skip_practice_trials=False)
         rows = [r for r in sim.saccade_results if r.phase == "saccade"]
         assert len(rows) >= 12, seed
-        assert all(r.grating_shown for r in rows), seed
+        assert all(r.flash_shown for r in rows), seed
         assert not any(r.outcome in ("false_alarm", "correct_rejection") for r in rows), seed

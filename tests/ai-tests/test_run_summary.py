@@ -11,8 +11,8 @@ GOOD_QUALITY = {"sample_rate_hz": 160.0, "latency_ms_median": 95.0, "longest_gap
 
 def _trial(index, **overrides) -> TrialResult:
     values = dict(
-        index=index, phase="saccade", source=Target.DOT, target=Target.CROSS, saccade_duration_ms=None, grating_shown=True,
-        contrast=0.06, orientation=Side.ABOVE, responded=True, response_orientation=Side.ABOVE, response_time_ms=250.0,
+        index=index, phase="saccade", source=Target.DOT, target=Target.CROSS, saccade_duration_ms=None, flash_shown=True,
+        contrast=0.06, line_side=Side.ABOVE, responded=True, answer_side=Side.ABOVE, response_time_ms=250.0,
         outcome="correct", reaction_latency_ms=200.0 + index, tracking_ok=True, scheduled_delay_ms=150.0,
     )
     values.update(overrides)
@@ -39,8 +39,8 @@ def _ten_trials(**overrides):
 
 def test_summary_of_a_good_run_is_written_printed_and_warns_on_problems(tmp_path, monkeypatch, capsys):
     trials = _ten_trials()
-    trials[0] = _trial(0, outcome="wrong", response_orientation=Side.BELOW)
-    trials[1] = _trial(1, responded=False, response_orientation=None, outcome="miss")
+    trials[0] = _trial(0, outcome="wrong", answer_side=Side.BELOW)
+    trials[1] = _trial(1, responded=False, answer_side=None, outcome="miss")
     folder = _make_run(tmp_path, monkeypatch, trials, glasses={"recording": "saved"})
     text = build_run_summary(folder)
     assert "Participant: alice" in text and "Mode: test" in text
@@ -62,7 +62,7 @@ def test_summary_of_a_good_run_is_written_printed_and_warns_on_problems(tmp_path
 
     lost = build_run_summary(_make_run(tmp_path / "b", monkeypatch, _ten_trials(tracking_ok=False)))
     assert "Tracking was lost near 10 of 10 flashes (100 %)" in lost
-    unanswered = _ten_trials(responded=False, response_orientation=None, outcome="miss")
+    unanswered = _ten_trials(responded=False, answer_side=None, outcome="miss")
     assert "10 of 10 flashes got no answer" in build_run_summary(_make_run(tmp_path / "c", monkeypatch, unanswered))
     real = build_run_summary(_make_run(tmp_path / "d", monkeypatch, _ten_trials(), test_mode=False))
     assert "10 flashes shown, a full real run has about 150" in real

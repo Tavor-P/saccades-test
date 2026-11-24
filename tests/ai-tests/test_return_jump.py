@@ -44,7 +44,7 @@ def _session(fake_gaze, return_jump: bool = True, leg: str = "out", **kwargs) ->
         return_jump=return_jump, **kwargs,
     )
     session.on_space()  # WAITING_TO_START -> the first main trial
-    session._current_trial_spec = TrialSpec(index=0, source=Target.DOT, target=Target.CROSS, orientation=Side.ABOVE)
+    session._current_trial_spec = TrialSpec(index=0, source=Target.DOT, target=Target.CROSS, line_side=Side.ABOVE)
     session._begin_foreperiod()
     if return_jump:
         session._flash_leg_bag = ShuffledBag([leg])
@@ -95,7 +95,7 @@ def test_target_jumps_back_after_the_out_landing_and_the_out_flash_then_one_answ
 
     fake_time(0.15)
     _saccade_to(session, fake_gaze, fake_time, GazeZone.RIGHT)  # landing confirmed on the tick the flash fires
-    assert session._landed and session._grating_actually_shown
+    assert session._landed and session._line_actually_shown
     assert session._jump_at is None  # the line is still on screen: the jump never overlaps the out-leg flash
     session.tick()  # the flash frame is over -> jump back
     jump = session._jump_at
@@ -112,7 +112,7 @@ def test_target_jumps_back_after_the_out_landing_and_the_out_flash_then_one_answ
     assert session.render_state()["hud"]["phase"] == "AWAITING_SPACE"
 
     [row] = _saccade_rows(session)
-    assert row.flash_leg == "out" and row.response_orientation is Side.ABOVE and row.outcome == "correct"
+    assert row.flash_leg == "out" and row.answer_side is Side.ABOVE and row.outcome == "correct"
     assert row.scheduled_delay_ms == pytest.approx(AVG_RT_MS)
     assert row.jump_back_ms_after_go_cue == pytest.approx((jump - go) * 1000)
     assert row.jump_back_forced is False
@@ -125,7 +125,7 @@ def test_a_return_leg_flash_is_scheduled_from_the_jump_and_drawn_at_the_start_sy
     go = _go(session, fake_time)
     fake_time(0.15)
     _saccade_to(session, fake_gaze, fake_time, GazeZone.RIGHT)
-    assert not session._grating_actually_shown  # nothing on the out leg
+    assert not session._line_actually_shown  # nothing on the out leg
     jump = session._jump_at
     assert jump is not None and session._jump_forced is False  # no out flash to wait for: jumps at landing
     # No return samples yet: centred on the out-leg average.
@@ -133,7 +133,7 @@ def test_a_return_leg_flash_is_scheduled_from_the_jump_and_drawn_at_the_start_sy
 
     fake_time(AVG_RT_MS / 1000 + 0.001)
     session.tick()
-    line = session.render_state()["grating"]
+    line = session.render_state()["line"]
     assert line["visible"]
     assert (line["x"], line["y"]) == pytest.approx(line_position(DOT_POSITION, Side.ABOVE, session._geometry))
     assert (line["x"], line["y"]) != pytest.approx(line_position(CROSS_POSITION, Side.ABOVE, session._geometry))
@@ -142,7 +142,7 @@ def test_a_return_leg_flash_is_scheduled_from_the_jump_and_drawn_at_the_start_sy
     session.on_response_key(Side.ABOVE)
     session.tick()
     [row] = _saccade_rows(session)
-    assert row.flash_leg == "return" and row.grating_shown
+    assert row.flash_leg == "return" and row.flash_shown
     jump_ms = (jump - go) * 1000
     assert row.jump_back_ms_after_go_cue == pytest.approx(jump_ms)
     # scheduled_delay_ms stays "flash minus go cue" on both legs.
@@ -295,7 +295,7 @@ def test_a_return_before_the_jump_gives_a_negative_latency_that_the_return_avera
 def test_return_flashes_go_on_the_jump_frame_when_the_return_average_is_not_positive(fake_gaze, fake_time):
     session = _session(fake_gaze, leg="return", precomputed_return_rt_samples_ms=[-30.0, -20.0, -10.0])
     session._current_trial_spec = TrialSpec(
-        index=0, source=Target.DOT, target=Target.CROSS, orientation=Side.ABOVE, timing_offset_ms=TIMING_OFFSETS_MS[-1]
+        index=0, source=Target.DOT, target=Target.CROSS, line_side=Side.ABOVE, timing_offset_ms=TIMING_OFFSETS_MS[-1]
     )
     _go(session, fake_time)
     fake_time(0.15)
@@ -315,7 +315,7 @@ def test_return_flash_bell_curve_uses_the_return_spread(fake_gaze, fake_time, mo
     monkeypatch.setattr(session_module, "spread_flash_delay_ms", spy)
     session = _session(fake_gaze, leg="return", precomputed_return_rt_samples_ms=[100.0] * 3)
     session._current_trial_spec = TrialSpec(
-        index=0, source=Target.DOT, target=Target.CROSS, orientation=Side.ABOVE, timing_offset_ms=0
+        index=0, source=Target.DOT, target=Target.CROSS, line_side=Side.ABOVE, timing_offset_ms=0
     )
     _go(session, fake_time)
     seen.clear()
@@ -366,8 +366,8 @@ def test_the_new_columns_round_trip_and_old_csvs_without_them_still_load(tmp_pat
     log.log(
         TrialResult(
             index=0, phase="saccade", source=Target.DOT, target=Target.CROSS, saccade_duration_ms=50.0,
-            grating_shown=True, contrast=0.06, orientation=Side.BELOW, responded=True,
-            response_orientation=Side.BELOW, response_time_ms=300.0, outcome="correct",
+            flash_shown=True, contrast=0.06, line_side=Side.BELOW, responded=True,
+            answer_side=Side.BELOW, response_time_ms=300.0, outcome="correct",
             flash_leg="return", jump_back_ms_after_go_cue=412.5, return_reaction_ms=-18.25, jump_back_forced=False,
             out_arrival_ms_after_go_cue=260.0, left_target_before_jump=True,
         )
@@ -409,7 +409,7 @@ def _tutorial_at_practice(fake_gaze) -> TutorialSession:
     for _ in range(3 * CALIBRATION_ROUNDS):
         session.on_space()
     for _ in range(TUTORIAL_QUIZ_STREAK_TARGET):
-        session.on_response_key(session._quiz_orientation)
+        session.on_response_key(session._quiz_side)
     session.on_space()  # PRACTICE_INTRO -> PRACTICE_AWAITING_SPACE
     assert session.render_state()["hud"]["phase"] == "PRACTICE_AWAITING_SPACE"
     return session
@@ -437,15 +437,15 @@ def test_tutorial_practice_jumps_back_and_collects_return_latencies(fake_gaze, f
 
     fake_time(session._flash_scheduled_at - session._clock.now() + 0.001)
     session.tick()
-    line = session.render_state()["grating"]
+    line = session.render_state()["line"]
     assert line["visible"]
-    assert (line["x"], line["y"]) == pytest.approx(line_position(DOT_POSITION, session._orientation, session._geometry))
+    assert (line["x"], line["y"]) == pytest.approx(line_position(DOT_POSITION, session._line_side, session._geometry))
 
     fake_gaze.zone = GazeZone.LEFT
     session.tick()
     fake_time(max(SACCADE_ONSET_STABILITY_MS, GAZE_LANDING_STABILITY_MS) / 1000 + 0.01)
     session.tick()
-    session.on_response_key(session._orientation)
+    session.on_response_key(session._line_side)
     session.tick()
     assert len(session.return_rt_samples_ms) == 1 and session.return_rt_samples_ms[0] > 0
     assert session.render_state()["hud"]["phase"] == "PRACTICE_AWAITING_SPACE"
