@@ -38,7 +38,7 @@ backend. Participant/experimenter docs: [README.md](README.md).
 - **Test budget: a new feature does NOT get new tests by default.** Add a test only for (a) a bug fix that could come back, (b) an on-disk contract (trials.csv columns,
   JSON schemas, folder layout), or (c) when the user asks. Otherwise rely on the existing tests, the simulator and a manual check, and say so. When a test is needed, extend an existing
   one (one more assert or parameter) before writing a new function; never add a new test file without asking. If your change makes a test obsolete, delete or merge it in the same commit.
-  Run only the tests for the area you changed while working; the full suite is run once, by the coordinating session, before a merge.
+  Run only the tests for the area you changed while working (`-m <area>`, see Commands); the full suite is run once, by the coordinating session, before a merge.
 - Report test results truthfully (ran / skipped). The whole suite passes with none skipped, in ~30-35 s (pytest-xdist: pytest.ini runs 6 workers, `--dist loadgroup`; was ~2 min serial).
   Keep it fast: share expensive setup (module-scoped fixtures), keep simulated runs small, and do not render real plots or run 1000 bootstrap refits where a test only needs a file or a CI to exist
   (see tests/ai-tests/conftest.py: PNGs are stubbed except in `REAL_PLOT_TESTS`, `suppression_index` runs 300 resamples). Tests must not share paths or global state (xdist): use `tmp_path`.
@@ -50,6 +50,7 @@ backend. Participant/experimenter docs: [README.md](README.md).
 ```
 .\scripts\py.ps1 -m pip install -r requirements.txt
 .\scripts\py.ps1 -m pytest -q                                   # full suite, parallel; one test or a debugger: -n0 tests/ai-tests/test_session.py::name -v (no worker start-up)
+.\scripts\py.ps1 -m pytest -q -m analysis                       # one area: session | analysis | dashboard | gaze | run | checks (map: tests/conftest.py AREAS)
 .\scripts\py.ps1 -m ruff check .                                # lint (ruff.toml: E F W I B UP); never `ruff format` (whole-repo reformat)
 .\scripts\py.ps1 -m mypy                                        # types for src/ + include/ (mypy.ini); both kept at 0 findings by tests/test_lint.py
 .\scripts\py.ps1 -m src.experiment.simulation                   # headless simulated trial timeline (AI-safe)
