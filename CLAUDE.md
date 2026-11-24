@@ -55,7 +55,7 @@ backend. Participant/experimenter docs: [README.md](README.md).
 .\scripts\py.ps1 -m pytest -q                                   # full suite, parallel; one test or a debugger: -n0 tests/ai-tests/test_session.py::name -v (no worker start-up)
 .\scripts\py.ps1 -m pytest -q -m analysis                       # one area: session | analysis | dashboard | gaze | run | checks (map: tests/conftest.py AREAS)
 $env:GOLDEN_UPDATE=1; .\scripts\py.ps1 -m pytest -q tests/ai-tests/test_golden_analysis.py   # regenerate analysis golden files after an intended output change
-.\scripts\py.ps1 -m ruff check .                                # lint (ruff.toml: E F W I B UP); never `ruff format` (whole-repo reformat)
+.\scripts\py.ps1 -m ruff check .                                # lint (ruff.toml: E F W I B UP + C901/PLR09xx size limits); never `ruff format` (whole-repo reformat)
 .\scripts\py.ps1 -m mypy                                        # types for src/ + include/ (mypy.ini); both kept at 0 findings by tests/test_lint.py
 .\scripts\py.ps1 -m src.experiment.simulation                   # headless simulated trial timeline (AI-safe)
 .\scripts\py.ps1 tests/ai-tests/run_sim.py --help               # --scenario --set --profile --sweep --sweep-profile --seeds --timeline --json --real --list
@@ -76,7 +76,7 @@ Double-click launchers: `run_experiment.bat` in the repo root; `analyze_latest.b
 - **Code-quality pass 2026-11-24** (behaviour unchanged, sim output byte-identical): session split (`trial_legs`, `session_config`, `trial_record`), line naming, IO cleanup (`session_files`, `textio`),
   run/analyze split (`rendering`, analysis modules, `analysis_constants`, summary.json schema 3), test cleanup, ms/s helpers + named constants, ruff + mypy at zero findings, docs deduped against README.
 - **Later 2026-11-24**: literature-style time-course figure + companion numbers + gaze_timeline.png (summary.json schema 4), each run analysed automatically when it ends, round-specific calibration
-  text, test areas (`-m <area>`) + test budget, pre-commit hook, `requirements-lock.txt`. First real-data check (one 30-trial test run): gaze delay 14 ms, return-latency robust SD ~64 ms vs the 40 ms setting.
+  text, test areas (`-m <area>`) + test budget, pre-commit hook, `requirements-lock.txt`, ruff size/complexity limits, analysis golden snapshot test. First real-data check (one 30-trial test run): gaze delay 14 ms, return-latency robust SD ~64 ms vs the 40 ms setting.
 - **Shipped setup**: flash times on a bell curve centred on the average RT (SD `FLASH_SPREAD_SD_MS` 80, dialog "Flash timing spread"), cut to 0-500 ms after the go cue; controls at avg RT +400/+500 +/-10 ms;
   fixed saccade contrasts; plain Neon, chin rest. Onboarding: calibration -> quiz -> 8 practice trials seeding the RT average. Every trial waits for SPACE.
 - **Simulation 2026-11-22** (code not kept): shifting the bell curve's centre earlier than the average RT gains almost nothing in the 50 ms before onset (spread is ~110 ms SD anyway; beyond -20 ms
