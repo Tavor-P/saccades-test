@@ -77,6 +77,15 @@
 
     {% set plot_url = url_for('run_file', timestamp=page.key, kind='plot') if page.kind == 'run' else url_for('participant_file', pid=page.key, kind='plot') %}
     {% if 'plot' in page.downloads %}<img class="plot" src="{{ plot_url }}" alt="Accuracy against flash time and contrast">{% endif %}
+    {% if page.companion %}
+    <h2>Companion numbers</h2>
+    <ul class="companion">{% for line in page.companion %}<li>{{ line }}</li>{% endfor %}</ul>
+    {% endif %}
+    {% if page.kind == 'run' and 'gaze' in page.downloads %}
+    <h2>Eye position and flashes</h2>
+    <p class="muted">Each row is 20 seconds. Grey = a detected saccade; each bar is a flash, darker = higher contrast; x = wrong answer. Click the picture to open it full size.</p>
+    <a href="{{ url_for('run_file', timestamp=page.key, kind='gaze') }}"><img class="plot" src="{{ url_for('run_file', timestamp=page.key, kind='gaze') }}" alt="Gaze position over the run with every flash"></a>
+    {% endif %}
 
     <h2>Data quality: <span class="light light-{{ page.quality.overall }}"><span class="dot"></span>{{ {'green': 'all OK', 'amber': 'check the amber rows', 'red': 'problem', 'grey': 'not recorded'}[page.quality.overall] }}</span></h2>
     <div class="quality">

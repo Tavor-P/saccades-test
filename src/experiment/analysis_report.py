@@ -150,9 +150,14 @@ def _pp_ci(ci) -> str:
 def format_companion(companion: dict | None, timecourse: dict | None = None) -> list[str]:
     """COMPANION NUMBERS section: extra numbers beside the RESULT index (which stays the headline): the accuracy difference in
     percentage points, relative suppression S, the log threshold ratio (with a threshold fit) and the time curve's lowest point."""
-    lines = heading("Companion numbers")
+    return [*heading("Companion numbers"), *companion_lines(companion, timecourse)]
+
+
+def companion_lines(companion: dict | None, timecourse: dict | None = None) -> list[str]:
+    """The lines under the COMPANION NUMBERS heading (the dashboard shows them too; an old analysis without them says so)."""
     if companion is None:
-        return lines + ["  not computed"]
+        return ["  not computed (an analysis from before these numbers existed)"]
+    lines = []
     lines.append("  Extra to the RESULT line above, which stays the headline. Accuracies are stratified: equal weight over the contrasts "
                  f"with at least {analysis_constants.STRATUM_MIN_SACCADE_FLASHES} saccade flashes.")
     levels = "/".join(f"{c:g}" for c in companion["strata_contrasts_pct"])
