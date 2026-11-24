@@ -54,6 +54,7 @@ Printable version: [docs/experimenter_checklist.md](docs/experimenter_checklist.
 | Screen height (cm) / Viewing distance (cm) | measure them (5-100 / 20-300; decimal comma accepted); saved in `session.json` |
 | *Advanced*: Saccade contrast min / max (%) | the fixed contrasts, spaced between these (defaults 4 and 8: levels 4, 6, 8) |
 | *Advanced*: Flash timing spread (ms) | width (SD) of the bell curve of flash times around the average reaction time; default 80 (10-250) |
+| Return jump | default on: after the eye reaches the target it jumps back to the start (see step 4 below); off = one-jump trials |
 | *Advanced*: Show gaze indicator | debug aid |
 
 Click a field's name or its **?** for a help bubble. The last values are remembered; an invalid entry shows a message and keeps what you typed.
@@ -66,6 +67,9 @@ Click a field's name or its **?** for a help bubble. The last values are remembe
 4. **Trials** (150 Real, 30 Test). The participant presses **SPACE** to start each trial (the wait is their break). 0.5-1 s later the dot swaps to the cross with a beep and they look to it as fast as they can.
    A thin line flashes for one frame 2 deg above or below the target, at a random time on a bell curve centred on the average reaction time (0-500 ms after the swap), plus some control flashes
    (about 2 in 11) 400-500 ms after it, when the eye has already landed. They press **Up** or **Down** within 1 s; a missed flash is still guessed. Every trial flashes.
+   With **Return jump** on, once the eye has arrived (`RETURN_JUMP_TRIGGER` "arrival"; "onset" jumps at the start of the movement; `RETURN_JUMP_LANDING_TIMEOUT_MS` forces it) the target jumps back to the start symbol
+   and the eye follows it, so a trial has an out and a return saccade but still only ONE flash: on the return leg in `RETURN_LEG_FLASH_FRACTION` (0.8) of trials (timed from the jump, spread `RETURN_FLASH_SPREAD_SD_MS` 40 ms,
+   a guess to be measured), else on the out leg. Not yet run on glasses.
 5. **End.** A plain-language summary and the `analyze_session` command are printed. Fixation data come from the control flashes and far-from-saccade flashes of the same trials, sorted after the fact.
 
 The phone records the scene video during the trials; a failure there never stops the session. `Esc` quits at once.
@@ -92,7 +96,7 @@ data/<participant id>/<YYYY-MM-DD_HH-MM-SS>[_test]/
   RUN_SUMMARY.txt      plain-language end-of-run summary
   analysis/            report.txt, plot.png, flashes.csv, suppression.json (analyze_session)
   glasses/             the phone's video + video_sync.json + flash_video_times.csv (import_glasses_video)
-data/<participant id>/analysis/   report.txt, plot.png, flashes.csv, summary.json, all runs pooled (analyze_participant)
+data/<participant id>/analysis/   report.txt, plot.png, flashes.csv, summary.json (schema 3), all runs pooled (analyze_participant)
 data/participants.json            group labels
 data/study_summary.csv + .txt    one row per participant (study_summary)
 data/comparisons/<date-time>_<A>_vs_<B>/   report.txt, comparison.csv, comparison.json, plot.png (compare; the dashboard uses data/comparisons/dashboard/)
@@ -101,7 +105,8 @@ data/comparisons/<date-time>_<A>_vs_<B>/   report.txt, comparison.csv, compariso
 Test-mode runs (`_test`) are left out of every pooled analysis, comparison and study summary unless you ask (`--include-test`, or **Include test runs** in the dashboard).
 
 `trials.csv` columns (booleans `yes`/`no`; practice trials not written): `phase`, `trial`, `contrast_pct`, `flash_shown`, `flash_during_saccade` (live, unreliable), `answered`, `correct`,
-`outcome` (correct / wrong / no_answer / detected), `line_side` (above / below), `answer_side`, `flash_ms_after_go_cue`, `reaction_ms`, `answer_ms`, `flash_unix_ms`, `tracking_ok`.
+`outcome` (correct / wrong / no_answer / detected), `line_side` (above / below), `answer_side`, `flash_leg` (out / return), `flash_ms_after_go_cue`, `out_arrival_ms_after_go_cue`, `jump_back_ms_after_go_cue`, `reaction_ms`, `return_reaction_ms` (negative = left before the jump), `answer_ms`,
+`flash_unix_ms`, `jump_back_forced`, `left_target_before_jump`, `tracking_ok`.
 `session.json` sections: `participant`, `run`, `settings`, `hardware`, `results`, `gaze_quality` (rate, gaps, latency, clock offset), `head_motion`, `ignored_space_presses`, `glasses_video`.
 
 Older run folders (grating-era column names, `vertical`/`horizontal` sides from the grating version) are never rewritten and are still read. The very first loose `data/results_<timestamp>.csv` layout is no longer supported.
@@ -154,16 +159,16 @@ For anyone who does not program. The numbers are exploratory (feasibility pilot)
 late arrival at the PC does not matter), places each flash against the nearest saccade onset, and labels it with pre-specified gates (`src/experiment/flash_gates.py`): **saccade** (a saccade within +-100 ms, the eye
 moving fast at the flash, latency from the go cue 100-500 ms, amplitude 0.5-1.5x the session median), **fixation** (at least 100 ms from any saccade, no tracking gap) or **excluded** (reason in `flashes.csv`).
 The index is a Weibull psychometric fit per condition (guess rate 0.5, shared slope) with a bootstrap CI; with too few flashes it falls back to the accuracy difference, or reports "cannot be computed" with the
-reason. Other options: `--offset-ms`, `--flash-delay-ms`, `--min-amplitude`, `--index-near-ms`, `--index-far-ms` (see `--help`).
+reason. For return-jump runs each flash is gated against its own leg's saccade (a return must move back at least half the out amplitude) and the report gives out, return and pooled indices plus a
+return-latency report (use it to set `RETURN_FLASH_SPREAD_SD_MS`). Other options: `--offset-ms`, `--flash-delay-ms`, `--min-amplitude`, `--index-near-ms`, `--index-far-ms` (see `--help`).
 
 **`analyze_participant`**: one run gives only ~30 saccade flashes, so each person does several runs that are pooled. Test runs are skipped unless `--include-test`. Only runs with the **same saccade contrasts and screen
-geometry** are pooled (the largest such set; others are listed at the top of the report with the reason).
+geometry** and run kind (`single` or `return_jump/<trigger>`) are pooled (the largest such set; others are listed at the top of the report with the reason).
 
 **`compare`**: uses everyone's pooled analysis (redone first if missing or stale). People are left out, with the reason, when their index cannot be computed, their runs used other contrasts/geometry than the majority,
-or (groups) their index came from a different method. Warnings appear for groups under 3 people or under 12 flashes per condition. Group labels are free text, **no clinical details** (those need IRB approval).
+or (groups) their index came from a different method; mixed run kinds are refused. Warnings appear for groups under 3 people or under 12 flashes per condition. Group labels are free text, **no clinical details** (those need IRB approval).
 
-**`study_summary`**: `data/study_summary.csv` (group, runs used/left out, index, CI, method, flashes per condition, gaze delay and tracking gaps, flags) and `study_summary.txt`. The "gaze delay > 50 ms" flag is the
-known delay problem; it affects only live classification, not these post-hoc numbers.
+**`study_summary`**: `data/study_summary.csv` (group, runs used/left out, index, CI, method, flashes per condition, gaze delay and tracking gaps, flags) and `study_summary.txt`. The "gaze delay > 50 ms" flag marks an unusually high delay (`GAZE_DELAY_FLAG_MS`; recent runs are ~15 ms); it affects only live classification, not these post-hoc numbers.
 
 ## Glasses video
 
@@ -234,7 +239,7 @@ participant's pooled analysis with it).
 - **Contrasts are a guess.** 4/6/8 % is only ~5-10 grey steps on an 8-bit display, so levels are coarse. Re-pilot and adjust in the startup dialog.
 - **Screen geometry is only as good as what you type in**; the placeholders (26 cm at 50 cm) make degrees approximate. The geometry used is saved in `session.json` and printed in the analysis report.
 - **Gaze delay**: early runs (Oct 2026) saw gaze reach the PC ~90-100 ms late; since a fix that day, runs show ~13-20 ms. Check the gaze delay light after each run. The live `flash_during_saccade` flag is still only a guide; post-hoc judging from the phone's capture times is the real one.
-- **Timing is open-loop:** reaction times vary (SD ~60-80 ms), so only a minority of flashes land near onset (simulator: ~43 of 150 within +-50 ms, ~31 pass the saccade gate, ~55 fixation flashes). People with TBI may vary more.
+- **Timing is open-loop:** reaction times vary (SD ~60-80 ms), so only a minority of flashes land near onset (simulator: ~43 of 150, about 2 in 7, within +-50 ms, ~31 pass the saccade gate, ~55 fixation flashes). People with TBI may vary more.
 - **One participant so far:** the group tools are built and tested on synthetic data only.
 
 ## For developers
