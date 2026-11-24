@@ -35,7 +35,7 @@ backend. Participant/experimenter docs: [README.md](README.md).
   (never `git add -A` / `commit -a`); don't touch other sessions' files, tell the user instead.
 - PowerShell 5.1 has no `&&`; keep each file's line endings (CRLF). `.gitignore` has `data/`, which matches any `data` folder (tests: use `tests/fixtures/`).
 - `data/` is git-ignored runtime output and participant data is personal data: never commit or print it, never write to it from tests/simulations, never copy real sessions into `tests/fixtures/`.
-- Report test results truthfully (ran / skipped). Suite: 362 tests pass, none skipped, ~2-4 min.
+- Report test results truthfully (ran / skipped). Suite: 364 tests pass, none skipped, ~2-4 min.
 
 ## Commands (all through the wrapper)
 
@@ -94,7 +94,7 @@ Paths are checked by `tests/test_docs.py` - keep them real.
 | `src/experiment/trial_mechanics.py` | `OnsetDetector`, `ShuffledBag`, `line_position`, `robust_average_ms`, `spread_flash_delay_ms`, `RollingReactionTime` |
 | `src/experiment/calibration.py` | `CalibrationRounds` (3 points x 3 rounds), `average_calibration_rounds` |
 | `src/experiment/space_input.py` | `CalibrationLatch`, `NarrationKeyGate`, `SpaceTally`, `deliver_space`, `leaves_complete_screen` |
-| `src/timebase.py` | the ONE time source: `now()` = `perf_counter()`; `unix_now()`, `unix_ms()` |
+| `src/timebase.py` | the ONE time source: `now()` = `perf_counter()`; `unix_now()`, `unix_ms()`; `ms_to_s()`/`s_to_ms()` (the only place the factor 1000 is written for time) |
 | `src/experiment/trial_factory.py` | trial sequences; every trial flashes |
 | `src/experiment/logger.py` | `ResultLogger`: `TRIAL_COLUMNS`, `DROPPED_FROM_CSV`, `trial_from_row`, `read_trial_rows`/`read_trials` (plain-named + grating-era columns) |
 | `src/experiment/session_files.py` | run folders: `REPO_ROOT`/`DATA_DIR` (defined once), `read_json`, `sanitize_participant_id`, `create_session_folder`, `list_sessions`/`find_session`/`newest_session` |
@@ -194,7 +194,7 @@ SPACE presses are never silently dropped; every ignored one is counted in `sessi
 - **Gaze latency (was ~90-100 ms, now ~13-20 ms)**: in Oct 2026 real sessions showed ~95 ms (`gaze_quality.latency_ms_median`) with the rate falling 200 -> ~160/s once the render loop started: the receiver thread
   starved by the render loop (same process/GIL). `run_experiment.main` has since set `sys.setswitchinterval(0.0005)` (5f5a0c6, 2026-10-22); every run on disk after it (2026-11-01..11-23) shows a median of 12.5-19.8 ms
   at ~199/s. Keep checking `latency_ms_median` per run; if it climbs again, next step is receiving Neon in its own process.
-- **Time**: never use `time.monotonic()`/`time.time()` for event timing on Windows (15.6 ms resolution). Use `src/timebase.py` (`now()`, `unix_now()`); enforced by `test_architecture_rules.py`.
+- **Time**: never use `time.monotonic()`/`time.time()` for event timing on Windows (15.6 ms resolution). Use `src/timebase.py` (`now()`, `unix_now()`); enforced by `test_architecture_rules.py`, which also forbids `datetime.now()`/`utcnow()` in `src/` except the listed human-readable stamps. Convert ms<->s with `ms_to_s()`/`s_to_ms()` and name variables `_ms`/`_s`, never a bare `/ 1000`.
   The phone clock drifts ~1.2 ms/min against the PC (offset re-estimated every `NEON_CLOCK_REESTIMATE_S`).
 - **Neon timing**: latency is right only with `local = device_ts + offset` from `estimate_time_offset()` (the sign is easy to flip). `NeonGazeSource` stamps samples with CAPTURE time
   (`device_unix_s` + offset on the `timebase.now()` timeline; arrival time only as fallback, strictly increasing, clamped to <=`NEON_MAX_PLAUSIBLE_LATENCY_MS`), so the session must not subtract `gaze_latency_ms` again

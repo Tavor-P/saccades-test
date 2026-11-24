@@ -242,6 +242,6 @@ participant's pooled analysis with it).
 [CLAUDE.md](CLAUDE.md) has the architecture, repo map and gotchas. Everything runs without hardware:
 
 ```
-.\scripts\py.ps1 -m pytest -q                 # 362 tests pass, about 2-4 min, no glasses or window needed
+.\scripts\py.ps1 -m pytest -q                 # 364 tests pass, about 2-4 min, no glasses or window needed
 .\scripts\py.ps1 -m src.experiment.simulation # headless simulated trial; see tests/ai-tests/README.md for run_sim.py
 ```
