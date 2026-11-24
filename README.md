@@ -104,7 +104,7 @@ Test-mode runs (`_test`) are left out of every pooled analysis, comparison and s
 `outcome` (correct / wrong / no_answer / detected), `line_side` (above / below), `answer_side`, `flash_ms_after_go_cue`, `reaction_ms`, `answer_ms`, `flash_unix_ms`, `tracking_ok`.
 `session.json` sections: `participant`, `run`, `settings`, `hardware`, `results`, `gaze_quality` (rate, gaps, latency, clock offset), `head_motion`, `ignored_space_presses`, `glasses_video`.
 
-Older sessions (loose `data/results_<timestamp>.csv`, `_meta.json`, `vertical`/`horizontal` sides from the grating version) are never rewritten and are still read.
+Older run folders (grating-era column names, `vertical`/`horizontal` sides from the grating version) are never rewritten and are still read. The very first loose `data/results_<timestamp>.csv` layout is no longer supported.
 
 ## Analysing your data in 3 clicks
 

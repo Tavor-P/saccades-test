@@ -1,8 +1,7 @@
 """Pooled analysis of ALL of one participant's runs (`-m src.experiment.analyze_participant <participant-id>`).
 
 One run gives only ~30 saccade flashes, too few for a stable suppression index, so this pools every run of a person:
-1. finds the run folders under data/<participant>/ (test runs only with --include-test; old loose `results_<ts>.csv` files
-   have no participant and are ignored),
+1. finds the run folders under data/<participant>/ (test runs only with --include-test),
 2. analyses each run exactly as `analyze_session` does (saccades from its own raw gaze trace, every flash gated by
    `flash_gates` against that run's own saccades - runs are never re-gated together),
 3. pools the runs that used the same saccade contrasts and screen geometry (the largest such set; the others are listed
@@ -146,7 +145,7 @@ def find_runs(participant_id: str, data_dir: Path = DATA_DIR) -> tuple[str, list
     data_dir = Path(data_dir)
     pid = session_files.sanitize_participant_id(participant_id)
     folder = data_dir / pid
-    refs = [r for r in session_files.list_sessions(data_dir) if r.folder is not None and r.participant == pid] if folder.is_dir() else []
+    refs = [r for r in session_files.list_sessions(data_dir) if r.participant == pid] if folder.is_dir() else []
     if not refs:
         others = sorted(p.name for p in data_dir.iterdir() if p.is_dir()) if data_dir.is_dir() else []
         where = f"no run folders in {folder}" if folder.is_dir() else f"no folder {folder}"
@@ -350,7 +349,6 @@ def analyze_participant(
             "conditions_from": "pre-specified gates (src/experiment/flash_gates.py), each run gated against its own gaze trace",
             "flash_delay_ms": flash_delay_ms, "min_amplitude": min_amplitude, "n_boot": n_boot,
             "test_runs_skipped": 0 if include_test else len(tests),
-            "legacy_loose_files": "ignored (old results_<ts>.csv sessions have no participant folder)",
             "pooling_rule": "same saccade contrasts, screen geometry and run kind (single vs return_jump/<trigger>)",
         },
         "run_kind": kind,

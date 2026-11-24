@@ -1,6 +1,6 @@
 """Reads/writes the experiment's files under data/ for the dashboard: per-participant run folders (trials.csv + session.json)
-and the old loose results_<ts>.csv / _meta.json files, plus settings.json. A session is addressed by its unix start time
-in both layouts. Parsers use .get(...) so files written before a column existed still load (missing column -> None)."""
+plus settings.json. A session is addressed by its unix start time. Parsers use .get(...) so files written before a column
+existed still load (missing column -> None)."""
 
 import json
 import shutil
@@ -12,33 +12,34 @@ from src.experiment.logger import read_trials
 
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 
+_NO_SUCH_SESSION = "no_such_session"  # folder name of the (never existing) paths handed out for an unknown key
 
-def _ref(timestamp: str) -> session_files.SessionRef:
-    """The session with this key; a not-found one resolves to its old-layout paths (which don't exist), so callers'
-    `.exists()` checks keep working."""
+
+def _ref(timestamp: str) -> session_files.SessionRef | None:
+    """The session with this key, or None (not found, or not a session key at all)."""
     if not (timestamp.isascii() and timestamp.isdigit()):
         # Only session keys (unix start times) address a session here, never a path: '..', separators or absolute paths
         # would let find_session resolve (and delete_session remove) a folder outside data/.
-        return session_files._legacy_ref(DATA_DIR, "0")
+        return None
     ref = session_files.find_session(DATA_DIR, timestamp)
-    if ref is not None and ref.folder is not None and ref.folder.resolve().parent.parent != DATA_DIR.resolve():
-        return session_files._legacy_ref(DATA_DIR, "0")
-    return ref or session_files._legacy_ref(DATA_DIR, timestamp)
+    if ref is not None and ref.folder.resolve().parent.parent != DATA_DIR.resolve():
+        return None
+    return ref
 
 
 def csv_path_for(timestamp: str) -> Path:
-    return _ref(timestamp).trials_path
+    """The session's trials.csv; for an unknown key a path that does not exist, so callers' `.exists()` checks work."""
+    ref = _ref(timestamp)
+    return ref.trials_path if ref else DATA_DIR / _NO_SUCH_SESSION / session_files.TRIALS_FILE
 
 
 def meta_path_for(timestamp: str) -> Path:
-    return _ref(timestamp).meta_path
+    ref = _ref(timestamp)
+    return ref.meta_path if ref else DATA_DIR / _NO_SUCH_SESSION / session_files.SESSION_FILE
 
 
 def _flatten(raw: dict) -> dict:
-    """The dashboard's flat view (participant_id, started_at, test_mode, calibration, gender, age) of either an old
-    _meta.json (already flat) or a new session.json (sectioned)."""
-    if "run" not in raw and "participant" not in raw:
-        return dict(raw)
+    """The dashboard's flat view (participant_id, started_at, test_mode, calibration, gender, age) of a sectioned session.json."""
     participant, run, settings = raw.get("participant") or {}, raw.get("run") or {}, raw.get("settings") or {}
     mode = run.get("mode")
     return {
@@ -72,32 +73,29 @@ def load_metadata(timestamp: str) -> dict:
 
 def save_participant_info(timestamp: str, gender: str, age: str) -> None:
     ref = _ref(timestamp)
+    if ref is None:
+        raise FileNotFoundError(f"no session {timestamp!r}")
     gender = gender.strip() or None
     age_value = int(age) if age.strip() else None
     raw = json.loads(ref.meta_path.read_text()) if ref.meta_path.exists() else {}
-    if ref.is_legacy:
-        raw.update(gender=gender, age=age_value)
-    else:
-        raw.setdefault("participant", {}).update(gender=gender, age=age_value)
+    raw.setdefault("participant", {}).update(gender=gender, age=age_value)
     ref.meta_path.write_text(json.dumps(raw, indent=2))
 
 
 def delete_session(timestamp: str) -> None:
-    """Removes a session permanently (no trash/undo): an old session's CSV and metadata sidecar; a
-    new-layout session's WHOLE run folder (trials, session.json, gaze trace, analysis and the glasses video). The
-    participant's pooled analysis (data/<participant>/analysis/) included that run, so it is removed too (the results
-    page re-runs it on the next open), and then the participant folder if nothing else is left in it."""
+    """Removes a session permanently (no trash/undo): its WHOLE run folder (trials, session.json, gaze trace, analysis and
+    the glasses video). The participant's pooled analysis (data/<participant>/analysis/) included that run, so it is
+    removed too (the results page re-runs it on the next open), and then the participant folder if nothing else is left
+    in it. An unknown key (or anything that is not a session key) deletes nothing."""
     ref = _ref(timestamp)
-    if ref.is_legacy:
-        ref.trials_path.unlink(missing_ok=True)
-        ref.meta_path.unlink(missing_ok=True)
-    else:
-        shutil.rmtree(ref.folder, ignore_errors=True)
-        shutil.rmtree(ref.folder.parent / session_files.ANALYSIS_DIR, ignore_errors=True)
-        try:
-            ref.folder.parent.rmdir()  # only succeeds when empty
-        except OSError:
-            pass
+    if ref is None:
+        return
+    shutil.rmtree(ref.folder, ignore_errors=True)
+    shutil.rmtree(ref.folder.parent / session_files.ANALYSIS_DIR, ignore_errors=True)
+    try:
+        ref.folder.parent.rmdir()  # only succeeds when empty
+    except OSError:
+        pass
 
 
 @dataclass
@@ -105,11 +103,11 @@ class SessionSummary:
     timestamp: str
     metadata: dict
     trial_counts: dict[str, int] = field(default_factory=dict)
-    participant: str | None = None  # the participant folder name (new layout); None for an old loose-file session
+    participant: str | None = None  # the participant folder name
 
 
 def discover_sessions() -> list[SessionSummary]:
-    """All logged sessions (both layouts), newest first."""
+    """All logged sessions, newest first."""
     sessions = []
     for ref in session_files.list_sessions(DATA_DIR):
         trial_counts: dict[str, int] = {}

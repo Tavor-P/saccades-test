@@ -105,8 +105,8 @@ def participants_in_group(group: str, data_dir: Path = DATA_DIR) -> list[str]:
 
 
 def all_participants(data_dir: Path = DATA_DIR) -> list[str]:
-    """Every participant with at least one run folder under data_dir, sorted (old loose result files have no participant)."""
-    return sorted({ref.participant for ref in session_files.list_sessions(data_dir) if ref.folder is not None and ref.participant})
+    """Every participant with at least one run folder under data_dir, sorted."""
+    return sorted({ref.participant for ref in session_files.list_sessions(data_dir)})
 
 
 def resolve_set(spec: str | list[str], data_dir: Path = DATA_DIR) -> list[str]:

@@ -6,6 +6,7 @@ import json
 
 import numpy as np
 import pytest
+import synthetic_runs as sr
 
 from include.eye_tracking.constants import NEON_SCENE_WIDTH
 from src.experiment import analyze_session as an
@@ -33,23 +34,24 @@ def _trace(onsets, duration_s=0.08, lo=0.40, hi=0.70, length_s=20.0):
 
 
 def _write_session(tmp_path, onsets, flashes, stamp="1700000000"):
-    """flashes: (time relative to the matching onset in ms, outcome, contrast); onset index i is used in order."""
+    """A run folder under tmp_path (participant p1, key `stamp`) whose trials.csv keeps the grating-era column names.
+    flashes: (time relative to the matching onset in ms, outcome, contrast); onset index i is used in order."""
     t, x = _trace(onsets)
-    with (tmp_path / f"results_{stamp}_gaze_trace.csv").open("w", newline="") as f:
-        w = csv.writer(f)
-        w.writerow(["t_s", "device_unix_s", "x_px", "worn"])
-        for ti, xi in zip(t, x):
-            w.writerow([ti, ti - CLOCK_OFFSET_S, xi * NEON_SCENE_WIDTH, 1])  # phone clock = PC clock - offset
-    (tmp_path / f"results_{stamp}_meta.json").write_text(json.dumps({"gaze_quality": {"clock_offset_ms": CLOCK_OFFSET_S * 1000}}))
+    # phone clock = PC clock - offset
+    trace = [[ti, ti - CLOCK_OFFSET_S, xi * NEON_SCENE_WIDTH, 1] for ti, xi in zip(t, x)]
     fields = ["trial_index", "phase", "grating_shown", "contrast", "orientation", "outcome", "grating_shown_at_unix_ms"]
-    with (tmp_path / f"results_{stamp}.csv").open("w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=fields)
-        w.writeheader()
-        for i, (rel_ms, outcome, contrast) in enumerate(flashes):
-            w.writerow({"trial_index": i, "phase": "saccade", "grating_shown": True, "contrast": contrast, "orientation": "vertical", "outcome": outcome, "grating_shown_at_unix_ms": (onsets[i] + rel_ms / 1000) * 1000})
-        w.writerow({"trial_index": 99, "phase": "saccade", "grating_shown": False, "outcome": "correct_rejection"})  # legacy catch row from an old session: ignored
-        w.writerow({"trial_index": 100, "phase": "presaccade", "grating_shown": True, "contrast": 0.01, "outcome": "correct", "grating_shown_at_unix_ms": 1})  # other phase: ignored
+    rows = [
+        {"trial_index": i, "phase": "saccade", "grating_shown": True, "contrast": contrast, "orientation": "vertical", "outcome": outcome, "grating_shown_at_unix_ms": (onsets[i] + rel_ms / 1000) * 1000}
+        for i, (rel_ms, outcome, contrast) in enumerate(flashes)
+    ]
+    rows.append({"trial_index": 99, "phase": "saccade", "grating_shown": False, "outcome": "correct_rejection"})  # a catch row from an old session: ignored
+    rows.append({"trial_index": 100, "phase": "presaccade", "grating_shown": True, "contrast": 0.01, "outcome": "correct", "grating_shown_at_unix_ms": 1})  # other phase: ignored
+    sr.write_old_column_run(tmp_path, stamp, rows, fields, meta={"gaze_quality": {"clock_offset_ms": CLOCK_OFFSET_S * 1000}}, gaze_trace_rows=trace)
     return stamp
+
+
+def _meta_path(tmp_path, stamp):
+    return an.session_files.find_session(tmp_path, stamp).meta_path
 
 
 ONSETS = [T0 + 2 + 2 * i for i in range(8)]
@@ -124,7 +126,7 @@ def test_latest_timestamp_picks_the_newest_session_with_flashes(tmp_path):
 
 def test_a_session_without_a_clock_offset_asks_for_one(tmp_path):
     stamp = _write_session(tmp_path, ONSETS, [(0, "correct", 0.1)])
-    (tmp_path / f"results_{stamp}_meta.json").write_text(json.dumps({"gaze_quality": {}}))
+    _meta_path(tmp_path, stamp).write_text(json.dumps({"gaze_quality": {}}))
     with pytest.raises(ValueError, match="offset"):
         an.analyze(stamp, data_dir=tmp_path)
     assert an.analyze(stamp, data_dir=tmp_path, clock_offset_ms=250.0, out_dir=tmp_path / "o")["summary"]["flashes"] == 1
@@ -294,7 +296,7 @@ def test_plot_report_handles_all_correct_all_wrong_and_single_flash_bins(tmp_pat
 
 def test_a_timeout_row_whose_line_was_shown_and_answered_is_scored_from_the_answer(tmp_path):
     """The live session labels a trial 'timeout' when no eye movement was detected, even if the flash fired and was answered."""
-    path = tmp_path / "results_1700000000.csv"
+    path = tmp_path / "trials.csv"
     fields = ["trial_index", "phase", "grating_shown", "contrast", "orientation", "responded", "response_orientation", "outcome", "grating_shown_at_unix_ms"]
     rows = [
         (0, "True", "above", "timeout"),  # answered correctly

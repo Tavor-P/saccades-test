@@ -1,7 +1,7 @@
 """ResultLogger: writes one session to data/<participant>/<YYYY-MM-DD_HH-MM-SS>[_test]/ - `trials.csv` (one row per trial),
 `session.json` (participant, settings, hardware, results summary, gaze quality, glasses-video sync) and the paths of the
 side files (gaze_trace.csv, analysis/, glasses/). TRIAL_COLUMNS is the single schema of trials.csv: it drives the writer
-and `read_trial_rows`, which also reads sessions written in the old layout (loose results_<ts>.csv with other names)."""
+and `read_trial_rows`, which also reads a trials.csv that still uses the grating-era column names."""
 
 import csv
 import functools
@@ -43,7 +43,7 @@ def _enum_value(value) -> str:
     return "" if value is None else value.value
 
 
-PHASE_WORDS = {"presaccade": "baseline"}  # old runs only: the removed fixation phase ("presaccade" in memory, "baseline" in trials.csv); kept so old files parse
+PHASE_WORDS = {"presaccade": "baseline"}  # needed by run folders written 2026-10-30..2026-11-01 (the fixation phase was still logged); "presaccade" in memory, "baseline" in trials.csv
 OUTCOME_WORDS = {"incorrect": "wrong", "miss": "no_answer"}
 _INVERSE = lambda table: {v: k for k, v in table.items()}  # noqa: E731
 
@@ -78,7 +78,8 @@ class Column:
         return None if self.field is None else _CANONICAL_NAMES.get(self.field, self.field)
 
 
-# TrialResult field -> its column name in the old results_<ts>.csv (the stimulus was a grating then; read_trial_rows yields rows under these names)
+# TrialResult field -> the column name the grating-era CSVs used (the loose results CSVs before 2026-10-30; the analysis code still
+# reads these names). read_trial_rows yields rows under them, so a trials.csv with either set of names loads.
 _CANONICAL_NAMES = {
     "index": "trial_index",
     "flash_shown": "grating_shown",
@@ -128,11 +129,12 @@ DROPPED_FROM_CSV = {
 
 
 def read_trial_rows(path: Path) -> Iterator[dict]:
-    """Rows of a session's trials file as dicts keyed by the OLD results_<ts>.csv column names and text conventions
-    ('True'/'False', contrast as a fraction, 'dot'/'cross', 'presaccade'), whichever layout wrote the file. Old files pass
-    through unchanged; new ones are translated through TRIAL_COLUMNS (dropped columns are simply absent)."""
+    """Rows of a session's trials.csv as dicts keyed by the grating-era column names and text conventions
+    ('True'/'False', contrast as a fraction, 'dot'/'cross', 'presaccade'). A file that already uses those names passes
+    through unchanged; the current plain-named ones are translated through TRIAL_COLUMNS (dropped columns are simply absent)."""
     with Path(path).open(newline="") as f:
         reader = csv.DictReader(f)
+        # Only a trials.csv taken from a pre-2026-10-30 loose results CSV (e.g. copied into a run folder by hand) has these names.
         legacy = "trial_index" in (reader.fieldnames or [])
         for row in reader:
             if legacy:
@@ -165,8 +167,8 @@ def _parse_enum(enum_class, value: str | None):
         return None
 
 
-# CSVs logged before the line stimulus hold the grating's 'vertical' / 'horizontal' in the orientation columns; they map to
-# ABOVE / BELOW (an arbitrary but consistent relabel: answers are still scored against the same column).
+# Needed by runs of the grating version (the `grating` branch, and everything before the line stimulus of 2026-10-25): their
+# orientation columns hold 'vertical' / 'horizontal', mapped to ABOVE / BELOW (an arbitrary but consistent relabel: answers are scored against the same column).
 _LEGACY_SIDES = {"vertical": Side.ABOVE, "horizontal": Side.BELOW}
 
 

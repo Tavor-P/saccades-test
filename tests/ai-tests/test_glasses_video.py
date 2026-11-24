@@ -142,8 +142,8 @@ def test_import_cli_copies_the_video_syncs_it_and_updates_session_json(tmp_path,
     for i, v in enumerate([2.0, 2.45, 2.9]):
         log.add_sync_flash(f"start {i + 1}", (v + PC_OFFSET_S) * 1000)
     log.close()
-    with pytest.raises(SystemExit):  # an old loose-file session has no run folder to import into
-        imp.main(["1792967858", str(tmp_path / "x.mp4"), "--data-dir", str(tmp_path / "old")])
+    with pytest.raises(SystemExit):  # an unknown session has no run folder to import into
+        imp.main(["1792967858", str(tmp_path / "x.mp4"), "--data-dir", str(tmp_path / "data")])
     video = tmp_path / "export.mp4"
     _write_video(video, _frames(duration_s=6.0, flash_onsets=(2.0, 2.45, 2.9)))
 

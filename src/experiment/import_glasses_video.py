@@ -23,8 +23,8 @@ DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 
 def _resolve_folder(identifier: str, data_dir: Path) -> Path:
     ref = session_files.find_session(data_dir, identifier)
-    if ref is None or ref.folder is None:
-        raise SystemExit(f"{identifier!r} is not a session folder in the new layout (data/<participant>/<run>/ with a trials.csv)")
+    if ref is None:
+        raise SystemExit(f"{identifier!r} is not a session folder (data/<participant>/<run>/ with a trials.csv)")
     return ref.folder
 
 

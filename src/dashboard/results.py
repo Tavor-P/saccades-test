@@ -29,13 +29,8 @@ GREEN, AMBER, RED, GREY = "green", "amber", "red", "grey"
 _SEVERITY = {GREY: -1, GREEN: 0, AMBER: 1, RED: 2}
 LIGHT_WORDS = {GREEN: "OK", AMBER: "Check", RED: "Problem", GREY: "Not recorded"}
 
-# kind -> file name (new layout, legacy loose-file name). "plot" is shown inline, the others are downloads.
-RUN_FILES = {
-    "report": ("report.txt", "analysis_{ts}_report.txt"),
-    "plot": ("plot.png", "analysis_{ts}.png"),
-    "flashes": ("flashes.csv", "analysis_{ts}_flashes.csv"),
-    "suppression": ("suppression.json", "analysis_{ts}_suppression.json"),
-}
+# kind -> file name in the run's analysis/ folder. "plot" is shown inline, the others are downloads.
+RUN_FILES = {"report": "report.txt", "plot": "plot.png", "flashes": "flashes.csv", "suppression": "suppression.json"}
 PARTICIPANT_FILES = {"report": "report.txt", "plot": "plot.png", "flashes": "flashes.csv", "summary": "summary.json"}
 DOWNLOAD_LABELS = {
     "flashes": "flashes.csv (one row per flash)",
@@ -233,14 +228,13 @@ def participant_quality(pid: str, summary: dict) -> dict:
 
 def run_ref(timestamp: str) -> session_files.SessionRef:
     ref = data_access._ref(timestamp)
-    if not ref.trials_path.exists():
+    if ref is None or not ref.trials_path.exists():
         raise FriendlyError(f"There is no run '{timestamp}' (it may have been deleted).", status=404)
     return ref
 
 
 def run_file(ref: session_files.SessionRef, kind: str) -> Path:
-    plain, legacy = RUN_FILES[kind]
-    return ref.analysis_dir / (legacy.format(ts=ref.key) if ref.is_legacy else plain)
+    return ref.analysis_dir / RUN_FILES[kind]
 
 
 def run_is_fresh(ref: session_files.SessionRef) -> bool:
@@ -310,7 +304,7 @@ def run_page(timestamp: str, force: bool = False) -> dict:
 
 def participant_ids() -> list[str]:
     """Participant folder names that hold at least one run folder."""
-    return sorted({r.participant for r in session_files.list_sessions(_data_dir()) if r.folder is not None and r.participant})
+    return sorted({r.participant for r in session_files.list_sessions(_data_dir())})
 
 
 def check_participant(pid: str) -> str:

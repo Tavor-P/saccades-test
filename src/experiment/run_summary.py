@@ -221,22 +221,8 @@ def main(argv: list[str] | None = None) -> int:
     if ref is None:
         print(f"No session {args.session!r} found in {args.data_dir}." if args.session else f"No sessions found in {args.data_dir}.", file=sys.stderr)
         return 1
-    if ref.folder is None:
-        print("This is an old loose-file session (no run folder); summarising its CSV only.\n")
-        folder_text = _legacy_summary(ref)
-        print(folder_text)
-        return 0
     print(build_run_summary(ref.folder))
     return 0
-
-
-def _legacy_summary(ref: session_files.SessionRef) -> str:
-    """Old loose-file layout: a trials-only summary built in a temporary view (no run folder to read from)."""
-    rows = _load_rows(ref.trials_path)
-    if rows is None:
-        return "trials file unreadable."
-    counts = trial_counts(rows)
-    return f"Flashes shown: {counts['shown']}; answered: {counts['answered']}; correct: {counts['correct']}; missing answers: {counts['missing']}"
 
 
 if __name__ == "__main__":

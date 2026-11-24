@@ -94,7 +94,7 @@ def test_finish_never_raises_and_empty_missing_or_damaged_runs_still_print_somet
     assert finish_run_summary(tmp_path / "nowhere") is None
 
 
-def test_old_layout_rows_trial_counts_and_gaze_quality_wording(tmp_path):
+def test_old_column_names_trial_counts_and_gaze_quality_wording(tmp_path):
     folder = tmp_path / "bob" / "2026-01-01_10-00-00"
     folder.mkdir(parents=True)
     (folder / "trials.csv").write_text(
@@ -121,7 +121,7 @@ def test_old_layout_rows_trial_counts_and_gaze_quality_wording(tmp_path):
     assert not warnings and all("(OK)" in line for line in lines)
 
 
-def test_cli_resolves_the_newest_a_named_and_an_old_loose_session(tmp_path, monkeypatch, capsys):
+def test_cli_resolves_the_newest_and_a_named_session(tmp_path, monkeypatch, capsys):
     older = _make_run(tmp_path, monkeypatch, _ten_trials())
     # make the second run later and distinguishable
     meta = json.loads((older / "session.json").read_text())
@@ -137,8 +137,3 @@ def test_cli_resolves_the_newest_a_named_and_an_old_loose_session(tmp_path, monk
     assert run_summary.main(["nonexistent", "--data-dir", str(tmp_path)]) == 1
     assert run_summary.main(["--data-dir", str(tmp_path / "empty")]) == 1
 
-    loose = tmp_path / "loose"
-    loose.mkdir()
-    (loose / "results_1700000000.csv").write_text("trial_index,phase,grating_shown,responded,outcome\n0,saccade,True,True,correct\n")
-    assert run_summary.main(["--data-dir", str(loose)]) == 0
-    assert "Flashes shown: 1" in capsys.readouterr().out

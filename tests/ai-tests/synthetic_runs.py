@@ -116,6 +116,37 @@ def write_run(
     return folder
 
 
+def write_old_column_run(
+    data_dir: Path,
+    key: int | str,
+    trials: Path | list[dict],
+    fieldnames: list[str] | None = None,
+    participant: str = "p1",
+    meta: dict | None = None,
+    test_mode: bool = False,
+    gaze_trace_rows: list[list] | None = None,
+) -> Path:
+    """A run folder whose trials.csv still uses the grating-era column names (trial_index, grating_shown, orientation, ...)
+    and whose session.json is `{"run": {"unix_timestamp": key}, **meta}`. `trials`: a CSV file to copy, or dict rows to write
+    with `fieldnames`. `gaze_trace_rows` (t_s, device_unix_s, x_px, worn) writes gaze_trace.csv. Keeps session keys small and explicit."""
+    folder = session_files.create_session_folder(Path(data_dir), participant, int(key), test_mode)
+    target = folder / session_files.TRIALS_FILE
+    if isinstance(trials, Path):
+        target.write_bytes(trials.read_bytes())
+    else:
+        with target.open("w", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=fieldnames or sorted({k for row in trials for k in row}))
+            w.writeheader()
+            w.writerows(trials)
+    (folder / session_files.SESSION_FILE).write_text(json.dumps({"run": {"unix_timestamp": int(key)}, **(meta or {})}))
+    if gaze_trace_rows is not None:
+        with (folder / session_files.GAZE_TRACE_FILE).open("w", newline="") as f:
+            w = csv.writer(f)
+            w.writerow(["t_s", "device_unix_s", "x_px", "worn"])
+            w.writerows(gaze_trace_rows)
+    return folder
+
+
 # -- return-jump runs ----------------------------------------------------------------------------------------------------
 # Every trial starts at LO: out saccade LO -> HI at go cue + LATENCY_S, the target jumps back `jump_delay_ms` after the
 # out arrival, the return saccade HI -> LO starts `return_latency_ms` (+- SD; may be negative = predictive) after the jump.
