@@ -1,9 +1,9 @@
-"""Where a session's files live on disk, for both layouts (no PsychoPy, no logging).
+"""Where a session's files live on disk (no PsychoPy, no logging).
 
-New layout: data/<participant>/<YYYY-MM-DD_HH-MM-SS>[_test]/ holding trials.csv, session.json, gaze_trace.csv,
-analysis/, glasses/. Old layout (never moved or rewritten): loose data/results_<unix ts>.csv + _meta.json +
-_gaze_trace.csv, with analysis_<ts>* files next to them. A session is identified by its unix start time (`key`, a
-digit string) in both; the new layout stores it in session.json["run"]["unix_timestamp"].
+A run is data/<participant>/<YYYY-MM-DD_HH-MM-SS>[_test]/ holding trials.csv, session.json, gaze_trace.csv, analysis/,
+glasses/. A session is identified by its unix start time (`key`, a digit string), stored in
+session.json["run"]["unix_timestamp"] (the folder's own timestamp is the fallback). The loose data/results_<ts>.csv
+layout of the very first versions is no longer read (none were left on disk when it was removed).
 """
 
 import json
@@ -11,6 +11,11 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+
+from src import textio
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+DATA_DIR = REPO_ROOT / "data"  # git-ignored runtime output; each module that reads or writes under it imports this name (tests patch it per module)
 
 ANONYMOUS = "anonymous"
 TRIALS_FILE = "trials.csv"
@@ -20,11 +25,19 @@ HEAD_MOTION_FILE = "head_motion.csv"  # Neon IMU head speed/drift, downsampled (
 ANALYSIS_DIR = "analysis"
 GLASSES_DIR = "glasses"
 
-_LEGACY_CSV_RE = re.compile(r"^results_(\d+)\.csv$")
 _FOLDER_NAME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}(_test)?(_\d+)?$")
 _INVALID_CHARS_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 _RESERVED_NAMES = {"con", "prn", "aux", "nul", *(f"com{i}" for i in range(1, 10)), *(f"lpt{i}" for i in range(1, 10))}
 _MAX_ID_LENGTH = 60
+
+
+def read_json(path: Path | str) -> dict | None:
+    """The JSON object in `path` (UTF-8, or cp1252 from an older version); None when the file is missing, unreadable, not valid JSON, or not an object."""
+    try:
+        data = json.loads(textio.read_text(path))
+    except (OSError, ValueError):  # ValueError covers JSONDecodeError and UnicodeDecodeError
+        return None
+    return data if isinstance(data, dict) else None
 
 
 def sanitize_participant_id(participant_id: str | None) -> str:
@@ -65,25 +78,20 @@ def create_session_folder(data_dir: Path, participant_id: str | None, unix_secon
 
 @dataclass(frozen=True)
 class SessionRef:
-    """One session on disk, whichever layout it uses."""
+    """One run folder on disk."""
 
     key: str  # unix start time as a digit string
-    folder: Path | None  # the run folder (new layout); None for an old loose-file session
+    folder: Path
     trials_path: Path
-    meta_path: Path  # session.json or the old _meta.json (may not exist)
+    meta_path: Path  # session.json (may not exist)
     gaze_trace_path: Path
     analysis_dir: Path  # where analyze_session writes by default
-    glasses_dir: Path | None
-    legacy_prefix: Path | None = None  # data/results_<ts> (old layout only)
-    participant: str | None = None
-
-    @property
-    def is_legacy(self) -> bool:
-        return self.folder is None
+    glasses_dir: Path
+    participant: str  # the participant folder name
 
     @property
     def label(self) -> str:
-        return self.key if self.folder is None else f"{self.folder.parent.name}/{self.folder.name}"
+        return f"{self.folder.parent.name}/{self.folder.name}"
 
 
 def _ref_from_folder(folder: Path) -> SessionRef | None:
@@ -92,8 +100,8 @@ def _ref_from_folder(folder: Path) -> SessionRef | None:
         return None
     key = None
     try:
-        key = str(int(json.loads(meta.read_text())["run"]["unix_timestamp"]))
-    except (OSError, ValueError, KeyError, TypeError):
+        key = str(int((read_json(meta) or {})["run"]["unix_timestamp"]))
+    except (ValueError, KeyError, TypeError):
         pass
     if key is None:  # session.json lost or damaged: fall back to the folder's own timestamp
         stamp = "_".join(folder.name.split("_")[:2])
@@ -113,30 +121,12 @@ def _ref_from_folder(folder: Path) -> SessionRef | None:
     )
 
 
-def _legacy_ref(data_dir: Path, key: str) -> SessionRef:
-    prefix = Path(data_dir) / f"results_{key}"
-    return SessionRef(
-        key=key,
-        folder=None,
-        trials_path=Path(f"{prefix}.csv"),
-        meta_path=Path(f"{prefix}_meta.json"),
-        gaze_trace_path=Path(f"{prefix}_gaze_trace.csv"),
-        analysis_dir=Path(data_dir),
-        glasses_dir=None,
-        legacy_prefix=prefix,
-    )
-
-
 def list_sessions(data_dir: Path) -> list[SessionRef]:
-    """Every session under data_dir in both layouts, newest first."""
+    """Every run folder under data_dir, newest first."""
     data_dir = Path(data_dir)
     if not data_dir.exists():
         return []
     refs: list[SessionRef] = []
-    for csv_file in data_dir.glob("results_*.csv"):
-        match = _LEGACY_CSV_RE.match(csv_file.name)
-        if match:
-            refs.append(_legacy_ref(data_dir, match.group(1)))
     for participant in data_dir.iterdir():
         if not participant.is_dir():
             continue
@@ -150,8 +140,8 @@ def list_sessions(data_dir: Path) -> list[SessionRef]:
 
 
 def find_session(data_dir: Path, identifier: str | Path) -> SessionRef | None:
-    """Resolves what a user typed: a unix timestamp (either layout), a run folder name
-    (`2026-10-25_14-03-11[_test]`), `participant/folder`, or a path to a run folder / its trials.csv / an old results CSV."""
+    """Resolves what a user typed: a unix timestamp, a run folder name (`2026-10-25_14-03-11[_test]`),
+    `participant/folder`, or a path to a run folder / its trials.csv."""
     data_dir = Path(data_dir)
     text = str(identifier).strip()
     as_path = Path(text)
@@ -159,25 +149,19 @@ def find_session(data_dir: Path, identifier: str | Path) -> SessionRef | None:
         folder = as_path if as_path.is_dir() else as_path.parent
         if (folder / TRIALS_FILE).exists():
             return _ref_from_folder(folder)
-        match = _LEGACY_CSV_RE.match(as_path.name)
-        if match:
-            return _legacy_ref(as_path.parent, match.group(1))
-    match = _LEGACY_CSV_RE.match(Path(text).name)
-    if match and (data_dir / f"results_{match.group(1)}.csv").exists():
-        return _legacy_ref(data_dir, match.group(1))
     parts = text.replace("\\", "/").strip("/").split("/")
     if len(parts) == 2 and _FOLDER_NAME_RE.match(parts[1]):
         direct = data_dir / parts[0] / parts[1]
         if (direct / TRIALS_FILE).exists():
             return _ref_from_folder(direct)
     for ref in list_sessions(data_dir):
-        if ref.key == text or (ref.folder is not None and ref.folder.name == text):
+        if ref.key == text or ref.folder.name == text:
             return ref
     return None
 
 
 def newest_session(data_dir: Path, accept=lambda ref: True) -> SessionRef | None:
-    """The newest session (by start time, either layout) that `accept` allows."""
+    """The newest session (by start time) that `accept` allows."""
     for ref in list_sessions(data_dir):
         if accept(ref):
             return ref

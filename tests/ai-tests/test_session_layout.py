@@ -1,8 +1,7 @@
-"""The on-disk layout: data/<participant>/<YYYY-MM-DD_HH-MM-SS>[_test]/ for new runs, old loose results_<ts>.* files still readable."""
+"""The on-disk layout: data/<participant>/<YYYY-MM-DD_HH-MM-SS>[_test]/, and run folders whose trials.csv still has the grating-era column names."""
 
 import csv
 import json
-import shutil
 from pathlib import Path
 
 import pytest
@@ -15,9 +14,10 @@ from src.experiment import analyze_session as an
 from src.experiment import logger as logger_module
 from src.experiment import session_files
 from src.experiment.logger import ResultLogger
+from synthetic_runs import write_old_column_run
 from test_analyze_session import CLOCK_OFFSET_S, ONSETS, _trace, _write_session
 
-FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "old_layout"
+FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "old_columns"  # trials.csv with the grating-era column names and 'vertical'/'horizontal' sides
 
 
 # -- naming ---------------------------------------------------------------------------------------
@@ -46,7 +46,7 @@ def test_run_folder_naming_safe_ids_local_time_test_suffix_and_same_second_runs(
     assert (tmp_path / "anonymous").is_dir()
 
 
-# -- finding sessions in both layouts -------------------------------------------------------------
+# -- finding sessions -----------------------------------------------------------------------------
 
 
 def _new_run(tmp_path, monkeypatch, participant="p1", **kwargs):
@@ -56,8 +56,9 @@ def _new_run(tmp_path, monkeypatch, participant="p1", **kwargs):
     return log
 
 
-def test_find_session_by_any_identifier_newest_across_layouts_and_key_without_session_json(tmp_path, monkeypatch):
-    shutil.copytree(FIXTURES, tmp_path, dirs_exist_ok=True)  # old sessions from 2026-10-22
+def test_find_session_by_any_identifier_newest_first_and_key_without_session_json(tmp_path, monkeypatch):
+    write_old_column_run(tmp_path, 1792967858, FIXTURES / "grating_names_b.csv", participant="anonymous")
+    write_old_column_run(tmp_path, 1792712654, FIXTURES / "grating_names_a.csv", participant="anonymous")
     log = _new_run(tmp_path, monkeypatch)
     key, folder = str(log._timestamp), log.folder
     for ident in (key, folder.name, f"p1/{folder.name}", str(folder), str(folder / "trials.csv")):
@@ -66,24 +67,26 @@ def test_find_session_by_any_identifier_newest_across_layouts_and_key_without_se
     assert session_files.find_session(tmp_path, "999") is None
 
     refs = session_files.list_sessions(tmp_path)
-    assert refs[0].key == key and not refs[0].is_legacy
+    assert refs[0].key == key and refs[0].participant == "p1"
     assert {r.key for r in refs} >= {"1792967858", "1792712654"}
-    assert session_files.newest_session(tmp_path, lambda r: r.is_legacy).key == "1792967858"
+    assert session_files.newest_session(tmp_path, lambda r: r.participant == "anonymous").key == "1792967858"
+    assert session_files.find_session(tmp_path, "results_1792967858.csv") is None  # the loose layout is gone
 
     (folder / "session.json").unlink()
     assert session_files.find_session(tmp_path, folder.name).key == key  # the key survives a lost session.json
 
 
-# -- old sessions still load ----------------------------------------------------------------------
+# -- old column names still load ------------------------------------------------------------------
 
 
-def test_old_layout_grating_and_line_rows_load_and_unknown_values_read_as_none(tmp_path, monkeypatch):
-    shutil.copytree(FIXTURES, tmp_path, dirs_exist_ok=True)
+def test_old_column_names_grating_and_line_rows_load_and_unknown_values_read_as_none(tmp_path, monkeypatch):
+    write_old_column_run(tmp_path, 1792967858, FIXTURES / "grating_names_b.csv", participant="anonymous")
+    write_old_column_run(tmp_path, 1792712654, FIXTURES / "grating_names_a.csv", participant="anonymous")
     monkeypatch.setattr(data_access, "DATA_DIR", tmp_path)
     sessions = {s.timestamp: s for s in data_access.discover_sessions()}
     assert set(sessions) == {"1792967858", "1792712654"}
     assert sessions["1792967858"].trial_counts == {"rt_test": 6, "saccade": sessions["1792967858"].trial_counts["saccade"]}
-    assert sessions["1792712654"].metadata["participant_id"] is None  # no meta file at all
+    assert sessions["1792712654"].metadata["participant_id"] is None  # session.json without a participant section
     trials = read_trials(data_access.csv_path_for("1792712654"))
     shown = [t for t in trials if t.flash_shown]
     assert [t.line_side for t in shown[:3]] == [Side.BELOW, Side.BELOW, Side.ABOVE]  # old 'horizontal'/'vertical' values: the documented relabel
@@ -92,13 +95,12 @@ def test_old_layout_grating_and_line_rows_load_and_unknown_values_read_as_none(t
     flashes = [t for t in read_trials(data_access.csv_path_for("1792967858")) if t.flash_shown]
     assert [t.line_side for t in flashes[:2]] == [Side.ABOVE, Side.BELOW]
     assert flashes[0].outcome == "miss" and flashes[0].contrast == pytest.approx(0.02)
-    path = tmp_path / "results_1792967858.csv"
+    path = data_access.csv_path_for("1792967858")
     path.write_text(path.read_text().replace(",above,", ",diagonal,", 1))  # a value no version of the experiment writes
     assert read_trials(data_access.csv_path_for("1792967858"))[6].line_side is None
 
 
-def test_dashboard_lists_edits_and_deletes_new_and_old_sessions(tmp_path, monkeypatch):
-    shutil.copytree(FIXTURES, tmp_path, dirs_exist_ok=True)
+def test_dashboard_lists_edits_and_deletes_a_session(tmp_path, monkeypatch):
     log = _new_run(tmp_path, monkeypatch, participant="alice", test_mode=True)
     monkeypatch.setattr(data_access, "DATA_DIR", tmp_path)
     key = str(log._timestamp)
@@ -108,11 +110,8 @@ def test_dashboard_lists_edits_and_deletes_new_and_old_sessions(tmp_path, monkey
     data_access.save_participant_info(key, "f", "31")
     assert data_access.load_metadata(key)["age"] == 31
     assert json.loads((log.folder / "session.json").read_text())["participant"]["gender"] == "f"
-    data_access.save_participant_info("1792967858", "", "31")
-    assert json.loads((tmp_path / "results_1792967858_meta.json").read_text())["age"] == 31
-
     (log.glasses_dir / "video.mp4").write_bytes(b"x")
-    data_access.delete_session(key)  # a new-layout delete removes the whole run folder, glasses video included
+    data_access.delete_session(key)  # a delete removes the whole run folder, glasses video included
     assert not log.folder.exists() and not (tmp_path / "alice").exists()
 
 
@@ -150,23 +149,33 @@ def test_analysis_of_a_new_run_writes_into_its_analysis_folder_and_gives_the_old
     new = an.analyze(None, data_dir=tmp_path)  # the newest session, found without being named
     assert new["png"].parent == log.analysis_dir
     assert {p.name for p in log.analysis_dir.iterdir()} == {"report.txt", "plot.png", "flashes.csv", "suppression.json"}
-    assert new["summary"]["near_onset"] == (1, 5) and new["summary"]["flashes"] == 8  # same as the old layout's planted-dip test
+    assert new["summary"]["near_onset"] == (1, 5) and new["summary"]["flashes"] == 8  # same as the old-column planted-dip test
     assert (log.analysis_dir / "report.txt").read_text().startswith("Saccade-phase analysis")
 
     old_dir = tmp_path / "old"
     old_dir.mkdir()
     stamp = _write_session(old_dir, ONSETS, PLAN)
     old = an.analyze(stamp, data_dir=old_dir)
-    assert old["png"].name == f"analysis_{stamp}.png" and old["png"].parent == old_dir  # old sessions keep their file names
+    assert old["png"].name == "plot.png" and old["png"].parent == session_files.find_session(old_dir, stamp).analysis_dir
     assert old["summary"] == new["summary"]
     assert old["report"].splitlines()[1:] == new["report"].splitlines()[1:]  # identical apart from the session label line
 
 
-def test_analysis_accepts_the_folder_name_and_latest_looks_in_both_layouts(tmp_path, monkeypatch):
+def test_analysis_accepts_the_folder_name_and_latest_looks_at_every_run(tmp_path, monkeypatch):
     log = _new_layout_session(tmp_path, monkeypatch, PLAN)
     assert an.latest_timestamp(tmp_path) == str(log._timestamp)
     by_name = an.analyze(log.folder.name, data_dir=tmp_path)
     assert by_name["summary"]["flashes"] == 8
-    stamp = _write_session(tmp_path, ONSETS, PLAN[:2], stamp="1700000001")  # an older loose-file session
+    stamp = _write_session(tmp_path, ONSETS, PLAN[:2], stamp="1700000001")  # an older run with the old column names
     assert an.latest_timestamp(tmp_path) == str(log._timestamp)
     assert an.analyze(stamp, data_dir=tmp_path)["summary"]["flashes"] == 2
+
+
+def test_every_module_that_uses_data_dir_shares_the_one_definition():
+    """DATA_DIR/REPO_ROOT are defined once in session_files; each module keeps its own importable name (tests patch it per module)."""
+    from src.dashboard import data_access as da
+    from src.experiment import import_glasses_video, run_summary, settings
+
+    for module in (da, an, import_glasses_video, logger_module, run_summary, settings):
+        assert module.DATA_DIR is session_files.DATA_DIR, module.__name__
+    assert session_files.DATA_DIR == session_files.REPO_ROOT / "data" and (session_files.REPO_ROOT / "src").is_dir()

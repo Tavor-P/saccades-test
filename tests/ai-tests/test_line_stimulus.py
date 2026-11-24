@@ -1,10 +1,8 @@
 """The line-stimulus branch: a thin horizontal line 2 deg above/below the saccade target (Braun, Schutz & Gegenfurtner 2021),
 answered with UP / DOWN. Placement in each session, key mapping, the above/below quiz, scoring and old-CSV compatibility."""
 
-import csv
-import json
-
 import pytest
+from synthetic_runs import write_old_column_run
 
 from include.experiment.constants import (
     CROSS_POSITION,
@@ -140,7 +138,7 @@ def test_tutorial_quiz_line_is_above_or_below_the_dot_at_the_geometry_and_practi
     assert (line["x"], line["y"]) == pytest.approx(line_position(target, session._line_side))
 
 
-def test_old_csv_with_vertical_horizontal_still_loads_and_new_values_load(tmp_path, monkeypatch):
+def test_old_trials_csv_with_vertical_horizontal_still_loads_and_new_values_load(tmp_path, monkeypatch):
     monkeypatch.setattr(data_access, "DATA_DIR", tmp_path)
     fields = [
         "trial_index", "phase", "source", "target", "saccade_duration_ms", "grating_shown", "contrast",
@@ -154,11 +152,7 @@ def test_old_csv_with_vertical_horizontal_still_loads_and_new_values_load(tmp_pa
         dict(base, trial_index=2, orientation="above", response_orientation="below", outcome="incorrect"),
         dict(base, trial_index=3, grating_shown="False", contrast="", orientation="", response_orientation="", outcome="correct_rejection"),
     ]
-    with (tmp_path / "results_9.csv").open("w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=fields)
-        w.writeheader()
-        w.writerows(rows)
-    (tmp_path / "results_9_meta.json").write_text(json.dumps({}))
+    write_old_column_run(tmp_path, 9, rows, fields)
     trials = read_trials(data_access.csv_path_for("9"))
     assert [t.line_side for t in trials] == [Side.ABOVE, Side.BELOW, Side.ABOVE, None]
     assert [t.answer_side for t in trials] == [Side.ABOVE, Side.ABOVE, Side.BELOW, None]

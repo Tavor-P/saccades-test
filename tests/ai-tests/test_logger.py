@@ -1,5 +1,9 @@
 import csv
+import importlib
 import json
+import subprocess
+
+import pytest
 
 from include.experiment.types import Side, Target, TrialResult
 from src.experiment import logger as logger_module
@@ -131,3 +135,42 @@ def test_results_summary_and_dropped_diagnostics_go_to_session_json(tmp_path, mo
     assert saccade["median_saccade_duration_ms_live"] == 90.0 and saccade["median_onset_detection_lag_ms_live"] == 14.0
     assert saccade["median_reaction_ms"] == 210.0
 
+
+
+def test_every_name_in_settings_constants_exists_and_lands_in_session_json(tmp_path, monkeypatch):
+    """A typo in _SETTINGS_CONSTANTS would otherwise silently drop that constant from session.json."""
+    for module_name, names in logger_module._SETTINGS_CONSTANTS.items():
+        module = importlib.import_module(module_name)
+        for name in names:
+            assert hasattr(module, name), f"{module_name}.{name} (in logger._SETTINGS_CONSTANTS) does not exist"
+    expected = {name.lower() for names in logger_module._SETTINGS_CONSTANTS.values() for name in names}
+    _make_logger(tmp_path, monkeypatch).close()
+    assert expected <= set(_meta(tmp_path)["settings"])
+
+
+def test_best_effort_lookups_only_swallow_the_errors_they_expect(monkeypatch):
+    def failing(exc):
+        def run(*args, **kwargs):
+            raise exc
+        return run
+
+    for exc in (FileNotFoundError("git"), subprocess.CalledProcessError(128, "git"), subprocess.TimeoutExpired("git", 5)):
+        monkeypatch.setattr(logger_module.subprocess, "run", failing(exc))
+        assert logger_module._git_state.__wrapped__() == {"sha": None, "dirty": None}
+    monkeypatch.setattr(logger_module.subprocess, "run", failing(KeyError("a bug, not a missing git")))
+    with pytest.raises(KeyError):
+        logger_module._git_state.__wrapped__()  # not hidden
+
+    monkeypatch.setitem(logger_module._SETTINGS_CONSTANTS, "no.such.module", ("X",))
+    assert "x" not in logger_module._settings_constants()  # an unimportable module is skipped
+    monkeypatch.setitem(logger_module._SETTINGS_CONSTANTS, "include.experiment.constants", ("NO_SUCH_CONSTANT_XYZ",))
+    assert logger_module._settings_constants().get("no_such_constant_xyz") is None  # the test above is what catches a typo
+
+
+def test_neon_device_is_not_recorded_until_the_real_address_is_known(tmp_path, monkeypatch):
+    """The NEON_DEVICE_ADDRESS default is only a first guess for the dialog; the run records the address that answered."""
+    log = _make_logger(tmp_path, monkeypatch)
+    log.close()
+    assert _meta(tmp_path)["hardware"]["neon_device"] is None
+    log.set_neon_device("192.168.43.1:8080 (auto-discovered)")
+    assert _meta(tmp_path)["hardware"]["neon_device"] == "192.168.43.1:8080 (auto-discovered)"

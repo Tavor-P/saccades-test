@@ -17,14 +17,13 @@ from pathlib import Path
 from src.experiment import session_files
 from src.experiment.glasses_video import compute_offset, find_sync_flash_events, video_time_for_pc_unix_ms
 from src.experiment.logger import read_trial_rows
-
-DATA_DIR = Path(__file__).resolve().parents[2] / "data"
+from src.experiment.session_files import DATA_DIR
 
 
 def _resolve_folder(identifier: str, data_dir: Path) -> Path:
     ref = session_files.find_session(data_dir, identifier)
-    if ref is None or ref.folder is None:
-        raise SystemExit(f"{identifier!r} is not a session folder in the new layout (data/<participant>/<run>/ with a trials.csv)")
+    if ref is None:
+        raise SystemExit(f"{identifier!r} is not a session folder (data/<participant>/<run>/ with a trials.csv)")
     return ref.folder
 
 
@@ -38,7 +37,9 @@ def import_video(folder: Path, video: Path) -> dict:
         shutil.copy2(video, target)
 
     meta_path = folder / session_files.SESSION_FILE
-    meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
+    meta = session_files.read_json(meta_path) or {}
+    if meta_path.exists() and not meta:
+        print(f"WARNING: {meta_path} is damaged or empty; it is left unchanged and the video is not recorded in it.", file=sys.stderr)
     logged = (meta.get("glasses_video") or {}).get("sync_flashes") or []
     events = find_sync_flash_events(target)
     sync = compute_offset([e.time_s for e in events], [f["pc_unix_ms"] for f in logged])
@@ -48,10 +49,10 @@ def import_video(folder: Path, video: Path) -> dict:
         "video_flash_events": [{"time_s": round(e.time_s, 4), "duration_s": round(e.duration_s, 3), "strength": round(e.strength, 3)} for e in events],
         "meaning": "PC unix time (s) = video time (s) + offset_s",
     }
-    (glasses / "video_sync.json").write_text(json.dumps(sync, indent=2))
+    (glasses / "video_sync.json").write_text(json.dumps(sync, indent=2), encoding="utf-8")
 
     if sync["offset_s"] is not None:
-        with (glasses / "flash_video_times.csv").open("w", newline="") as f:
+        with (glasses / "flash_video_times.csv").open("w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
             writer.writerow(["trial", "flash_unix_ms", "video_s"])
             for row in read_trial_rows(folder / session_files.TRIALS_FILE):
@@ -60,7 +61,7 @@ def import_video(folder: Path, video: Path) -> dict:
                     writer.writerow([row["trial_index"], unix_ms, round(video_time_for_pc_unix_ms(unix_ms, sync["offset_s"]), 3)])
     if meta:
         meta.setdefault("glasses_video", {}).update(video_file=f"{session_files.GLASSES_DIR}/{target.name}", sync_status=sync["status"])
-        meta_path.write_text(json.dumps(meta, indent=2))
+        meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
     return sync
 
 

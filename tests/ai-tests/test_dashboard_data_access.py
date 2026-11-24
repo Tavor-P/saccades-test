@@ -1,7 +1,7 @@
 import csv
-import json
 
 import pytest
+from synthetic_runs import write_old_column_run
 
 from src.dashboard import data_access
 from src.experiment.logger import read_trials
@@ -21,14 +21,8 @@ _FIELDNAMES = [
 
 
 def _write_session(tmp_path, timestamp, rows=None, meta=None):
-    csv_path = tmp_path / f"results_{timestamp}.csv"
-    with csv_path.open("w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=_FIELDNAMES)
-        writer.writeheader()
-        for row in rows or []:
-            writer.writerow(row)
-    if meta is not None:
-        (tmp_path / f"results_{timestamp}_meta.json").write_text(json.dumps(meta))
+    """A run folder (participant p1, key `timestamp`); `meta` = extra session.json sections."""
+    write_old_column_run(tmp_path, timestamp, rows or [], _FIELDNAMES, meta=meta)
 
 
 def _row(phase="presaccade", **overrides):
@@ -56,7 +50,8 @@ def test_trials_csv_round_trips_rows_and_reads_missing_newer_columns_as_none(tmp
     assert trial.flash_during_saccade is None and trial.timing_offset_ms is None
 
     fieldnames = _FIELDNAMES + ["flash_during_saccade", "timing_offset_ms"]
-    with (tmp_path / "results_222.csv").open("w", newline="") as f:
+    _write_session(tmp_path, "222", rows=[])
+    with data_access.csv_path_for("222").open("w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerow(_row(flash_during_saccade="True", timing_offset_ms="-40"))
@@ -78,7 +73,7 @@ def test_discover_sessions_counts_trials_per_phase_sorts_newest_first_and_surviv
     assert by_timestamp["200"].trial_counts == {}
 
     _write_session(tmp_path, "1700000200", rows=[_row(phase="presaccade", outcome="correct"), _row(phase="saccade", trial_index="oops")])
-    (tmp_path / "results_1700000200_meta.json").write_text('{"participant_id": "p1", "start')  # cut off mid-write
+    data_access.meta_path_for("1700000200").write_text('{"participant": {"id": "p1"}, "run": {"start')  # cut off mid-write
     damaged = {s.timestamp: s for s in data_access.discover_sessions()}["1700000200"]
     assert damaged.metadata["participant_id"] is None
     assert damaged.trial_counts == {}
@@ -88,11 +83,11 @@ def test_metadata_defaults_and_participant_info_merges_clears_and_validates(tmp_
     monkeypatch.setattr(data_access, "DATA_DIR", tmp_path)
     _write_session(tmp_path, "222", rows=[])
     meta = data_access.load_metadata("222")
-    assert "name" not in meta and meta["participant_id"] is None  # no meta file
+    assert "name" not in meta and meta["participant_id"] is None  # session.json has no participant section
     with pytest.raises(ValueError):
         data_access.save_participant_info("222", gender="Y", age="not-a-number")
 
-    _write_session(tmp_path, "333", rows=[], meta={"participant_id": "p1", "calibration": {"left_ratio": 0.4, "right_ratio": 0.6}})
+    _write_session(tmp_path, "333", rows=[], meta={"participant": {"id": "p1"}, "settings": {"calibration": {"left_ratio": 0.4, "right_ratio": 0.6}}})
     data_access.save_participant_info("333", gender="woman", age="29")
     meta = data_access.load_metadata("333")
     assert (meta["gender"], meta["age"], meta["participant_id"]) == ("woman", 29, "p1") and "name" not in meta
@@ -103,16 +98,17 @@ def test_metadata_defaults_and_participant_info_merges_clears_and_validates(tmp_
     assert meta["gender"] is None and meta["age"] is None
 
 
-def test_delete_session_removes_csv_and_meta_tolerates_missing_meta_and_drops_it_from_the_list(tmp_path, monkeypatch):
+def test_delete_session_removes_the_run_tolerates_missing_meta_and_drops_it_from_the_list(tmp_path, monkeypatch):
     monkeypatch.setattr(data_access, "DATA_DIR", tmp_path)
-    _write_session(tmp_path, "666", rows=[], meta={"name": "Old Name"})
-    _write_session(tmp_path, "777", rows=[])  # no meta.json
-    _write_session(tmp_path, "999", rows=[])
-    data_access.delete_session("666")
-    assert not data_access.csv_path_for("666").exists() and not data_access.meta_path_for("666").exists()
-    data_access.delete_session("777")  # should not raise
-    assert not data_access.csv_path_for("777").exists()
-    assert [s.timestamp for s in data_access.discover_sessions()] == ["999"]
+    _write_session(tmp_path, "1700066600", rows=[], meta={"participant": {"name": "Old Name"}})
+    _write_session(tmp_path, "1700077700", rows=[])
+    data_access.meta_path_for("1700077700").unlink()  # no session.json
+    _write_session(tmp_path, "1700099900", rows=[])
+    data_access.delete_session("1700066600")
+    assert not data_access.csv_path_for("1700066600").exists() and not data_access.meta_path_for("1700066600").exists()
+    data_access.delete_session("1700077700")  # should not raise
+    assert not data_access.csv_path_for("1700077700").exists()
+    assert [s.timestamp for s in data_access.discover_sessions()] == ["1700099900"]
 
 
 def test_a_path_is_never_a_session_key(tmp_path, monkeypatch):

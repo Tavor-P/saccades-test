@@ -6,7 +6,6 @@ the end of every run, which never raises. The CLI resolves the session like `ana
 """
 
 import argparse
-import json
 import statistics
 import sys
 from pathlib import Path
@@ -14,9 +13,7 @@ from pathlib import Path
 from include.experiment.constants import SACCADE_FIXED_TRIALS_REAL, SACCADE_FIXED_TRIALS_TEST
 from src.experiment import session_files
 from src.experiment.logger import read_trial_rows
-
-DATA_DIR = Path(__file__).resolve().parents[2] / "data"
-ROOT = Path(__file__).resolve().parents[2]
+from src.experiment.session_files import DATA_DIR, REPO_ROOT
 SUMMARY_FILE = "RUN_SUMMARY.txt"
 
 MIN_SAMPLE_RATE_HZ = 100.0  # Neon streams ~200 Hz; below this the saccade timing gets coarse
@@ -25,14 +22,6 @@ MAX_GAP_MS = 150.0
 MAX_TRACKING_LOST_SHARE = 0.10
 MAX_UNANSWERED_SHARE = 0.20
 MIN_TRIAL_SHARE = 0.5  # fewer flashes than this share of the planned count is called "very few"
-
-
-def _load_json(path: Path) -> dict | None:
-    try:
-        data = json.loads(Path(path).read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else None
-    except (OSError, ValueError):
-        return None
 
 
 def _load_rows(path: Path) -> list[dict] | None:
@@ -123,7 +112,7 @@ def _recording_line(glasses: dict | None) -> tuple[str, str | None]:
 def _command_folder(folder: Path) -> str:
     """The run folder as typed in the commands: relative to the repo root when inside it, quoted if it has spaces."""
     try:
-        text = str(Path(folder).resolve().relative_to(ROOT))
+        text = str(Path(folder).resolve().relative_to(REPO_ROOT))
     except ValueError:
         text = str(Path(folder).resolve())
     return f'"{text}"' if " " in text else text
@@ -132,7 +121,7 @@ def _command_folder(folder: Path) -> str:
 def build_run_summary(run_folder) -> str:
     """The summary text for the run in `run_folder` (never raises for missing or damaged files)."""
     folder = Path(run_folder)
-    meta = _load_json(folder / session_files.SESSION_FILE)
+    meta = session_files.read_json(folder / session_files.SESSION_FILE)
     rows = _load_rows(folder / session_files.TRIALS_FILE)
     warnings: list[str] = []
     out: list[str] = []
@@ -221,22 +210,8 @@ def main(argv: list[str] | None = None) -> int:
     if ref is None:
         print(f"No session {args.session!r} found in {args.data_dir}." if args.session else f"No sessions found in {args.data_dir}.", file=sys.stderr)
         return 1
-    if ref.folder is None:
-        print("This is an old loose-file session (no run folder); summarising its CSV only.\n")
-        folder_text = _legacy_summary(ref)
-        print(folder_text)
-        return 0
     print(build_run_summary(ref.folder))
     return 0
-
-
-def _legacy_summary(ref: session_files.SessionRef) -> str:
-    """Old loose-file layout: a trials-only summary built in a temporary view (no run folder to read from)."""
-    rows = _load_rows(ref.trials_path)
-    if rows is None:
-        return "trials file unreadable."
-    counts = trial_counts(rows)
-    return f"Flashes shown: {counts['shown']}; answered: {counts['answered']}; correct: {counts['correct']}; missing answers: {counts['missing']}"
 
 
 if __name__ == "__main__":

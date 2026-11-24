@@ -282,7 +282,7 @@ class NeonGazeSource(GazeSource):
         if not rows:
             return False
         try:
-            with Path(path).open("w", newline="") as f:
+            with Path(path).open("w", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f)
                 writer.writerow(["t_s", "phone_unix_s", "speed_dps", "drift_deg"])
                 for t, unix_s, speed, drift in rows:
@@ -594,5 +594,5 @@ class NeonGazeSource(GazeSource):
         if self._device is not None:
             try:
                 self._device.close()
-            except Exception:
+            except Exception:  # noqa: BLE001 - best effort at shutdown: the phone may already be gone, and the realtime API raises its own aiohttp/asyncio/device errors
                 pass

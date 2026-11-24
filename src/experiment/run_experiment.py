@@ -293,7 +293,7 @@ def measure_refresh_hz(win: visual.Window) -> float | None:
     """The display's real refresh rate (None if PsychoPy cannot measure it): flash lengths are counted in frames from this."""
     try:
         return float(win.getActualFrameRate())
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 - PsychoPy raises whatever the window backend (pyglet/GL) does; no rate only means the default frame counts are used
         return None
 
 

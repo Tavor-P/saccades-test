@@ -7,6 +7,7 @@ from flask import Flask, abort, jsonify, redirect, render_template, request, sen
 
 from src.dashboard import comparison, results
 from src.dashboard.data_access import (
+    DamagedSessionFile,
     csv_path_for,
     delete_session,
     discover_sessions,
@@ -44,6 +45,8 @@ def update_session(timestamp: str):
         )
     except ValueError:
         return jsonify({"ok": False, "error": "age must be a whole number"}), 400
+    except DamagedSessionFile as error:
+        return jsonify({"ok": False, "error": str(error)}), 409
     return jsonify({"ok": True})
 
 

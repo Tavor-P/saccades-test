@@ -27,7 +27,7 @@ from include.eye_tracking.constants import (
 from include.eye_tracking.interfaces import GazeSource
 from include.eye_tracking.types import GazeSample, GazeZone
 from src.eye_tracking.gaze_mapping import GazeMapper
-from src import timebase
+from src import textio, timebase
 
 TRACE_FIELDS = ["t_s", "device_unix_s", "x_px", "worn"]
 
@@ -35,7 +35,7 @@ TRACE_FIELDS = ["t_s", "device_unix_s", "x_px", "worn"]
 class TraceRow(NamedTuple):
     t_s: float  # PC arrival time (timebase.now(), perf_counter), seconds
     device_unix_s: float | None  # the phone's capture timestamp, if known
-    x_px: float | None  # scene-camera gaze x in pixels (old screen-mapped sessions: screen ratio x NEON_SCENE_WIDTH); None/NaN when unusable
+    x_px: float | None  # scene-camera gaze x in pixels (traces recorded before 2026-10-25 with the removed screen-mapped backends: screen ratio x NEON_SCENE_WIDTH); None/NaN when unusable
     worn: bool
 
 
@@ -45,7 +45,7 @@ class GazeTraceWriter:
 
     def __init__(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        self._file = path.open("w", newline="")
+        self._file = path.open("w", newline="", encoding="utf-8")
         self._writer = csv.writer(self._file)
         self._writer.writerow(TRACE_FIELDS)
 
@@ -66,16 +66,15 @@ class GazeTraceWriter:
 
 def load_trace(path: Path) -> list[TraceRow]:
     rows: list[TraceRow] = []
-    with Path(path).open(newline="") as f:
-        for r in csv.DictReader(f):
-            rows.append(
-                TraceRow(
-                    t_s=float(r["t_s"]),
-                    device_unix_s=float(r["device_unix_s"]) if r["device_unix_s"] else None,
-                    x_px=float(r["x_px"]) if r["x_px"] else None,
-                    worn=r["worn"] == "1",
-                )
+    for r in textio.read_csv(path):
+        rows.append(
+            TraceRow(
+                t_s=float(r["t_s"]),
+                device_unix_s=float(r["device_unix_s"]) if r["device_unix_s"] else None,
+                x_px=float(r["x_px"]) if r["x_px"] else None,
+                worn=r["worn"] == "1",
             )
+        )
     rows.sort(key=lambda row: row.t_s)
     return rows
 

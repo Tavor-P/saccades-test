@@ -8,8 +8,8 @@ from include.experiment.constants import (
     SACCADE_CONTRAST_LEVELS,
     SACCADE_FIXED_CONTRASTS,
 )
-
-DATA_DIR = Path(__file__).resolve().parents[2] / "data"
+from src.experiment import session_files
+from src.experiment.session_files import DATA_DIR  # patched per module in tests, so always used by this bare name
 
 
 def _settings_path() -> Path:
@@ -49,11 +49,7 @@ def saccade_contrast_levels(min_percent: float, max_percent: float, count: int =
 
 def load_last_startup() -> dict:
     """The startup dialog's last values (a plain dict; {} if there is no settings file, it is unreadable or predates this key)."""
-    path = _settings_path()
-    try:
-        value = json.loads(path.read_text()).get("last_startup") if path.exists() else None
-    except (OSError, ValueError, AttributeError):
-        return {}
+    value = (session_files.read_json(_settings_path()) or {}).get("last_startup")
     return value if isinstance(value, dict) else {}
 
 
@@ -61,11 +57,6 @@ def save_last_startup(values: dict) -> None:
     """Remember the startup dialog's values, leaving the other settings alone."""
     DATA_DIR.mkdir(exist_ok=True)
     path = _settings_path()
-    try:
-        data = json.loads(path.read_text()) if path.exists() else {}
-    except (OSError, ValueError):
-        data = {}
-    if not isinstance(data, dict):
-        data = {}
+    data = session_files.read_json(path) or {}  # a damaged settings file is replaced
     data["last_startup"] = values
-    path.write_text(json.dumps(data, indent=2))
+    path.write_text(json.dumps(data, indent=2), encoding="utf-8")

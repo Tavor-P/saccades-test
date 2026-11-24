@@ -1,13 +1,12 @@
 """Post-hoc analysis of a saccade-phase session (`-m src.experiment.analyze_session [timestamp]`).
 
-Finds the saccades in the raw gaze trace (`gaze_trace.csv` in the run folder, or the old `results_<ts>_gaze_trace.csv`; stamped with the phone's own capture
+Finds the saccades in the raw gaze trace (`gaze_trace.csv` in the run folder; stamped with the phone's own capture
 times, so the ~90 ms delivery delay and dropped samples don't matter), places every logged flash against the
 nearest saccade onset, and reports detection accuracy as a function of flash time relative to onset - the
 saccadic-suppression curve - plus a plot and a per-flash CSV. The live `flash_during_saccade` flag is not used.
 
-Run it on the latest session with no arguments, or give a session timestamp (unix, either layout), a run folder name, `participant/folder`
-or a path. Output goes to the run folder's `analysis/` (report.txt, plot.png, flashes.csv, suppression.json); old loose-file sessions get
-`analysis_<ts>*` files next to them as before.
+Run it on the latest session with no arguments, or give a session timestamp (unix), a run folder name, `participant/folder`
+or a path. Output goes to the run folder's `analysis/` (report.txt, plot.png, flashes.csv, suppression.json).
 Units: gaze x is a 0-1 ratio of the scene (or screen) width per `x_px / NEON_SCENE_WIDTH` (traces recorded with the since-removed screen-mapped backends hold the screen ratio x NEON_SCENE_WIDTH in x_px, so old sessions analyse the same way); speeds are ratio/s.
 """
 
@@ -26,8 +25,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from include.eye_tracking.constants import NEON_SCENE_WIDTH
+from src import textio
 from src.experiment import session_files
 from src.experiment.logger import read_trial_rows
+from src.experiment.session_files import DATA_DIR  # patched per module in tests, so always used by this bare name
 from src.experiment.flash_gates import (
     EXCLUDED,
     FIXATION,
@@ -38,8 +39,6 @@ from src.experiment.flash_gates import (
     classify_leg_flash,
     summarize_gates,
 )
-
-DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 
 # Saccade detection: a movement counts once its (3-sample smoothed) speed exceeds HIGH; its edges are where the
 # speed falls back under LOW; only movements of at least MIN_AMPLITUDE (ratio of the width) are kept.
@@ -104,13 +103,13 @@ def load_trace(path: Path, clock_offset_s: float, offset_history: list[dict] | N
     """(capture times in PC unix seconds, gaze x ratio), strictly increasing, without lost samples. With an `offset_history`
     of two or more {"phone_unix_s", "offset_ms"} entries (session.json gaze_quality.clock_offset_history) the offset is
     interpolated over the phone-clock time (the clocks drift); otherwise the single `clock_offset_s` applies throughout."""
+    # x_px / NEON_SCENE_WIDTH also reads traces recorded before 2026-10-25 with the removed screen-mapped backends (x_px = screen ratio x NEON_SCENE_WIDTH).
     times, xs = [], []
-    with Path(path).open(newline="") as f:
-        for row in csv.DictReader(f):
-            if not row.get("x_px") or not row.get("device_unix_s"):
-                continue
-            times.append(float(row["device_unix_s"]))
-            xs.append(float(row["x_px"]) / NEON_SCENE_WIDTH)
+    for row in textio.read_csv(path):
+        if not row.get("x_px") or not row.get("device_unix_s"):
+            continue
+        times.append(float(row["device_unix_s"]))
+        xs.append(float(row["x_px"]) / NEON_SCENE_WIDTH)
     t, x = np.asarray(times), np.asarray(xs)
     if offset_history is not None and len(offset_history) >= 2:
         history = sorted(offset_history, key=lambda h: h["phone_unix_s"])
@@ -709,7 +708,7 @@ def _analysable(ref: session_files.SessionRef) -> bool:
 
 
 def latest_timestamp(data_dir: Path) -> str:
-    """The newest session (either layout) that has a gaze trace and at least one saccade-phase flash row."""
+    """The newest session that has a gaze trace and at least one saccade-phase flash row."""
     ref = session_files.newest_session(Path(data_dir), _analysable)
     if ref is None:
         raise FileNotFoundError(f"no session with a gaze trace and saccade-phase flashes found in {data_dir}")
@@ -742,7 +741,7 @@ class RunAnalysis:
 
     @property
     def stamp(self) -> str:
-        return self.ref.key if self.ref.is_legacy else self.ref.label
+        return self.ref.label
 
 
 def analyze_run(
@@ -756,9 +755,10 @@ def analyze_run(
     """The analysis numbers for one session (no files written). Raises ValueError when the meta file has no clock
     offset and none is given, OSError when a file is missing."""
     offset_history = None
-    meta: dict = {}
+    meta = session_files.read_json(ref.meta_path)  # None: missing or damaged
     if clock_offset_ms is None:
-        meta = json.loads(ref.meta_path.read_text())
+        if meta is None:
+            raise ValueError(f"cannot read {ref.meta_path.name} of this session (missing or damaged), so there is no clock offset; pass --offset-ms")
         quality = meta.get("gaze_quality") or {}
         clock_offset_ms = quality.get("clock_offset_ms")
         offset_history = quality.get("clock_offset_history")
@@ -780,12 +780,11 @@ def analyze_run(
     summary["gates"] = summarize_gates(placed, gates)
     suppression = suppression_index(placed, near_ms, far_ms, gates=gates)
     summary["suppression"] = suppression
+    meta = meta or {}
     try:
-        meta = json.loads(ref.meta_path.read_text())
         geometry_line = format_geometry(meta.get("settings"))
-    except (OSError, ValueError, AttributeError, KeyError):
+    except (AttributeError, KeyError):
         geometry_line = None
-    meta = meta if isinstance(meta, dict) else {}
     run = RunAnalysis(ref, meta, t, x, saccades, placed, gates, summary, suppression, geometry_line)
     if trials is not None:
         by_leg = suppression_by_leg(placed, gates, near_ms=near_ms, far_ms=far_ms)
@@ -801,7 +800,7 @@ def write_flash_rows(path: Path, placed: list[Placed], gates: list, extra: dict[
     flash_rel_onset_ms is relative to the flash's own leg's saccade in return-jump runs (the nearest onset otherwise);
     flash_leg is blank for runs without return jumps; saccade_latency_ms is from the go cue (out) or the jump (return)."""
     extra = extra or {}
-    with Path(path).open("w", newline="") as f:
+    with Path(path).open("w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow([*extra, "trial", "contrast", "orientation", "outcome", "flash_rel_onset_ms", "inside_saccade", "condition", "gate_reason", "flash_leg", "saccade_latency_ms"])
         for i, (p, g) in enumerate(zip(placed, gates)):
@@ -823,7 +822,7 @@ def analyze(
 ) -> dict:
     """Runs the whole analysis for one session (`timestamp`: anything session_files.find_session accepts; default the
     newest). Writes the report text, plot, per-flash CSV and suppression json to `out_dir` (default: the run folder's
-    analysis/ folder; for an old loose-file session, data_dir with `analysis_<ts>*` names) and returns
+    analysis/ folder) and returns
     {"summary", "report", "report_path", "png", "csv", "suppression_json"}."""
     data_dir = Path(data_dir)
     ref = session_files.find_session(data_dir, timestamp or latest_timestamp(data_dir))
@@ -839,12 +838,11 @@ def analyze(
 
     out_dir = Path(out_dir) if out_dir is not None else ref.analysis_dir
     out_dir.mkdir(parents=True, exist_ok=True)
-    name = lambda plain, legacy: out_dir / (legacy.format(ts=ref.key) if ref.is_legacy else plain)  # noqa: E731
-    png = plot_report(placed, run.saccades, summary, name("plot.png", "analysis_{ts}.png"), title=f"Session {stamp}")
-    csv_path = write_flash_rows(name("flashes.csv", "analysis_{ts}_flashes.csv"), placed, gates)
-    json_path = name("suppression.json", "analysis_{ts}_suppression.json")
-    json_path.write_text(json.dumps(saved, indent=2))
-    report_path = name("report.txt", "analysis_{ts}_report.txt")
+    png = plot_report(placed, run.saccades, summary, out_dir / "plot.png", title=f"Session {stamp}")
+    csv_path = write_flash_rows(out_dir / "flashes.csv", placed, gates)
+    json_path = out_dir / "suppression.json"
+    json_path.write_text(json.dumps(saved, indent=2), encoding="utf-8")
+    report_path = out_dir / "report.txt"
     report_path.write_text(report + "\n", encoding="utf-8")
     return {"summary": summary, "report": report, "report_path": report_path, "png": png, "csv": csv_path, "suppression_json": json_path}
 

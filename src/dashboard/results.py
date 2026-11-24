@@ -8,7 +8,6 @@ one at a time (`_LOCK`): the Flask server is threaded and matplotlib's pyplot is
 writers in one analysis folder. Anything that goes wrong becomes a `FriendlyError` (a plain sentence for the page); the
 traceback goes to the dashboard's console only."""
 
-import json
 import threading
 import traceback
 from datetime import datetime
@@ -16,33 +15,32 @@ from pathlib import Path
 
 from include.eye_tracking.constants import NEON_GAP_THRESHOLD_MS
 from src.dashboard import data_access
+from src import textio
 from src.experiment import analyze_participant as ap
 from src.experiment import analyze_session as an
 from src.experiment import session_files
+from src.experiment.analyze_participant import N_BOOT  # read at call time (tests lower it)
 from src.experiment.flash_gates import FIXATION, SACCADE, TRACKING_GAP_MS
 from src.experiment.run_summary import MAX_GAP_MS, MAX_LATENCY_MS
 
-N_BOOT = 1000  # bootstrap fits for the participant CI (analyze_participant's default; tests lower it)
 _LOCK = threading.Lock()
 
 GREEN, AMBER, RED, GREY = "green", "amber", "red", "grey"
 _SEVERITY = {GREY: -1, GREEN: 0, AMBER: 1, RED: 2}
 LIGHT_WORDS = {GREEN: "OK", AMBER: "Check", RED: "Problem", GREY: "Not recorded"}
 
-# kind -> file name (new layout, legacy loose-file name). "plot" is shown inline, the others are downloads.
-RUN_FILES = {
-    "report": ("report.txt", "analysis_{ts}_report.txt"),
-    "plot": ("plot.png", "analysis_{ts}.png"),
-    "flashes": ("flashes.csv", "analysis_{ts}_flashes.csv"),
-    "suppression": ("suppression.json", "analysis_{ts}_suppression.json"),
-}
+# kind -> file name in the run's analysis/ folder. "plot" is shown inline, the others are downloads.
+RUN_FILES = {"report": "report.txt", "plot": "plot.png", "flashes": "flashes.csv", "suppression": "suppression.json"}
 PARTICIPANT_FILES = {"report": "report.txt", "plot": "plot.png", "flashes": "flashes.csv", "summary": "summary.json"}
+# kind -> link text of a downloadable file, for the run, participant and comparison pages (comparison.py reuses it)
 DOWNLOAD_LABELS = {
     "flashes": "flashes.csv (one row per flash)",
     "suppression": "suppression.json (the index, machine-readable)",
     "summary": "summary.json (the pooled result, machine-readable)",
+    "csv": "comparison.csv (one row per person, for Excel / SPSS / R)",
+    "json": "comparison.json (every number, machine-readable)",
     "report": "report.txt (the full text report)",
-    "plot": "plot.png",
+    "plot": "plot.png (save the figure)",
 }
 
 
@@ -80,17 +78,9 @@ def _stamp(mtime: float | None) -> str | None:
     return None if mtime is None else datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S")
 
 
-def _read_json(path: Path) -> dict:
-    try:
-        data = json.loads(Path(path).read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
-        return {}
-
-
 def _read_text(path: Path) -> str:
     try:
-        return Path(path).read_text(encoding="utf-8")
+        return textio.read_text(path)
     except OSError:
         return ""
 
@@ -204,7 +194,7 @@ def participant_quality(pid: str, summary: dict) -> dict:
 
     lat = per_run(lambda r: _latency_light(r.get("gaze_latency_ms_median")), lambda r: _ms(r.get("gaze_latency_ms_median")))
     gap = per_run(lambda r: _gap_light(r.get("longest_gap_ms")), lambda r: _gap_text(r.get("longest_gap_ms"), r.get("gaps_over_threshold")))
-    heads = {r["run"]: _head(_read_json(_data_dir() / pid / r["run"] / session_files.SESSION_FILE)) for r in used}
+    heads = {r["run"]: _head(session_files.read_json(_data_dir() / pid / r["run"] / session_files.SESSION_FILE) or {}) for r in used}
     head = per_run(lambda r: heads[r["run"]][0], lambda r: heads[r["run"]][1])
     n = summary.get("n_flashes") or {}
     n_sac, n_fix = n.get(SACCADE, 0), n.get(FIXATION, 0)
@@ -233,14 +223,13 @@ def participant_quality(pid: str, summary: dict) -> dict:
 
 def run_ref(timestamp: str) -> session_files.SessionRef:
     ref = data_access._ref(timestamp)
-    if not ref.trials_path.exists():
+    if ref is None or not ref.trials_path.exists():
         raise FriendlyError(f"There is no run '{timestamp}' (it may have been deleted).", status=404)
     return ref
 
 
 def run_file(ref: session_files.SessionRef, kind: str) -> Path:
-    plain, legacy = RUN_FILES[kind]
-    return ref.analysis_dir / (legacy.format(ts=ref.key) if ref.is_legacy else plain)
+    return ref.analysis_dir / RUN_FILES[kind]
 
 
 def run_is_fresh(ref: session_files.SessionRef) -> bool:
@@ -284,9 +273,9 @@ def run_page(timestamp: str, force: bool = False) -> dict:
     ref = run_ref(timestamp)
     if force or not run_is_fresh(ref):
         analyse_run(timestamp)
-    suppression = _read_json(run_file(ref, "suppression"))
+    suppression = session_files.read_json(run_file(ref, "suppression")) or {}
     summary = _run_headline_summary(suppression)
-    meta = _read_json(ref.meta_path)
+    meta = session_files.read_json(ref.meta_path) or {}
     participant = (meta.get("participant") or {}).get("id") or ref.participant
     return {
         "kind": "run",
@@ -310,7 +299,7 @@ def run_page(timestamp: str, force: bool = False) -> dict:
 
 def participant_ids() -> list[str]:
     """Participant folder names that hold at least one run folder."""
-    return sorted({r.participant for r in session_files.list_sessions(_data_dir()) if r.folder is not None and r.participant})
+    return sorted({r.participant for r in session_files.list_sessions(_data_dir())})
 
 
 def check_participant(pid: str) -> str:
@@ -333,7 +322,7 @@ def _candidates(pid: str, include_test: bool) -> list:
 
 
 def participant_is_fresh(pid: str, include_test: bool) -> bool:
-    summary = _read_json(participant_file(pid, "summary"))
+    summary = session_files.read_json(participant_file(pid, "summary")) or {}
     if not summary or bool(summary.get("include_test")) != include_test:
         return False
     try:
@@ -357,7 +346,7 @@ def overview() -> list[dict]:
         except ap.NoRunsError:
             continue
         n_test = sum(e.mode == "test" for e in entries)
-        summary = _read_json(participant_file(pid, "summary"))
+        summary = session_files.read_json(participant_file(pid, "summary")) or {}
         rows.append({"id": pid, "n_real": len(entries) - n_test, "n_test": n_test, "only_test": n_test == len(entries),
                      "analysed_at": _stamp(_mtime(participant_file(pid, "summary"))) if summary else None,
                      "analysed_with_test": bool(summary.get("include_test")) if summary else False})
@@ -386,7 +375,7 @@ def participant_page(pid: str, include_test: bool = False, force: bool = False) 
     check_participant(pid)
     if force or not participant_is_fresh(pid, include_test):
         analyse_participant(pid, include_test)
-    summary = _read_json(participant_file(pid, "summary"))
+    summary = session_files.read_json(participant_file(pid, "summary")) or {}
     if not summary:
         raise FriendlyError("The pooled analysis wrote no summary.json; see the dashboard's console window.", status=500)
     runs = [{**r, "pooled": True} for r in summary.get("runs_used") or []] + [{**r, "pooled": False} for r in summary.get("runs_excluded") or []]

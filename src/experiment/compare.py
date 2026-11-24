@@ -40,6 +40,7 @@ matplotlib.use("Agg")  # headless: only renders PNG files
 import matplotlib.pyplot as plt
 import numpy as np
 
+from src import textio
 from src.experiment import session_files
 from src.experiment.analyze_participant import (
     _GEOMETRY_FIELDS,
@@ -115,18 +116,9 @@ class Person:
         return _jsonable(out)
 
 
-def _read_json(path: Path) -> dict | None:
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else None
-    except (OSError, ValueError):
-        return None
-
-
 def _read_flash_csv(path: Path) -> list | None:
     try:
-        with path.open(newline="") as f:
-            rows = list(csv.DictReader(f))
+        rows = list(textio.read_csv(path))
         return [(None if r["flash_rel_onset_ms"] in ("", None) else float(r["flash_rel_onset_ms"]), r["outcome"] == "correct", r["condition"]) for r in rows]
     except (OSError, KeyError, ValueError):
         return None
@@ -167,7 +159,7 @@ def load_person(participant: str, data_dir: Path = DATA_DIR, include_test: bool 
     pid = session_files.sanitize_participant_id(participant)
     person = Person(pid)
     summary_path = data_dir / pid / ANALYSIS_DIR / "summary.json"
-    summary = _read_json(summary_path)
+    summary = session_files.read_json(summary_path)
     try:
         why = stale_reason(pid, data_dir, include_test, summary, summary_path) if (refresh or summary is None) else None
         if why is None and _read_flash_csv(summary_path.parent / str(summary.get("flashes_csv") or "flashes.csv")) is None:
