@@ -6,9 +6,10 @@ backend. Participant/experimenter docs: [README.md](README.md).
 
 **`main` is the line-stimulus version** (the grating version is on the `grating` branch):
 - Flash = thin horizontal line (Braun, Schutz & Gegenfurtner 2021): full screen width, vertical Gaussian (`LINE_SD_DEG` 0.15), `LINE_OFFSET_DEG` (2 deg) above/below the saccade TARGET,
-  drawn `GRATING_DURATION_FRAMES` (1) frame. Answer UP (above) / DOWN (below).
-- `Side.ABOVE/BELOW`. `TrialResult` fields are `orientation` / `response_orientation` (hold 'above'/'below'); `trials.csv` calls them `line_side` / `answer_side`.
-  Old 'vertical'/'horizontal' CSVs load via `logger._LEGACY_SIDES`. The render-state key is still `"grating"` (x/y = line position, `orientation` = side).
+  drawn `LINE_DURATION_FRAMES` (1) frame. Answer UP (above) / DOWN (below).
+- `Side.ABOVE/BELOW`. `TrialResult` fields `line_side` / `answer_side` (hold 'above'/'below'), `flash_shown`, `flash_unix_ms` match the `trials.csv` columns of the same names.
+  Old CSVs (columns `orientation` / `response_orientation` / `grating_shown` / `grating_shown_at_unix_ms`, 'vertical'/'horizontal' values) load via `logger._CANONICAL_NAMES` + `_LEGACY_SIDES`;
+  `read_trial_rows` yields rows under those old names. The render-state key is `"line"` (x/y = line position, `side` = above/below); session attrs `_line_visible` etc.
 - Geometry: the startup dialog asks for screen height and viewing distance; `geometry.Geometry` (built once in `main`) gives the line's offset/SD in screen-height units, passed to
   `ExperimentSession`/`TutorialSession` (`trial_mechanics.line_position`) and `build_stimuli(geometry=)`. `Geometry.default()` = the placeholder constants
   (`VIEWING_DISTANCE_CM`/`SCREEN_HEIGHT_CM`). Used geometry is in `session.json` `settings` and the `analyze_session` header.

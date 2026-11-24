@@ -95,8 +95,8 @@ def test_logger_writes_and_dashboard_reads_tracking_ok(tmp_path, monkeypatch):
     log.log(
         TrialResult(
             index=0, phase="saccade", source=Target.DOT, target=Target.CROSS, saccade_duration_ms=50.0,
-            grating_shown=True, contrast=0.1, orientation=Side.ABOVE, responded=True,
-            response_orientation=Side.ABOVE, response_time_ms=300.0, outcome="correct",
+            flash_shown=True, contrast=0.1, line_side=Side.ABOVE, responded=True,
+            answer_side=Side.ABOVE, response_time_ms=300.0, outcome="correct",
             flash_during_saccade=True, tracking_ok=False,
         )
     )

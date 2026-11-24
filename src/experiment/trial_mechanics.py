@@ -31,8 +31,8 @@ def zone_for(target: Target) -> GazeZone:
     return GazeZone.LEFT if target is Target.DOT else GazeZone.RIGHT
 
 
-def random_orientation() -> Side:
-    """A random line side (the trial field is still called `orientation`, see Side)."""
+def random_side() -> Side:
+    """A random line side (the trial field is `line_side`, see Side)."""
     return random.choice([Side.ABOVE, Side.BELOW])
 
 

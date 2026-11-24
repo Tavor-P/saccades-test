@@ -79,14 +79,14 @@ def _render_state_for_fade_test(snap: bool, dot_visible: bool) -> dict:
         "dot": _symbol_state(dot_visible),
         "cross": _symbol_state(False),
         "calibration_center": _symbol_state(False),
-        "grating": {"visible": False, "x": 0.5, "y": 0.5, "contrast": 0, "orientation": None},
+        "line": {"visible": False, "x": 0.5, "y": 0.5, "contrast": 0, "side": None},
         "hud": {"phase": "TRIAL_ACTIVE", "trial": "-", "gaze_zone": "left", "face_found": True, "source_available": True},
         "snap_symbols": snap,
     }
 
 
 def _stimuli(**extra) -> dict:
-    stimuli = {name: MagicMock() for name in ("dot", "cross", "calibration_center", "gaze_indicator", "grating", "hud", "tutorial_text")}
+    stimuli = {name: MagicMock() for name in ("dot", "cross", "calibration_center", "gaze_indicator", "line", "hud", "tutorial_text")}
     stimuli["aspect"] = 1.78
     stimuli.update(extra)
     return stimuli

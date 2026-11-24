@@ -6,8 +6,8 @@ from include.experiment.types import Side
 
 def score_outcome(
     responded: bool,
-    response_orientation: Side | None,
-    actual_orientation: Side | None,
+    answer_side: Side | None,
+    line_side: Side | None,
 ) -> str:
     """Shared scoring (outside of the saccade phase's "timeout" case, which its
     own state machine handles before falling back to this). Every trial flashes a line and is scored as a 2-alternative
@@ -18,7 +18,7 @@ def score_outcome(
     removed catch trials; they are only ever read, never produced.)"""
     if not responded:
         return "miss"
-    return "correct" if response_orientation == actual_orientation else "incorrect"
+    return "correct" if answer_side == line_side else "incorrect"
 
 
 def is_valid_for_saccadic_analysis(flash_during_saccade: bool | None, tracking_ok: bool | None = None) -> bool:

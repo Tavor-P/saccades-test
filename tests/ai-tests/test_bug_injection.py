@@ -37,8 +37,8 @@ def test_catches_a_flash_at_a_contrast_outside_the_fixed_set(monkeypatch):
 def test_catches_a_response_time_measured_from_the_wrong_origin(monkeypatch):
     original = session_module.ExperimentSession.on_response_key
 
-    def buggy(self, orientation):
-        original(self, orientation)
+    def buggy(self, line_side):
+        original(self, line_side)
         if self._responded and self._response_time_ms is not None:
             self._response_time_ms = -self._response_time_ms - 5  # e.g. subtracting the wrong way round
 

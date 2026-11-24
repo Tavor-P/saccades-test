@@ -79,7 +79,7 @@ def _complete_calibration_and_rt_test(session, fake_gaze, fake_time, reaction_ti
     """Ends at the first practice/main trial's AWAITING_SPACE, with
     session._avg_reaction_time_ms == reaction_time_s * 1000 - override
     session._current_trial_spec afterward for tests that need a specific
-    trial (source/target/orientation/practice)."""
+    trial (source/target/line_side/practice)."""
     _complete_calibration(session)
     _complete_rt_test(session, fake_gaze, fake_time, reaction_time_s)
 
@@ -129,7 +129,7 @@ def _set_single_trial(session, **kwargs) -> None:
     visibility (set at foreperiod-start from the current trial's source -
     see ExperimentSession._begin_foreperiod) reflects this trial, not
     whatever was auto-generated before it."""
-    defaults = dict(index=0, source=Target.DOT, target=Target.CROSS, orientation=Side.ABOVE)
+    defaults = dict(index=0, source=Target.DOT, target=Target.CROSS, line_side=Side.ABOVE)
     defaults.update(kwargs)
     session._current_trial_spec = TrialSpec(**defaults)
     session._begin_foreperiod()
@@ -223,10 +223,10 @@ def test_flash_and_response_window_follow_the_schedule_not_gaze(fake_gaze, fake_
     fake_gaze.zone = GazeZone.LEFT
     fake_time(0.199)
     session.tick()
-    assert session.render_state()["grating"]["visible"] is False
+    assert session.render_state()["line"]["visible"] is False
     fake_time(0.002)
     session.tick()
-    assert session.render_state()["grating"]["visible"] is True
+    assert session.render_state()["line"]["visible"] is True
 
     # ...and an early onset does not open the response window before the flash.
     session = _make_session(fake_gaze)
@@ -506,8 +506,8 @@ def _fake_valid_saccade_results(count: int) -> list[TrialResult]:
     return [
         TrialResult(
             index=i, phase="saccade", source=Target.DOT, target=Target.CROSS, saccade_duration_ms=200.0,
-            grating_shown=True, contrast=0.1, orientation=Side.ABOVE, responded=True,
-            response_orientation=Side.ABOVE, response_time_ms=250.0, outcome="correct", flash_during_saccade=True,
+            flash_shown=True, contrast=0.1, line_side=Side.ABOVE, responded=True,
+            answer_side=Side.ABOVE, response_time_ms=250.0, outcome="correct", flash_during_saccade=True,
         )
         for i in range(count)
     ]

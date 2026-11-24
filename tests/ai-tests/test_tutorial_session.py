@@ -42,7 +42,7 @@ def _complete_calibration(session) -> None:
 
 def _win_quiz(session) -> None:
     for _ in range(TUTORIAL_QUIZ_STREAK_TARGET):
-        session.on_response_key(session._quiz_orientation)  # always answer correctly
+        session.on_response_key(session._quiz_side)  # always answer correctly
 
 
 def _reach_practice(session) -> None:
@@ -73,10 +73,10 @@ def _run_attempt(session, fake_gaze, fake_time, reaction_time_s: float = 0.2, re
     fake_time(max(session._flash_scheduled_at - session._clock.now(), 0.0) + 0.001)
     session.tick()  # scheduled flash fires (open-loop, like the real saccade phase)
 
-    orientation = session._orientation
+    line_side = session._line_side
     if not respond_correctly:
-        orientation = Side.BELOW if orientation is Side.ABOVE else Side.ABOVE
-    session.on_response_key(orientation)
+        line_side = Side.BELOW if line_side is Side.ABOVE else Side.ABOVE
+    session.on_response_key(line_side)
     session.tick()  # landed + flashed + responded -> finalizes
 
 
@@ -101,7 +101,7 @@ def test_intro_screens_then_calibration_then_a_quiz_that_explains_the_keys_in_sh
         state = session.render_state()
         assert state["hud"]["phase"] == "INTRO"
         assert state["tutorial_text"]["visible"] and state["tutorial_text"]["text"] == state["instructions"]
-        assert not state["dot"]["visible"] and not state["grating"]["visible"]
+        assert not state["dot"]["visible"] and not state["line"]["visible"]
         shown.append(state["instructions"])
     assert tuple(shown) == words.TUTORIAL_INTRO
     texts += shown
@@ -118,7 +118,7 @@ def test_intro_screens_then_calibration_then_a_quiz_that_explains_the_keys_in_sh
     assert state["hud"]["phase"] == "QUIZ"
     assert "UP" in state["instructions"] and "DOWN" in state["instructions"]
     assert "LEFT" not in state["instructions"] and "RIGHT" not in state["instructions"]
-    assert state["dot"]["visible"] and state["tutorial_text"]["visible"] and state["grating"]["visible"]  # line above/below the dot
+    assert state["dot"]["visible"] and state["tutorial_text"]["visible"] and state["line"]["visible"]  # line above/below the dot
     texts.append(state["instructions"])
     _win_quiz(session)
     texts.append(session.render_state()["instructions"])
@@ -129,21 +129,21 @@ def test_quiz_passes_after_three_in_a_row_a_miss_resets_and_the_practice_intro_s
     assert TUTORIAL_QUIZ_STREAK_TARGET == 3
     session = _make_session(fake_gaze)
     _complete_calibration(session)
-    session.on_response_key(session._quiz_orientation)
-    session.on_response_key(session._quiz_orientation)
+    session.on_response_key(session._quiz_side)
+    session.on_response_key(session._quiz_side)
     assert session._quiz_streak == 2
-    wrong = Side.BELOW if session._quiz_orientation is Side.ABOVE else Side.ABOVE
+    wrong = Side.BELOW if session._quiz_side is Side.ABOVE else Side.ABOVE
     session.on_response_key(wrong)
     assert session._quiz_streak == 0
     assert session.render_state()["hud"]["phase"] == "QUIZ"
     for _ in range(TUTORIAL_QUIZ_STREAK_TARGET - 1):
-        session.on_response_key(session._quiz_orientation)
+        session.on_response_key(session._quiz_side)
         assert session.render_state()["hud"]["phase"] == "QUIZ"
-    session.on_response_key(session._quiz_orientation)
+    session.on_response_key(session._quiz_side)
     state = session.render_state()
     assert state["hud"]["phase"] == "PRACTICE_INTRO"
     assert state["instructions"] == words.PRACTICE_INTRO and "fainter" in words.PRACTICE_INTRO
-    assert not state["grating"]["visible"]
+    assert not state["line"]["visible"]
 
 
 def test_practice_runs_fixed_attempts_regardless_of_outcome_then_says_the_real_test_starts(fake_gaze, fake_time):
@@ -238,9 +238,9 @@ def test_practice_waits_for_space_swaps_500_to_1000_ms_later_flashes_clearly_and
 
     fake_time(1.0)
     session.tick()  # the scheduled flash fires
-    grating = session.render_state()["grating"]
-    assert grating["visible"] and grating["contrast"] >= 0.5
-    assert grating["orientation"] is session._orientation
+    line = session.render_state()["line"]
+    assert line["visible"] and line["contrast"] >= 0.5
+    assert line["side"] is session._line_side
 
     fake_time(SACCADE_TIMEOUT_MS / 1000)
     session.tick()

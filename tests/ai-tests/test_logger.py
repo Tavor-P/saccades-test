@@ -22,8 +22,8 @@ def _rows(tmp_path) -> list[dict]:
 
 def _trial(**overrides) -> TrialResult:
     values = dict(
-        index=0, phase="saccade", source=Target.DOT, target=Target.CROSS, saccade_duration_ms=None, grating_shown=True,
-        contrast=0.05, orientation=Side.ABOVE, responded=True, response_orientation=Side.ABOVE,
+        index=0, phase="saccade", source=Target.DOT, target=Target.CROSS, saccade_duration_ms=None, flash_shown=True,
+        contrast=0.05, line_side=Side.ABOVE, responded=True, answer_side=Side.ABOVE,
         response_time_ms=250.0, outcome="correct",
     )
     values.update(overrides)
@@ -85,9 +85,9 @@ def test_session_json_sections_and_what_the_setters_record(tmp_path, monkeypatch
 
 def test_log_writes_plain_words_and_units_for_saccade_rt_test_and_timeout_rows(tmp_path, monkeypatch):
     log = _make_logger(tmp_path, monkeypatch)
-    log.log(_trial(timing_offset_ms=-40, scheduled_delay_ms=185.04, reaction_latency_ms=210.5, grating_shown_at_unix_ms=1_700_000_000_123.46, flash_during_saccade=True, tracking_ok=True))
-    log.log(_trial(index=1, phase="rt_test", grating_shown=False, contrast=None, orientation=None, responded=False, response_orientation=None, response_time_ms=None, outcome="detected", reaction_latency_ms=210.5))
-    log.log(_trial(index=2, grating_shown=False, contrast=None, orientation=None, responded=False, response_orientation=None, outcome="timeout"))
+    log.log(_trial(timing_offset_ms=-40, scheduled_delay_ms=185.04, reaction_latency_ms=210.5, flash_unix_ms=1_700_000_000_123.46, flash_during_saccade=True, tracking_ok=True))
+    log.log(_trial(index=1, phase="rt_test", flash_shown=False, contrast=None, line_side=None, responded=False, answer_side=None, response_time_ms=None, outcome="detected", reaction_latency_ms=210.5))
+    log.log(_trial(index=2, flash_shown=False, contrast=None, line_side=None, responded=False, answer_side=None, outcome="timeout"))
     log.close()
     row, rt_row, timeout_row = _rows(tmp_path)
     assert row["phase"] == "saccade" and row["trial"] == "0"
@@ -106,10 +106,10 @@ def test_log_writes_plain_words_and_units_for_saccade_rt_test_and_timeout_rows(t
 def test_outcome_words_and_old_baseline_and_catch_trial_rows_still_write_and_load(tmp_path, monkeypatch):
     # Sessions recorded before the baseline phase / catch trials were removed hold presaccade, false_alarm, correct_rejection rows.
     log = _make_logger(tmp_path, monkeypatch)
-    log.log(_trial(phase="presaccade", source=None, target=None, outcome="miss", responded=False, response_orientation=None))
-    log.log(_trial(index=1, outcome="incorrect", response_orientation=Side.BELOW))
-    log.log(_trial(index=2, grating_shown=False, contrast=None, orientation=None, outcome="correct_rejection", responded=False, response_orientation=None))
-    log.log(_trial(index=3, grating_shown=False, contrast=None, orientation=None, outcome="false_alarm"))
+    log.log(_trial(phase="presaccade", source=None, target=None, outcome="miss", responded=False, answer_side=None))
+    log.log(_trial(index=1, outcome="incorrect", answer_side=Side.BELOW))
+    log.log(_trial(index=2, flash_shown=False, contrast=None, line_side=None, outcome="correct_rejection", responded=False, answer_side=None))
+    log.log(_trial(index=3, flash_shown=False, contrast=None, line_side=None, outcome="false_alarm"))
     log.close()
     first, second, third, fourth = _rows(tmp_path)
     assert first["phase"] == "baseline" and first["outcome"] == "no_answer" and first["correct"] == "no"
@@ -118,13 +118,13 @@ def test_outcome_words_and_old_baseline_and_catch_trial_rows_still_write_and_loa
     rows = logger_module.read_trials(next(tmp_path.glob("*/*/trials.csv")))
     assert [r.outcome for r in rows] == ["miss", "incorrect", "correct_rejection", "false_alarm"]
     assert rows[0].phase == "presaccade"
-    assert not any(r.grating_shown for r in rows[2:])
+    assert not any(r.flash_shown for r in rows[2:])
 
 
 def test_results_summary_and_dropped_diagnostics_go_to_session_json(tmp_path, monkeypatch):
     log = _make_logger(tmp_path, monkeypatch)
     log.log(_trial(saccade_duration_ms=80.0, onset_detection_lag_ms=12.0, reaction_latency_ms=200.0))
-    log.log(_trial(index=1, outcome="miss", responded=False, response_orientation=None, saccade_duration_ms=100.0, onset_detection_lag_ms=16.0, reaction_latency_ms=220.0))
+    log.log(_trial(index=1, outcome="miss", responded=False, answer_side=None, saccade_duration_ms=100.0, onset_detection_lag_ms=16.0, reaction_latency_ms=220.0))
     log.close()
     saccade = _meta(tmp_path)["results"]["phases"]["saccade"]
     assert saccade["flashes_shown"] == 2 and saccade["flashes_correct"] == 1 and saccade["accuracy_on_flashes"] == 0.5

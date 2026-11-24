@@ -110,7 +110,7 @@ def _mean(xs, ndigits: int = 1):
 def summarize(sim: SimulationResult) -> dict:
     """One flat, JSON-friendly dict of what matters about a run."""
     rows = sim.saccade_results
-    flashes = [r for r in rows if r.grating_shown]
+    flashes = [r for r in rows if r.flash_shown]
     valid = [r for r in flashes if is_valid_for_saccadic_analysis(r.flash_during_saccade, r.tracking_ok)]
     valid_indices = {r.index for r in valid}
     truly_in = [r for r in flashes if sim.flash_truth.get((r.phase, r.index)) is True]

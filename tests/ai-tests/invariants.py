@@ -61,7 +61,7 @@ def check_session(sim: SimulationResult, max_trials_cap: int | None = None) -> l
         if r.phase == "rt_test":
             if r.outcome not in RT_OUTCOMES:
                 v.append(f"{tag}: bad rt_test outcome {r.outcome!r}")
-            if r.grating_shown or r.contrast is not None or r.responded:
+            if r.flash_shown or r.contrast is not None or r.responded:
                 v.append(f"{tag}: rt_test row has stimulus/response data")
             if r.outcome == "detected" and (r.reaction_latency_ms is None or r.reaction_latency_ms < 0):
                 v.append(f"{tag}: detected rt_test row without a non-negative reaction latency ({r.reaction_latency_ms})")
@@ -71,24 +71,24 @@ def check_session(sim: SimulationResult, max_trials_cap: int | None = None) -> l
         if r.outcome not in SACCADE_OUTCOMES:
             v.append(f"{tag}: unknown outcome {r.outcome!r}")
 
-        if r.grating_shown:
+        if r.flash_shown:
             # Every flash uses one of the session's fixed probe contrasts (or the practice contrast).
             allowed = r.contrast in sim.session._fixed_contrast_bag._pool or r.contrast == PRACTICE_CONTRAST
             if r.contrast is None or not allowed:
                 v.append(f"{tag}: flashed contrast out of range ({r.contrast})")
-            if r.orientation is None:
-                v.append(f"{tag}: grating shown but no orientation logged")
-            if r.grating_shown_at_unix_ms is None:
-                v.append(f"{tag}: grating shown but no grating_shown_at_unix_ms")
+            if r.line_side is None:
+                v.append(f"{tag}: flash shown but no line_side logged")
+            if r.flash_unix_ms is None:
+                v.append(f"{tag}: flash shown but no flash_unix_ms")
         else:
-            for name in ("contrast", "orientation", "grating_shown_at_unix_ms", "flash_during_saccade", "tracking_ok"):
+            for name in ("contrast", "line_side", "flash_unix_ms", "flash_during_saccade", "tracking_ok"):
                 if getattr(r, name) is not None:
-                    v.append(f"{tag}: no grating shown but {name}={getattr(r, name)!r}")
+                    v.append(f"{tag}: no flash shown but {name}={getattr(r, name)!r}")
             if r.outcome != "timeout":
-                v.append(f"{tag}: no grating shown but outcome {r.outcome!r} (every trial flashes; only a timeout can end without one)")
+                v.append(f"{tag}: no flash shown but outcome {r.outcome!r} (every trial flashes; only a timeout can end without one)")
 
         if r.responded:
-            if r.grating_shown and r.response_time_ms is None:
+            if r.flash_shown and r.response_time_ms is None:
                 v.append(f"{tag}: responded to a flash but no response_time_ms")
             limit_ms = RESPONSE_WINDOW_MS
             if r.jump_back_ms_after_go_cue is not None and r.scheduled_delay_ms is not None:
@@ -98,15 +98,15 @@ def check_session(sim: SimulationResult, max_trials_cap: int | None = None) -> l
             if r.response_time_ms is not None and not (0 <= r.response_time_ms <= limit_ms + 2 * FRAME_MS):
                 v.append(f"{tag}: response_time_ms {r.response_time_ms:.0f} outside [0, response window]")
         else:
-            if r.response_time_ms is not None or r.response_orientation is not None:
+            if r.response_time_ms is not None or r.answer_side is not None:
                 v.append(f"{tag}: not responded but response data present")
             if r.outcome in ("correct", "incorrect"):
                 v.append(f"{tag}: outcome {r.outcome!r} requires a response")
 
-        if r.outcome == "correct" and r.response_orientation != r.orientation:
-            v.append(f"{tag}: 'correct' but response {r.response_orientation} != orientation {r.orientation}")
-        if r.outcome == "incorrect" and r.response_orientation == r.orientation:
-            v.append(f"{tag}: 'incorrect' but response equals orientation")
+        if r.outcome == "correct" and r.answer_side != r.line_side:
+            v.append(f"{tag}: 'correct' but response {r.answer_side} != line_side {r.line_side}")
+        if r.outcome == "incorrect" and r.answer_side == r.line_side:
+            v.append(f"{tag}: 'incorrect' but answer equals line_side")
 
         if r.reaction_latency_ms is not None and r.reaction_latency_ms < 0:
             v.append(f"{tag}: negative reaction_latency_ms {r.reaction_latency_ms}")
@@ -179,9 +179,9 @@ def _check_return_jump_row(r, tag: str, return_jump: bool, trigger: str = "arriv
     """The return-jump columns of one saccade row (see TrialResult: flash_leg ... jump_back_forced)."""
     v: list[str] = []
     jump_fields = ("jump_back_ms_after_go_cue", "return_reaction_ms", "jump_back_forced")
-    if r.grating_shown and r.flash_leg not in ("out", "return"):
+    if r.flash_shown and r.flash_leg not in ("out", "return"):
         v.append(f"{tag}: flash shown but flash_leg {r.flash_leg!r}")
-    if not r.grating_shown and r.flash_leg is not None:
+    if not r.flash_shown and r.flash_leg is not None:
         v.append(f"{tag}: no flash shown but flash_leg {r.flash_leg!r}")
     if not return_jump:
         if r.flash_leg not in (None, "out"):
@@ -205,7 +205,7 @@ def _check_return_jump_row(r, tag: str, return_jump: bool, trigger: str = "arriv
         v.append(f"{tag}: left_target_before_jump without an out arrival")
     if arrival is not None and (arrival < 0 or (not r.jump_back_forced and trigger == "arrival" and arrival > jump + 1e-6)):
         v.append(f"{tag}: out arrival {arrival:.1f} ms impossible (jump at {jump:.1f}, forced={r.jump_back_forced})")
-    if r.scheduled_delay_ms is not None and r.grating_shown:
+    if r.scheduled_delay_ms is not None and r.flash_shown:
         if r.flash_leg == "return" and r.scheduled_delay_ms < jump - 1e-6:
             v.append(f"{tag}: return-leg flash at {r.scheduled_delay_ms:.1f} ms, before the jump-back at {jump:.1f} ms")
         if r.flash_leg == "out" and r.scheduled_delay_ms > jump + 1e-6:

@@ -171,9 +171,9 @@ def build_stimuli(win: visual.Window, show_hud: bool = False, geometry: Geometry
             win, radius=GAZE_INDICATOR_RADIUS_RATIO, fillColor="white", lineColor=None, opacity=0
         ),
         # Braun, Schutz & Gegenfurtner (2021)'s probe: a thin horizontal line with a vertical Gaussian profile, a texture-less
-        # GratingStim under the 'gauss' mask sized (very wide, 6 SDs tall). `contrast` scales the white field around the
+        # GratingStim (PsychoPy's class) under the 'gauss' mask sized (very wide, 6 SDs tall). `contrast` scales the white field around the
         # mid-grey background, so the peak luminance step is contrast/2 (a light line).
-        "grating": visual.GratingStim(
+        "line": visual.GratingStim(
             win,
             tex=None,
             mask="gauss",
@@ -225,13 +225,13 @@ def apply_render_state(state: dict, stimuli: dict, fade_opacities: dict, dt: flo
     else:
         gaze_indicator.opacity = 0.0
 
-    grating = stimuli["grating"]
-    grating.opacity = 1.0 if state["grating"]["visible"] else 0.0
-    if state["grating"]["visible"]:
+    line = stimuli["line"]
+    line.opacity = 1.0 if state["line"]["visible"] else 0.0
+    if state["line"]["visible"]:
         # Full screen width, so only the vertical position matters (x is just the target the line belongs to).
-        grating.pos = (0.0, ratio_to_pos(state["grating"]["x"], state["grating"]["y"], aspect)[1])
+        line.pos = (0.0, ratio_to_pos(state["line"]["x"], state["line"]["y"], aspect)[1])
         # The window background is mid-grey, so the line's contrast is its peak contrast around it.
-        grating.contrast = state["grating"]["contrast"]
+        line.contrast = state["line"]["contrast"]
 
     # Debug text: Test mode only (stimuli["show_hud"], set in build_stimuli); never drawn in a real run.
     if stimuli.get("show_hud"):
@@ -365,7 +365,7 @@ def draw_all(stimuli: dict) -> None:
         "cross",
         "calibration_center",
         "gaze_indicator",
-        "grating",
+        "line",
         "hud",
         "tutorial_text",
         "caption",

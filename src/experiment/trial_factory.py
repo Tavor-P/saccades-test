@@ -2,7 +2,7 @@
 
 from include.experiment.types import Target, TrialSpec
 from src.experiment.trial_mechanics import ShuffledBag
-from src.experiment.trial_mechanics import random_orientation as _random_orientation
+from src.experiment.trial_mechanics import random_side as _random_side
 
 
 def _build_saccade_trials(count: int, practice: bool, start_source: Target, alternate: bool = True) -> tuple[list[TrialSpec], Target]:
@@ -15,7 +15,7 @@ def _build_saccade_trials(count: int, practice: bool, start_source: Target, alte
                 index=index,
                 source=source,
                 target=target,
-                orientation=_random_orientation(),
+                line_side=_random_side(),
                 practice=practice,
             )
         )
@@ -51,7 +51,7 @@ def generate_next_saccade_trial(
         index=index,
         source=source,
         target=target,
-        orientation=_random_orientation(),
+        line_side=_random_side(),
         practice=False,
         timing_offset_ms=offset_bag.draw(),
     )

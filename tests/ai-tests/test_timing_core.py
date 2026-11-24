@@ -257,8 +257,8 @@ def _finished_session(fake_gaze, logger):
     cap = session._fixed_trials
     session._results = [
         TrialResult(
-            index=i, phase="saccade", source=Target.DOT, target=Target.CROSS, saccade_duration_ms=None, grating_shown=False,
-            contrast=None, orientation=None, responded=False, response_orientation=None, response_time_ms=None,
+            index=i, phase="saccade", source=Target.DOT, target=Target.CROSS, saccade_duration_ms=None, flash_shown=False,
+            contrast=None, line_side=None, responded=False, answer_side=None, response_time_ms=None,
             outcome="correct_rejection",
         )
         for i in range(cap)

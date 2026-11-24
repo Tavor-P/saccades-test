@@ -14,7 +14,7 @@ from include.experiment.constants import (
     FOREPERIOD_MIN_MS,
     GAZE_LANDING_STABILITY_MS,
     GAZE_LATENCY_MAX_MS,
-    GRATING_DURATION_FRAMES,
+    LINE_DURATION_FRAMES,
     RESPONSE_WINDOW_MS,
     RETURN_JUMP_LANDING_TIMEOUT_MS,
     RETURN_JUMP_TRIGGER,
@@ -39,7 +39,7 @@ from src.experiment.trial_mechanics import (
     line_position,
     sample_capture_time,
 )
-from src.experiment.trial_mechanics import random_orientation as _random_orientation
+from src.experiment.trial_mechanics import random_side as _random_side
 from src.experiment.trial_mechanics import zone_for as _zone_for
 
 
@@ -49,7 +49,7 @@ class Phase(Enum):
     CALIBRATE_LEFT = auto()
     CALIBRATE_CENTER = auto()
     CALIBRATE_RIGHT = auto()
-    QUIZ = auto()  # "how to answer": mixed gratings, streak-gated
+    QUIZ = auto()  # "how to answer": mixed line sides, streak-gated
     PRACTICE_INTRO = auto()  # "practice lines are clear, real ones fainter"; SPACE starts the first attempt
     PRACTICE_AWAITING_SPACE = auto()  # each attempt waits for SPACE; the foreperiod (500-1000 ms) starts on the press
     PRACTICE_FOREPERIOD = auto()
@@ -116,7 +116,7 @@ class TutorialSession:
 
         # -- quiz --
         self._quiz_streak = 0
-        self._quiz_orientation: Side | None = None
+        self._quiz_side: Side | None = None
         self._intro_step = 0
 
         # -- practice trials --
@@ -124,17 +124,17 @@ class TutorialSession:
         self._rt = RollingReactionTime(DEFAULT_REACTION_TIME_MS)
         self._source = Target.DOT
         self._target = Target.CROSS
-        self._orientation: Side | None = None
+        self._line_side: Side | None = None
         self._onset_detector: OnsetDetector = OnsetDetector(_zone_for(self._source))
         self._flash_scheduled_at = 0.0
         self._flash_decided = False
-        self._grating_visible = False
-        self._grating_frames_remaining = 0
-        self._grating_actually_shown = False
+        self._line_visible = False
+        self._line_frames_remaining = 0
+        self._line_actually_shown = False
         self._response_window_open = False
         self._response_deadline = 0.0
         self._responded = False
-        self._response_orientation: Side | None = None
+        self._answer_side: Side | None = None
         self._landed = False
         self._trial_start = 0.0
         # -- return jump (see ExperimentSession._tick_return_jump; this is its scoped-down mirror) --
@@ -195,29 +195,29 @@ class TutorialSession:
         elif self._phase in _CALIBRATION_PHASES:
             self._phase = _CALIBRATION_PHASES[self._calibration.step]
 
-    def on_response_key(self, orientation: Side) -> None:
+    def on_response_key(self, answer: Side) -> None:
         if self._phase is Phase.QUIZ:
-            correct = orientation == self._quiz_orientation
+            correct = answer == self._quiz_side
             if correct:
                 self._quiz_streak += 1
                 if self._quiz_streak >= TUTORIAL_QUIZ_STREAK_TARGET:
                     self._enter_practice()
                 else:
-                    self._quiz_orientation = _random_orientation()
+                    self._quiz_side = _random_side()
             else:
                 self._quiz_streak = 0
-                self._quiz_orientation = _random_orientation()
+                self._quiz_side = _random_side()
         elif self._phase is Phase.PRACTICE_ACTIVE:
             if self._responded or not self._response_window_open:
                 return
             now = self._clock.now()
             if now <= self._response_deadline:
                 self._responded = True
-                self._response_orientation = orientation
+                self._answer_side = answer
 
     def _enter_quiz(self) -> None:
         self._quiz_streak = 0
-        self._quiz_orientation = _random_orientation()
+        self._quiz_side = _random_side()
         self._phase = Phase.QUIZ
 
     # -- practice trials -----------------------------------------------------------
@@ -234,18 +234,18 @@ class TutorialSession:
     def _begin_attempt(self) -> None:
         self._phase = Phase.PRACTICE_AWAITING_SPACE
         self._target = Target.CROSS if self._source is Target.DOT else Target.DOT
-        self._orientation = _random_orientation()
+        self._line_side = _random_side()
         self._onset_detector = OnsetDetector(_zone_for(self._source))
         self._target_landed_since = None
         self._flash_scheduled_at = 0.0
         self._flash_decided = False
-        self._grating_visible = False
-        self._grating_frames_remaining = 0
-        self._grating_actually_shown = False
+        self._line_visible = False
+        self._line_frames_remaining = 0
+        self._line_actually_shown = False
         self._response_window_open = False
         self._response_deadline = 0.0
         self._responded = False
-        self._response_orientation = None
+        self._answer_side = None
         self._landed = False
         self._flash_leg = self._leg_bag.draw() if self._leg_bag is not None else "out"
         self._jump_at = None
@@ -302,14 +302,14 @@ class TutorialSession:
             flash_fired_this_tick = True
             self._response_window_open = True
             self._response_deadline = now + RESPONSE_WINDOW_MS / 1000
-            self._grating_visible = True
-            self._grating_frames_remaining = GRATING_DURATION_FRAMES
-            self._grating_actually_shown = True
+            self._line_visible = True
+            self._line_frames_remaining = LINE_DURATION_FRAMES
+            self._line_actually_shown = True
 
-        if self._grating_visible and not flash_fired_this_tick:
-            self._grating_frames_remaining -= 1
-            if self._grating_frames_remaining <= 0:
-                self._grating_visible = False
+        if self._line_visible and not flash_fired_this_tick:
+            self._line_frames_remaining -= 1
+            if self._line_frames_remaining <= 0:
+                self._line_visible = False
 
         if self._response_window_open and now > self._response_deadline:
             self._response_window_open = False
@@ -339,7 +339,7 @@ class TutorialSession:
             if self._return_onset_detector is None:
                 self._return_onset_detector = OnsetDetector(target_zone, wait_for_baseline=True)
         if self._jump_at is None:
-            out_flash_done = self._flash_leg == "return" or (self._flash_decided and not self._grating_visible)
+            out_flash_done = self._flash_leg == "return" or (self._flash_decided and not self._line_visible)
             triggered = self._onset_detector.confirmed if RETURN_JUMP_TRIGGER == "onset" else self._out_arrived
             if out_flash_done:
                 if triggered:
@@ -384,7 +384,7 @@ class TutorialSession:
             self._flash_scheduled_at = now + max(0.0, average_ms) / 1000  # early returns: at the jump frame at the earliest
 
     def _finish_attempt(self) -> None:
-        self._grating_visible = False
+        self._line_visible = False
         if not self._return_jump:  # with return jump the eye is back on the start symbol: every trial starts there
             self._source = self._target
         self._attempt += 1
@@ -456,24 +456,24 @@ class TutorialSession:
             return self._dot_visible, self._cross_visible, False
         return False, False, False
 
-    def _grating_state(self) -> dict:
-        """The flashed line (key kept as "grating"): in the quiz 2 deg above/below the dot, in a practice trial
+    def _line_state(self) -> dict:
+        """The flashed line: in the quiz 2 deg above/below the dot, in a practice trial
         above/below the symbol the eye is moving to."""
         if self._phase is Phase.QUIZ:
-            x, y = line_position(DOT_POSITION, self._quiz_orientation or Side.ABOVE, self._geometry)
-            return {"visible": True, "x": x, "y": y, "contrast": TUTORIAL_QUIZ_CONTRAST, "orientation": self._quiz_orientation}
+            x, y = line_position(DOT_POSITION, self._quiz_side or Side.ABOVE, self._geometry)
+            return {"visible": True, "x": x, "y": y, "contrast": TUTORIAL_QUIZ_CONTRAST, "side": self._quiz_side}
         aim = self._source if self._flash_leg == "return" else self._target  # the target of the flash's leg
         target_position = DOT_POSITION if aim is Target.DOT else CROSS_POSITION
-        x, y = line_position(target_position, self._orientation or Side.ABOVE, self._geometry)
+        x, y = line_position(target_position, self._line_side or Side.ABOVE, self._geometry)
         if self._phase is Phase.PRACTICE_ACTIVE:
             return {
-                "visible": self._grating_visible,
+                "visible": self._line_visible,
                 "x": x,
                 "y": y,
-                "contrast": TUTORIAL_PRACTICE_CONTRAST if self._grating_visible else 0,
-                "orientation": self._orientation,
+                "contrast": TUTORIAL_PRACTICE_CONTRAST if self._line_visible else 0,
+                "side": self._line_side,
             }
-        return {"visible": False, "x": x, "y": y, "contrast": 0, "orientation": None}
+        return {"visible": False, "x": x, "y": y, "contrast": 0, "side": None}
 
     def _trial_label(self) -> str:
         if self._phase is Phase.QUIZ:
@@ -497,7 +497,7 @@ class TutorialSession:
                 "x": CENTER_POSITION[0],
                 "y": CENTER_POSITION[1],
             },
-            "grating": self._grating_state(),
+            "line": self._line_state(),
             "hud": {
                 "phase": self._phase.name,
                 "gaze_zone": sample.zone.value,

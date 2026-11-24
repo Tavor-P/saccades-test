@@ -294,7 +294,7 @@ def test_simulated_head_spikes_flag_every_flash_default_flags_none_and_session_j
     assert quiet.session.head_flagged_trials == 0
     assert "head_drift_deg" not in quiet.session.render_state()["hud"]
     moving = simulate_session(max_trials=8, seed=3, profile=ParticipantProfile(head_spikes=((0.0, 1e6, HEAD_MAX_SPEED_DPS * 2),)))
-    shown = [r for r in moving.saccade_results if r.grating_shown]
+    shown = [r for r in moving.saccade_results if r.flash_shown]
     assert shown and all(r.tracking_ok is False for r in shown)
     assert moving.session.head_flagged_trials == len(shown)
     assert moving.session.render_state()["hud"]["head_drift_deg"] is not None

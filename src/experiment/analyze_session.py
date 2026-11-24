@@ -75,7 +75,7 @@ class Flash:
     trial: int
     time: float  # PC unix seconds the line was drawn (before any display-delay correction)
     contrast: float
-    orientation: str
+    line_side: str
     outcome: str  # correct | incorrect | miss
     go_cue: float | None = None  # PC unix seconds the trial's target appeared (flash time minus its scheduled delay)
     leg: str | None = None  # return-jump runs: 'out' | 'return' (trials.csv flash_leg); None in older runs
@@ -147,7 +147,7 @@ def load_flashes(path: Path) -> list[Flash]:
                 trial=int(row["trial_index"]),
                 time=shown,
                 contrast=float(row["contrast"]),
-                orientation=row.get("orientation", ""),
+                line_side=row.get("orientation", ""),
                 outcome=outcome,
                 go_cue=go_cue,
                 leg=row.get("flash_leg") or None,
@@ -806,7 +806,7 @@ def write_flash_rows(path: Path, placed: list[Placed], gates: list, extra: dict[
         writer.writerow([*extra, "trial", "contrast", "orientation", "outcome", "flash_rel_onset_ms", "inside_saccade", "condition", "gate_reason", "flash_leg", "saccade_latency_ms"])
         for i, (p, g) in enumerate(zip(placed, gates)):
             leg = (p.flash.leg or "out") if p.flash.jump is not None else ""
-            writer.writerow([*(values[i] for values in extra.values()), p.flash.trial, p.flash.contrast, p.flash.orientation, p.flash.outcome, "" if p.rel_ms is None else round(p.rel_ms, 1), p.inside, g.condition, g.reason,
+            writer.writerow([*(values[i] for values in extra.values()), p.flash.trial, p.flash.contrast, p.flash.line_side, p.flash.outcome, "" if p.rel_ms is None else round(p.rel_ms, 1), p.inside, g.condition, g.reason,
                              leg, "" if g.latency_ms is None else round(g.latency_ms, 1)])
     return Path(path)
 

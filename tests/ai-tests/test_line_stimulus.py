@@ -20,7 +20,7 @@ from src.experiment.geometry import Geometry
 from src.experiment.scoring import score_outcome
 from src.experiment.tutorial_session import TutorialSession
 from src.experiment.pausable_clock import PausableClock
-from src.experiment.trial_mechanics import line_position, random_orientation
+from src.experiment.trial_mechanics import line_position, random_side
 from test_session import (
     _complete_calibration_and_rt_test,
     _enter_trial_active,
@@ -37,7 +37,7 @@ pytestmark = pytest.mark.usefixtures("no_flash_jitter")
 
 def test_side_enum_constants_and_line_position_shifted_up_or_down_with_the_geometry():
     assert {s.value for s in Side} == {"above", "below"}
-    assert {random_orientation() for _ in range(200)} == {Side.ABOVE, Side.BELOW}
+    assert {random_side() for _ in range(200)} == {Side.ABOVE, Side.BELOW}
     assert LINE_OFFSET_DEG == 2.0 and LINE_SD_DEG == 0.15
     default = Geometry.default()
     offset = default.line_offset_height_units
@@ -59,11 +59,11 @@ def test_side_enum_constants_and_line_position_shifted_up_or_down_with_the_geome
 def _flashed_line(fake_gaze, fake_time, source, target, side, **kwargs):
     session = _make_session(fake_gaze, **kwargs)
     _complete_calibration_and_rt_test(session, fake_gaze, fake_time, reaction_time_s=0.2)
-    _set_single_trial(session, source=source, target=target, orientation=side)
+    _set_single_trial(session, source=source, target=target, line_side=side)
     _enter_trial_active(session, fake_time)
     fake_time(0.201)
     session.tick()  # the scheduled flash fires
-    return session.render_state()["grating"]
+    return session.render_state()["line"]
 
 
 def test_saccade_phase_line_sits_next_to_the_target_not_the_source_at_the_session_geometry(fake_gaze, fake_time):
@@ -72,7 +72,7 @@ def test_saccade_phase_line_sits_next_to_the_target_not_the_source_at_the_sessio
             line = _flashed_line(fake_gaze, fake_time, source, target, side)
             assert line["visible"] is True
             assert (line["x"], line["y"]) == pytest.approx(line_position(expected, side)), (target, side)
-            assert line["orientation"] is side
+            assert line["side"] is side
             assert (line["y"] < expected[1]) == (side is Side.ABOVE)
 
     geometry = Geometry(screen_height_cm=13.0, viewing_distance_cm=40.0)
@@ -115,18 +115,18 @@ def test_tutorial_quiz_line_is_above_or_below_the_dot_at_the_geometry_and_practi
         state = session.render_state()
         assert state["hud"]["phase"] == "QUIZ"
         assert state["dot"]["visible"] and not state["cross"]["visible"]
-        line = state["grating"]
-        assert line["visible"] and line["orientation"] in (Side.ABOVE, Side.BELOW)
-        assert (line["x"], line["y"]) == pytest.approx(line_position(DOT_POSITION, line["orientation"]))
-        assert (line["y"] < DOT_POSITION[1]) == (line["orientation"] is Side.ABOVE)
+        line = state["line"]
+        assert line["visible"] and line["side"] in (Side.ABOVE, Side.BELOW)
+        assert (line["x"], line["y"]) == pytest.approx(line_position(DOT_POSITION, line["side"]))
+        assert (line["y"] < DOT_POSITION[1]) == (line["side"] is Side.ABOVE)
         assert len(state["instructions"].split()) <= 15
-        session.on_response_key(line["orientation"])
+        session.on_response_key(line["side"])
     assert session.render_state()["hud"]["phase"] == "PRACTICE_INTRO"
 
     geometry = Geometry(screen_height_cm=13.0, viewing_distance_cm=40.0)
     session = TutorialSession(fake_gaze, PausableClock(), geometry=geometry)
     _complete_calibration(session)
-    line = session.render_state()["grating"]
+    line = session.render_state()["line"]
     assert abs(line["y"] - DOT_POSITION[1]) == pytest.approx(LINE_OFFSET_DEG / geometry.height_deg)
 
     session = _make_tutorial(fake_gaze)
@@ -134,10 +134,10 @@ def test_tutorial_quiz_line_is_above_or_below_the_dot_at_the_geometry_and_practi
     _start_attempt(session, fake_time)
     fake_time(max(session._flash_scheduled_at - session._clock.now(), 0.0) + 0.001)
     session.tick()
-    line = session.render_state()["grating"]
+    line = session.render_state()["line"]
     target = CROSS_POSITION if session._target is Target.CROSS else DOT_POSITION
     assert line["visible"]
-    assert (line["x"], line["y"]) == pytest.approx(line_position(target, session._orientation))
+    assert (line["x"], line["y"]) == pytest.approx(line_position(target, session._line_side))
 
 
 def test_old_csv_with_vertical_horizontal_still_loads_and_new_values_load(tmp_path, monkeypatch):
@@ -160,5 +160,5 @@ def test_old_csv_with_vertical_horizontal_still_loads_and_new_values_load(tmp_pa
         w.writerows(rows)
     (tmp_path / "results_9_meta.json").write_text(json.dumps({}))
     trials = read_trials(data_access.csv_path_for("9"))
-    assert [t.orientation for t in trials] == [Side.ABOVE, Side.BELOW, Side.ABOVE, None]
-    assert [t.response_orientation for t in trials] == [Side.ABOVE, Side.ABOVE, Side.BELOW, None]
+    assert [t.line_side for t in trials] == [Side.ABOVE, Side.BELOW, Side.ABOVE, None]
+    assert [t.answer_side for t in trials] == [Side.ABOVE, Side.ABOVE, Side.BELOW, None]

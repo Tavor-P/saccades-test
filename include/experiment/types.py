@@ -14,9 +14,9 @@ class Side(str, Enum):
     """Where the flashed line sits relative to the saccade target on a given trial - reported back with the UP / DOWN arrow key, turning detection
     into a 2-alternative forced-choice task (Braun, Schutz & Gegenfurtner 2021). None in the
     rt_test rows of the log, where no line is shown. The trial/result fields that hold a Side are
-    still called `orientation` / `response_orientation` (and so is the CSV column) so existing
-    CSVs, the dashboard and the schema checks keep working; old CSVs hold 'vertical' / 'horizontal'
-    there, new ones 'above' / 'below'."""
+    `line_side` / `answer_side` (the trials.csv columns of the same names); old CSVs held the
+    grating's 'vertical' / 'horizontal' in columns called orientation / response_orientation
+    (logger reads them as ABOVE / BELOW), new ones 'above' / 'below'."""
 
     ABOVE = "above"
     BELOW = "below"
@@ -27,7 +27,7 @@ class TrialSpec:
     index: int
     source: Target
     target: Target
-    orientation: Side
+    line_side: Side
     practice: bool = False
     # Which of TIMING_OFFSETS_MS this trial's flash is scheduled at, relative
     # to the avg_reaction_time_ms in effect when the trial started - None for
@@ -43,11 +43,11 @@ class TrialResult:
     source: Target | None
     target: Target | None
     saccade_duration_ms: float | None
-    grating_shown: bool
+    flash_shown: bool
     contrast: float | None
-    orientation: Side | None
+    line_side: Side | None
     responded: bool
-    response_orientation: Side | None
+    answer_side: Side | None
     response_time_ms: float | None
     outcome: str  # "correct" | "incorrect" | "miss" | "timeout"  (old sessions also: "false_alarm" | "correct_rejection")
     # Saccade phase only (None in old presaccade rows, which have no saccade to
@@ -78,7 +78,7 @@ class TrialResult:
     # be located in absolute time against something recorded independently
     # (e.g. a synced video/frame log). None for old presaccade
     # rows and rt_test rows, which never flash.
-    grating_shown_at_unix_ms: float | None = None
+    flash_unix_ms: float | None = None
     # Saccade phase, flash-shown trials only (None otherwise, and for CSVs
     # logged before this existed): False if the gaze source lost tracking
     # within TRACKING_LOSS_WINDOW_MS of the scheduled flash. See

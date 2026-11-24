@@ -13,7 +13,7 @@ def test_timing_windows_are_ordered_and_no_flash_can_be_scheduled_before_the_tri
     control flashes are avg RT + offset +/- jitter, so even for a fast reactor they must land after the target appears."""
     assert 0 < c.SACCADE_ONSET_STABILITY_MS < c.GAZE_LANDING_STABILITY_MS < c.SACCADE_TIMEOUT_MS
     assert c.FOREPERIOD_MIN_MS < c.FOREPERIOD_MAX_MS
-    assert c.RESPONSE_WINDOW_MS > c.GRATING_DURATION_FRAMES * FRAME_S * 1000
+    assert c.RESPONSE_WINDOW_MS > c.LINE_DURATION_FRAMES * FRAME_S * 1000
     assert 0 <= c.FLASH_WINDOW_MIN_MS < c.DEFAULT_REACTION_TIME_MS < c.FLASH_WINDOW_MAX_MS
     assert c.FLASH_SPREAD_SD_MS > 0
     assert MIN_PLAUSIBLE_REACTION_MS + min(c.CONTROL_OFFSETS_MS) - c.TIMING_JITTER_MS > 0
