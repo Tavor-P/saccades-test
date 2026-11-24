@@ -45,6 +45,7 @@ from src.experiment.geometry import Geometry
 from src.experiment.logger import ResultLogger
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.scoring import is_valid_for_saccadic_analysis, score_outcome
+from src.experiment.session_config import SessionConfig, TutorialHandoff
 from src.experiment.space_input import SpaceTally
 from src.experiment.trial_factory import build_saccade_sequence, generate_next_saccade_trial
 from src.experiment.trial_legs import SampleFeed, TrialLegs, clamped_gaze_latency_ms, timestamp_latency_s
@@ -103,18 +104,17 @@ class ExperimentSession:
         gaze_source: GazeSource,
         logger: ResultLogger,
         clock: PausableClock,
-        show_gaze_indicator: bool = False,
-        test_mode: bool = False,
-        precomputed_calibration_ratios: tuple[float, float, float] | None = None,
-        skip_practice_trials: bool = False,
-        precomputed_rt_samples_ms: list[float] | None = None,
-        gaze_latency_ms: float | None = None,
-        fixed_contrasts: tuple[float, ...] | None = None,
-        geometry: Geometry | None = None,
-        flash_spread_sd_ms: float | None = None,
-        return_jump: bool = False,
-        precomputed_return_rt_samples_ms: list[float] | None = None,
+        config: SessionConfig | None = None,
+        handoff: TutorialHandoff | None = None,
     ) -> None:
+        config = config or SessionConfig()
+        handoff = handoff or TutorialHandoff()
+        test_mode = config.test_mode
+        return_jump = config.return_jump
+        flash_spread_sd_ms = config.flash_spread_sd_ms
+        fixed_contrasts = config.fixed_contrasts
+        precomputed_calibration_ratios = handoff.calibration_ratios
+        precomputed_rt_samples_ms = handoff.rt_samples_ms
         self._gaze = gaze_source
         # Return-jump trials (startup dialog "Return jump"): once the out landing is confirmed the target jumps back to the
         # start symbol and the participant looks back; each trial's one flash goes on the out or the return leg (shuffled bag,
@@ -125,13 +125,13 @@ class ExperimentSession:
         self._return_flash_sd_ms = float(RETURN_FLASH_SPREAD_SD_MS)
         # Bell-curve width for the flash times (startup dialog, Advanced); None = the FLASH_SPREAD_SD_MS default.
         self._flash_spread_sd_ms = FLASH_SPREAD_SD_MS if flash_spread_sd_ms is None else float(flash_spread_sd_ms)
-        self._geometry = geometry or Geometry.default()  # sizes the line's offset (screen height / viewing distance)
-        self._gaze_latency_fallback_ms = gaze_latency_ms
+        self._geometry = config.geometry or Geometry.default()  # sizes the line's offset (screen height / viewing distance)
+        self._gaze_latency_fallback_ms = config.gaze_latency_ms
         # New samples with capture times; its latency is snapshotted at each RT attempt / trial start.
         self._feed = SampleFeed(gaze_source, clock)
         self._logger = logger
         self._clock = clock
-        self._show_gaze_indicator = show_gaze_indicator
+        self._show_gaze_indicator = config.show_gaze_indicator
         self._phase = Phase.WAITING_TO_START
         self.head_flagged_trials = 0  # trials excluded for a head-speed spike near the flash (session.json head_motion)
         self.head_warnings = 0
@@ -141,7 +141,7 @@ class ExperimentSession:
         # Reaction times already measured (the tutorial's practice trials) replace both the RT test and this
         # session's own practice trials; [] means "measured, but nothing usable" (-> DEFAULT_REACTION_TIME_MS).
         self._rt_seeded = precomputed_rt_samples_ms is not None
-        num_practice = 0 if (skip_practice_trials or self._rt_seeded) else (NUM_PRACTICE_TRIALS_TEST if test_mode else NUM_PRACTICE_TRIALS_REAL)
+        num_practice = 0 if (config.skip_practice_trials or self._rt_seeded) else (NUM_PRACTICE_TRIALS_TEST if test_mode else NUM_PRACTICE_TRIALS_REAL)
         self._practice_trials = build_saccade_sequence(num_practice=num_practice, alternate=not self._return_jump)
         self._num_practice = len(self._practice_trials)
         self._practice_index = 0
@@ -185,7 +185,7 @@ class ExperimentSession:
         # a bad measurement. Until it has RT_MIN_SAMPLES_FOR_AVERAGE samples, return-leg flashes are centred on the
         # out-leg average instead (see _return_average_ms).
         self._return_rt = RollingReactionTime(
-            DEFAULT_REACTION_TIME_MS, seed=precomputed_return_rt_samples_ms or (), min_plausible_ms=None
+            DEFAULT_REACTION_TIME_MS, seed=handoff.return_rt_samples_ms or (), min_plausible_ms=None
         )
 
         self._dot_visible = False

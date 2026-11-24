@@ -9,6 +9,7 @@ from include.experiment.constants import CALIBRATION_ROUNDS, FOREPERIOD_MAX_MS, 
 from include.experiment.types import Side
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.session import ExperimentSession
+from src.experiment.session_config import SessionConfig
 from src.experiment.space_input import (
     NarrationKeyGate,
     SpaceTally,
@@ -34,7 +35,9 @@ def _begin(session) -> None:
 
 
 def _make_experiment(fake_gaze):
-    return ExperimentSession(fake_gaze, logger=_NullLogger(), clock=PausableClock(), skip_practice_trials=True)
+    return ExperimentSession(
+        fake_gaze, logger=_NullLogger(), clock=PausableClock(), config=SessionConfig(skip_practice_trials=True)
+    )
 
 
 def _make_tutorial(fake_gaze):

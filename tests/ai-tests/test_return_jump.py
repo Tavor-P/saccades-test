@@ -24,6 +24,7 @@ from include.experiment.types import Side, Target, TrialResult, TrialSpec
 from helpers import NullLogger
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.session import ExperimentSession
+from src.experiment.session_config import SessionConfig, TutorialHandoff
 from include.eye_tracking.types import GazeSample
 from src.experiment import session as session_module
 from src.experiment import tutorial_session as tutorial_module
@@ -36,12 +37,17 @@ pytestmark = pytest.mark.usefixtures("no_flash_jitter")
 AVG_RT_MS = 200.0
 
 
-def _session(fake_gaze, return_jump: bool = True, leg: str = "out", **kwargs) -> ExperimentSession:
+def _session(
+    fake_gaze, return_jump: bool = True, leg: str = "out", precomputed_return_rt_samples_ms: list[float] | None = None
+) -> ExperimentSession:
     """A seeded session (average RT 200 ms) waiting for SPACE on one DOT -> CROSS trial whose flash goes on `leg`."""
     session = ExperimentSession(
-        fake_gaze, logger=NullLogger(), clock=PausableClock(), test_mode=True,
-        precomputed_calibration_ratios=(0.3, 0.5, 0.7), precomputed_rt_samples_ms=[AVG_RT_MS] * 3,
-        return_jump=return_jump, **kwargs,
+        fake_gaze, logger=NullLogger(), clock=PausableClock(),
+        config=SessionConfig(test_mode=True, return_jump=return_jump),
+        handoff=TutorialHandoff(
+            calibration_ratios=(0.3, 0.5, 0.7), rt_samples_ms=[AVG_RT_MS] * 3,
+            return_rt_samples_ms=precomputed_return_rt_samples_ms,
+        ),
     )
     session.on_space()  # WAITING_TO_START -> the first main trial
     session._current_trial_spec = TrialSpec(index=0, source=Target.DOT, target=Target.CROSS, line_side=Side.ABOVE)

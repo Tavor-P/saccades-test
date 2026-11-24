@@ -208,6 +208,7 @@ def test_practice_reads_every_sample_of_a_source_with_history_like_the_real_tria
 def test_practice_average_updates_after_each_trial_and_carries_into_the_saccade_session(fake_gaze, fake_time):
     from include.experiment.constants import DEFAULT_REACTION_TIME_MS
     from src.experiment.session import ExperimentSession
+    from src.experiment.session_config import SessionConfig, TutorialHandoff
 
     session = _make_session(fake_gaze)
     _reach_practice(session)
@@ -234,8 +235,8 @@ def test_practice_average_updates_after_each_trial_and_carries_into_the_saccade_
             pass
 
     seeded = ExperimentSession(
-        fake_gaze, logger=_L(), clock=session._clock, test_mode=True,
-        precomputed_calibration_ratios=(0.3, 0.5, 0.7), precomputed_rt_samples_ms=session.rt_samples_ms,
+        fake_gaze, logger=_L(), clock=session._clock, config=SessionConfig(test_mode=True),
+        handoff=TutorialHandoff(calibration_ratios=(0.3, 0.5, 0.7), rt_samples_ms=session.rt_samples_ms),
     )
     assert seeded._avg_reaction_time_ms == pytest.approx(session._rt.average)
 

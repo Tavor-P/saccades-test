@@ -24,6 +24,7 @@ from include.experiment.types import Side, Target, TrialResult, TrialSpec
 from src.experiment.pausable_clock import PausableClock
 from helpers import NullLogger as _NullLogger
 from src.experiment.session import ExperimentSession, Phase
+from src.experiment.session_config import SessionConfig, TutorialHandoff
 
 
 pytestmark = pytest.mark.usefixtures("no_flash_jitter")
@@ -40,9 +41,7 @@ def _make_session(fake_gaze, show_gaze_indicator: bool = False, skip_practice_tr
         fake_gaze,
         logger=_NullLogger(),
         clock=PausableClock(),
-        show_gaze_indicator=show_gaze_indicator,
-        skip_practice_trials=skip_practice_trials,
-        **kwargs,
+        config=SessionConfig(show_gaze_indicator=show_gaze_indicator, skip_practice_trials=skip_practice_trials, **kwargs),
     )
 
 
@@ -164,18 +163,22 @@ def test_calibration_uses_a_fresh_window_per_target_and_averages_rounds_two_and_
 def test_constructor_options_precomputed_calibration_skip_practice_and_mode_constants(fake_gaze):
     # A completed TutorialSession hands its calibration over, so it is applied in __init__ and not repeated.
     ratios = (0.3, 0.5, 0.7)
-    session = ExperimentSession(fake_gaze, logger=_NullLogger(), clock=PausableClock(), precomputed_calibration_ratios=ratios)
+    session = ExperimentSession(
+        fake_gaze, logger=_NullLogger(), clock=PausableClock(), handoff=TutorialHandoff(calibration_ratios=ratios)
+    )
     assert fake_gaze.calibrated == ratios and session.calibration_ratios == ratios
     session.on_space()
     assert session.render_state()["hud"]["phase"] == "RT_TEST_AWAITING_SPACE"
 
-    skipped = ExperimentSession(fake_gaze, logger=_NullLogger(), clock=PausableClock(), skip_practice_trials=True)
+    skipped = ExperimentSession(
+        fake_gaze, logger=_NullLogger(), clock=PausableClock(), config=SessionConfig(skip_practice_trials=True)
+    )
     assert skipped._practice_trials == [] and skipped._num_practice == 0
 
     real = ExperimentSession(fake_gaze, logger=_NullLogger(), clock=PausableClock())
     assert (real._num_practice, real._rt_test_target_attempts, real._fixed_trials) == (
         NUM_PRACTICE_TRIALS_REAL, NUM_RT_TEST_TRIALS_REAL, SACCADE_FIXED_TRIALS_REAL)
-    test = ExperimentSession(fake_gaze, logger=_NullLogger(), clock=PausableClock(), test_mode=True)
+    test = ExperimentSession(fake_gaze, logger=_NullLogger(), clock=PausableClock(), config=SessionConfig(test_mode=True))
     assert (test._num_practice, test._rt_test_target_attempts, test._fixed_trials) == (
         NUM_PRACTICE_TRIALS_TEST, NUM_RT_TEST_TRIALS_TEST, SACCADE_FIXED_TRIALS_TEST)
 
@@ -547,8 +550,8 @@ def test_trial_waits_for_space_then_swaps_500_to_1000_ms_later_and_repeat_presse
 
 def _seeded_session(fake_gaze, samples, **kwargs) -> ExperimentSession:
     return ExperimentSession(
-        fake_gaze, logger=_NullLogger(), clock=PausableClock(), test_mode=True,
-        precomputed_calibration_ratios=(0.3, 0.5, 0.7), precomputed_rt_samples_ms=samples, **kwargs,
+        fake_gaze, logger=_NullLogger(), clock=PausableClock(), config=SessionConfig(test_mode=True, **kwargs),
+        handoff=TutorialHandoff(calibration_ratios=(0.3, 0.5, 0.7), rt_samples_ms=samples),
     )
 
 
