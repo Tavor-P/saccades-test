@@ -587,3 +587,18 @@ def test_seeded_session_with_too_few_samples_falls_back_to_the_default(fake_gaze
 
     anticipations_only = _seeded_session(fake_gaze, [40.0, 60.0])  # below RT_MIN_PLAUSIBLE_MS
     assert anticipations_only._avg_reaction_time_ms == pytest.approx(DEFAULT_REACTION_TIME_MS)
+
+
+def test_calibration_rounds_2_and_3_speak_their_own_return_to_the_left_dot(fake_gaze):
+    from include.experiment import participant_text as words
+
+    fake_gaze.average_recent_ratio = lambda: 0.5
+    session = _make_session(fake_gaze)
+    session.on_space()  # WAITING_TO_START -> CALIBRATE_LEFT (round 1)
+    left_texts = []
+    for _ in range(CALIBRATION_ROUNDS):
+        left_texts.append(session.render_state()["instructions"])
+        for _ in range(3):
+            session.on_space()
+    assert left_texts == [words.CALIBRATE_LEFT, words.CALIBRATE_LEFT_AGAIN, words.CALIBRATE_LEFT_LAST]
+

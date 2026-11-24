@@ -41,7 +41,7 @@ from include.experiment.constants import (
 from include.experiment.types import Side, Target, TrialResult, TrialSpec
 from include.eye_tracking.constants import HEAD_DRIFT_WARN_DEG, HEAD_MAX_SPEED_DPS, HEAD_WARN_MIN_INTERVAL_S, HEAD_WARN_TEXT
 from include.eye_tracking.interfaces import GazeSource
-from src.experiment.calibration import CalibrationRounds
+from src.experiment.calibration import CalibrationRounds, calibration_text
 from src.experiment.geometry import Geometry
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.scoring import is_valid_for_saccadic_analysis, score_outcome
@@ -842,14 +842,8 @@ class ExperimentSession:
         if self._phase in _RT_TEST_PHASES:
             # Said once, before the first attempt; silent afterwards (the narrator re-speaks on every text change).
             return words.RT_TEST_INTRO if self._rt_test_attempt == 0 else ""
-        calibration_targets = {
-            Phase.CALIBRATE_LEFT: words.CALIBRATE_LEFT,
-            Phase.CALIBRATE_CENTER: words.CALIBRATE_CENTER,
-            Phase.CALIBRATE_RIGHT: words.CALIBRATE_RIGHT,
-        }
-        if self._phase in calibration_targets:
-            # Only round 1 is narrated: later rounds would just re-speak the same drill.
-            return calibration_targets[self._phase] if self._calibration.round == 1 else ""
+        if self._phase in _CALIBRATION_PHASES:
+            return calibration_text(self._calibration.step, self._calibration.round)
         return {
             Phase.WAITING_TO_START: "Press SPACE to begin" if self._precomputed_calibration else "Press SPACE to begin calibration",
         }[self._phase]

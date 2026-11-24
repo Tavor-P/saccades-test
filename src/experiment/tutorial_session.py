@@ -24,7 +24,7 @@ from include.experiment.constants import (
 )
 from include.experiment.types import Side, Target
 from include.eye_tracking.interfaces import GazeSource
-from src.experiment.calibration import CalibrationRounds
+from src.experiment.calibration import CalibrationRounds, calibration_text
 from src.experiment.geometry import Geometry
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.space_input import SpaceTally
@@ -362,14 +362,7 @@ class TutorialSession:
         if self._phase is Phase.INTRO:
             return self._intro_lines[self._intro_step]
         if self._phase in (Phase.CALIBRATE_LEFT, Phase.CALIBRATE_CENTER, Phase.CALIBRATE_RIGHT):
-            # Only round 1 is narrated: later rounds would just re-speak the same drill.
-            if self._calibration.round > 1:
-                return ""
-            return {
-                Phase.CALIBRATE_LEFT: words.CALIBRATE_LEFT,
-                Phase.CALIBRATE_CENTER: words.CALIBRATE_CENTER,
-                Phase.CALIBRATE_RIGHT: words.CALIBRATE_RIGHT,
-            }[self._phase]
+            return calibration_text(self._calibration.step, self._calibration.round)
         if self._phase is Phase.QUIZ:
             return words.QUIZ
         if self._phase is Phase.PRACTICE_INTRO:
