@@ -469,6 +469,40 @@ def test_tutorial_onset_trigger_jumps_before_the_arrival(fake_gaze, fake_time, m
     assert session._jump_at is not None and not session._out_arrived
 
 
+def test_tutorial_return_before_the_jump_counts_like_in_the_real_trials(fake_gaze, fake_time):
+    """Shared TrialLegs rules: the return leg is listened to from the out arrival, so a return made while a late out-leg
+    flash holds the jump has already landed when the target jumps, and its latency is negative (the old tutorial copy
+    started the return landing only at the jump)."""
+    session = _tutorial_at_practice(fake_gaze)
+    session._flash_leg = "out"
+    session._leg_bag = ShuffledBag(["out"])
+    fake_gaze.zone = GazeZone.LEFT
+    session.on_space()
+    fake_time(FOREPERIOD_MAX_MS / 1000 + 0.1)
+    session.tick()
+    session._flash_scheduled_at = session._trial_start + 1.0  # a late out-leg flash holds the jump back
+    fake_time(0.2)
+    fake_gaze.zone = GazeZone.RIGHT
+    session.tick()  # out arrival
+    fake_time(SACCADE_ONSET_STABILITY_MS / 1000 + 0.01)
+    session.tick()
+    fake_gaze.zone = GazeZone.LEFT  # back on the dot before the jump
+    fake_time(0.05)
+    session.tick()
+    fake_time(GAZE_LANDING_STABILITY_MS / 1000 + 0.01)
+    session.tick()
+    assert session._jump_at is None and session._out_arrived
+
+    fake_time(session._flash_scheduled_at - session._clock.now() + 0.001)
+    session.tick()  # the out-leg flash is drawn
+    session.tick()  # ... and gone: the target jumps back
+    assert session._jump_at is not None
+    assert len(session.return_rt_samples_ms) == 1 and session.return_rt_samples_ms[0] < 0
+    session.on_response_key(session._line_side)
+    session.tick()  # already back on the dot: the attempt ends at once
+    assert session.render_state()["hud"]["phase"] == "PRACTICE_AWAITING_SPACE"
+
+
 def test_new_participant_strings_are_short_and_avoid_the_banned_words():
     for text in (words.TUTORIAL_INTRO_RETURN_JUMP, words.PRACTICE_START_RETURN_JUMP, words.FIRST_TRIAL_RETURN_JUMP):
         assert len(text.split()) <= 15

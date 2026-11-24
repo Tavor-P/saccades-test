@@ -1,6 +1,6 @@
 import pytest
 
-from include.eye_tracking.types import GazeZone
+from include.eye_tracking.types import GazeSample, GazeZone
 from include.experiment import participant_text as words
 from include.experiment.constants import (
     CALIBRATION_ROUNDS,
@@ -183,6 +183,27 @@ def test_practice_gives_one_reaction_time_per_saccade_and_flashes_at_the_measure
     assert len(session.rt_samples_ms) == 3
     _start_attempt(session, fake_time)
     assert session._flash_scheduled_at - session._trial_start == pytest.approx(0.16)
+
+def test_practice_reads_every_sample_of_a_source_with_history_like_the_real_trials(fake_gaze, fake_time):
+    """Shared SampleFeed/TrialLegs: one tick consumes the whole batch, and the onset is timed on capture time, not on the
+    tick (the old tutorial copy read only the latest sample)."""
+    session = _make_session(fake_gaze)
+    _reach_practice(session)
+    fake_gaze.zone = GazeZone.LEFT
+    _start_attempt(session, fake_time)
+    start = session._trial_start
+
+    def sample(dt, zone):
+        position = {GazeZone.LEFT: 0.0, GazeZone.CENTER: 0.5}.get(zone, 1.0)
+        return GazeSample(zone=zone, ratio=0.5, face_found=True, timestamp=start + dt, position=position)
+
+    batch = [sample(0.10, GazeZone.LEFT), sample(0.105, GazeZone.CENTER), sample(0.112, GazeZone.CENTER), sample(0.120, GazeZone.CENTER)]
+    fake_gaze.samples_since = lambda ts: [s for s in batch if ts is None or s.timestamp > ts]
+    fake_gaze.latest_sample = lambda: batch[-1]
+    fake_time(0.2)
+    session.tick()
+    assert session.rt_samples_ms == pytest.approx([105.0])
+
 
 def test_practice_average_updates_after_each_trial_and_carries_into_the_saccade_session(fake_gaze, fake_time):
     from include.experiment.constants import DEFAULT_REACTION_TIME_MS

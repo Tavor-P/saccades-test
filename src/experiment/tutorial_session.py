@@ -1,4 +1,5 @@
-"""TutorialSession: the narrated first-timer on-ramp (calibration, how to answer, practice trials). Scoped-down mirror of ExperimentSession's trial logic."""
+"""TutorialSession: the narrated first-timer on-ramp (calibration, how to answer, practice trials). Practice trials use ExperimentSession's gaze rules (trial_legs.py);
+only their flash scheduling and the absence of logging differ."""
 
 import math
 import random
@@ -12,14 +13,10 @@ from include.experiment.constants import (
     DOT_POSITION,
     FOREPERIOD_MAX_MS,
     FOREPERIOD_MIN_MS,
-    GAZE_LANDING_STABILITY_MS,
-    GAZE_LATENCY_MAX_MS,
     LINE_DURATION_FRAMES,
     RESPONSE_WINDOW_MS,
-    RETURN_JUMP_LANDING_TIMEOUT_MS,
     RETURN_JUMP_TRIGGER,
     RETURN_LEG_FLASH_FRACTION,
-    SACCADE_TIMEOUT_MS,
     TUTORIAL_PRACTICE_ATTEMPTS,
     TUTORIAL_PRACTICE_CONTRAST,
     TUTORIAL_QUIZ_CONTRAST,
@@ -31,14 +28,8 @@ from src.experiment.calibration import CalibrationRounds
 from src.experiment.geometry import Geometry
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.space_input import SpaceTally
-from src.experiment.trial_mechanics import (
-    OnsetDetector,
-    RollingReactionTime,
-    ShuffledBag,
-    flash_leg_pool,
-    line_position,
-    sample_capture_time,
-)
+from src.experiment.trial_legs import SampleFeed, TrialLegs, clamped_gaze_latency_ms, timestamp_latency_s
+from src.experiment.trial_mechanics import RollingReactionTime, ShuffledBag, flash_leg_pool, line_position
 from src.experiment.trial_mechanics import random_side as _random_side
 from src.experiment.trial_mechanics import zone_for as _zone_for
 
@@ -58,17 +49,6 @@ class Phase(Enum):
 
 
 _CALIBRATION_PHASES = (Phase.CALIBRATE_LEFT, Phase.CALIBRATE_CENTER, Phase.CALIBRATE_RIGHT)
-
-
-def _update_landing(sample, zone, now: float, since: float | None, landed: bool) -> tuple[float | None, bool]:
-    """One tick of the tutorial's landing check (latest sample only): in `zone` for GAZE_LANDING_STABILITY_MS."""
-    if landed:
-        return since, landed
-    if sample.face_found and sample.zone is zone:
-        if since is None:
-            return now, False
-        return since, now - since >= GAZE_LANDING_STABILITY_MS / 1000
-    return None, False
 
 
 class TutorialSession:
@@ -112,7 +92,6 @@ class TutorialSession:
         self._cross_visible = False
         self._foreperiod_start = 0.0
         self._foreperiod_duration = 0.0
-        self._target_landed_since: float | None = None
 
         # -- quiz --
         self._quiz_streak = 0
@@ -125,7 +104,10 @@ class TutorialSession:
         self._source = Target.DOT
         self._target = Target.CROSS
         self._line_side: Side | None = None
-        self._onset_detector: OnsetDetector = OnsetDetector(_zone_for(self._source))
+        # Gaze bookkeeping is shared with ExperimentSession (trial_legs): every sample since the last tick, capture-time
+        # landing, the same leg rules. Created at the go cue of each attempt.
+        self._feed = SampleFeed(gaze_source, clock)
+        self._legs: TrialLegs | None = None
         self._flash_scheduled_at = 0.0
         self._flash_decided = False
         self._line_visible = False
@@ -135,22 +117,27 @@ class TutorialSession:
         self._response_deadline = 0.0
         self._responded = False
         self._answer_side: Side | None = None
-        self._landed = False
         self._trial_start = 0.0
-        # -- return jump (see ExperimentSession._tick_return_jump; this is its scoped-down mirror) --
+        # -- return jump (the same TrialLegs rules as ExperimentSession; read at construction like there) --
+        self._return_jump_trigger = RETURN_JUMP_TRIGGER
         self._return_rt = RollingReactionTime(DEFAULT_REACTION_TIME_MS, min_plausible_ms=None)  # signed, keeps early returns
         self._leg_bag: ShuffledBag[str] | None = (
             ShuffledBag(flash_leg_pool(RETURN_LEG_FLASH_FRACTION)) if self._return_jump else None
         )
         self._flash_leg = "out"
-        self._jump_at: float | None = None
-        self._jump_forced = False
-        self._return_onset_detector: OnsetDetector | None = None
-        self._return_landed_since: float | None = None
-        self._return_landed = False
-        self._out_arrived = False  # first in-target sample seen (the "arrival" trigger; the return detector listens from it)
-        self._out_arrived_before_jump = False
-        self._return_reaction_ms: float | None = None
+
+    # Read-only views of the current attempt's legs (tests and the HUD read these).
+    @property
+    def _landed(self) -> bool:
+        return self._legs is not None and self._legs.out_landing.landed
+
+    @property
+    def _jump_at(self) -> float | None:
+        return self._legs.jump_at if self._legs is not None else None
+
+    @property
+    def _out_arrived(self) -> bool:
+        return self._legs is not None and self._legs.out_arrived_at is not None
 
     @property
     def calibration_ratios(self) -> tuple[float, float, float] | None:
@@ -235,8 +222,7 @@ class TutorialSession:
         self._phase = Phase.PRACTICE_AWAITING_SPACE
         self._target = Target.CROSS if self._source is Target.DOT else Target.DOT
         self._line_side = _random_side()
-        self._onset_detector = OnsetDetector(_zone_for(self._source))
-        self._target_landed_since = None
+        self._legs = None
         self._flash_scheduled_at = 0.0
         self._flash_decided = False
         self._line_visible = False
@@ -246,16 +232,7 @@ class TutorialSession:
         self._response_deadline = 0.0
         self._responded = False
         self._answer_side = None
-        self._landed = False
         self._flash_leg = self._leg_bag.draw() if self._leg_bag is not None else "out"
-        self._jump_at = None
-        self._jump_forced = False
-        self._return_onset_detector = None
-        self._return_landed_since = None
-        self._return_landed = False
-        self._out_arrived = False
-        self._out_arrived_before_jump = False
-        self._return_reaction_ms: float | None = None
 
     def _start_foreperiod(self) -> None:
         self._phase = Phase.PRACTICE_FOREPERIOD
@@ -268,33 +245,27 @@ class TutorialSession:
             self._cross_visible = self._target is Target.CROSS
             self._phase = Phase.PRACTICE_ACTIVE
             self._trial_start = self._clock.now()
+            # Same go-cue bookkeeping as ExperimentSession._reveal_target_and_start_trial: one latency snapshot per trial,
+            # samples counted from the go cue.
+            self._feed.latency_s = timestamp_latency_s(self._gaze, clamped_gaze_latency_ms(self._gaze))
+            self._feed.last_sample_ts = self._gaze.latest_sample().timestamp
+            self._legs = TrialLegs(
+                _zone_for(self._source), _zone_for(self._target), self._trial_start, trigger=self._return_jump_trigger
+            )
             # Open-loop, like the real saccade phase: scheduled off the rolling average of the reaction
             # times measured so far (updated at every detected eye movement; the default until there are 3).
             self._flash_scheduled_at = self._trial_start + self._rt.average / 1000
             if self._flash_leg == "return":
                 self._flash_scheduled_at = math.inf  # scheduled at the jump back
 
-    def _sample_time(self, sample, now: float) -> float:
-        """Capture time of `sample` on the session clock (same rule as ExperimentSession): minus the tracker's latency unless
-        the source already stamps capture time."""
-        latency_s = 0.0
-        if not getattr(self._gaze, "timestamps_are_capture_time", False):
-            latency_ms = getattr(self._gaze, "gaze_latency_ms", None)
-            if latency_ms is not None and latency_ms == latency_ms:
-                latency_s = min(max(float(latency_ms), 0.0), GAZE_LATENCY_MAX_MS) / 1000
-        return sample_capture_time(sample, now, latency_s, self._clock.from_perf_counter)
-
     def _tick_active(self) -> None:
         now = self._clock.now()
-        sample = self._gaze.latest_sample()
-        target_zone = _zone_for(self._target)
-        sample_t = self._sample_time(sample, now)
+        legs = self._legs
+        new_samples = self._feed.new_samples(self._gaze.latest_sample())
 
-        # After the jump only while the out onset is still being confirmed past an arrival (see ExperimentSession._measure_reaction).
-        before_jump = self._jump_at is None or sample_t < self._jump_at or self._out_arrived_before_jump
-        if not self._onset_detector.confirmed and sample_t >= self._trial_start and before_jump:
-            if self._onset_detector.update(sample, sample_t):
-                self._rt.add((self._onset_detector.since - self._trial_start) * 1000)
+        measured = legs.measure_out_onset(new_samples)
+        if measured is not None:
+            self._rt.add(measured[0])
 
         flash_fired_this_tick = False
         if not self._flash_decided and now >= self._flash_scheduled_at:
@@ -315,68 +286,42 @@ class TutorialSession:
             self._response_window_open = False
 
         if self._return_jump:
-            self._tick_return_jump(sample, sample_t, now)
+            self._tick_return_jump(new_samples, now)
             return
 
-        if not self._landed:
-            self._target_landed_since, self._landed = _update_landing(
-                sample, target_zone, now, self._target_landed_since, self._landed
-            )
-
-            if now - self._trial_start >= SACCADE_TIMEOUT_MS / 1000:
-                self._finish_attempt()
-                return
-
-        if self._landed and self._flash_decided and (self._responded or not self._response_window_open):
+        legs.track_out_landing(new_samples)
+        if legs.out_timed_out(now):
+            self._finish_attempt()
+            return
+        if legs.out_landing.landed and self._flash_decided and (self._responded or not self._response_window_open):
             self._finish_attempt()
 
-    def _tick_return_jump(self, sample, sample_t: float, now: float) -> None:
-        target_zone = _zone_for(self._target)
-        if (not self._out_arrived and sample_t >= self._trial_start and sample.face_found and sample.zone is target_zone):
-            self._out_arrived = True
-            self._out_arrived_before_jump = self._jump_at is None
-            self._landed = True  # the out landing, in return-jump mode (same rule as ExperimentSession)
-            if self._return_onset_detector is None:
-                self._return_onset_detector = OnsetDetector(target_zone, wait_for_baseline=True)
-        if self._jump_at is None:
-            out_flash_done = self._flash_leg == "return" or (self._flash_decided and not self._line_visible)
-            triggered = self._onset_detector.confirmed if RETURN_JUMP_TRIGGER == "onset" else self._out_arrived
-            if out_flash_done:
-                if triggered:
-                    self._jump_back(now, forced=False)
-                elif now - self._trial_start >= RETURN_JUMP_LANDING_TIMEOUT_MS / 1000:
-                    self._jump_back(now, forced=True)
-            if self._jump_at is None and self._return_onset_detector is None:
-                return
+    def _tick_return_jump(self, new_samples, now: float) -> None:
+        """Same steps as ExperimentSession._tick_return_jump (shared TrialLegs rules); only the logging differs."""
+        legs = self._legs
+        legs.track_arrival(new_samples)
+        out_flash_done = self._flash_leg == "return" or (self._flash_decided and not self._line_visible)
+        forced = legs.jump_due(now, out_flash_done)
+        if forced is not None:
+            self._jump_back(now, forced=forced)
 
-        detector = self._return_onset_detector
-        if detector is None:  # forced or onset-triggered jump before any arrival: listen from the jump
-            detector = self._return_onset_detector = OnsetDetector(target_zone, wait_for_baseline=True)
-        if not detector.confirmed:
-            detector.update(sample, sample_t)
-        if detector.confirmed and self._jump_at is not None and self._return_reaction_ms is None:
-            self._return_reaction_ms = (detector.since - self._jump_at) * 1000  # signed
-            if not self._jump_forced:
-                self._return_rt.add(self._return_reaction_ms)
-        if self._jump_at is None:
+        return_latency_ms, just_landed = legs.track_return(new_samples)
+        if return_latency_ms is not None and not legs.jump_forced:
+            self._return_rt.add(return_latency_ms)
+        if legs.jump_at is None:
             return
-        was_landed = self._return_landed
-        self._return_landed_since, self._return_landed = _update_landing(
-            sample, _zone_for(self._source), now, self._return_landed_since, self._return_landed
-        )
-        if self._return_landed and not was_landed and self._flash_decided and not self._responded:
+        if just_landed and self._flash_decided and not self._responded:
             self._response_window_open = True
             self._response_deadline = max(self._response_deadline, now + RESPONSE_WINDOW_MS / 1000)
 
-        if not self._return_landed and now - self._jump_at >= SACCADE_TIMEOUT_MS / 1000:
+        if legs.return_timed_out(now):
             self._finish_attempt()
             return
-        if self._return_landed and self._flash_decided and (self._responded or not self._response_window_open):
+        if legs.return_landing.landed and self._flash_decided and (self._responded or not self._response_window_open):
             self._finish_attempt()
 
     def _jump_back(self, now: float, forced: bool) -> None:
-        self._jump_at = now
-        self._jump_forced = forced
+        self._legs.mark_jump(now, forced)
         self._dot_visible = self._source is Target.DOT
         self._cross_visible = self._source is Target.CROSS
         if self._flash_leg == "return":
