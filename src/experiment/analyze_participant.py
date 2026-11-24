@@ -133,11 +133,7 @@ def _mode(ref: session_files.SessionRef, meta: dict) -> str:
 
 
 def _read_meta(ref: session_files.SessionRef) -> dict:
-    try:
-        meta = json.loads(ref.meta_path.read_text())
-        return meta if isinstance(meta, dict) else {}
-    except (OSError, ValueError):
-        return {}
+    return session_files.read_json(ref.meta_path) or {}
 
 
 def find_runs(participant_id: str, data_dir: Path = DATA_DIR) -> tuple[str, list[RunEntry]]:

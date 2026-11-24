@@ -8,7 +8,6 @@ one at a time (`_LOCK`): the Flask server is threaded and matplotlib's pyplot is
 writers in one analysis folder. Anything that goes wrong becomes a `FriendlyError` (a plain sentence for the page); the
 traceback goes to the dashboard's console only."""
 
-import json
 import threading
 import traceback
 from datetime import datetime
@@ -73,14 +72,6 @@ def _is_fresh(outputs: list[Path], inputs: list[Path]) -> bool:
 
 def _stamp(mtime: float | None) -> str | None:
     return None if mtime is None else datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S")
-
-
-def _read_json(path: Path) -> dict:
-    try:
-        data = json.loads(Path(path).read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
-        return {}
 
 
 def _read_text(path: Path) -> str:
@@ -199,7 +190,7 @@ def participant_quality(pid: str, summary: dict) -> dict:
 
     lat = per_run(lambda r: _latency_light(r.get("gaze_latency_ms_median")), lambda r: _ms(r.get("gaze_latency_ms_median")))
     gap = per_run(lambda r: _gap_light(r.get("longest_gap_ms")), lambda r: _gap_text(r.get("longest_gap_ms"), r.get("gaps_over_threshold")))
-    heads = {r["run"]: _head(_read_json(_data_dir() / pid / r["run"] / session_files.SESSION_FILE)) for r in used}
+    heads = {r["run"]: _head(session_files.read_json(_data_dir() / pid / r["run"] / session_files.SESSION_FILE) or {}) for r in used}
     head = per_run(lambda r: heads[r["run"]][0], lambda r: heads[r["run"]][1])
     n = summary.get("n_flashes") or {}
     n_sac, n_fix = n.get(SACCADE, 0), n.get(FIXATION, 0)
@@ -278,9 +269,9 @@ def run_page(timestamp: str, force: bool = False) -> dict:
     ref = run_ref(timestamp)
     if force or not run_is_fresh(ref):
         analyse_run(timestamp)
-    suppression = _read_json(run_file(ref, "suppression"))
+    suppression = session_files.read_json(run_file(ref, "suppression")) or {}
     summary = _run_headline_summary(suppression)
-    meta = _read_json(ref.meta_path)
+    meta = session_files.read_json(ref.meta_path) or {}
     participant = (meta.get("participant") or {}).get("id") or ref.participant
     return {
         "kind": "run",
@@ -327,7 +318,7 @@ def _candidates(pid: str, include_test: bool) -> list:
 
 
 def participant_is_fresh(pid: str, include_test: bool) -> bool:
-    summary = _read_json(participant_file(pid, "summary"))
+    summary = session_files.read_json(participant_file(pid, "summary")) or {}
     if not summary or bool(summary.get("include_test")) != include_test:
         return False
     try:
@@ -351,7 +342,7 @@ def overview() -> list[dict]:
         except ap.NoRunsError:
             continue
         n_test = sum(e.mode == "test" for e in entries)
-        summary = _read_json(participant_file(pid, "summary"))
+        summary = session_files.read_json(participant_file(pid, "summary")) or {}
         rows.append({"id": pid, "n_real": len(entries) - n_test, "n_test": n_test, "only_test": n_test == len(entries),
                      "analysed_at": _stamp(_mtime(participant_file(pid, "summary"))) if summary else None,
                      "analysed_with_test": bool(summary.get("include_test")) if summary else False})
@@ -380,7 +371,7 @@ def participant_page(pid: str, include_test: bool = False, force: bool = False) 
     check_participant(pid)
     if force or not participant_is_fresh(pid, include_test):
         analyse_participant(pid, include_test)
-    summary = _read_json(participant_file(pid, "summary"))
+    summary = session_files.read_json(participant_file(pid, "summary")) or {}
     if not summary:
         raise FriendlyError("The pooled analysis wrote no summary.json; see the dashboard's console window.", status=500)
     runs = [{**r, "pooled": True} for r in summary.get("runs_used") or []] + [{**r, "pooled": False} for r in summary.get("runs_excluded") or []]

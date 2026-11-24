@@ -11,6 +11,10 @@ from src.experiment import session_files
 from src.experiment.logger import read_trials
 from src.experiment.session_files import DATA_DIR  # patched per module in tests, so always used by this bare name
 
+class DamagedSessionFile(Exception):
+    """A session.json exists but cannot be read; the message is plain text for the user."""
+
+
 _NO_SUCH_SESSION = "no_such_session"  # folder name of the (never existing) paths handed out for an unknown key
 
 
@@ -56,11 +60,8 @@ def load_metadata(timestamp: str) -> dict:
     """Sessions logged before the metadata sidecar existed have no meta file
     at all - treat that the same as one with every field blank, rather than
     excluding those older runs from the dashboard."""
-    path = meta_path_for(timestamp)
-    try:
-        meta = _flatten(json.loads(path.read_text())) if path.exists() else {}
-    except (OSError, ValueError):  # a damaged file (e.g. an aborted write) must not take the whole listing down
-        meta = {}
+    # A missing or damaged file (e.g. an aborted write) must not take the whole listing down: read_json gives None, which reads as blank.
+    meta = _flatten(session_files.read_json(meta_path_for(timestamp)) or {})
     meta.setdefault("participant_id", None)
     meta.setdefault("started_at", None)
     meta.setdefault("test_mode", None)
@@ -76,7 +77,9 @@ def save_participant_info(timestamp: str, gender: str, age: str) -> None:
         raise FileNotFoundError(f"no session {timestamp!r}")
     gender = gender.strip() or None
     age_value = int(age) if age.strip() else None
-    raw = json.loads(ref.meta_path.read_text()) if ref.meta_path.exists() else {}
+    raw = session_files.read_json(ref.meta_path) if ref.meta_path.exists() else {}
+    if raw is None:  # never overwrite a damaged session.json with just these two fields
+        raise DamagedSessionFile(f"{ref.label}/{session_files.SESSION_FILE} is damaged, so the participant details were not saved")
     raw.setdefault("participant", {}).update(gender=gender, age=age_value)
     ref.meta_path.write_text(json.dumps(raw, indent=2))
 

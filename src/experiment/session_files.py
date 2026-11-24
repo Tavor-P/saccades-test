@@ -29,6 +29,15 @@ _RESERVED_NAMES = {"con", "prn", "aux", "nul", *(f"com{i}" for i in range(1, 10)
 _MAX_ID_LENGTH = 60
 
 
+def read_json(path: Path | str) -> dict | None:
+    """The JSON object in `path` (UTF-8); None when the file is missing, unreadable, not valid JSON, or not an object."""
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):  # ValueError covers JSONDecodeError and UnicodeDecodeError
+        return None
+    return data if isinstance(data, dict) else None
+
+
 def sanitize_participant_id(participant_id: str | None) -> str:
     """A participant id as a safe Windows folder name: invalid characters and runs of whitespace become '_', trailing
     dots/spaces go, reserved device names get a '_' suffix, blank means `anonymous`."""
@@ -89,8 +98,8 @@ def _ref_from_folder(folder: Path) -> SessionRef | None:
         return None
     key = None
     try:
-        key = str(int(json.loads(meta.read_text())["run"]["unix_timestamp"]))
-    except (OSError, ValueError, KeyError, TypeError):
+        key = str(int((read_json(meta) or {})["run"]["unix_timestamp"]))
+    except (ValueError, KeyError, TypeError):
         pass
     if key is None:  # session.json lost or damaged: fall back to the folder's own timestamp
         stamp = "_".join(folder.name.split("_")[:2])

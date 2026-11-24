@@ -755,9 +755,10 @@ def analyze_run(
     """The analysis numbers for one session (no files written). Raises ValueError when the meta file has no clock
     offset and none is given, OSError when a file is missing."""
     offset_history = None
-    meta: dict = {}
+    meta = session_files.read_json(ref.meta_path)  # None: missing or damaged
     if clock_offset_ms is None:
-        meta = json.loads(ref.meta_path.read_text())
+        if meta is None:
+            raise ValueError(f"cannot read {ref.meta_path.name} of this session (missing or damaged), so there is no clock offset; pass --offset-ms")
         quality = meta.get("gaze_quality") or {}
         clock_offset_ms = quality.get("clock_offset_ms")
         offset_history = quality.get("clock_offset_history")
@@ -779,12 +780,11 @@ def analyze_run(
     summary["gates"] = summarize_gates(placed, gates)
     suppression = suppression_index(placed, near_ms, far_ms, gates=gates)
     summary["suppression"] = suppression
+    meta = meta or {}
     try:
-        meta = json.loads(ref.meta_path.read_text())
         geometry_line = format_geometry(meta.get("settings"))
-    except (OSError, ValueError, AttributeError, KeyError):
+    except (AttributeError, KeyError):
         geometry_line = None
-    meta = meta if isinstance(meta, dict) else {}
     run = RunAnalysis(ref, meta, t, x, saccades, placed, gates, summary, suppression, geometry_line)
     if trials is not None:
         by_leg = suppression_by_leg(placed, gates, near_ms=near_ms, far_ms=far_ms)

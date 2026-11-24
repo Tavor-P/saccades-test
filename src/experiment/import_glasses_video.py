@@ -37,7 +37,9 @@ def import_video(folder: Path, video: Path) -> dict:
         shutil.copy2(video, target)
 
     meta_path = folder / session_files.SESSION_FILE
-    meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
+    meta = session_files.read_json(meta_path) or {}
+    if meta_path.exists() and not meta:
+        print(f"WARNING: {meta_path} is damaged or empty; it is left unchanged and the video is not recorded in it.", file=sys.stderr)
     logged = (meta.get("glasses_video") or {}).get("sync_flashes") or []
     events = find_sync_flash_events(target)
     sync = compute_offset([e.time_s for e in events], [f["pc_unix_ms"] for f in logged])

@@ -6,7 +6,6 @@ the end of every run, which never raises. The CLI resolves the session like `ana
 """
 
 import argparse
-import json
 import statistics
 import sys
 from pathlib import Path
@@ -23,14 +22,6 @@ MAX_GAP_MS = 150.0
 MAX_TRACKING_LOST_SHARE = 0.10
 MAX_UNANSWERED_SHARE = 0.20
 MIN_TRIAL_SHARE = 0.5  # fewer flashes than this share of the planned count is called "very few"
-
-
-def _load_json(path: Path) -> dict | None:
-    try:
-        data = json.loads(Path(path).read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else None
-    except (OSError, ValueError):
-        return None
 
 
 def _load_rows(path: Path) -> list[dict] | None:
@@ -130,7 +121,7 @@ def _command_folder(folder: Path) -> str:
 def build_run_summary(run_folder) -> str:
     """The summary text for the run in `run_folder` (never raises for missing or damaged files)."""
     folder = Path(run_folder)
-    meta = _load_json(folder / session_files.SESSION_FILE)
+    meta = session_files.read_json(folder / session_files.SESSION_FILE)
     rows = _load_rows(folder / session_files.TRIALS_FILE)
     warnings: list[str] = []
     out: list[str] = []
