@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from helpers import wait_until
 from include.eye_tracking.constants import NEON_SCENE_WIDTH
 from include.eye_tracking.types import GazeZone
 from src.eye_tracking.gaze_factory import build_gaze_source
@@ -57,7 +58,7 @@ def test_loop_reads_from_device_and_stop_closes_it():
     )
     source = NeonGazeSource(device=device)
     source.start()
-    time.sleep(0.1)
+    assert wait_until(lambda: source.latest_sample().zone is GazeZone.RIGHT)
     source.stop()
     assert source.latest_sample().zone is GazeZone.RIGHT
     assert closed
@@ -171,7 +172,7 @@ def test_clock_offset_is_reestimated_in_the_background_noisy_ones_ignored_and_ac
     device = SimpleNamespace(estimate_time_offset=estimate, receive_gaze_datum=lambda timeout_seconds=None: None, close=lambda: None)
     source = NeonGazeSource(device=device)
     source.start()
-    time.sleep(0.3)
+    wait_until(lambda: len(calls) >= 4)
     source.stop()
     assert len(calls) >= 4
     assert 205.0 <= source._clock_offset_ms <= 210.0  # blended with the previous value, not replaced outright
@@ -227,7 +228,7 @@ def test_receive_and_ingest_errors_are_counted_logged_once_and_the_loop_survives
 
     source = NeonGazeSource(device=SimpleNamespace(receive_gaze_datum=receive, close=lambda: None))
     source.start()
-    time.sleep(0.2)
+    wait_until(lambda: calls["n"] > 5 and source.latest_sample().zone is GazeZone.RIGHT)
     source.stop()
     summary = source.quality_summary()
     assert summary["receive_errors"] == 5
@@ -240,7 +241,7 @@ def test_receive_and_ingest_errors_are_counted_logged_once_and_the_loop_survives
     )
     source._ingest = lambda *a: (_ for _ in ()).throw(ValueError("bad datum"))
     source.start()
-    time.sleep(0.1)
+    wait_until(lambda: source.quality_summary()["receive_errors"] > 0)
     assert source._thread.is_alive()
     source.stop()
     assert source.quality_summary()["receive_errors"] > 0

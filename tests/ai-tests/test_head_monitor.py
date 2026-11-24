@@ -8,6 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from helpers import wait_until as _wait_for
 from test_session import _complete_calibration_and_rt_test, _make_session
 from test_tracking_quality import _run_valid_saccade, _session_in_first_trial
 
@@ -138,15 +139,6 @@ class FakeNeon:
 
     def close(self):
         self.closed = True
-
-
-def _wait_for(predicate, timeout=3.0):
-    end = time.time() + timeout
-    while time.time() < end:
-        if predicate():
-            return True
-        time.sleep(0.01)
-    return False
 
 
 def test_imu_samples_flow_calibration_sets_the_reference_and_summary_and_csv(tmp_path):
