@@ -1,0 +1,69 @@
+Saccade-phase analysis (session GOLD/<RUN>)
+=========================================================
+
+QUALITY  CHECK     gaze delay 18 ms · clock offset unknown · head unknown · 0 flashes lost to tracking
+RESULT   +0.47     suppression index, 95% CI +0.25 to +0.66 (accuracy fallback)
+AMOUNT   OK        24 saccade / 36 fixation flashes usable of 60 (need 12+ each for a threshold fit)
+
+DATA QUALITY
+------------
+  Saccades found: 60 (median duration 75 ms, amplitude 0.3 of the width)
+  Flashes: 60; correct 47/60 = 78%
+  No answer: 0 (scored as not correct, like a wrong answer; not excluded)
+  Excluded: 0
+  Excluded as not moving fast yet: 0 before saccade onset, 0 after
+
+INDEX FIT
+---------
+  Threshold contrast: no threshold fit
+  Note: psychometric index not computed: accuracy at ceiling or floor across the tested contrasts, so a threshold is not identified
+
+COMPANION NUMBERS
+-----------------
+  Extra to the RESULT line above, which stays the headline. Accuracies are stratified: equal weight over the contrasts with at least 5 saccade flashes.
+  Accuracy, fixation minus saccade: +46.1 percentage points (95% CI +27.8 to +65.9)
+    fixation 97% vs saccade 51% correct, contrasts 4/6/8%
+  Relative suppression S: 0.98 (95% CI +0.58 to +1.37); 0 = none, 1 = guessing during saccades while seen in fixation
+  Threshold ratio saccade / fixation: n/a (no threshold fit, see Index fit)
+  Time curve (descriptive): lowest point 46% correct at +60 ms from onset, fixation baseline 97% (n=36)
+
+ACCURACY BY FLASH TIME
+----------------------
+  Group                          Correct   Accuracy
+  In a saccade                   12 / 24        50%
+  Outside a saccade              35 / 36        97%
+  +/-50 ms of onset               9 / 18        50%
+  50-300 ms from onset           21 / 24        88%
+  Fixation control (>= 300 ms)   17 / 18        94%
+  In vs outside a saccade: Fisher p < 0.001
+  Near onset vs further away: Fisher p = 0.014
+
+  Onset-relative     n   Correct   Accuracy    95% CI
+  -200 to -150 ms   14   14 / 14       100%   78-100%
+  -150 to -100 ms    2     2 / 2       100%   34-100%
+  -100 to -50 ms     0         -          -         -
+  -50 to +0 ms       0         -          -         -
+  +0 to +50 ms      18    9 / 18        50%    29-71%
+  +50 to +100 ms     6     3 / 6        50%    19-81%
+  +100 to +150 ms    0         -          -         -
+  +150 to +200 ms    0         -          -         -
+
+ACCURACY BY CONTRAST
+--------------------
+  Contrast   All           +/-50 ms    50-300 ms
+      4%   14/20 = 70%   2/4 = 50%   7/10 = 70%
+      6%   18/20 = 90%   3/5 = 60%   8/8 = 100%
+      8%   15/20 = 75%   4/9 = 44%   6/6 = 100%
+
+SUPPRESSION INDEX BY LEG
+------------------------
+  no return jump in this run
+
+RETURN LATENCY
+--------------
+  no return jump in this run
+
+TECHNICAL DETAILS
+-----------------
+  Screen geometry: not recorded
+  Analysis thresholds: defaults (analysis_constants.py)

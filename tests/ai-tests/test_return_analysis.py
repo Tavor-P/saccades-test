@@ -144,20 +144,6 @@ def test_runs_without_a_logged_jump_take_the_old_path_unchanged(tmp_path):
     assert {r["flash_leg"] for r in csv.DictReader(result["csv"].open())} == {""}
 
 
-def test_analyze_writes_the_leg_report_and_json(tmp_path):
-    folder = sr.write_run(tmp_path, "SYN", START, n_trials=80, seed=7, return_jump=True)
-    result = an.analyze(f"{folder.parent.name}/{folder.name}", tmp_path)
-    report = result["report"]
-    assert "SUPPRESSION INDEX BY LEG" in report and "RETURN LATENCY" in report
-    assert report.index("DATA QUALITY") < report.index("SUPPRESSION INDEX BY LEG") < report.index("RETURN LATENCY") < report.index("TECHNICAL DETAILS")
-    saved = json.loads(result["suppression_json"].read_text())
-    assert set(saved["by_leg"]) == {"out", "return"} and saved["return_latency"]["n"] == 80
-    assert saved["index"] == result["summary"]["suppression"]["index"]
-    rows = list(csv.DictReader(result["csv"].open()))
-    assert {r["flash_leg"] for r in rows} == {"out", "return"}
-    assert all(r["saccade_latency_ms"] for r in rows if r["condition"] == fg.SACCADE)
-
-
 # -- participant pooling -------------------------------------------------------------------------------------------------
 
 
@@ -180,16 +166,6 @@ def test_return_jump_runs_pool_together_but_never_with_single_runs_or_other_trig
     rl = s["return_latency"]
     assert rl["n"] == 180 and rl["share_predictive"] == 0.0 and len(rl["return_flash_spread_sd_ms_by_run"]) == 3
     json.dumps(s)  # summary.json must stay serialisable
-
-
-def test_participant_report_and_summary_file_carry_the_leg_results(tmp_path):
-    for i in range(2):
-        sr.write_run(tmp_path, "P", START + i * DAY, n_trials=60, seed=20 + i, return_jump=True)
-    result = ap.analyze_participant("P", tmp_path, n_boot=100)
-    assert "run kind return_jump/arrival" in result.report and "SUPPRESSION INDEX BY LEG" in result.report and "no return jump" not in result.report
-    saved = json.loads(result.paths["summary"].read_text())
-    assert saved["schema_version"] == ap.SCHEMA_VERSION == 4 and list(saved) == list(ap.SUMMARY_KEYS)
-    assert saved["return_latency"]["n"] == 120
 
 
 # -- simulator ground truth ----------------------------------------------------------------------------------------------

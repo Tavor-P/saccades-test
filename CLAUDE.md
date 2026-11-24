@@ -53,6 +53,7 @@ backend. Participant/experimenter docs: [README.md](README.md).
 .\scripts\install-hooks.ps1                                     # once per clone: git config core.hooksPath .githooks (all worktrees share it)
 .\scripts\py.ps1 -m pytest -q                                   # full suite, parallel; one test or a debugger: -n0 tests/ai-tests/test_session.py::name -v (no worker start-up)
 .\scripts\py.ps1 -m pytest -q -m analysis                       # one area: session | analysis | dashboard | gaze | run | checks (map: tests/conftest.py AREAS)
+$env:GOLDEN_UPDATE=1; .\scripts\py.ps1 -m pytest -q tests/ai-tests/test_golden_analysis.py   # regenerate analysis golden files after an intended output change
 .\scripts\py.ps1 -m ruff check .                                # lint (ruff.toml: E F W I B UP); never `ruff format` (whole-repo reformat)
 .\scripts\py.ps1 -m mypy                                        # types for src/ + include/ (mypy.ini); both kept at 0 findings by tests/test_lint.py
 .\scripts\py.ps1 -m src.experiment.simulation                   # headless simulated trial timeline (AI-safe)
@@ -143,6 +144,7 @@ Paths are checked by `tests/test_docs.py` - keep them real.
 | `tests/ai-tests/find_bugs.py` | randomized campaign over the simulator; prints a repro command per finding |
 | `tests/ai-tests/invariants.py` | `check_session()`: contracts every simulated session must satisfy |
 | `tests/ai-tests/synthetic_runs.py` | `write_run()`: anonymous synthetic run folders for analysis/dashboard tests |
+| `tests/ai-tests/test_golden_analysis.py`, `tests/fixtures/golden/` | snapshot of the whole analysis output (report, suppression.json, flashes.csv, pooled summary.json + report) for a single and a return-jump synthetic run; floats rounded, run names/dates normalised; review the git diff after regenerating |
 | `tests/fixtures/neon_trace_sample.csv` | a real recorded Neon gaze trace |
 | `scripts/py.ps1` | interpreter wrapper |
 

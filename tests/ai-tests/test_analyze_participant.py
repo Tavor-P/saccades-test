@@ -96,34 +96,6 @@ def test_outputs_are_written_in_the_participant_analysis_folder(pooled):
     assert len(again.summary["runs_used"]) == 3
 
 
-def test_summary_json_schema_is_stable(pooled):
-    """summary.json is the input of the comparison module: changing these keys needs a schema_version bump."""
-    data, _ = pooled
-    s = json.loads((data / PID / "analysis" / "summary.json").read_text())
-    assert list(s) == [
-        "schema_version", "participant", "generated_at", "include_test",
-        "index", "ci", "method", "label", "threshold_saccade", "threshold_fixation", "slope", "notes",
-        "n_flashes", "correct", "by_contrast", "exclusion_reasons",
-        "contrasts_pct", "geometry", "runs_used", "runs_excluded", "flashes_csv", "analysis",
-        "run_kind", "by_leg", "return_latency", "analysis_thresholds", "companion", "timecourse",
-    ]
-    assert s["schema_version"] == 4 and s["participant"] == PID
-    assert s["run_kind"] == "single" and s["by_leg"] is None and s["return_latency"] is None
-    assert s["companion"]["accuracy_difference_pp"] is not None and s["timecourse"]["sigma_ms"] == 20.0  # schema 4
-    assert s["analysis_thresholds"]["timecourse_sigma_ms"] == 20.0
-    assert set(s["n_flashes"]) == {"saccade", "fixation", "excluded", "total"}
-    assert set(s["correct"]) == {"saccade", "fixation", "excluded"}
-    assert len(s["ci"]) == 2 and s["ci"][0] < s["index"] < s["ci"][1]
-    assert s["contrasts_pct"] == [4.0, 6.0, 8.0]
-    assert {(r["contrast_pct"], r["condition"]) for r in s["by_contrast"]} == {(c, k) for c in (4.0, 6.0, 8.0) for k in ("saccade", "fixation", "excluded")}
-    assert all(set(r) == {"contrast_pct", "condition", "n", "correct"} for r in s["by_contrast"])
-    run_keys = {"run", "run_key", "date", "mode", "n_saccade", "n_fixation", "n_excluded", "index", "ci", "method", "notes",
-                "contrasts_pct", "contrasts_from", "geometry", "gaze_latency_ms_median", "longest_gap_ms", "gaps_over_threshold", "run_kind"}
-    assert all(set(r) == run_keys for r in s["runs_used"])
-    assert all(set(r) == run_keys | {"reason"} for r in s["runs_excluded"])
-    assert s["runs_used"][0]["gaze_latency_ms_median"] == 17.5
-
-
 def test_a_damaged_run_is_listed_not_fatal_and_old_runs_use_the_shown_contrasts(tmp_path):
     sr.write_run(tmp_path, PID, START, n_trials=30, seed=1)
     sr.write_run(tmp_path, PID, START + DAY, n_trials=30, seed=2, record_contrasts=False)  # older run: no saccade_contrasts_pct

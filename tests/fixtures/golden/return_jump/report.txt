@@ -1,0 +1,77 @@
+Saccade-phase analysis (session GOLD/<RUN>)
+=========================================================
+
+QUALITY  CHECK     gaze delay 18 ms · clock offset unknown · head unknown · 0 flashes lost to tracking
+RESULT   +0.37     suppression index, 95% CI -0.17 to +0.68
+AMOUNT   OK        20 saccade / 40 fixation flashes usable of 60 (need 12+ each for a threshold fit)
+
+DATA QUALITY
+------------
+  Saccades found: 120 (median duration 75 ms, amplitude 0.3 of the width)
+  Flashes: 60; correct 48/60 = 80%
+  No answer: 0 (scored as not correct, like a wrong answer; not excluded)
+  Excluded: 0
+  Excluded as not moving fast yet: 0 before saccade onset, 0 after
+
+INDEX FIT
+---------
+  Threshold contrast: saccade 7.9%, fixation 5%
+  Note: 7% of bootstrap fits were unidentified and excluded from the CI
+
+COMPANION NUMBERS
+-----------------
+  Extra to the RESULT line above, which stays the headline. Accuracies are stratified: equal weight over the contrasts with at least 5 saccade flashes.
+  Accuracy, fixation minus saccade: +17.2 percentage points (95% CI -6.5 to +44.7)
+    fixation 85% vs saccade 67% correct, contrasts 4/8%
+  Relative suppression S: 0.5 (95% CI -0.21 to +1.19); 0 = none, 1 = guessing during saccades while seen in fixation
+  Threshold ratio saccade / fixation: log10 +0.2 (x1.58; 95% CI -0.07 to +0.5)
+  Contrast 6% left out of the stratified accuracies: fewer than 5 saccade flashes (saccade 4, fixation 16)
+  Time curve (descriptive): lowest point 61% correct at +65 ms from onset, fixation baseline 85% (n=40) [only 12.1 effective flashes: low]
+
+ACCURACY BY FLASH TIME
+----------------------
+  Group                          Correct   Accuracy
+  In a saccade                   14 / 20        70%
+  Outside a saccade              34 / 40        85%
+  +/-50 ms of onset              13 / 18        72%
+  50-300 ms from onset            9 / 12        75%
+  Fixation control (>= 300 ms)   26 / 30        87%
+  In vs outside a saccade: Fisher p = 0.189
+  Near onset vs further away: Fisher p = 1
+
+  Onset-relative     n   Correct   Accuracy   95% CI
+  -200 to -150 ms    9     7 / 9        78%   45-94%
+  -150 to -100 ms    0         -          -        -
+  -100 to -50 ms     0         -          -        -
+  -50 to +0 ms       0         -          -        -
+  +0 to +50 ms      18   13 / 18        72%   49-88%
+  +50 to +100 ms     2     1 / 2        50%    9-91%
+  +100 to +150 ms    0         -          -        -
+  +150 to +200 ms    0         -          -        -
+
+ACCURACY BY CONTRAST
+--------------------
+  Contrast   All           +/-50 ms    50-300 ms
+      4%   13/20 = 65%   3/6 = 50%   4/6 = 67%
+      6%   17/20 = 85%   3/4 = 75%   3/3 = 100%
+      8%   18/20 = 90%   7/8 = 88%   2/3 = 67%
+
+SUPPRESSION INDEX BY LEG
+------------------------
+  Leg      Flashes   In a saccade   Saccade   Fixation   Index           95% CI   Method
+  out           18              8     6 / 8    34 / 40   +0.1   -0.13 to +0.45   accuracy
+  return        42             12    8 / 12    34 / 40   +0.14   -0.17 to +0.46   psychometric
+  pooled        60             20   14 / 20    34 / 40   +0.37   -0.17 to +0.68   psychometric
+
+RETURN LATENCY
+--------------
+  Trials jumped: 60 (0 forced jumps left out, no return saccade found in 0)
+  n 60: median 153 ms, SD 2 ms (robust SD 2 ms), predictive 0%
+  Live classifier (return_reaction_ms): n 60, median 150 ms, SD 0 ms
+  Return flash spread SD (RETURN_FLASH_SPREAD_SD_MS): 40 ms; trigger arrival
+  CHECK: measured 2 ms vs set 40 ms: consider lowering RETURN_FLASH_SPREAD_SD_MS
+
+TECHNICAL DETAILS
+-----------------
+  Screen geometry: not recorded
+  Analysis thresholds: defaults (analysis_constants.py)
