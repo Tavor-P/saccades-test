@@ -18,6 +18,8 @@ import time
 import traceback
 
 from sim_tools import simulate  # first: also puts the project root on sys.path
+
+# isort: split
 from invariants import check_session
 
 # (low, high) ranges for random profiles - wide on purpose, bugs hide at the edges.

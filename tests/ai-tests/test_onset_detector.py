@@ -2,10 +2,10 @@
 
 import pytest
 
-from include.eye_tracking.types import GazeSample, GazeZone
 from include.experiment.constants import ONSET_BASELINE_WINDOW_MS, SACCADE_ONSET_DISPLACEMENT, SACCADE_ONSET_STABILITY_MS
-from src.eye_tracking.gaze_mapping import GazeMapper
+from include.eye_tracking.types import GazeSample, GazeZone
 from src.experiment.trial_mechanics import OnsetDetector
+from src.eye_tracking.gaze_mapping import GazeMapper
 
 DT = 0.005  # 200 Hz
 

@@ -7,11 +7,11 @@ import time
 from types import SimpleNamespace
 
 import pytest
-
 from helpers import wait_until as _wait_for
 from test_session import _complete_calibration_and_rt_test, _make_session
 from test_tracking_quality import _run_valid_saccade, _session_in_first_trial
 
+from include.experiment.constants import TRACKING_LOSS_WINDOW_MS
 from include.eye_tracking.constants import (
     HEAD_DRIFT_WARN_DEG,
     HEAD_MAX_SPEED_DPS,
@@ -19,7 +19,6 @@ from include.eye_tracking.constants import (
     HEAD_WARN_TEXT,
     NEON_SCENE_WIDTH,
 )
-from include.experiment.constants import TRACKING_LOSS_WINDOW_MS
 from src.experiment.simulation import ParticipantProfile, simulate_session
 from src.eye_tracking import neon_source
 from src.eye_tracking.head_monitor import HeadMotionTracker, angle_between_deg

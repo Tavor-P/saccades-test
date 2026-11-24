@@ -9,3 +9,5 @@ dist/
 build/
 .cache/
 *.log
+.ruff_cache/
+.mypy_cache/

@@ -3,6 +3,14 @@ answered with UP / DOWN. Placement in each session, key mapping, the above/below
 
 import pytest
 from synthetic_runs import write_old_column_run
+from test_session import (
+    _complete_calibration_and_rt_test,
+    _enter_trial_active,
+    _make_session,
+    _set_single_trial,
+)
+from test_tutorial_session import _complete_calibration, _reach_practice, _start_attempt
+from test_tutorial_session import _make_session as _make_tutorial
 
 from include.experiment.constants import (
     CROSS_POSITION,
@@ -13,21 +21,12 @@ from include.experiment.constants import (
 )
 from include.experiment.types import Side, Target
 from src.dashboard import data_access
-from src.experiment.logger import read_trials
 from src.experiment.geometry import Geometry
-from src.experiment.scoring import score_outcome
-from src.experiment.tutorial_session import TutorialSession
+from src.experiment.logger import read_trials
 from src.experiment.pausable_clock import PausableClock
+from src.experiment.scoring import score_outcome
 from src.experiment.trial_mechanics import line_position, random_side
-from test_session import (
-    _complete_calibration_and_rt_test,
-    _enter_trial_active,
-    _make_session,
-    _set_single_trial,
-)
-from test_tutorial_session import _complete_calibration
-from test_tutorial_session import _make_session as _make_tutorial
-from test_tutorial_session import _reach_practice, _start_attempt
+from src.experiment.tutorial_session import TutorialSession
 
 pytestmark = pytest.mark.usefixtures("no_flash_jitter")
 

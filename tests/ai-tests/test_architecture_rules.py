@@ -153,8 +153,8 @@ def test_backends_are_imported_lazily():
         ("src.experiment.simulation", {"PySpin", "mediapipe", "psychopy", "pyglet", "cv2"}),
     ]:
         code = (
-            "import sys, importlib; importlib.import_module(%r); "
-            "print(sorted(m for m in %r if m in sys.modules))" % (module, sorted(forbidden))
+            f"import sys, importlib; importlib.import_module({module!r}); "
+            f"print(sorted(m for m in {sorted(forbidden)!r} if m in sys.modules))"
         )
         out = subprocess.run([sys.executable, "-c", code], cwd=ROOT, capture_output=True, text=True)
         assert out.returncode == 0, (module, out.stderr[-500:])

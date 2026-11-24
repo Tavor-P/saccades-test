@@ -3,12 +3,12 @@ from types import SimpleNamespace
 
 import pytest
 
+from include.experiment.constants import SACCADE_ONSET_STABILITY_MS
 from include.eye_tracking.constants import NEON_SCENE_WIDTH, NEON_STALE_TIMEOUT_S
 from include.eye_tracking.types import GazeZone
-from include.experiment.constants import SACCADE_ONSET_STABILITY_MS
+from src.experiment.trial_mechanics import OnsetDetector
 from src.eye_tracking.gaze_trace import GazeTraceWriter, ReplayGazeSource, TraceRow, load_trace
 from src.eye_tracking.neon_source import NeonGazeSource
-from src.experiment.trial_mechanics import OnsetDetector
 
 SAMPLE_TRACE = Path(__file__).parent / "fixtures" / "neon_trace_sample.csv"
 

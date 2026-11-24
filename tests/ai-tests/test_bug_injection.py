@@ -67,6 +67,7 @@ def test_catches_onset_detection_reporting_before_the_debounce(monkeypatch):
 def test_would_have_caught_the_stale_stream_bug(monkeypatch):
     """Bug: when the Neon stream died, latest_sample() kept returning the last gaze as valid."""
     import test_neon_source
+
     from src.eye_tracking import neon_source
 
     monkeypatch.setattr(neon_source, "NEON_STALE_TIMEOUT_S", 1e9)  # = no staleness detection
@@ -77,6 +78,7 @@ def test_would_have_caught_the_stale_stream_bug(monkeypatch):
 def test_would_have_caught_the_clock_offset_sign_bug(monkeypatch):
     """Bug: latency came out ~400 ms because the clock offset was applied with the wrong sign."""
     import test_neon_source
+
     from src.eye_tracking.neon_source import NeonGazeSource
 
     original = NeonGazeSource._estimate_clock_offset

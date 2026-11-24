@@ -6,8 +6,8 @@ import os
 import shutil
 
 import pytest
-
 import synthetic_runs as sr
+
 from src.dashboard import app as app_module
 from src.dashboard import data_access, results
 from src.experiment import analyze_participant as ap

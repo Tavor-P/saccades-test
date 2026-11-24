@@ -4,22 +4,6 @@ timing fields and the richer _meta.json (timing-core work). Reuses test_session'
 import json
 
 import pytest
-
-from include.eye_tracking.types import GazeSample, GazeZone
-from include.experiment.constants import (
-    FLASH_SPREAD_SD_MS,
-    GAZE_LANDING_STABILITY_MS,
-    GAZE_LATENCY_MAX_MS,
-    RESPONSE_WINDOW_MS,
-    SACCADE_TIMEOUT_MS,
-)
-from include.experiment.types import Side, Target, TrialResult
-from src.experiment import logger as logger_module
-from src.experiment.logger import ResultLogger
-from src.experiment.pausable_clock import PausableClock
-from src.experiment.session import ExperimentSession
-from src.experiment.session_config import SessionConfig
-from src.experiment.trial_mechanics import RollingReactionTime, robust_average_ms
 from test_session import (
     _complete_calibration,
     _complete_calibration_and_rt_test,
@@ -31,6 +15,21 @@ from test_session import (
     _trigger_onset_and_landing,
 )
 
+from include.experiment.constants import (
+    FLASH_SPREAD_SD_MS,
+    GAZE_LANDING_STABILITY_MS,
+    GAZE_LATENCY_MAX_MS,
+    RESPONSE_WINDOW_MS,
+    SACCADE_TIMEOUT_MS,
+)
+from include.experiment.types import Side, Target, TrialResult
+from include.eye_tracking.types import GazeSample, GazeZone
+from src.experiment import logger as logger_module
+from src.experiment.logger import ResultLogger
+from src.experiment.pausable_clock import PausableClock
+from src.experiment.session import ExperimentSession
+from src.experiment.session_config import SessionConfig
+from src.experiment.trial_mechanics import RollingReactionTime, robust_average_ms
 
 pytestmark = pytest.mark.usefixtures("no_flash_jitter")
 

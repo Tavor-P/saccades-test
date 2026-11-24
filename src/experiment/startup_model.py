@@ -4,7 +4,6 @@ Everything here is unit-tested without a display."""
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 
-from include.eye_tracking.constants import NEON_DEVICE_ADDRESS
 from include.experiment.constants import (
     FLASH_SPREAD_SD_MS,
     HARDWARE_CONTRAST_FLOOR,
@@ -13,8 +12,8 @@ from include.experiment.constants import (
     SCREEN_HEIGHT_CM,
     VIEWING_DISTANCE_CM,
 )
+from include.eye_tracking.constants import NEON_DEVICE_ADDRESS
 from src.experiment import session_files
-from src.eye_tracking.neon_address import parse_address
 from src.experiment.geometry import Geometry
 from src.experiment.settings import (
     DATA_DIR,
@@ -23,6 +22,7 @@ from src.experiment.settings import (
     MAX_SACCADE_CONTRAST_PERCENT,
     load_last_startup,
 )
+from src.eye_tracking.neon_address import parse_address
 
 MODE_REAL = "Real"
 MODE_TEST = "Test"

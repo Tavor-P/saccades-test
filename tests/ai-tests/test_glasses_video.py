@@ -6,8 +6,8 @@ import json
 import numpy as np
 import pytest
 
-from src.eye_tracking.neon_source import NeonGazeSource
 from src.experiment import glasses_video as gv
+from src.eye_tracking.neon_source import NeonGazeSource
 
 FPS = 30.0
 PC_OFFSET_S = 1_700_000_000.123  # PC unix seconds = video seconds + this

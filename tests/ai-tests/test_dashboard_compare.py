@@ -6,9 +6,9 @@ import json
 import shutil
 
 import pytest
+import synthetic_runs as sr
 from markupsafe import escape
 
-import synthetic_runs as sr
 from src.dashboard import app as app_module
 from src.dashboard import comparison, data_access, results
 from src.experiment import analyze_participant as ap

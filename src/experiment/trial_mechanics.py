@@ -3,11 +3,10 @@
 import random
 import statistics
 from collections import deque
+from collections.abc import Sequence
 from fractions import Fraction
-from typing import Generic, Sequence, TypeVar
+from typing import Generic, TypeVar
 
-from include.eye_tracking.constants import CENTER_POSITION, LEFT_POSITION, RIGHT_POSITION
-from include.eye_tracking.types import GazeZone
 from include.experiment.constants import (
     MAD_TO_SD_FACTOR,
     ONSET_BASELINE_NEAR_SOURCE,
@@ -21,9 +20,10 @@ from include.experiment.constants import (
     SACCADE_ONSET_STABILITY_MS,
 )
 from include.experiment.types import Side, Target
+from include.eye_tracking.constants import CENTER_POSITION, LEFT_POSITION, RIGHT_POSITION
+from include.eye_tracking.types import GazeZone
 from src.experiment.geometry import Geometry
-from src.timebase import ms_to_s, s_to_ms
-
+from src.timebase import ms_to_s
 
 
 def zone_for(target: Target) -> GazeZone:

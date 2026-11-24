@@ -4,7 +4,6 @@ tracking_ok=False and excluded from analysis (scoring.py)."""
 import json
 
 import pytest
-
 from test_session import (  # the session-driving helpers live with the session tests
     _complete_calibration_and_rt_test,
     _enter_trial_active,
@@ -12,15 +11,14 @@ from test_session import (  # the session-driving helpers live with the session 
     _set_single_trial,
 )
 
-from include.eye_tracking.types import GazeZone
 from include.experiment.constants import (
     GAZE_LANDING_STABILITY_MS,
     SACCADE_ONSET_STABILITY_MS,
     TRACKING_LOSS_WINDOW_MS,
 )
 from include.experiment.types import Side, Target, TrialResult
+from include.eye_tracking.types import GazeZone
 from src.experiment.scoring import is_valid_for_saccadic_analysis
-
 
 pytestmark = pytest.mark.usefixtures("no_flash_jitter")
 
@@ -87,8 +85,8 @@ def test_validity_gate_combines_both_checks():
 
 def test_logger_writes_and_dashboard_reads_tracking_ok(tmp_path, monkeypatch):
     from src.dashboard import data_access
-    from src.experiment.logger import read_trials
     from src.experiment import logger as logger_module
+    from src.experiment.logger import read_trials
 
     monkeypatch.setattr(logger_module, "DATA_DIR", tmp_path)
     log = logger_module.ResultLogger("p1")

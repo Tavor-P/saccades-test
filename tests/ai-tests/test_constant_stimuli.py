@@ -3,19 +3,6 @@ bell-curve flash times centred on the average RT (cut to the flash window), a ra
 +/-TIMING_JITTER_MS bounce on the control flashes, and a fixed trial count."""
 
 import pytest
-
-from include.experiment.constants import (
-    SACCADE_FIXED_CONTRASTS,
-    SACCADE_FIXED_TRIALS_REAL,
-    SACCADE_FIXED_TRIALS_TEST,
-    CONTROL_OFFSETS_MS,
-    FLASH_SPREAD_SD_MS,
-    FLASH_WINDOW_MAX_MS,
-    FLASH_WINDOW_MIN_MS,
-    TIMING_JITTER_MS,
-    TIMING_OFFSETS_MS,
-)
-from src.experiment.trial_mechanics import spread_flash_delay_ms
 from test_session import (
     _complete_calibration_and_rt_test,
     _enter_trial_active,
@@ -23,6 +10,19 @@ from test_session import (
     _make_session,
     _set_single_trial,
 )
+
+from include.experiment.constants import (
+    CONTROL_OFFSETS_MS,
+    FLASH_SPREAD_SD_MS,
+    FLASH_WINDOW_MAX_MS,
+    FLASH_WINDOW_MIN_MS,
+    SACCADE_FIXED_CONTRASTS,
+    SACCADE_FIXED_TRIALS_REAL,
+    SACCADE_FIXED_TRIALS_TEST,
+    TIMING_JITTER_MS,
+    TIMING_OFFSETS_MS,
+)
+from src.experiment.trial_mechanics import spread_flash_delay_ms
 
 
 def test_the_shipped_defaults_use_fixed_contrasts_and_every_level_is_drawn(fake_gaze, fake_time):

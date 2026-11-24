@@ -2,12 +2,12 @@ import time
 from types import SimpleNamespace
 
 import pytest
-
 from helpers import wait_until
+
 from include.eye_tracking.constants import NEON_SCENE_WIDTH
 from include.eye_tracking.types import GazeZone
-from src.eye_tracking.gaze_factory import build_gaze_source
 from src import timebase
+from src.eye_tracking.gaze_factory import build_gaze_source
 from src.eye_tracking.neon_source import NeonGazeSource
 
 

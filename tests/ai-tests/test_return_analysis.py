@@ -7,9 +7,9 @@ import json
 
 import numpy as np
 import pytest
-
 import sim_runs
 import synthetic_runs as sr
+
 from src.experiment import analyze_participant as ap
 from src.experiment import analyze_session as an
 from src.experiment import flash_gates as fg

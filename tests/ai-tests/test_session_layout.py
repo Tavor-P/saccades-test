@@ -5,17 +5,16 @@ import json
 from pathlib import Path
 
 import pytest
+from synthetic_runs import write_old_column_run
+from test_analyze_session import CLOCK_OFFSET_S, ONSETS, _trace, _write_session
 
-from include.eye_tracking.constants import NEON_SCENE_WIDTH
 from include.experiment.types import Side, Target, TrialResult
+from include.eye_tracking.constants import NEON_SCENE_WIDTH
 from src.dashboard import data_access
-from src.experiment.logger import read_trials
 from src.experiment import analyze_session as an
 from src.experiment import logger as logger_module
 from src.experiment import session_files
-from src.experiment.logger import ResultLogger
-from synthetic_runs import write_old_column_run
-from test_analyze_session import CLOCK_OFFSET_S, ONSETS, _trace, _write_session
+from src.experiment.logger import ResultLogger, read_trials
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "old_columns"  # trials.csv with the grating-era column names and 'vertical'/'horizontal' sides
 

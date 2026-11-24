@@ -13,6 +13,7 @@ import dataclasses
 import json
 
 from sim_tools import SCENARIOS, parse_assignments, parse_sweep, run, sweep  # also puts the project root on sys.path
+
 from src.experiment.simulation import ParticipantProfile, print_trial_timeline
 
 

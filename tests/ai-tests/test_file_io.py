@@ -6,13 +6,13 @@ import json
 import numpy as np
 import pytest
 from synthetic_runs import write_old_column_run
+from test_analyze_session import ONSETS, _write_session
 
 from src.dashboard import app as app_module
 from src.dashboard import data_access
 from src.experiment import analyze_session as an
 from src.experiment import session_files
 from src.experiment import settings as settings_module
-from test_analyze_session import ONSETS, _write_session
 
 # -- read_json ------------------------------------------------------------------------------------
 
@@ -116,8 +116,8 @@ def test_read_json_reads_utf8_and_cp1252_files(tmp_path):
 
 
 def test_an_old_cp1252_trials_file_and_gaze_trace_still_load(tmp_path):
-    from src.eye_tracking.gaze_trace import load_trace
     from src.experiment.logger import read_trial_rows
+    from src.eye_tracking.gaze_trace import load_trace
 
     folder = write_old_column_run(tmp_path, 1700000700, [], ["trial_index"], participant="Ana María")
     (folder / "trials.csv").write_bytes("trial_index,phase,grating_shown,contrast,note\r\n0,saccade,True,0.05,año\r\n".encode("cp1252"))
@@ -153,4 +153,4 @@ def test_non_ascii_participant_ids_notes_and_group_labels_round_trip(tmp_path, m
 
     flashes = an.write_flash_rows(tmp_path / "flashes.csv", placed, gates, extra={"run": ["Ana_María/2026-11-24_10-00-00"]})
     assert list(textio.read_csv(flashes))[0]["run"] == "Ana_María/2026-11-24_10-00-00"
-    assert "Ana_María".encode("utf-8") in flashes.read_bytes()  # written as UTF-8 whatever the Windows locale is
+    assert "Ana_María".encode() in flashes.read_bytes()  # written as UTF-8 whatever the Windows locale is

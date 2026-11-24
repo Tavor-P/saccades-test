@@ -11,7 +11,6 @@ import matplotlib.pyplot as plt
 from src.experiment.saccade_detection import Placed, Saccade
 from src.experiment.suppression_stats import wilson
 
-
 # -- plot ----------------------------------------------------------------------------------------
 
 

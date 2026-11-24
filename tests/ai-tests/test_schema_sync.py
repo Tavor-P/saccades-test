@@ -8,9 +8,8 @@ import pytest
 
 from include.experiment.types import Side, Target, TrialResult
 from src.dashboard import data_access
-from src.experiment.logger import read_trials
 from src.experiment import logger as logger_module
-from src.experiment.logger import DROPPED_FROM_CSV, FIELDNAMES, TRIAL_COLUMNS, ResultLogger
+from src.experiment.logger import DROPPED_FROM_CSV, FIELDNAMES, TRIAL_COLUMNS, ResultLogger, read_trials
 
 
 def _full_result() -> TrialResult:
