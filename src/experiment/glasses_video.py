@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Iterable, Sequence
 
 import numpy as np
+from src.timebase import ms_to_s, s_to_ms
 
 # The flash pattern (shown by run_experiment.run_sync_flashes): n flashes, each ON for SYNC_FLASH_ON_S then dark for SYNC_FLASH_GAP_S.
 SYNC_FLASH_COUNT = 3
@@ -100,7 +101,7 @@ def read_video_scores(path: Path) -> tuple[list[float], list[float]]:
             if not ok:
                 break
             msec = capture.get(cv2.CAP_PROP_POS_MSEC)
-            times.append(msec / 1000 if msec and msec > 0 else index / fps)  # CAP_PROP_POS_MSEC is 0 on some containers
+            times.append(ms_to_s(msec) if msec and msec > 0 else index / fps)  # CAP_PROP_POS_MSEC is 0 on some containers
             scores.append(green_fraction(frame))
             index += 1
     finally:
@@ -142,7 +143,7 @@ def compute_offset(video_flash_times_s: Iterable[float], pc_flash_unix_ms: Itera
     anchor and the one that explains the most PC flashes within `tolerance_s` wins. Status "ok" needs >= 3 matched flashes and
     a worst residual under 100 ms (the video's frame spacing alone is ~33 ms), else "check manually"."""
     video = sorted(float(v) for v in video_flash_times_s)
-    pc = sorted(float(p) / 1000 for p in pc_flash_unix_ms)
+    pc = sorted(ms_to_s(float(p)) for p in pc_flash_unix_ms)
     result = {"offset_s": None, "matched": 0, "pc_flashes": len(pc), "video_events": len(video), "pairs": [], "residual_rms_ms": None, "residual_max_ms": None, "drift_ms_per_min": None, "status": "check manually", "notes": []}
     if not pc:
         result["notes"].append("session.json has no logged sync flashes (recording or flash step did not run)")
@@ -174,18 +175,18 @@ def compute_offset(video_flash_times_s: Iterable[float], pc_flash_unix_ms: Itera
         return result
 
     offset = float(np.median([p - v for v, p in best]))  # refined over all matches
-    residuals = np.asarray([(p - v - offset) * 1000 for v, p in best])
+    residuals = np.asarray([s_to_ms(p - v - offset) for v, p in best])
     result.update(
         offset_s=offset,
         matched=len(best),
-        pairs=[{"video_s": round(v, 4), "pc_unix_ms": round(p * 1000, 1)} for v, p in best],
+        pairs=[{"video_s": round(v, 4), "pc_unix_ms": round(s_to_ms(p), 1)} for v, p in best],
         residual_rms_ms=round(float(np.sqrt(np.mean(residuals**2))), 1),
         residual_max_ms=round(float(np.abs(residuals).max()), 1),
     )
     span_s = best[-1][0] - best[0][0]
     if len(best) >= 4 and span_s > 30:  # start flashes and the end flash: how far the two clocks drifted apart
         slope = float(np.polyfit([v for v, _ in best], [p - v for v, p in best], 1)[0])
-        result["drift_ms_per_min"] = round(slope * 60 * 1000, 3)
+        result["drift_ms_per_min"] = round(s_to_ms(slope * 60), 3)
     if len(best) < OK_MIN_MATCHED:
         result["notes"].append(f"only {len(best)} of {len(pc)} logged flashes found in the video")
     if result["residual_max_ms"] > OK_MAX_RESIDUAL_MS:
@@ -197,4 +198,4 @@ def compute_offset(video_flash_times_s: Iterable[float], pc_flash_unix_ms: Itera
 
 def video_time_for_pc_unix_ms(pc_unix_ms: float, offset_s: float) -> float:
     """Where, in the video (seconds from its start), a PC wall-clock time falls."""
-    return pc_unix_ms / 1000 - offset_s
+    return ms_to_s(pc_unix_ms) - offset_s

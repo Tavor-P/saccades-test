@@ -11,6 +11,7 @@ from include.experiment.analysis_constants import OUT_SEARCH_S, RETURN_MIN_AMPLI
 from src.experiment.flash_gates import FIXATION, SACCADE, classify_leg_flash
 from src.experiment.saccade_detection import Flash, Placed, Saccade
 from src.experiment.suppression_stats import suppression_index
+from src.timebase import ms_to_s, s_to_ms
 
 
 # -- return-jump runs: the two saccades of each trial ----------------------------------------------
@@ -72,8 +73,8 @@ def place_leg_flashes(flashes: list[Flash], trials: list[TrialSaccades], flash_d
     placed = []
     for f, tr in zip(flashes, trials):
         s = tr.of(f.leg)
-        when = f.time + flash_delay_ms / 1000
-        placed.append(Placed(f, None, False) if s is None else Placed(f, 1000 * (when - s.onset), s.onset <= when <= s.offset))
+        when = f.time + ms_to_s(flash_delay_ms)
+        placed.append(Placed(f, None, False) if s is None else Placed(f, s_to_ms(when - s.onset), s.onset <= when <= s.offset))
     return placed
 
 
@@ -87,7 +88,7 @@ def classify_leg_flashes(placed: list[Placed], trials: list[TrialSaccades], sacc
     for p, tr in zip(placed, trials):
         leg = "return" if p.flash.leg == "return" else "out"
         anchor = p.flash.jump if leg == "return" else p.flash.go_cue
-        out.append(classify_leg_flash(p.flash.time + flash_delay_ms / 1000, saccades, t, x, leg, tr.of(leg), anchor, medians[leg], p.flash.jump_forced))
+        out.append(classify_leg_flash(p.flash.time + ms_to_s(flash_delay_ms), saccades, t, x, leg, tr.of(leg), anchor, medians[leg], p.flash.jump_forced))
     return out
 
 
@@ -119,18 +120,18 @@ def return_latency_stats(flashes: list[Flash], trials: list[TrialSaccades], sett
     is the flash time minus its SCHEDULED delay, so the anchor can sit up to one frame late (latencies read up to ~17 ms short)."""
     jumped = [(f, tr) for f, tr in zip(flashes, trials) if f.jump is not None]
     usable = [(f, tr) for f, tr in jumped if not f.jump_forced]
-    lat = np.asarray([1000 * (tr.back.onset - f.jump) for f, tr in usable if tr.back is not None])
+    latencies_ms = np.asarray([s_to_ms(tr.back.onset - f.jump) for f, tr in usable if tr.back is not None])
     live = np.asarray([f.return_reaction_ms for f, _ in usable if f.return_reaction_ms is not None])
     s = settings or {}
     return {
         "trials_jumped": len(jumped),
         "forced_jumps": len(jumped) - len(usable),
         "no_return_found": sum(tr.back is None for _, tr in usable),
-        "n": int(len(lat)),
-        "median_ms": float(np.median(lat)) if len(lat) else None,
-        "sd_ms": float(np.std(lat, ddof=1)) if len(lat) >= 2 else None,
-        "robust_sd_ms": _robust_sd(lat) if len(lat) >= 2 else None,
-        "share_predictive": float(np.mean(lat < 0)) if len(lat) else None,
+        "n": int(len(latencies_ms)),
+        "median_ms": float(np.median(latencies_ms)) if len(latencies_ms) else None,
+        "sd_ms": float(np.std(latencies_ms, ddof=1)) if len(latencies_ms) >= 2 else None,
+        "robust_sd_ms": _robust_sd(latencies_ms) if len(latencies_ms) >= 2 else None,
+        "share_predictive": float(np.mean(latencies_ms < 0)) if len(latencies_ms) else None,
         "live_n": int(len(live)),
         "live_median_ms": float(np.median(live)) if len(live) else None,
         "live_sd_ms": float(np.std(live, ddof=1)) if len(live) >= 2 else None,

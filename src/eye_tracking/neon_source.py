@@ -234,8 +234,8 @@ class NeonGazeSource(GazeSource):
         stamp = getattr(datum, "timestamp_unix_seconds", None)
         offset_ms = self._clock_offset_ms
         if offset_ms is not None and stamp is not None and not math.isnan(stamp):
-            capture = self._anchor.to_perf(stamp + offset_ms / 1000)
-            if 0.0 <= arrival - capture <= NEON_MAX_PLAUSIBLE_LATENCY_MS / 1000:
+            capture = self._anchor.to_perf(stamp + timebase.ms_to_s(offset_ms))
+            if 0.0 <= arrival - capture <= timebase.ms_to_s(NEON_MAX_PLAUSIBLE_LATENCY_MS):
                 return capture, stamp
         return arrival, stamp
 
@@ -365,7 +365,7 @@ class NeonGazeSource(GazeSource):
         """Remembers the offset now in force and the phone-clock time (PC unix time minus the offset) it was measured at: the two clocks drift
         apart (~1 ms/min), so the post-hoc analysis interpolates over this history instead of applying the final offset to the whole trace.
         Caller holds self._lock (or is single-threaded)."""
-        self._offset_history.append({"phone_unix_s": round(timebase.unix_now() - self._clock_offset_ms / 1000, 3), "offset_ms": round(self._clock_offset_ms, 3)})
+        self._offset_history.append({"phone_unix_s": round(timebase.unix_now() - timebase.ms_to_s(self._clock_offset_ms), 3), "offset_ms": round(self._clock_offset_ms, 3)})
 
     def _start_offset_thread(self) -> None:
         if NEON_CLOCK_REESTIMATE_S and self._clock_offset_ms is not None:
@@ -433,8 +433,8 @@ class NeonGazeSource(GazeSource):
         samples_since() cursors never skip a sample. Caller holds self._lock."""
         capture = arrival
         if self._clock_offset_ms is not None and device_timestamp_s is not None and not math.isnan(device_timestamp_s):
-            raw = self._anchor.to_perf(device_timestamp_s + self._clock_offset_ms / 1000)
-            latency_ms = (arrival - raw) * 1000
+            raw = self._anchor.to_perf(device_timestamp_s + timebase.ms_to_s(self._clock_offset_ms))
+            latency_ms = timebase.s_to_ms(arrival - raw)
             self._recent_latencies_ms.append(latency_ms)
             self._latencies_ms.append(latency_ms)
             if self._samples % 20 == 0 or self._latency_median_ms is None:
@@ -479,7 +479,7 @@ class NeonGazeSource(GazeSource):
         if not valid:
             self._lost_samples += 1
         if self._last_arrival is not None:
-            gap_ms = (now - self._last_arrival) * 1000
+            gap_ms = timebase.s_to_ms(now - self._last_arrival)
             if gap_ms > NEON_GAP_THRESHOLD_MS:
                 self._gaps += 1
             self._longest_gap_ms = max(self._longest_gap_ms, gap_ms)

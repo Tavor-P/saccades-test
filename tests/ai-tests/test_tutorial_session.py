@@ -252,7 +252,7 @@ def test_practice_waits_for_space_swaps_500_to_1000_ms_later_flashes_clearly_and
 
     session.on_space()
     assert session.render_state()["hud"]["phase"] == "PRACTICE_FOREPERIOD"
-    assert FOREPERIOD_MIN_MS / 1000 <= session._foreperiod_duration <= FOREPERIOD_MAX_MS / 1000
+    assert FOREPERIOD_MIN_MS / 1000 <= session._foreperiod_duration_s <= FOREPERIOD_MAX_MS / 1000
     fake_time(FOREPERIOD_MAX_MS / 1000 + 0.01)
     session.tick()
     assert session.render_state()["hud"]["phase"] == "PRACTICE_ACTIVE"

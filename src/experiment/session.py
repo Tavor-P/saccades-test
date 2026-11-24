@@ -50,6 +50,7 @@ from src.experiment.space_input import SpaceTally
 from src.experiment.trial_factory import build_saccade_sequence, generate_next_saccade_trial
 from src.experiment.trial_legs import SampleFeed, TrialLegs, clamped_gaze_latency_ms, timestamp_latency_s
 from src.experiment.trial_record import saccade_trial_result
+from src.timebase import ms_to_s, s_to_ms
 from src.experiment.trial_mechanics import (
     OnsetDetector,
     RollingReactionTime,
@@ -242,7 +243,7 @@ class ExperimentSession:
         self._answer_side: Side | None = None
         self._response_time_ms: float | None = None
         self._foreperiod_start = 0.0
-        self._foreperiod_duration = 0.0
+        self._foreperiod_duration_s = 0.0
         self._flash_leg: str | None = None  # 'out' | 'return': which leg this trial's flash goes on ('out' with return jump off)
 
     # Read-only views of the trial's legs (tests and the rendering code read these names).
@@ -344,7 +345,7 @@ class ExperimentSession:
         if now <= self._response_deadline:
             self._responded = True
             self._answer_side = answer
-            self._response_time_ms = (now - self._flash_shown_at) * 1000 if self._flash_shown_at else None
+            self._response_time_ms = s_to_ms(now - self._flash_shown_at) if self._flash_shown_at else None
 
     def _begin_after_calibration(self) -> None:
         """Measures the participant's reaction time first, unless the tutorial already did (seeded
@@ -367,14 +368,14 @@ class ExperimentSession:
     def _start_foreperiod_timer(self, phase: Phase) -> None:
         self._phase = phase
         self._foreperiod_start = self._clock.now()
-        self._foreperiod_duration = random.uniform(FOREPERIOD_MIN_MS, FOREPERIOD_MAX_MS) / 1000
+        self._foreperiod_duration_s = ms_to_s(random.uniform(FOREPERIOD_MIN_MS, FOREPERIOD_MAX_MS))
 
     def _start_rt_test_foreperiod(self) -> None:
         self._start_foreperiod_timer(Phase.RT_TEST_FOREPERIOD)
         self._feed.latency_s = timestamp_latency_s(self._gaze, self.gaze_latency_ms)
 
     def _tick_rt_test_foreperiod(self) -> None:
-        if self._clock.now() - self._foreperiod_start >= self._foreperiod_duration:
+        if self._clock.now() - self._foreperiod_start >= self._foreperiod_duration_s:
             self._dot_visible = False
             self._cross_visible = True
             self._phase = Phase.RT_TEST_ACTIVE
@@ -393,10 +394,10 @@ class ExperimentSession:
             if sample_t < self._rt_test_start_time:
                 continue  # captured before the go-cue (it just arrived after it): cannot be a reaction to it
             if self._rt_test_onset_detector.update(sample, sample_t):
-                self._finish_rt_test_attempt((self._rt_test_onset_detector.since - self._rt_test_start_time) * 1000)
+                self._finish_rt_test_attempt(s_to_ms(self._rt_test_onset_detector.since - self._rt_test_start_time))
                 return
 
-        if now - self._rt_test_start_time >= SACCADE_TIMEOUT_MS / 1000:
+        if now - self._rt_test_start_time >= ms_to_s(SACCADE_TIMEOUT_MS):
             self._finish_rt_test_attempt(None)
 
     def _finish_rt_test_attempt(self, reaction_time_ms: float | None) -> None:
@@ -540,7 +541,7 @@ class ExperimentSession:
             return
         self._trial_avg_rt_ms = self._avg_reaction_time_ms
         self._trial_scheduled_delay_ms = self._flash_delay_ms(trial, self._avg_reaction_time_ms)
-        self._flash_scheduled_at = self._trial_start_time + self._trial_scheduled_delay_ms / 1000
+        self._flash_scheduled_at = self._trial_start_time + ms_to_s(self._trial_scheduled_delay_ms)
 
     def _flash_delay_ms(self, trial: TrialSpec, average_ms: float, sd_ms: float | None = None) -> float:
         """Delay (ms) from the leg's start (go cue or jump back) to the flash. A TIMING_OFFSETS_MS label picks a slice of a
@@ -572,7 +573,7 @@ class ExperimentSession:
         self._deliver_space_ahead()
 
     def _tick_foreperiod(self) -> None:
-        if self._clock.now() - self._foreperiod_start >= self._foreperiod_duration:
+        if self._clock.now() - self._foreperiod_start >= self._foreperiod_duration_s:
             self._reveal_target_and_start_trial()
 
     def _tick_trial_active(self) -> None:
@@ -595,7 +596,7 @@ class ExperimentSession:
             self._response_window_open = False
 
         if any(
-            not s.face_found and abs(s_t - self._flash_scheduled_at) <= TRACKING_LOSS_WINDOW_MS / 1000
+            not s.face_found and abs(s_t - self._flash_scheduled_at) <= ms_to_s(TRACKING_LOSS_WINDOW_MS)
             for s, s_t in new_samples
         ):
             self._tracking_lost_near_flash = True
@@ -638,7 +639,7 @@ class ExperimentSession:
         if just_landed and self._flash_decided and not self._responded:
             # The answer is asked once the eye is back: the full window counts from the return landing.
             self._response_window_open = True
-            self._response_deadline = max(self._response_deadline, now + RESPONSE_WINDOW_MS / 1000)
+            self._response_deadline = max(self._response_deadline, now + ms_to_s(RESPONSE_WINDOW_MS))
 
         if legs.return_timed_out(now):
             self._finish_trial()
@@ -662,8 +663,8 @@ class ExperimentSession:
                 delay_ms = max(0.0, self._flash_delay_ms(trial, average_ms, self._return_flash_sd_ms))
             self._trial_avg_rt_ms = average_ms
             # Still flash minus GO CUE (analyze_session derives the go cue from it); the jump is in jump_back_ms_after_go_cue.
-            self._trial_scheduled_delay_ms = (now - self._trial_start_time) * 1000 + delay_ms
-            self._flash_scheduled_at = now + delay_ms / 1000
+            self._trial_scheduled_delay_ms = s_to_ms(now - self._trial_start_time) + delay_ms
+            self._flash_scheduled_at = now + ms_to_s(delay_ms)
 
     def _head_tracker(self):
         """The source's head-movement monitor (Neon IMU), or None when the source has none / it switched itself off."""
@@ -675,7 +676,7 @@ class ExperimentSession:
         tracker = self._head_tracker()
         if tracker is None or not self._line_actually_shown:
             return False
-        window = TRACKING_LOSS_WINDOW_MS / 1000
+        window = ms_to_s(TRACKING_LOSS_WINDOW_MS)
         return tracker.speed_spike_between(self._flash_scheduled_at - window, self._flash_scheduled_at + window, HEAD_MAX_SPEED_DPS)
 
     def pop_head_warning(self) -> str | None:
@@ -710,7 +711,7 @@ class ExperimentSession:
             return False
         self._flash_decided = True
         self._response_window_open = True
-        self._response_deadline = now + RESPONSE_WINDOW_MS / 1000
+        self._response_deadline = now + ms_to_s(RESPONSE_WINDOW_MS)
         self._flash_shown_at = now
         self._flash_unix_ms = self._clock.unix_ms()
         self._line_visible = True

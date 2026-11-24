@@ -21,6 +21,7 @@ from include.experiment.constants import (
 )
 from include.experiment.types import Side, Target
 from src.experiment.geometry import Geometry
+from src.timebase import ms_to_s, s_to_ms
 
 
 
@@ -197,14 +198,14 @@ class OnsetDetector:
         if self._displacement(position, baseline) > SACCADE_ONSET_DISPLACEMENT:
             if self.since is None:
                 self.since = now
-            if now - self.since >= SACCADE_ONSET_STABILITY_MS / 1000 - 1e-9:  # epsilon: 0.21 - 0.20 < 0.01 in floats
+            if now - self.since >= ms_to_s(SACCADE_ONSET_STABILITY_MS) - 1e-9:  # epsilon: 0.21 - 0.20 < 0.01 in floats
                 self.confirmed = True
                 return True
             return False
         self.since = None
         if abs(position - self._source_position) <= ONSET_BASELINE_NEAR_SOURCE:
             self._baseline.append((now, position))
-        cutoff = now - ONSET_BASELINE_WINDOW_MS / 1000
+        cutoff = now - ms_to_s(ONSET_BASELINE_WINDOW_MS)
         while self._baseline and self._baseline[0][0] < cutoff:
             self._baseline.popleft()
         return False

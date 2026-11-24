@@ -13,6 +13,7 @@ from include.experiment.constants import (
 from include.eye_tracking.types import GazeZone
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.trial_mechanics import OnsetDetector, sample_capture_time
+from src.timebase import ms_to_s, s_to_ms
 
 
 def clamped_gaze_latency_ms(gaze: GazeSource, fallback_ms: float | None = None) -> float:
@@ -32,7 +33,7 @@ def timestamp_latency_s(gaze: GazeSource, latency_ms: float) -> float:
     ~16 ms too early - else the measured latency."""
     if getattr(gaze, "timestamps_are_capture_time", False):
         return 0.0
-    return latency_ms / 1000
+    return ms_to_s(latency_ms)
 
 
 class SampleFeed:
@@ -83,7 +84,7 @@ class LandingTracker:
             if s.face_found and s.zone is self.zone:
                 if self.since is None:
                     self.since = s_t
-                elif s_t - self.since >= GAZE_LANDING_STABILITY_MS / 1000:
+                elif s_t - self.since >= ms_to_s(GAZE_LANDING_STABILITY_MS):
                     self.landed = True
             else:
                 self.since = None
@@ -135,7 +136,7 @@ class TrialLegs:
             if self.jump_at is not None and s_t >= self.jump_at and not arrived_before_jump:
                 break  # a late arrival after a FORCED jump must not let a > 1.5 s "reaction" into the RT average
             if not self.onset.confirmed and self.onset.update(s, s_t):
-                return (self.onset.since - self.go_cue_at) * 1000, (s_t - self.onset.since) * 1000
+                return s_to_ms(self.onset.since - self.go_cue_at), s_to_ms(s_t - self.onset.since)
         return None
 
     def track_out_landing(self, samples) -> None:
@@ -145,7 +146,7 @@ class TrialLegs:
 
     def out_timed_out(self, now: float) -> bool:
         """Single-leg trials: no landing within SACCADE_TIMEOUT_MS of the go cue."""
-        return not self.out_landing.landed and now - self.go_cue_at >= SACCADE_TIMEOUT_MS / 1000
+        return not self.out_landing.landed and now - self.go_cue_at >= ms_to_s(SACCADE_TIMEOUT_MS)
 
     # -- return jump -----------------------------------------------------------
 
@@ -168,7 +169,7 @@ class TrialLegs:
         triggered = self.onset.confirmed if self.trigger == "onset" else self.out_arrived_at is not None
         if triggered:
             return False
-        if now - self.go_cue_at >= RETURN_JUMP_LANDING_TIMEOUT_MS / 1000:
+        if now - self.go_cue_at >= ms_to_s(RETURN_JUMP_LANDING_TIMEOUT_MS):
             return True
         return None
 
@@ -194,14 +195,14 @@ class TrialLegs:
             detector.update(s, s_t)
         measured = None
         if detector.confirmed and self.jump_at is not None and self.return_reaction_ms is None:
-            self.return_reaction_ms = measured = (detector.since - self.jump_at) * 1000  # signed: < 0 = left before the jump
+            self.return_reaction_ms = measured = s_to_ms(detector.since - self.jump_at)  # signed: < 0 = left before the jump
         was_landed = self.return_landing.landed
         self.return_landing.feed(feed)
         return measured, self.return_landing.landed and not was_landed
 
     def return_timed_out(self, now: float) -> bool:
         """No return landing within SACCADE_TIMEOUT_MS of the jump."""
-        return self.jump_at is not None and not self.return_landing.landed and now - self.jump_at >= SACCADE_TIMEOUT_MS / 1000
+        return self.jump_at is not None and not self.return_landing.landed and now - self.jump_at >= ms_to_s(SACCADE_TIMEOUT_MS)
 
     # -- derived values (trials.csv) ---------------------------------------------
 
@@ -222,10 +223,10 @@ class TrialLegs:
         onset_at, landed_at = self.onset.since, self.out_landing.since
         if not (self.onset.confirmed and self.out_landing.landed and onset_at is not None and landed_at is not None):
             return None
-        return (landed_at - onset_at) * 1000 if landed_at >= onset_at else None
+        return s_to_ms(landed_at - onset_at) if landed_at >= onset_at else None
 
     def ms_after_go_cue(self, t: float | None) -> float | None:
-        return (t - self.go_cue_at) * 1000 if t is not None else None
+        return s_to_ms(t - self.go_cue_at) if t is not None else None
 
     def left_target_before_jump(self) -> bool | None:
         """True = the eye had arrived and its last sample before the jump was outside the target; None without a jump."""
