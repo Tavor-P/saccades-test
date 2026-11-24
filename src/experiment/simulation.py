@@ -517,7 +517,7 @@ class SimulationResult:
         return [r for r in self.results if r.phase == "saccade"]
 
 
-def simulate_session(
+def simulate_session(  # noqa: C901 - simulator main loop, split later
     max_trials: int = 1,
     profile: ParticipantProfile | None = None,
     seed: int = 0,

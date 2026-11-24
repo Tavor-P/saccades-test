@@ -139,7 +139,7 @@ def find_sync_flash_events(frames_or_path, fps: float | None = None) -> list[Fla
 # -- matching them to the PC's log ----------------------------------------------------------------
 
 
-def compute_offset(video_flash_times_s: Iterable[float], pc_flash_unix_ms: Iterable[float], tolerance_s: float = MATCH_TOLERANCE_S) -> dict:
+def compute_offset(video_flash_times_s: Iterable[float], pc_flash_unix_ms: Iterable[float], tolerance_s: float = MATCH_TOLERANCE_S) -> dict:  # noqa: C901 - video offset search, split later
     """The clock offset such that PC unix seconds = video seconds + offset_s, from video flash times and the logged PC onset
     times (same flashes, any extra video events ignored). Matches by pattern: every (video, PC) pairing is tried as the
     anchor and the one that explains the most PC flashes within `tolerance_s` wins. Status "ok" needs >= 3 matched flashes and

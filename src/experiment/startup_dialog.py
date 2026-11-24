@@ -103,7 +103,7 @@ class HelpLabel(QtWidgets.QLabel):
 class StartupDialog(QtWidgets.QDialog):
     """Collects a StartupSettings. `result_settings` is set when Start was pressed with valid input; invalid input keeps the dialog open."""
 
-    def __init__(self, initial: StartupSettings | None = None, data_dir: Path | None = None, parent: QtWidgets.QWidget | None = None) -> None:
+    def __init__(self, initial: StartupSettings | None = None, data_dir: Path | None = None, parent: QtWidgets.QWidget | None = None) -> None:  # noqa: PLR0915 - Qt widget layout built in one place
         super().__init__(parent)
         self._data_dir = data_dir or DATA_DIR
         self.result_settings: StartupSettings | None = None

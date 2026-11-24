@@ -117,7 +117,7 @@ def classify_flashes(placed: list, saccades: list, t: np.ndarray, x: np.ndarray,
 # (< 0) are kept.
 
 
-def classify_leg_flash(
+def classify_leg_flash(  # noqa: C901, PLR0911, PLR0913 - gate decision ladder, one return per reason
     when: float,
     saccades: list,
     t: np.ndarray,

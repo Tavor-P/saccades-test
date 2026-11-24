@@ -442,7 +442,7 @@ def compare(set_a: list[str], set_b: list[str], data_dir: Path = DATA_DIR, inclu
     return compare_people(people, n_boot=n_boot, seed=seed, include_test=include_test)
 
 
-def compare_people(people: list, n_boot: int = N_BOOT, seed: int = 0, include_test: bool = False) -> ComparisonResult:
+def compare_people(people: list, n_boot: int = N_BOOT, seed: int = 0, include_test: bool = False) -> ComparisonResult:  # noqa: C901, PLR0912 - many comparison modes, split later
     """The comparison itself, on already loaded Person objects (side "A"/"B" set; see compare()). Works on copies, so
     cached Person objects can be reused for several comparisons; the result's `people` hold the exclusions."""
     people = [replace(p, warnings=list(p.warnings)) for p in people]

@@ -473,7 +473,7 @@ def _neon_lost_message(exc: Exception, folder) -> str:
     )
 
 
-def _run_phases(
+def _run_phases(  # noqa: PLR0913 - one arg per dialog setting
     win, stimuli, logger, narrator, run_tutorial, show_gaze_indicator, test_mode, saccade_contrasts, geometry, flash_spread_sd_ms,
     neon_address, return_jump=False,
 ) -> None:

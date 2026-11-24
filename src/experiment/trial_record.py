@@ -6,7 +6,7 @@ from src.experiment.trial_legs import TrialLegs
 from src.timebase import s_to_ms
 
 
-def saccade_trial_result(
+def saccade_trial_result(  # noqa: PLR0913 - one arg per CSV column
     trial: TrialSpec,
     legs: TrialLegs,
     *,

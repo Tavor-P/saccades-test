@@ -108,7 +108,7 @@ def _gaze_problem(body: dict, address: str) -> tuple[str | None, str | None]:
     return None, None
 
 
-def probe_status_note(address: str, port: int, timeout_s: float = NEON_PROBE_TIMEOUT_S) -> tuple[str | None, str | None]:
+def probe_status_note(address: str, port: int, timeout_s: float = NEON_PROBE_TIMEOUT_S) -> tuple[str | None, str | None]:  # noqa: PLR0911 - search order, one return per outcome
     """(reason, note): reason is None if a Neon Companion app with connected glasses answers GET /api/status at address:port, else a
     short reason; note is a warning for an answering Neon (or None). Bypasses any system proxy (a campus proxy must not be asked
     for a 192.168.x.x address)."""
@@ -225,7 +225,7 @@ def network_summary(run=_run) -> dict:
 # -- resolution -----------------------------------------------------------------------------------
 
 
-def resolve_neon_address(
+def resolve_neon_address(  # noqa: C901 - address search order, split later
     given: str | None,
     port: int = NEON_DEVICE_PORT,
     *,

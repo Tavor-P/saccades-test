@@ -119,7 +119,7 @@ def _number_in(text: str, name: str, low: float, high: float, unit: str) -> floa
     return value
 
 
-def validate(
+def validate(  # noqa: PLR0913 - one arg per dialog setting
     participant_id: str,
     mode: str,
     run_tutorial: bool,

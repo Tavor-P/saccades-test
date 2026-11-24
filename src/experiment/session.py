@@ -107,7 +107,7 @@ class ExperimentSession:
     stimuli. Gaze state lives in the injected GazeSource and the logger records the run.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0915 - live-session state machine, unvalidated on glasses; not refactored
         self,
         gaze_source: GazeSource,
         logger: TrialLogger,

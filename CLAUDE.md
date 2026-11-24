@@ -40,6 +40,7 @@ backend. Participant/experimenter docs: [README.md](README.md).
   JSON schemas, folder layout), or (c) when the user asks. Otherwise rely on the existing tests, the simulator and a manual check, and say so. When a test is needed, extend an existing
   one (one more assert or parameter) before writing a new function; never add a new test file without asking. If your change makes a test obsolete, delete or merge it in the same commit.
   Run only the tests for the area you changed while working (`-m <area>`, see Commands); the full suite is run once, by the coordinating session, before a merge.
+- New functions stay within the ruff size/complexity limits (`ruff.toml`); existing offenders carry `# noqa` with a reason - don't add new ones without saying why.
 - Report test results truthfully (ran / skipped). The whole suite passes with none skipped, in ~30-35 s (pytest-xdist: pytest.ini runs 6 workers, `--dist loadgroup`; was ~2 min serial).
   Keep it fast: share expensive setup (module-scoped fixtures), keep simulated runs small, and do not render real plots or run 1000 bootstrap refits where a test only needs a file or a CI to exist
   (see tests/ai-tests/conftest.py: PNGs are stubbed except in `REAL_PLOT_TESTS`, `suppression_index` runs 300 resamples). Tests must not share paths or global state (xdist): use `tmp_path`.
