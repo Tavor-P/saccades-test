@@ -1,0 +1,29 @@
+#!/bin/sh
+# Local pre-commit checks (no CI). Installed by scripts/install-hooks.ps1 (core.hooksPath).
+#   ruff on the staged .py files; mypy when src/ or include/ code is staged;
+#   tests/test_docs.py when CLAUDE.md / README.md is staged or a file was moved or deleted.
+# Skip once with: git commit --no-verify
+root="$(git rev-parse --show-toplevel)" || exit 1
+cd "$root" || exit 1
+py="$root/scripts/py.sh"
+hint="fix, or skip once with git commit --no-verify"
+
+py_files="$(git diff --cached --name-only --diff-filter=ACMR | grep '\.py$')"
+need_docs=""
+if git diff --cached --name-only --diff-filter=ACMR | grep -qx -e 'CLAUDE.md' -e 'README.md' ||
+   git diff --cached --name-only --diff-filter=DR | grep -q .; then
+  need_docs=1
+fi
+[ -z "$py_files" ] && [ -z "$need_docs" ] && exit 0
+
+if [ -n "$py_files" ]; then
+  # shellcheck disable=SC2086
+  echo "$py_files" | tr '\n' '\0' | xargs -0 "$py" -m ruff check || { echo "pre-commit: ruff failed - $hint"; exit 1; }
+  if echo "$py_files" | grep -q -e '^src/' -e '^include/'; then
+    "$py" -m mypy || { echo "pre-commit: mypy failed - $hint"; exit 1; }
+  fi
+fi
+if [ -n "$need_docs" ]; then
+  "$py" -m pytest -n0 -q tests/test_docs.py || { echo "pre-commit: tests/test_docs.py failed - $hint"; exit 1; }
+fi
+exit 0

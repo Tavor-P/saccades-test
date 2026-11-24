@@ -33,6 +33,7 @@ backend. Participant/experimenter docs: [README.md](README.md).
   run `tests/test_docs.py`, commit it by name, and say what you changed.
 - **Other AI sessions edit this folder concurrently**: `git status` / `git log -5` first; never revert or tidy changes you didn't make; stage and commit only your own files by name
   (never `git add -A` / `commit -a`); don't touch other sessions' files, tell the user instead.
+- **Commits run `.githooks/pre-commit`** (ruff on staged files, mypy for `src/`/`include/`, `tests/test_docs.py` when docs or paths change); don't bypass it with `--no-verify` unless the user says so.
 - PowerShell 5.1 has no `&&`; keep each file's line endings (CRLF). `.gitignore` has `data/`, which matches any `data` folder (tests: use `tests/fixtures/`).
 - `data/` is git-ignored runtime output and participant data is personal data: never commit or print it, never write to it from tests/simulations, never copy real sessions into `tests/fixtures/`.
 - **Test budget: a new feature does NOT get new tests by default.** Add a test only for (a) a bug fix that could come back, (b) an on-disk contract (trials.csv columns,
@@ -48,7 +49,8 @@ backend. Participant/experimenter docs: [README.md](README.md).
 ## Commands (all through the wrapper)
 
 ```
-.\scripts\py.ps1 -m pip install -r requirements.txt
+.\scripts\py.ps1 -m pip install -r requirements.txt             # loose; requirements-lock.txt = exact validated versions, regenerate with scripts/lock_requirements.py (reads the environment only)
+.\scripts\install-hooks.ps1                                     # once per clone: git config core.hooksPath .githooks (all worktrees share it)
 .\scripts\py.ps1 -m pytest -q                                   # full suite, parallel; one test or a debugger: -n0 tests/ai-tests/test_session.py::name -v (no worker start-up)
 .\scripts\py.ps1 -m pytest -q -m analysis                       # one area: session | analysis | dashboard | gaze | run | checks (map: tests/conftest.py AREAS)
 .\scripts\py.ps1 -m ruff check .                                # lint (ruff.toml: E F W I B UP); never `ruff format` (whole-repo reformat)

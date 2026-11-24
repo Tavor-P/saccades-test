@@ -19,6 +19,7 @@ Once per computer.
    ```
    .\scripts\py.ps1 -m pip install -r requirements.txt
    ```
+   That gives loose versions. `pip install -r requirements-lock.txt` (same wrapper) gives the exact versions the analysis was validated with.
 4. Start the Neon Companion app on the phone. Type the phone's IP (shown in the Companion app) into **Neon address** in the start dialog, or leave it blank to search automatically. Before the window opens the
    experiment checks that address, then auto-discovery, then the PC's gateway (the phone, when the PC is on its hotspot); if none answers it shows what it tried and stops.
 5. **Measure your screen** (once per monitor and seat position): the visible picture's height (cm) and the eye-to-screen distance (cm). You type them into the startup dialog; the line's offset
@@ -252,4 +253,5 @@ participant's pooled analysis with it).
 .\scripts\py.ps1 -m pytest -q                 # about 30 s in parallel (-n0: one process), no glasses or window needed
 .\scripts\py.ps1 -m pytest -q -m analysis   # only one area: session, analysis, dashboard, gaze, run or checks
 .\scripts\py.ps1 -m src.experiment.simulation # headless simulated trial; see tests/ai-tests/README.md for run_sim.py
+.\scripts\install-hooks.ps1                   # once: commits then run ruff/mypy/docs checks (.githooks/pre-commit); skip once with --no-verify
 ```
