@@ -3,6 +3,8 @@ analyze_session). Units: gaze x is a 0-1 ratio of the scene (or screen) width pe
 with the since-removed screen-mapped backends hold the screen ratio x NEON_SCENE_WIDTH in x_px, so old sessions analyse the same
 way); speeds are ratio/s. Thresholds: include/experiment/analysis_constants.py."""
 
+import csv
+import io
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -68,11 +70,16 @@ def load_trace(path: Path, clock_offset_s: float, offset_history: list[dict] | N
     interpolated over the phone-clock time (the clocks drift); otherwise the single `clock_offset_s` applies throughout."""
     # x_px / NEON_SCENE_WIDTH also reads traces recorded before 2026-10-25 with the removed screen-mapped backends (x_px = screen ratio x NEON_SCENE_WIDTH).
     times, xs = [], []
-    for row in textio.read_csv(path):
-        if not row.get("x_px") or not row.get("device_unix_s"):
-            continue
-        times.append(float(row["device_unix_s"]))
-        xs.append(float(row["x_px"]) / NEON_SCENE_WIDTH)
+    rows = csv.reader(io.StringIO(textio.read_text(path), newline=""))
+    header = next(rows, [])
+    if "x_px" in header and "device_unix_s" in header:
+        i_x, i_t = header.index("x_px"), header.index("device_unix_s")
+        need = max(i_x, i_t)
+        for row in rows:  # (csv.reader, not DictReader: a recording is 10^5 rows)
+            if len(row) <= need or not row[i_x] or not row[i_t]:
+                continue
+            times.append(float(row[i_t]))
+            xs.append(float(row[i_x]) / NEON_SCENE_WIDTH)
     t, x = np.asarray(times), np.asarray(xs)
     if offset_history is not None and len(offset_history) >= 2:
         history = sorted(offset_history, key=lambda h: h["phone_unix_s"])

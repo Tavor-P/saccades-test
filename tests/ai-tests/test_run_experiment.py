@@ -1,12 +1,6 @@
 from unittest.mock import MagicMock, Mock, patch
 
-from src.experiment.run_experiment import (
-    _second_monitor_screen_index,
-    narrate_if_changed,
-    phase_just_became_active,
-    render_caption,
-    update_caption,
-)
+# run_experiment (PsychoPy, Qt, pandas) is imported inside the tests: every test worker collects this file, and the import costs seconds.
 
 
 def _patch_screens(count: int):
@@ -16,6 +10,8 @@ def _patch_screens(count: int):
 
 
 def test_second_monitor_screen_index_picks_the_second_screen_or_falls_back():
+    from src.experiment.run_experiment import _second_monitor_screen_index
+
     with _patch_screens(2):
         assert _second_monitor_screen_index() == 1
     with _patch_screens(1):
@@ -23,6 +19,8 @@ def test_second_monitor_screen_index_picks_the_second_screen_or_falls_back():
 
 
 def test_narrate_if_changed_speaks_only_new_non_blank_text():
+    from src.experiment.run_experiment import narrate_if_changed
+
     narrator = Mock()
     assert narrate_if_changed(narrator, "look at the dot", last_spoken=None) == "look at the dot"
     narrator.speak.assert_called_once_with("look at the dot")
@@ -36,6 +34,8 @@ def test_narrate_if_changed_speaks_only_new_non_blank_text():
 
 
 def test_phase_just_became_active_only_on_entry():
+    from src.experiment.run_experiment import phase_just_became_active
+
     active = frozenset({"TRIAL_ACTIVE", "RT_TEST_ACTIVE"})
     assert phase_just_became_active("TRIAL_ACTIVE", "FOREPERIOD", active) is True
     assert phase_just_became_active("RT_TEST_ACTIVE", "RT_TEST_FOREPERIOD", active) is True
@@ -45,6 +45,8 @@ def test_phase_just_became_active_only_on_entry():
 
 
 def test_caption_rendering_and_update_caption_show_and_speak_in_lockstep():
+    from src.experiment.run_experiment import render_caption, update_caption
+
     stim = Mock()
     assert render_caption(stim, "look at the dot", last_caption="") == "look at the dot"
     assert (stim.text, stim.opacity) == ("look at the dot", 1.0)

@@ -28,6 +28,13 @@ LO, HI = 0.40, 0.70
 DEFAULT_GEOMETRY = {"screen_height_cm": 26.0, "viewing_distance_cm": 50.0}
 
 
+def _write_trace(folder: Path, t: np.ndarray, x: np.ndarray, start_unix: float) -> None:
+    """gaze_trace.csv (t_s, device_unix_s, x_px, worn) for gaze x ratios `x` at PC times `t`: the bytes csv.writer would give, formatted in bulk."""
+    lines = ["t_s,device_unix_s,x_px,worn"]
+    lines += [f"{a:.4f},{b:.4f},{c:.3f},1" for a, b, c in zip((t - start_unix).tolist(), (t - CLOCK_OFFSET_S).tolist(), (x * NEON_SCENE_WIDTH).tolist())]
+    (folder / session_files.GAZE_TRACE_FILE).write_bytes((chr(13) + chr(10)).join(lines + [""]).encode())
+
+
 def write_run(
     data_dir: Path,
     participant: str,
@@ -72,11 +79,7 @@ def write_run(
         u = np.clip((t - onset) / SACCADE_S, 0, 1)
         x = np.where(t >= onset, level + (target - level) * (3 * u**2 - 2 * u**3), x)
         level = target
-    with (folder / session_files.GAZE_TRACE_FILE).open("w", newline="") as f:
-        w = csv.writer(f)
-        w.writerow(["t_s", "device_unix_s", "x_px", "worn"])
-        for ti, xi in zip(t, x):
-            w.writerow([f"{ti - start_unix:.4f}", f"{ti - CLOCK_OFFSET_S:.4f}", f"{xi * NEON_SCENE_WIDTH:.3f}", 1])
+    _write_trace(folder, t, x, start_unix)
 
     contrasts = [c / 100 for c in contrasts_pct]
     with (folder / session_files.TRIALS_FILE).open("w", newline="") as f:
@@ -192,11 +195,7 @@ def _return_jump_run(data_dir, participant, start_unix, n_trials, contrasts_pct,
 
     t = np.arange(float(start_unix), t0 + TRIAL_SPACING_S * n_trials + 1.0, 1 / RATE_HZ)
     x = _trace(t, moves)
-    with (folder / session_files.GAZE_TRACE_FILE).open("w", newline="") as f:
-        w = csv.writer(f)
-        w.writerow(["t_s", "device_unix_s", "x_px", "worn"])
-        for ti, xi in zip(t, x):
-            w.writerow([f"{ti - start_unix:.4f}", f"{ti - CLOCK_OFFSET_S:.4f}", f"{xi * NEON_SCENE_WIDTH:.3f}", 1])
+    _write_trace(folder, t, x, start_unix)
 
     contrasts = [c / 100 for c in contrasts_pct]
     with (folder / session_files.TRIALS_FILE).open("w", newline="") as f:

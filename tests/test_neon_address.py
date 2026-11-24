@@ -191,7 +191,7 @@ def test_probe_accepts_only_a_status_reply_and_explains_everything_else(local_se
     assert "not the Neon Companion app" in probe_status("127.0.0.1", port, timeout_s=2)
     local_server.shutdown()
     local_server.server_close()
-    reason = probe_status("127.0.0.1", port, timeout_s=1)
+    reason = probe_status("127.0.0.1", port, timeout_s=0.3)
     assert reason is not None and "Neon Companion" not in reason  # refused or (Windows retries a refused connect) timed out
 
 

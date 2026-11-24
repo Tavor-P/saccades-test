@@ -35,13 +35,17 @@ backend. Participant/experimenter docs: [README.md](README.md).
   (never `git add -A` / `commit -a`); don't touch other sessions' files, tell the user instead.
 - PowerShell 5.1 has no `&&`; keep each file's line endings (CRLF). `.gitignore` has `data/`, which matches any `data` folder (tests: use `tests/fixtures/`).
 - `data/` is git-ignored runtime output and participant data is personal data: never commit or print it, never write to it from tests/simulations, never copy real sessions into `tests/fixtures/`.
-- Report test results truthfully (ran / skipped). Suite: 366 tests pass, none skipped, ~2-4 min.
+- Report test results truthfully (ran / skipped). Suite: 369 tests pass, none skipped, ~30 s (pytest-xdist: pytest.ini runs 6 workers, `--dist loadgroup`; was ~2 min serial).
+  Keep it fast: share expensive setup (module-scoped fixtures), keep simulated runs small, and do not render real plots or run 1000 bootstrap refits where a test only needs a file or a CI to exist
+  (see tests/ai-tests/conftest.py: PNGs are stubbed except in `REAL_PLOT_TESTS`, `suppression_index` runs 300 resamples). Tests must not share paths or global state (xdist): use `tmp_path`.
+  A module-scoped fixture is built once per worker, and importing `run_experiment` costs seconds: tests sharing an expensive fixture are grouped onto one worker (`pytest_collection_modifyitems`
+  in tests/ai-tests/conftest.py), and no test module imports `run_experiment` at the top (it is imported inside the test).
 
 ## Commands (all through the wrapper)
 
 ```
 .\scripts\py.ps1 -m pip install -r requirements.txt
-.\scripts\py.ps1 -m pytest -q                                   # full suite; one test: tests/ai-tests/test_session.py::name -v
+.\scripts\py.ps1 -m pytest -q                                   # full suite, parallel; one test or a debugger: -n0 tests/ai-tests/test_session.py::name -v (no worker start-up)
 .\scripts\py.ps1 -m ruff check .                                # lint (ruff.toml: E F W I B UP); never `ruff format` (whole-repo reformat)
 .\scripts\py.ps1 -m mypy                                        # types for src/ + include/ (mypy.ini); both kept at 0 findings by tests/test_lint.py
 .\scripts\py.ps1 -m src.experiment.simulation                   # headless simulated trial timeline (AI-safe)

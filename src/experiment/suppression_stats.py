@@ -2,6 +2,7 @@
 saccadic suppression index (`suppression_index`: Weibull threshold fit with a bootstrap CI, else an accuracy fallback).
 Thresholds: include/experiment/analysis_constants.py."""
 
+import functools
 import math
 from typing import Any
 
@@ -121,12 +122,21 @@ def _weibull(contrast: np.ndarray, threshold: np.ndarray, slope: np.ndarray) -> 
     return CHANCE + (1 - CHANCE - LAPSE) * (1 - np.exp(-((contrast / threshold) ** slope)))
 
 
-def _loglik_grid(contrasts: np.ndarray, n: np.ndarray, k: np.ndarray) -> np.ndarray:
-    """Log-likelihood over (slope, threshold) for one condition."""
+@functools.lru_cache(maxsize=64)
+def _log_probs(contrasts: bytes) -> tuple[np.ndarray, np.ndarray]:
+    """log P(correct) and log P(wrong) over (slope, threshold, contrast). They depend only on the tested contrasts, so the
+    bootstrap (thousands of refits of the same contrasts) computes them once."""
+    c = np.frombuffer(contrasts, dtype=float)
     s = np.asarray(_SLOPES)[:, None, None]
     t = _THRESHOLDS[None, :, None]
-    p = np.clip(_weibull(contrasts[None, None, :], t, s), 1e-9, 1 - 1e-9)
-    return (k * np.log(p) + (n - k) * np.log(1 - p)).sum(axis=2)  # (slope, threshold)
+    p = np.clip(_weibull(c[None, None, :], t, s), 1e-9, 1 - 1e-9)
+    return np.log(p), np.log(1 - p)
+
+
+def _loglik_grid(contrasts: np.ndarray, n: np.ndarray, k: np.ndarray) -> np.ndarray:
+    """Log-likelihood over (slope, threshold) for one condition."""
+    log_p, log_q = _log_probs(np.ascontiguousarray(contrasts, dtype=float).tobytes())
+    return (k * log_p + (n - k) * log_q).sum(axis=2)  # (slope, threshold)
 
 
 def _fit_pair(contrasts_s, n_s, k_s, contrasts_f, n_f, k_f) -> tuple[float, float, bool]:

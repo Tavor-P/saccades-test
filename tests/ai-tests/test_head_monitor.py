@@ -228,8 +228,8 @@ def test_imu_polling_overhead_on_the_gaze_loop_is_small():
     for _ in range(3):
         baseline, with_imu = [], []
         for _ in range(3):
-            baseline.append(_gaze_reads_per_s(1.0, "missing"))
-            with_imu.append(_gaze_reads_per_s(1.0, "ok"))
+            baseline.append(_gaze_reads_per_s(0.3, "missing"))
+            with_imu.append(_gaze_reads_per_s(0.3, "ok"))
         best_baseline, best_with_imu = max(baseline), max(with_imu)
         attempts.append(f"without IMU thread {baseline} (best {best_baseline:.0f}), with IMU thread {with_imu} (best {best_with_imu:.0f})")
         print(f"\ngaze reads/s {attempts[-1]}")
