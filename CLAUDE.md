@@ -29,13 +29,13 @@ backend. Participant/experimenter docs: [README.md](README.md).
   or `$env:PSYCHOPY_PYTHON`) and runs from the repo root; from cmd use `powershell -ExecutionPolicy Bypass -File scripts\py.ps1 ...`. Plain `python` lacks deps and `src`/`include`.
 - **Never launch the experiment or dashboard** (`run_experiment` opens a fullscreen window on the user's screen). Use the headless simulator or tests. Real-glasses runs are the human's.
   The Neon is sometimes reachable for read-only checks: ask first.
-- Don't merge, push or switch branches unless asked. **Before any push/merge the user asks for, update this file first** (Repo map, Commands, Gotchas, stale claims, test count),
+- Don't merge, push or switch branches unless asked. **Before any push/merge the user asks for, update this file first** (Repo map, Commands, Gotchas, stale claims; never a test count),
   run `tests/test_docs.py`, commit it by name, and say what you changed.
 - **Other AI sessions edit this folder concurrently**: `git status` / `git log -5` first; never revert or tidy changes you didn't make; stage and commit only your own files by name
   (never `git add -A` / `commit -a`); don't touch other sessions' files, tell the user instead.
 - PowerShell 5.1 has no `&&`; keep each file's line endings (CRLF). `.gitignore` has `data/`, which matches any `data` folder (tests: use `tests/fixtures/`).
 - `data/` is git-ignored runtime output and participant data is personal data: never commit or print it, never write to it from tests/simulations, never copy real sessions into `tests/fixtures/`.
-- Report test results truthfully (ran / skipped). Suite: 380 tests pass, none skipped, ~30-35 s (pytest-xdist: pytest.ini runs 6 workers, `--dist loadgroup`; was ~2 min serial).
+- Report test results truthfully (ran / skipped). The whole suite passes with none skipped, in ~30-35 s (pytest-xdist: pytest.ini runs 6 workers, `--dist loadgroup`; was ~2 min serial).
   Keep it fast: share expensive setup (module-scoped fixtures), keep simulated runs small, and do not render real plots or run 1000 bootstrap refits where a test only needs a file or a CI to exist
   (see tests/ai-tests/conftest.py: PNGs are stubbed except in `REAL_PLOT_TESTS`, `suppression_index` runs 300 resamples). Tests must not share paths or global state (xdist): use `tmp_path`.
   A module-scoped fixture is built once per worker, and importing `run_experiment` costs seconds: tests sharing an expensive fixture are grouped onto one worker (`pytest_collection_modifyitems`
