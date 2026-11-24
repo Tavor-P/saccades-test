@@ -28,7 +28,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from src.experiment import session_files
-from src.experiment.analysis_report import format_table, index_meaning
+from src.experiment.analysis_report import format_table, heading, index_details, index_meaning
 from src.experiment.analyze_session import (
     DATA_DIR,
     LEGS,
@@ -41,7 +41,6 @@ from src.experiment.analyze_session import (
     format_gate_report,
     format_leg_suppression,
     format_return_latency,
-    format_suppression,
     format_thresholds,
     load_flashes,
     return_latency_stats,
@@ -433,9 +432,6 @@ def _num(v, fmt="{:.0f}") -> str:
 def format_participant_report(result: ParticipantResult) -> str:
     s = result.summary
     lines = [f"Participant {s['participant']}: pooled saccadic-suppression analysis", "", headline(s)]
-    meaning_text = meaning(s)
-    if meaning_text:
-        lines.append(meaning_text)
     skipped = s["analysis"]["test_runs_skipped"]
     if s["runs_excluded"]:
         lines += ["", f"NOT POOLED: {_plural(len(s['runs_excluded']), 'run')} left out:"]
@@ -453,28 +449,25 @@ def format_participant_report(result: ParticipantResult) -> str:
                      f"{_num(r['gaze_latency_ms_median']) + ' ms':>10} {_num(r['longest_gap_ms']) + ' ms':>11}")
     if not s["runs_used"]:
         lines.append("  (none)")
-    lines.append("  (run index = that run alone, usually too few flashes; n/a = cannot be computed from one run)")
 
     if s["runs_used"]:
         lines += ["", f"Settings shared by the pooled runs: contrasts {_fmt_contrasts(s['contrasts_pct'])}; screen {_fmt_geometry(s['geometry'])}."]
-    lines += ["", "Details below cover all pooled runs."]
     lines.append(format_gate_report({**{c: (s["correct"][c], s["n_flashes"][c]) for c in CONDITIONS}, "reasons": s["exclusion_reasons"]}))
-    lines += ["", "  Accuracy by contrast (correct / flashes):", ""]
+    lines += heading("Accuracy by contrast (correct / flashes)")
     rows = []
     for c in sorted({row["contrast_pct"] for row in s["by_contrast"]}):
         cells = {row["condition"]: row for row in s["by_contrast"] if row["contrast_pct"] == c}
         rows.append([f"{c:.1f}%", f"{cells[SACCADE]['correct']} / {cells[SACCADE]['n']}", f"{cells[FIXATION]['correct']} / {cells[FIXATION]['n']}", str(cells[EXCLUDED]["n"])])
-    lines += format_table(["Contrast", "Saccade flashes", "Fixation flashes", "Excluded"], rows, "rrrr")
+    lines += format_table(["Contrast", "Saccade", "Fixation", "Excluded"], rows, "rrrr")
     pooled = {"conditions_from": "gates", "near_ms": 0, "far_ms": 0, **{k: s[k] for k in ("index", "label", "threshold_saccade", "threshold_fixation", "notes")},
               "ci": s["ci"], "n_saccade": s["n_flashes"][SACCADE], "n_fixation": s["n_flashes"][FIXATION],
               "correct_saccade": s["correct"][SACCADE], "correct_fixation": s["correct"][FIXATION]}
-    lines += ["", format_suppression(pooled)]
-    if s["slope"] is not None:
-        lines.append(f"    Shared Weibull slope: {s['slope']:g}")
+    details = index_details(pooled) + ([f"  Shared Weibull slope: {s['slope']:g}"] if s["slope"] is not None else [])
+    lines += ["", *details] if details else []
     if s["by_leg"] is not None:
         lines += ["", f"Return-jump runs ({s['run_kind']}):", format_return_latency(s["return_latency"]), format_leg_suppression(s["by_leg"])]
     if s.get("analysis_thresholds"):
-        lines += ["", "TECHNICAL DETAILS", "-----------------", format_thresholds(s["analysis_thresholds"])]
+        lines += heading("Technical details") + [format_thresholds(s["analysis_thresholds"])]
     lines += ["", "Files: report.txt (this), plot.png, flashes.csv (every pooled flash with its run), summary.json (machine-readable)."]
     return "\n".join(lines)
 

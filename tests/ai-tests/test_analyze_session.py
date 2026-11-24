@@ -211,7 +211,7 @@ def test_ceiling_falls_back_to_a_labelled_accuracy_index():
     assert r["index"] == pytest.approx(0.4)
     assert r["ci"][0] < 0.4 < r["ci"][1]
     assert any("psychometric index not computed" in n for n in r["notes"])
-    assert "ACCURACY index" in an.format_suppression(r)
+    assert "accuracy fallback" in an.format_suppression(r)
 
 
 def test_all_correct_everywhere_is_flagged_as_ceiling_not_a_threshold():
@@ -242,7 +242,7 @@ def test_analyze_writes_the_index_to_report_and_json(tmp_path):
     assert saved["conditions_from"] == "gates" and "notes" in saved
     assert saved["n_saccade"] == sum(r["condition"] == "saccade" for r in rows)
     assert saved["n_fixation"] == sum(r["condition"] == "fixation" for r in rows)
-    assert "chosen by: the pre-specified gates" in result["report"]
+    assert "Main comparison (pre-specified gates)".upper() in result["report"]
 
 
 def test_gates_decide_the_conditions_and_excluded_flashes_are_left_out():
@@ -327,18 +327,19 @@ def test_clock_offset_history_is_interpolated_over_the_trace(tmp_path):
     assert t - np.asarray([1000.0, 1060.0, 1120.0, 1180.0]) == pytest.approx([0.25] * 4)
 
 
-# -- the readable report and the grouped bar chart -----------------------------------------------------------------------------
+# -- the terse report and the grouped bar chart ------------------------------------------------------------------------------------
 
 
-def test_report_opens_with_a_plain_summary_and_ends_with_the_technical_details(tmp_path):
+def test_report_opens_with_the_summary_and_ends_with_the_technical_details(tmp_path):
     stamp = _write_session(tmp_path, ONSETS, [(rel, "correct", c) for rel in (0, 10, -10, 20) for c in (0.1, 0.2)])
     report = an.analyze(stamp, tmp_path, out_dir=tmp_path / "out")["report"]
     heads = ["SUMMARY", "DATA QUALITY", "MAIN COMPARISON", "ACCURACY BY FLASH TIME", "ACCURACY BY CONTRAST", "TECHNICAL DETAILS"]
     assert [report.index(h) for h in heads] == sorted(report.index(h) for h in heads)
     summary, details = report[: report.index("DATA QUALITY")], report[report.index("TECHNICAL DETAILS"):]
-    assert "Flashes during a saccade:" in summary and "Flashes during fixation:" in summary and "too few for a firm conclusion" in summary
-    assert "Fisher exact test" in report and "confidence interval" in summary
-    assert "(min_amplitude)" in details and "(near_onset_ms)" in details and "min_amplitude=" not in details  # no name=value dump
+    assert "Saccade:" in summary and "Fixation:" in summary and "Suppression index:" in summary and "too few for a firm conclusion" in summary
+    assert report.count("Suppression index:") == 1  # the index is stated once, in the summary
+    assert "Fisher p" in report and "What it means" not in report and "Reading the statistics" not in report
+    assert "defaults (analysis_constants.py)" in details and "min_amplitude" not in details
     assert all(len(line) < 160 for line in report.splitlines()) and report.isascii()
 
 
@@ -350,21 +351,20 @@ def test_report_says_when_it_is_a_test_run_and_only_then(tmp_path):
     assert "TEST run" in an.format_report(summary, test_run=True) and "TEST run" not in an.format_report(summary)
 
 
-def test_every_threshold_has_a_readable_name_and_one_line(tmp_path):
-    from src.experiment.analysis_report import THRESHOLD_DOC
+def test_only_thresholds_that_differ_from_the_defaults_are_printed():
+    assert "defaults (analysis_constants.py)" in an.format_thresholds(an.thresholds_record())
+    text = an.format_thresholds(an.thresholds_record(min_amplitude=0.2, flash_delay_ms=15.0))
+    lines = [ln.strip() for ln in text.splitlines()[1:]]
+    assert lines == ["min_amplitude = 0.2  (default 0.12)", "flash_delay_ms = 15  (default 0)"]
+    assert an.thresholds_record(min_amplitude=0.2)["min_amplitude"] == 0.2 and "speed_high" in an.thresholds_record()  # the record itself stays complete
 
-    record = an.thresholds_record()
-    assert set(record) == set(THRESHOLD_DOC)  # a new analysis constant needs a plain-language description
-    lines = [ln for ln in an.format_thresholds(record).splitlines() if ln.strip().endswith(")")]
-    assert len(lines) == len(record) and all(f"({name})" in ln for name, ln in zip(sorted(record, key=list(THRESHOLD_DOC).index), lines, strict=True))
 
-
-def test_geometry_lines_keep_the_placeholder_warning_in_plain_words():
+def test_geometry_is_one_line_with_a_short_placeholder_note():
     from src.experiment.geometry import Geometry
 
     text = an.format_geometry(Geometry.default().as_settings())
-    assert "PLACEHOLDER" in text and "NOT measured" in text and "26 cm high, viewed from 50 cm" in text
-    assert "PLACEHOLDER" not in an.format_geometry(Geometry(19.5, 60).as_settings())
+    assert text.count("\n") == 0 and "Screen 26 cm @ 50 cm (29.1 deg)" in text and text.endswith("[placeholder, not measured]")
+    assert "placeholder" not in an.format_geometry(Geometry(19.5, 60).as_settings())
 
 
 def test_condition_bars_put_the_two_red_bars_together_and_the_two_blue_bars_together():

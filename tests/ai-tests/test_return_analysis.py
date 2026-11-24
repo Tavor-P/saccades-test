@@ -148,8 +148,8 @@ def test_analyze_writes_the_leg_report_and_json(tmp_path):
     folder = sr.write_run(tmp_path, "SYN", START, n_trials=80, seed=7, return_jump=True)
     result = an.analyze(f"{folder.parent.name}/{folder.name}", tmp_path)
     report = result["report"]
-    assert "SUPPRESSION INDEX BY SACCADE LEG" in report and "RETURN LATENCY" in report
-    assert report.index("MAIN COMPARISON") < report.index("SUPPRESSION INDEX BY SACCADE LEG") < report.index("RETURN LATENCY") < report.index("TECHNICAL DETAILS")
+    assert "SUPPRESSION INDEX BY LEG" in report and "RETURN LATENCY" in report
+    assert report.index("MAIN COMPARISON") < report.index("SUPPRESSION INDEX BY LEG") < report.index("RETURN LATENCY") < report.index("TECHNICAL DETAILS")
     saved = json.loads(result["suppression_json"].read_text())
     assert set(saved["by_leg"]) == {"out", "return"} and saved["return_latency"]["n"] == 80
     assert saved["index"] == result["summary"]["suppression"]["index"]
@@ -186,7 +186,7 @@ def test_participant_report_and_summary_file_carry_the_leg_results(tmp_path):
     for i in range(2):
         sr.write_run(tmp_path, "P", START + i * DAY, n_trials=60, seed=20 + i, return_jump=True)
     result = ap.analyze_participant("P", tmp_path, n_boot=100)
-    assert "Return-jump runs (return_jump/arrival):" in result.report and "SUPPRESSION INDEX BY SACCADE LEG" in result.report
+    assert "Return-jump runs (return_jump/arrival):" in result.report and "SUPPRESSION INDEX BY LEG" in result.report
     saved = json.loads(result.paths["summary"].read_text())
     assert saved["schema_version"] == ap.SCHEMA_VERSION == 3 and list(saved) == list(ap.SUMMARY_KEYS)
     assert saved["return_latency"]["n"] == 120

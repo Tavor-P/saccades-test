@@ -179,8 +179,8 @@ def test_analyze_header_line_from_the_recorded_geometry():
 
     assert format_geometry(None) is None and format_geometry({"viewing_distance_cm": 50}) is None  # old sessions
     line = format_geometry(Geometry(19.5, 60).as_settings())
-    assert "19.5 cm high, viewed from 60 cm" in line and "PLACEHOLDER" not in line
-    assert "PLACEHOLDER" in format_geometry(Geometry.default().as_settings())
+    assert "Screen 19.5 cm @ 60 cm" in line and "placeholder" not in line
+    assert "placeholder" in format_geometry(Geometry.default().as_settings())
 
 
 def test_logger_records_the_geometry_and_flash_spread_in_session_json(tmp_path, monkeypatch):
