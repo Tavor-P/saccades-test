@@ -1,7 +1,10 @@
 """The text of the post-hoc analysis report: the per-run summary, the gate counts, the suppression index, the return-latency
 and per-leg blocks (used by analyze_session and analyze_participant)."""
 
-from include.experiment.analysis_constants import FAR_MS, FIXATION_EXCLUSION_MS, NEAR_ONSET_MS, RETURN_LATENCY_MAX_MS
+import textwrap
+
+from include.experiment import analysis_constants
+from include.experiment.analysis_constants import FAR_MS, FIXATION_EXCLUSION_MS, MIN_AMPLITUDE, NEAR_ONSET_MS, RETURN_LATENCY_MAX_MS
 from src.experiment.flash_gates import EXCLUDED, FIXATION, SACCADE
 from src.experiment.leg_gating import LEGS
 
@@ -23,11 +26,36 @@ def format_geometry(settings: dict | None) -> str | None:
     )
 
 
-def format_report(summary: dict, label: str = "", geometry: str | None = None) -> str:
+def thresholds_record(min_amplitude: float = MIN_AMPLITUDE, flash_delay_ms: float = 0.0, near_ms: float | None = None, far_ms: float | None = None) -> dict:
+    """Every analysis threshold that made a result (include/experiment/analysis_constants.py, lower-cased names), with the
+    run's effective overrides: `min_amplitude` and `flash_delay_ms` (CLI / caller), `index_near_ms` / `index_far_ms` (the
+    index's time windows, used only when no gates decide the conditions). Tuples become lists (JSON)."""
+    out = {}
+    for name in dir(analysis_constants):
+        if name.isupper():
+            value = getattr(analysis_constants, name)
+            out[name.lower()] = list(value) if isinstance(value, tuple) else value
+    out["min_amplitude"] = min_amplitude
+    out["index_near_ms"] = NEAR_ONSET_MS if near_ms is None else near_ms
+    out["index_far_ms"] = FAR_MS if far_ms is None else far_ms
+    out["flash_delay_ms"] = flash_delay_ms
+    return out
+
+
+def format_thresholds(record: dict) -> str:
+    """The thresholds record as indented `name=value` lines for a report header."""
+    text = ", ".join(f"{k}={v:g}" if isinstance(v, float) else f"{k}={v}" for k, v in record.items())
+    body = textwrap.wrap(text, width=116, initial_indent="    ", subsequent_indent="    ", break_on_hyphens=False)
+    return "\n".join(["  analysis thresholds (include/experiment/analysis_constants.py; overrides applied):", *body])
+
+
+def format_report(summary: dict, label: str = "", geometry: str | None = None, thresholds: dict | None = None) -> str:
     s = summary
     lines = [f"Saccade-phase analysis {label}".strip()]
     if geometry:
         lines.append(geometry)
+    if thresholds is not None:
+        lines.append(format_thresholds(thresholds))
     lines.append(f"  saccades found: {s['saccades']}" + (
         f" (median duration {s['median_saccade_ms']:.0f} ms, amplitude {s['median_amplitude']:.2f} of the width)" if s["median_saccade_ms"] else ""))
     lines.append(f"  flashes: {s['flashes']}; correct {_pct(s['overall'])}; no answer {s['misses']}")

@@ -40,17 +40,19 @@ from src.experiment.analyze_session import (
     format_leg_suppression,
     format_return_latency,
     format_suppression,
+    format_thresholds,
     load_flashes,
     return_latency_stats,
     summarize,
     suppression_by_leg,
     suppression_index,
+    thresholds_record,
     wilson,
     write_flash_rows,
 )
 from src.experiment.flash_gates import EXCLUDED, FIXATION, SACCADE, summarize_gates
 
-SCHEMA_VERSION = 2  # 2: run_kind, by_leg, return_latency (return-jump runs)
+SCHEMA_VERSION = 3  # 2: run_kind, by_leg, return_latency (return-jump runs); 3: analysis_thresholds
 ANALYSIS_DIR = "analysis"  # data/<participant>/analysis/
 CONDITIONS = (SACCADE, FIXATION, EXCLUDED)
 # summary.json top-level keys. A comparison module reads these; add keys only with a SCHEMA_VERSION bump.
@@ -59,7 +61,7 @@ SUMMARY_KEYS = (
     "index", "ci", "method", "label", "threshold_saccade", "threshold_fixation", "slope", "notes",
     "n_flashes", "correct", "by_contrast", "exclusion_reasons",
     "contrasts_pct", "geometry", "runs_used", "runs_excluded", "flashes_csv", "analysis",
-    "run_kind", "by_leg", "return_latency",
+    "run_kind", "by_leg", "return_latency", "analysis_thresholds",
 )
 # Run kinds never pool across each other: "single" (no return jump) and "return_jump/<trigger>" (the trigger changes the
 # movement itself). The return flash spread SD and leg fraction only change flash scheduling, so they do not split runs.
@@ -351,6 +353,7 @@ def analyze_participant(
         "run_kind": kind,
         "by_leg": by_leg,  # return-jump pools: {out, return, pooled}; each leg = its saccade flashes vs all fixation flashes
         "return_latency": return_latency,  # return-jump pools: return onset minus the jump (raw trace), all pooled trials
+        "analysis_thresholds": thresholds_record(min_amplitude, flash_delay_ms),  # every rule that made this result (analysis_constants.py)
     }
     assert tuple(summary) == SUMMARY_KEYS
     result = ParticipantResult(pid, summary, "", used, excluded, placed, gates, run_of_flash)
@@ -452,6 +455,8 @@ def format_participant_report(result: ParticipantResult) -> str:
 
     if s["runs_used"]:
         lines += ["", f"Settings shared by the pooled runs: contrasts {_fmt_contrasts(s['contrasts_pct'])}; screen {_fmt_geometry(s['geometry'])}."]
+    if s.get("analysis_thresholds"):
+        lines += ["", format_thresholds(s["analysis_thresholds"])]
     lines += ["", "Details (all pooled runs):"]
     lines.append(format_gate_report({**{c: (s["correct"][c], s["n_flashes"][c]) for c in CONDITIONS}, "reasons": s["exclusion_reasons"]}))
     lines.append("  by contrast (correct/flashes):")

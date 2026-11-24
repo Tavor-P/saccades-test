@@ -307,6 +307,20 @@ def test_schema_1_summary_without_run_kind_counts_as_single(tmp_path):
     assert old.compat_key == person("X", "A", geometry=old.geometry, contrasts=old.contrasts_pct).compat_key
 
 
+def test_schema_2_summary_without_analysis_thresholds_still_loads(tmp_path):
+    write_run(tmp_path, "S01", 1790000000, n_trials=90, seed=1)
+    fresh = cmp.load_person("S01", tmp_path)
+    path = tmp_path / "S01" / "analysis" / "summary.json"
+    summary = json.loads(path.read_text())
+    assert summary["analysis_thresholds"]["min_amplitude"] == 0.12  # written by the current analysis
+    summary.pop("analysis_thresholds")
+    summary["schema_version"] = 2
+    path.write_text(json.dumps(summary), encoding="utf-8")
+    old = cmp.load_person("S01", tmp_path, refresh=False)  # the saved schema-2 file is used as is
+    assert old.included and old.analysis_source == "saved" and old.index == fresh.index
+    assert cmp.load_person("S01", tmp_path).analysis_source != "saved"  # refresh=True re-analyses the stale file
+
+
 def test_end_to_end_single_vs_return_jump_is_refused(tmp_path):
     write_run(tmp_path, "S01", 1790000000, n_trials=90, seed=1)
     write_run(tmp_path, "S02", 1790000000, n_trials=90, seed=2, return_jump=True)

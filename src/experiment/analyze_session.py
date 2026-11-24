@@ -86,6 +86,8 @@ from src.experiment.analysis_report import (  # noqa: F401 (re-exported)
     format_report,
     format_return_latency,
     format_suppression,
+    format_thresholds,
+    thresholds_record,
 )
 from src.experiment.analysis_output import plot_report, write_flash_rows  # noqa: F401 (re-exported)
 
@@ -205,7 +207,8 @@ def analyze(
         raise FileNotFoundError(f"no session {timestamp!r} found in {data_dir}")
     run = analyze_run(ref, clock_offset_ms, flash_delay_ms, min_amplitude, near_ms, far_ms)
     stamp, summary, suppression, placed, gates = run.stamp, run.summary, run.suppression, run.placed, run.gates
-    report = format_report(summary, label=f"(session {stamp})", geometry=run.geometry_line) + "\n" + format_gate_report(summary["gates"]) + "\n" + format_suppression(suppression)
+    thresholds = thresholds_record(min_amplitude, flash_delay_ms, near_ms, far_ms)
+    report = format_report(summary, label=f"(session {stamp})", geometry=run.geometry_line, thresholds=thresholds) + "\n" + format_gate_report(summary["gates"]) + "\n" + format_suppression(suppression)
     saved = suppression
     if run.return_jump:
         report = format_return_latency(run.return_latency) + "\n" + report + "\n" + format_leg_suppression(run.by_leg)
