@@ -8,8 +8,8 @@ backend. Participant/experimenter docs: [README.md](README.md).
 - Flash = thin horizontal line (Braun, Schutz & Gegenfurtner 2021): full screen width, vertical Gaussian (`LINE_SD_DEG` 0.15), `LINE_OFFSET_DEG` (2 deg) above/below the saccade TARGET,
   drawn `LINE_DURATION_FRAMES` (1) frame. Answer UP (above) / DOWN (below).
 - `Side.ABOVE/BELOW`. `TrialResult` fields `line_side` / `answer_side` (hold 'above'/'below'), `flash_shown`, `flash_unix_ms` match the `trials.csv` columns of the same names.
-  Old CSVs (columns `orientation` / `response_orientation` / `grating_shown` / `grating_shown_at_unix_ms`, 'vertical'/'horizontal' values) load via `logger._CANONICAL_NAMES` + `_LEGACY_SIDES`;
-  `read_trial_rows` yields rows under those old names. The render-state key is `"line"` (x/y = line position, `side` = above/below); session attrs `_line_visible` etc.
+  A trials.csv with the grating-era columns (`orientation` / `response_orientation` / `grating_shown` / `grating_shown_at_unix_ms`, 'vertical'/'horizontal' values) loads via
+  `logger._CANONICAL_NAMES` + `_LEGACY_SIDES`; `read_trial_rows` yields rows under those old names. The render-state key is `"line"` (x/y = line position, `side` = above/below); session attrs `_line_visible` etc.
 - Geometry: the startup dialog asks for screen height and viewing distance; `geometry.Geometry` (built once in `main`) gives the line's offset/SD in screen-height units, passed to
   `ExperimentSession`/`TutorialSession` (`trial_mechanics.line_position`) and `build_stimuli(geometry=)`. `Geometry.default()` = the placeholder constants
   (`VIEWING_DISTANCE_CM`/`SCREEN_HEIGHT_CM`). Used geometry is in `session.json` `settings` and the `analyze_session` header.
@@ -35,7 +35,7 @@ backend. Participant/experimenter docs: [README.md](README.md).
   (never `git add -A` / `commit -a`); don't touch other sessions' files, tell the user instead.
 - PowerShell 5.1 has no `&&`; keep each file's line endings (CRLF). `.gitignore` has `data/`, which matches any `data` folder (tests: use `tests/fixtures/`).
 - `data/` is git-ignored runtime output and participant data is personal data: never commit or print it, never write to it from tests/simulations, never copy real sessions into `tests/fixtures/`.
-- Report test results truthfully (ran / skipped). Suite: 344 tests pass, none skipped, ~2-4 min.
+- Report test results truthfully (ran / skipped). Suite: 358 tests pass, none skipped, ~2-4 min.
 
 ## Commands (all through the wrapper)
 
@@ -92,8 +92,9 @@ Paths are checked by `tests/test_docs.py` - keep them real.
 | `src/experiment/space_input.py` | `CalibrationLatch`, `NarrationKeyGate`, `SpaceTally`, `deliver_space`, `leaves_complete_screen` |
 | `src/timebase.py` | the ONE time source: `now()` = `perf_counter()`; `unix_now()`, `unix_ms()` |
 | `src/experiment/trial_factory.py` | trial sequences; every trial flashes |
-| `src/experiment/logger.py` | `ResultLogger`: `TRIAL_COLUMNS`, `DROPPED_FROM_CSV`, `trial_from_row`, `read_trial_rows`/`read_trials` (new + old layout) |
-| `src/experiment/session_files.py` | run folders: `sanitize_participant_id`, `create_session_folder`, `list_sessions`/`find_session`/`newest_session` |
+| `src/experiment/logger.py` | `ResultLogger`: `TRIAL_COLUMNS`, `DROPPED_FROM_CSV`, `trial_from_row`, `read_trial_rows`/`read_trials` (plain-named + grating-era columns) |
+| `src/experiment/session_files.py` | run folders: `REPO_ROOT`/`DATA_DIR` (defined once), `read_json`, `sanitize_participant_id`, `create_session_folder`, `list_sessions`/`find_session`/`newest_session` |
+| `src/textio.py` | `read_text`/`read_csv`: every reader of our own files (UTF-8, BOM dropped, cp1252 fallback for old Windows-locale files) |
 | `src/experiment/glasses_video.py`, `import_glasses_video.py` | sync-flash detection/offset; CLI that attaches the exported video |
 | `src/experiment/flash_gates.py` | pre-specified gates (Braun 2021): `saccade`, `fixation`, else `excluded`; controls from `CONTROL_OFFSETS_MS` |
 | `src/experiment/analyze_session.py` | post-hoc analysis from the raw gaze trace; `analyze_run()` = pipeline without writing files |
@@ -140,8 +141,11 @@ Paths are checked by `tests/test_docs.py` - keep them real.
 - `trials.csv`: one row per trial (`phase` column: saccade / rt_test; old runs also baseline, read via `PHASE_WORDS`), schema `TRIAL_COLUMNS` with plain names. `DROPPED_FROM_CSV` lists fields kept out and why.
 - `session.json` sections: participant, run, settings, hardware, results, gaze_quality, head_motion, ignored_space_presses, glasses_video. The results phase summary includes
   `rt_samples_total/_in_window/_dropped_in_window`.
-- Readers (`read_trial_rows`/`read_trials`, `data_access`, `analyze_session`, replay) accept both the run-folder layout and old loose `results_<ts>.csv/_meta.json`; old traces hold screen-ratio x
-  `NEON_SCENE_WIDTH` in `x_px` (why that constant stays).
+- Readers (`read_trial_rows`/`read_trials`, `data_access`, `analyze_session`, replay) take run folders only: the loose `data/results_<ts>.csv` layout was removed on 2026-11-24 (none existed on disk).
+  Kept for old run folders, each with a comment saying who needs it: `_LEGACY_SIDES`, the baseline `PHASE_WORDS`, `_CANONICAL_NAMES` + the `trial_index` branch of `read_trial_rows`, and traces holding
+  screen-ratio x `NEON_SCENE_WIDTH` in `x_px` (why that constant stays).
+- Files: write everything with `encoding="utf-8"` (csv also `newline=""`); read through `src/textio.py` and `session_files.read_json` (None for a missing/damaged file: callers use `or {}`, or raise
+  where silence would lose data, e.g. `save_participant_info`). `DATA_DIR` lives in `session_files`; modules import it under their own name (tests patch it per module).
 - The dashboard is a separate Flask process sharing only files with the experiment; deleting a run removes its whole folder (glasses video included) and the participant's pooled analysis folder.
 
 ## Architecture invariants
@@ -192,7 +196,7 @@ SPACE presses are never silently dropped; every ignored one is counted in `sessi
 - **Neon geometry**: the scene camera is head-mounted, so head movement shifts gaze x with no eye movement; calibration assumes a still head (chin rest). The address comes from the dialog's "Neon address" field (first-time default `NEON_DEVICE_ADDRESS`, remembered in `data/settings.json`).
 - **Neon start-up check**: `run_experiment.main` calls `find_neon_or_exit` BEFORE the run folder and window: it probes (GET `/api/status`, `NEON_PROBE_TIMEOUT_S`) the dialog address, then
   auto-discovery (`NEON_PREFLIGHT_DISCOVERY_S`), then the PC's default gateway (on a phone hotspot the phone is the gateway). Nothing answers -> plain message on stderr + message box, exit 2.
-  The found address goes to `NeonGazeSource` and `session.json` `hardware.neon_device`. `NeonGazeSource.start()` raises one `NeonConnectionError` (no aiohttp chain) and swallows the half-built `Device.__del__` noise.
+  The found address goes to `NeonGazeSource` and `session.json` `hardware.neon_device` (None until `set_neon_device()`; the `NEON_DEVICE_ADDRESS` default is not recorded). `NeonGazeSource.start()` raises one `NeonConnectionError` (no aiohttp chain) and swallows the half-built `Device.__del__` noise.
   The probe also requires a connected gaze `Sensor` when the status lists sensors; a malformed reply never crashes the search. The phone's self-reported IP
   (time echo + gaze stream use it) is saved as `hardware.neon_phone_ip` (warned if it differs). A `NeonConnectionError` later in the run -> window closes, "Lost the Neon glasses" box, exit 2.
 - **numpy/opencv pins**: `requirements.txt` keeps `numpy<2` plus matching opencv (`glasses_video.py` uses cv2). Bumping is untested: rerun the suite if you do.
