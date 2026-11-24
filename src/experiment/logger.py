@@ -223,7 +223,7 @@ def _git_state() -> dict:
     try:
         run = lambda *args: subprocess.run(["git", *args], cwd=session_files.REPO_ROOT, capture_output=True, text=True, timeout=5, check=True).stdout.strip()
         return {"sha": run("rev-parse", "HEAD"), "dirty": bool(run("status", "--porcelain"))}
-    except Exception:
+    except (OSError, subprocess.SubprocessError):  # no git on the PATH, not a repository, or git hung (timeout)
         return {"sha": None, "dirty": None}
 
 
@@ -266,7 +266,7 @@ def _settings_constants() -> dict:
     for module_name, names in _SETTINGS_CONSTANTS.items():
         try:
             module = importlib.import_module(module_name)
-        except Exception:
+        except ImportError:  # only a module that cannot be imported is skipped; a wrong constant name is caught by test_logger
             continue
         for name in names:
             if hasattr(module, name):
@@ -277,10 +277,10 @@ def _settings_constants() -> dict:
 
 def _psychopy_version() -> str | None:
     try:
-        from importlib.metadata import version
+        from importlib.metadata import PackageNotFoundError, version
 
         return version("psychopy")
-    except Exception:
+    except PackageNotFoundError:  # PsychoPy is not installed as a package (e.g. run from its own folder)
         return None
 
 

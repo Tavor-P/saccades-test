@@ -594,5 +594,5 @@ class NeonGazeSource(GazeSource):
         if self._device is not None:
             try:
                 self._device.close()
-            except Exception:
+            except Exception:  # noqa: BLE001 - best effort at shutdown: the phone may already be gone, and the realtime API raises its own aiohttp/asyncio/device errors
                 pass
