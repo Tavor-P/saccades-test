@@ -106,10 +106,7 @@ def test_text_and_csv_readers_take_utf8_and_fall_back_to_cp1252(tmp_path):
         textio.read_csv(tmp_path / "missing.csv")
     (tmp_path / "newline.csv").write_bytes(b'a,b\r\n"line1\r\nline2",2\r\n')  # an embedded newline survives (csv does its own newline handling)
     assert list(textio.read_csv(tmp_path / "newline.csv"))[0]["a"] == "line1\r\nline2"
-
-
-def test_read_json_reads_utf8_and_cp1252_files(tmp_path):
-    (tmp_path / "u.json").write_bytes(json.dumps({"note": NON_ASCII}, ensure_ascii=False).encode("utf-8"))
+    (tmp_path / "u.json").write_bytes(json.dumps({"note": NON_ASCII}, ensure_ascii=False).encode("utf-8"))  # read_json goes through the same reader
     (tmp_path / "c.json").write_bytes(json.dumps({"note": NON_ASCII.replace("–", "-")}, ensure_ascii=False).encode("cp1252"))
     assert session_files.read_json(tmp_path / "u.json") == {"note": NON_ASCII}
     assert session_files.read_json(tmp_path / "c.json") == {"note": NON_ASCII.replace("–", "-")}

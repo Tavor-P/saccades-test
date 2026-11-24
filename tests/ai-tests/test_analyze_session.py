@@ -93,13 +93,6 @@ def test_flash_delay_shifts_the_flash_later():
     assert an.place_flashes([flash], saccades, flash_delay_ms=15)[0].rel_ms == pytest.approx(an.place_flashes([flash], saccades)[0].rel_ms + 15)
 
 
-def test_wilson_interval_brackets_the_proportion_and_is_wide_for_small_n():
-    lo, hi = an.wilson(7, 12)
-    assert lo < 7 / 12 < hi
-    assert an.wilson(0, 0) == (0.0, 1.0)
-    assert (an.wilson(2, 2)[1] - an.wilson(2, 2)[0]) > (an.wilson(40, 40)[1] - an.wilson(40, 40)[0])
-
-
 def test_full_analysis_reproduces_a_planted_suppression_dip(tmp_path):
     # Misses planted exactly where flashes fall within +-50 ms of onset; everything else is answered.
     plan = [(-120, "correct", 0.1), (-30, "miss", 0.1), (-10, "incorrect", 0.15), (5, "miss", 0.15), (20, "miss", 0.2), (45, "correct", 0.2), (110, "correct", 0.1), (350, "correct", 0.15)]
@@ -283,6 +276,8 @@ def test_wilson_interval_contains_the_proportion_for_every_k():
             lo, hi = an.wilson(k, n)
             assert 0.0 <= lo <= k / n <= hi <= 1.0, (k, n, lo, hi)
         assert an.wilson(0, n)[0] == 0.0 and an.wilson(n, n)[1] == 1.0
+    assert an.wilson(0, 0) == (0.0, 1.0)
+    assert (an.wilson(2, 2)[1] - an.wilson(2, 2)[0]) > (an.wilson(40, 40)[1] - an.wilson(40, 40)[0])  # wide for small n
 
 
 @pytest.mark.parametrize("outcomes", [["correct"] * 6, ["incorrect"] * 11, ["correct"], ["incorrect"], ["correct", "incorrect", "miss"]])
