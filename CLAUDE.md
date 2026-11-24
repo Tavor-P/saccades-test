@@ -20,7 +20,7 @@ backend. Participant/experimenter docs: [README.md](README.md).
   or "onset"; `RETURN_JUMP_LANDING_TIMEOUT_MS` forces it), so each trial has an out and a return saccade but still ONE flash: `RETURN_LEG_FLASH_FRACTION` 0.8 on the return leg (timed
   from the jump frame, spread `RETURN_FLASH_SPREAD_SD_MS` 40 = a guess, measure it), else the out leg. trials.csv: `flash_leg`, `out_arrival_ms_after_go_cue`, signed `return_reaction_ms`
   (negative = left before the jump), `left_target_before_jump`. `analyze_session` gates each flash against its own leg's saccade (return must move back >= half the out amplitude),
-  reports out / return / pooled indices and a return-latency report; summary.json schema 2 pools only one run kind (`single` | `return_jump/<trigger>`); `compare` refuses mixed kinds.
+  reports out / return / pooled indices and a return-latency report; summary.json schema 3 (adds `analysis_thresholds`) pools only one run kind (`single` | `return_jump/<trigger>`); `compare` refuses mixed kinds.
   Simulator `ParticipantProfile.return_mode="learned"` = predictive returns. Tests: `tests/ai-tests/test_return_jump.py`, `test_return_analysis.py` (`sim_runs.py` writes simulated runs as folders). Sim (150 trials): ~36 valid in-saccade flashes vs ~20 without the jump; the gain needs the narrow 40 ms spread. Unvalidated on glasses.
 
 ## Rules (read first)
@@ -84,7 +84,8 @@ Paths are checked by `tests/test_docs.py` - keep them real.
 | `src/experiment/trial_legs.py` | `TrialLegs` (out onset/landing, return jump, return onset/landing per trial) + `SampleFeed` (new samples, capture times): shared by session and tutorial |
 | `src/experiment/trial_record.py` | `saccade_trial_result()`: a finished main trial's `TrialResult` row |
 | `src/experiment/tutorial_session.py` | `TutorialSession`: intro -> calibration -> quiz -> 8 practice trials |
-| `src/experiment/run_experiment.py` | entry point + PsychoPy rendering; the only PsychoPy-dependent module |
+| `src/experiment/run_experiment.py` | entry point: `main`, phase loops, dialog -> session wiring (`SaccadePhaseOptions`); re-exports the rendering names tests patch |
+| `src/experiment/rendering.py` | PsychoPy window, `build_stimuli`, `apply_render_state`/`draw_all`, captions + narration, `FramePresenter`, sync flashes; with run_experiment the only PsychoPy modules |
 | `src/experiment/startup_dialog.py`, `startup_model.py` | PyQt6 dialog; Qt-free model (`StartupSettings`, `validate`, `HELP_TEXTS`) |
 | `src/experiment/geometry.py` | `Geometry`: screen height + viewing distance -> degrees and the line's size in screen-height units |
 | `src/experiment/pausable_clock.py` | `PausableClock`: the injected time source |
@@ -100,8 +101,11 @@ Paths are checked by `tests/test_docs.py` - keep them real.
 | `src/textio.py` | `read_text`/`read_csv`: every reader of our own files (UTF-8, BOM dropped, cp1252 fallback for old Windows-locale files) |
 | `src/experiment/glasses_video.py`, `import_glasses_video.py` | sync-flash detection/offset; CLI that attaches the exported video |
 | `src/experiment/flash_gates.py` | pre-specified gates (Braun 2021): `saccade`, `fixation`, else `excluded`; controls from `CONTROL_OFFSETS_MS` |
-| `src/experiment/analyze_session.py` | post-hoc analysis from the raw gaze trace; `analyze_run()` = pipeline without writing files |
-| `src/experiment/analyze_participant.py` | pooled per-person index (equal `saccade_contrasts_pct` + geometry + run kind); summary.json (`SUMMARY_KEYS`, `schema_version` 2, per-leg `by_leg`) |
+| `src/experiment/analyze_session.py` | post-hoc analysis from the raw gaze trace: `analyze_run()` = pipeline without writing files, the CLI; re-exports the names below |
+| `include/experiment/analysis_constants.py` | every analysis threshold (detection, windows, gates, index), written into each report and summary.json `analysis_thresholds` |
+| `src/experiment/saccade_detection.py`, `suppression_stats.py`, `leg_gating.py` | saccades + flash placement; `summarize`/`suppression_index`; return-jump per-leg gating and return latency |
+| `src/experiment/analysis_report.py`, `analysis_output.py` | report text (`format_*`, `thresholds_record`); plot and per-flash CSV |
+| `src/experiment/analyze_participant.py` | pooled per-person index (equal `saccade_contrasts_pct` + geometry + run kind); summary.json (`SUMMARY_KEYS`, `schema_version` 3, per-leg `by_leg`, `analysis_thresholds`) |
 | `src/experiment/participants.py` | group labels (`data/participants.json`): `set_label`, `resolve_set` ("P01,group:TBI,all"), `everyone_else` |
 | `src/experiment/compare.py` | `compare()` -> `ComparisonResult`: 1v1 (bootstrap CI), group vs group (Mann-Whitney), 1-vs-group (percentile, no p) |
 | `src/experiment/simulation.py` | headless simulator |
@@ -154,7 +158,7 @@ Paths are checked by `tests/test_docs.py` - keep them real.
 ## Architecture invariants
 
 - **`include/` = dataclasses, enums, constants only; no logic. `src/` mirrors it and holds all behaviour.**
-- **Sessions are PsychoPy-free state machines.** `ExperimentSession` exposes `on_space()`/`on_response_key()`/`tick()`/`render_state()`; the `run_experiment.py` frame loops (shared `FramePresenter`, `deliver_keys`)
+- **Sessions are PsychoPy-free state machines.** `ExperimentSession` exposes `on_space()`/`on_response_key()`/`tick()`/`render_state()`; the `run_experiment.py` frame loops (shared `FramePresenter` from `rendering.py`, `deliver_keys`)
   call `tick()` + `render_state()` once per frame and apply the plain dict (`apply_render_state()`/`draw_all()`). Test mode is a runtime choice (dialog Mode; Real needs a participant ID).
   A run = tutorial (optional) -> saccade phase (`SACCADE_FIXED_TRIALS_TEST` 30 / `_REAL` 150) -> a console line naming the `analyze_session` command. No pause menu, rest break, session cap or recalibration.
 - **Gaze is behind `GazeSource`.** `NeonGazeSource` polls `receive_gaze_datum()` on a thread, turns scene gaze x / `NEON_SCENE_WIDTH` into a 0-1 ratio; `GazeMapper` does calibration fit, dead zone, smoothing.

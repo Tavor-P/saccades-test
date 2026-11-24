@@ -11,12 +11,16 @@ from dataclasses import dataclass
 
 import numpy as np
 
-FIXATION_EXCLUSION_MS = 100.0  # a fixation flash must be this far from every saccade (Braun et al.: +-100 ms)
-TRACKING_GAP_MS = 100.0  # no gaze samples for this long around a flash = blink / tracking loss
-LATENCY_RANGE_MS = (100.0, 500.0)  # saccade latency from the go-cue; faster = anticipation, slower = lapse
-AMPLITUDE_RANGE_REL = (0.5, 1.5)  # saccade amplitude relative to the session median (Braun: 7.5-15 deg for 10)
-MIN_FLASH_SPEED = 2.0  # ratio-of-width/s at the flash: it must have been drawn during fast movement
-MAX_FLASH_SPEED = 25.0  # above this the trace is a spike, not an eye (Braun: 500 deg/s)
+# The thresholds live in include/experiment/analysis_constants.py (imported here by name, so `flash_gates.X` still works).
+from include.experiment.analysis_constants import (
+    AMPLITUDE_RANGE_REL,
+    FIXATION_EXCLUSION_MS,
+    LATENCY_RANGE_MS,
+    MAX_FLASH_SPEED,
+    MIN_FLASH_SPEED,
+    RETURN_LATENCY_MAX_MS,
+    TRACKING_GAP_MS,
+)
 
 SACCADE, FIXATION, EXCLUDED = "saccade", "fixation", "excluded"
 
@@ -98,7 +102,8 @@ def classify_flashes(placed: list, saccades: list, t: np.ndarray, x: np.ndarray,
 # one of them (trials.csv `flash_leg`), so the saccade gates use that leg's saccade and its own latency anchor: the go cue for
 # the out leg, the jump-back frame for the return leg. The fixation rule is unchanged (>= FIXATION_EXCLUSION_MS from EVERY
 # saccade, the other leg's included), so a flash in the landing-to-return gap is fixation only when it clears both saccades.
-RETURN_LATENCY_MAX_MS = 500.0  # return onset at most this long after the jump; no lower bound: predictive returns (< 0) are kept
+# RETURN_LATENCY_MAX_MS (analysis_constants): return onset at most this long after the jump; no lower bound, so predictive returns
+# (< 0) are kept.
 
 
 def classify_leg_flash(

@@ -12,7 +12,7 @@ from src.experiment.run_experiment import (
 def _patch_screens(count: int):
     display = MagicMock()
     display.get_screens.return_value = [MagicMock() for _ in range(count)]
-    return patch("src.experiment.run_experiment.pyglet.canvas.get_display", return_value=display)
+    return patch("src.experiment.rendering.pyglet.canvas.get_display", return_value=display)
 
 
 def test_second_monitor_screen_index_picks_the_second_screen_or_falls_back():

@@ -85,10 +85,11 @@ def test_include_holds_data_only_no_functions():
     assert not offenders, offenders
 
 
-def test_only_run_experiment_needs_psychopy_among_experiment_modules():
+def test_only_run_experiment_and_rendering_need_psychopy_among_experiment_modules():
+    """run_experiment.py (entry point, phase loops) and rendering.py (window, stimuli, drawing) are the only PsychoPy modules."""
     offenders = []
     for path in (ROOT / "src" / "experiment").glob("*.py"):
-        if path.name == "run_experiment.py":
+        if path.name in ("run_experiment.py", "rendering.py"):
             continue
         if {"psychopy", "pyglet"} & _imported_modules(_tree(path)):
             offenders.append(path.name)

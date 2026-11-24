@@ -309,3 +309,10 @@ TUTORIAL_QUIZ_CONTRAST = 0.5
 TUTORIAL_QUIZ_STREAK_TARGET = 3  # consecutive correct needed to pass the quiz; a miss resets the streak
 TUTORIAL_PRACTICE_ATTEMPTS = 8  # fixed count, not gated by success; also the source of the saccade phase's first reaction-time average
 TUTORIAL_PRACTICE_CONTRAST = 0.5  # a clearly visible flash: the practice teaches the loop, it does not measure a threshold
+
+# -- PsychoPy window and drawing (src/experiment/rendering.py) -----------------------------------------------------------
+FADE_DURATION_S = 0.4  # dot/cross opacity fade; softens onset so it doesn't trigger a reflexive saccade
+# Full-screen pure-green rectangle: the glasses-video sync flash (run_sync_flashes) - never shown during trials.
+START_FLASH_COLOR = [-1, 1, -1]  # pure green (PsychoPy's -1..1 RGB)
+SYNC_LEAD_IN_FRAMES = 30  # dark frames after the announcement / before the first flash, so the phone is certainly recording
+WINDOWED_SIZE_PX = (800, 600)  # window size when not fullscreen (build_window(fullscreen=False)); real runs are fullscreen
