@@ -44,6 +44,13 @@ def test_the_kernel_recovers_a_constant_and_reports_kish_effective_n():
     assert kernel_estimate(dense, np.ones_like(dense), np.array([0.0]), sigma_ms=20.0)[1][0] == pytest.approx(2 * math.sqrt(math.pi) * 20, rel=0.01)
 
 
+def test_a_gap_between_two_clusters_is_not_called_well_supported():
+    rel = np.concatenate([np.full(30, -140.0), np.full(30, 60.0)])  # nothing in between
+    _, n_eff = kernel_estimate(rel, np.ones(60), np.array([-140.0, -40.0, 60.0]), sigma_ms=20.0)
+    assert n_eff[0] == pytest.approx(30, rel=0.01) and n_eff[2] == pytest.approx(30, rel=0.01)
+    assert n_eff[1] < TIMECOURSE_MIN_EFFECTIVE_N_DRAWN  # Kish alone would say 60
+
+
 def test_the_curve_is_masked_by_effective_n():
     assert point_status(TIMECOURSE_MIN_EFFECTIVE_N_DRAWN - 0.1) == NONE
     assert point_status(TIMECOURSE_MIN_EFFECTIVE_N_DRAWN) == LOW and point_status(TIMECOURSE_MIN_EFFECTIVE_N_SOLID - 0.1) == LOW
@@ -222,3 +229,17 @@ def test_the_figure_has_the_literature_layout_and_says_which_plot_to_read(monkey
     plot_timecourse_figure(placed, gates, None, None, 50.0, tmp_path / "b.png", pooled=True)
     assert "pooled per-person plot is the one to read" in plt.gcf()._suptitle.get_text()
     plt.close("all")
+
+
+@pytest.mark.parametrize("return_jump", [False, True])
+def test_a_planted_dip_survives_the_whole_file_pipeline(tmp_path, return_jump):
+    """Raw gaze trace -> saccade detection -> placement (own leg in return-jump runs) -> gates -> curve and companion numbers:
+    the in-saccade flashes (20-60 ms after their own onset) are planted hard to see, so the curve's lowest point lies there."""
+    write_run(tmp_path, "S01", 1790000000, n_trials=200, seed=4, threshold_saccade=0.16, threshold_fixation=0.04, saccade_fraction=0.5, return_jump=return_jump)
+    result = an.analyze("1790000000", data_dir=tmp_path, out_dir=tmp_path / "out")
+    saved = json.loads(result["suppression_json"].read_text())
+    low = saved["timecourse"]["lowest"]
+    assert low["status"] == OK and -20 <= low["ms"] <= 100  # planted at 20-60 ms; the synthetic run has no flash between -140 and +20, so the kernel is flat out to there
+    assert low["p"] < saved["timecourse"]["baseline"]["ci"][0] - 0.1
+    assert saved["companion"]["relative_suppression"] > 0.4 and saved["companion"]["relative_suppression_ci"][0] > 0
+    assert saved["index"] is not None and saved["index"] > 0.3

@@ -10,6 +10,7 @@ Where the curve may be drawn: kernel effective n below TIMECOURSE_MIN_EFFECTIVE_
 TIMECOURSE_MIN_EFFECTIVE_N_SOLID = grey and dashed ("low"), above = solid ("ok"). Thresholds: include/experiment/analysis_constants.py.
 """
 
+import math
 import warnings
 
 import numpy as np
@@ -52,14 +53,16 @@ def _weights(rel: np.ndarray, grid: np.ndarray, sigma_ms: float) -> np.ndarray:
 
 
 def kernel_estimate(rel: np.ndarray, ok: np.ndarray, grid: np.ndarray, sigma_ms: float = TIMECOURSE_SIGMA_MS) -> tuple[np.ndarray, np.ndarray]:
-    """(P(correct) at every grid point, kernel effective n by Kish: (sum w)^2 / sum w^2). NaN / 0 where no flash has weight."""
+    """(P(correct) at every grid point, kernel effective n). NaN / 0 where no flash has weight. The effective n is Kish's
+    (sum w)^2 / sum w^2, capped at sqrt(2) x the kernel mass sum w: for evenly spread flashes the two are equal, but Kish alone
+    is blind to a gap in the data (a point between two clusters sees only their far tails, with a full Kish n but almost no weight)."""
     if len(rel) == 0:
         return np.full(len(grid), np.nan), np.zeros(len(grid))
     w = _weights(rel, grid, sigma_ms)
     total, squares = w.sum(axis=1), (w**2).sum(axis=1)
     with np.errstate(invalid="ignore", divide="ignore"):
         p = np.where(total > 1e-12, (w @ ok) / total, np.nan)
-        n_eff = np.where(squares > 0, total**2 / squares, 0.0)
+        n_eff = np.where(squares > 0, np.minimum(total**2 / squares, math.sqrt(2) * total), 0.0)
     return p, n_eff
 
 
