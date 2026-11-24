@@ -16,6 +16,7 @@ from pathlib import Path
 from include.eye_tracking.constants import NEON_GAP_THRESHOLD_MS
 from src.dashboard import data_access
 from src.experiment import analyze_participant as ap
+from src import textio
 from src.experiment import analyze_session as an
 from src.experiment import session_files
 from src.experiment.flash_gates import FIXATION, SACCADE, TRACKING_GAP_MS
@@ -76,7 +77,7 @@ def _stamp(mtime: float | None) -> str | None:
 
 def _read_text(path: Path) -> str:
     try:
-        return Path(path).read_text(encoding="utf-8")
+        return textio.read_text(path)
     except OSError:
         return ""
 

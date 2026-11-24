@@ -40,6 +40,7 @@ matplotlib.use("Agg")  # headless: only renders PNG files
 import matplotlib.pyplot as plt
 import numpy as np
 
+from src import textio
 from src.experiment import session_files
 from src.experiment.analyze_participant import (
     _GEOMETRY_FIELDS,
@@ -117,8 +118,7 @@ class Person:
 
 def _read_flash_csv(path: Path) -> list | None:
     try:
-        with path.open(newline="") as f:
-            rows = list(csv.DictReader(f))
+        rows = list(textio.read_csv(path))
         return [(None if r["flash_rel_onset_ms"] in ("", None) else float(r["flash_rel_onset_ms"]), r["outcome"] == "correct", r["condition"]) for r in rows]
     except (OSError, KeyError, ValueError):
         return None

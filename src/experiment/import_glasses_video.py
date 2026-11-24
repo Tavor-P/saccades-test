@@ -49,10 +49,10 @@ def import_video(folder: Path, video: Path) -> dict:
         "video_flash_events": [{"time_s": round(e.time_s, 4), "duration_s": round(e.duration_s, 3), "strength": round(e.strength, 3)} for e in events],
         "meaning": "PC unix time (s) = video time (s) + offset_s",
     }
-    (glasses / "video_sync.json").write_text(json.dumps(sync, indent=2))
+    (glasses / "video_sync.json").write_text(json.dumps(sync, indent=2), encoding="utf-8")
 
     if sync["offset_s"] is not None:
-        with (glasses / "flash_video_times.csv").open("w", newline="") as f:
+        with (glasses / "flash_video_times.csv").open("w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
             writer.writerow(["trial", "flash_unix_ms", "video_s"])
             for row in read_trial_rows(folder / session_files.TRIALS_FILE):
@@ -61,7 +61,7 @@ def import_video(folder: Path, video: Path) -> dict:
                     writer.writerow([row["trial_index"], unix_ms, round(video_time_for_pc_unix_ms(unix_ms, sync["offset_s"]), 3)])
     if meta:
         meta.setdefault("glasses_video", {}).update(video_file=f"{session_files.GLASSES_DIR}/{target.name}", sync_status=sync["status"])
-        meta_path.write_text(json.dumps(meta, indent=2))
+        meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
     return sync
 
 

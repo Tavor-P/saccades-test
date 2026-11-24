@@ -42,11 +42,8 @@ def _read(data_dir: Path) -> tuple[dict, bool]:
     path = labels_path(data_dir)
     if not path.exists():
         return {}, False
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}, True
-    if not isinstance(raw, dict):
+    raw = session_files.read_json(path)
+    if raw is None:  # the file exists (checked above) but is unreadable, damaged or not an object
         return {}, True
     labels = {str(pid): clean for pid, entry in raw.items() if (clean := _clean(entry)) is not None}
     return labels, len(labels) != len(raw)

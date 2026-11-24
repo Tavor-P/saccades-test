@@ -22,7 +22,7 @@ from include.experiment.constants import (
     VIEWING_DISTANCE_CM,
 )
 from include.experiment.types import Side, Target, TrialResult
-from src import timebase
+from src import textio, timebase
 from src.experiment import session_files
 from src.experiment.session_files import DATA_DIR  # patched per module in tests, so always used by this bare name
 
@@ -131,19 +131,18 @@ def read_trial_rows(path: Path) -> Iterator[dict]:
     """Rows of a session's trials.csv as dicts keyed by the grating-era column names and text conventions
     ('True'/'False', contrast as a fraction, 'dot'/'cross', 'presaccade'). A file that already uses those names passes
     through unchanged; the current plain-named ones are translated through TRIAL_COLUMNS (dropped columns are simply absent)."""
-    with Path(path).open(newline="") as f:
-        reader = csv.DictReader(f)
-        # Only a trials.csv taken from a pre-2026-10-30 loose results CSV (e.g. copied into a run folder by hand) has these names.
-        legacy = "trial_index" in (reader.fieldnames or [])
-        for row in reader:
-            if legacy:
-                yield row
-                continue
-            canonical = {}
-            for column in TRIAL_COLUMNS:
-                if column.canonical_name is not None and column.name in row:
-                    canonical[column.canonical_name] = column.to_canonical(row[column.name] or "")
-            yield canonical
+    reader = textio.read_csv(path)
+    # Only a trials.csv taken from a pre-2026-10-30 loose results CSV (e.g. copied into a run folder by hand) has these names.
+    legacy = "trial_index" in (reader.fieldnames or [])
+    for row in reader:
+        if legacy:
+            yield row
+            continue
+        canonical = {}
+        for column in TRIAL_COLUMNS:
+            if column.canonical_name is not None and column.name in row:
+                canonical[column.canonical_name] = column.to_canonical(row[column.name] or "")
+        yield canonical
 
 
 def _parse_float(value: str | None) -> float | None:
@@ -337,7 +336,7 @@ class ResultLogger:
         self._folder = session_files.create_session_folder(DATA_DIR, participant_id, now, test_mode)
         self._meta_path = self._folder / session_files.SESSION_FILE
 
-        self._file = (self._folder / session_files.TRIALS_FILE).open("w", newline="")
+        self._file = (self._folder / session_files.TRIALS_FILE).open("w", newline="", encoding="utf-8")
         self._writer = csv.DictWriter(self._file, fieldnames=FIELDNAMES)
         self._writer.writeheader()
         self._rows: list[TrialResult] = []
@@ -401,7 +400,7 @@ class ResultLogger:
 
     def _write_metadata(self) -> None:
         self._metadata["results"]["phases"] = _results_summary(self._rows)
-        self._meta_path.write_text(json.dumps(self._metadata, indent=2))
+        self._meta_path.write_text(json.dumps(self._metadata, indent=2), encoding="utf-8")
 
     def set_calibration(self, left_ratio: float, center_ratio: float, right_ratio: float) -> None:
         self._metadata["settings"]["calibration"] = {

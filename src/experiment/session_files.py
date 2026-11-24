@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from src import textio
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = REPO_ROOT / "data"  # git-ignored runtime output; each module that reads or writes under it imports this name (tests patch it per module)
 
@@ -30,9 +32,9 @@ _MAX_ID_LENGTH = 60
 
 
 def read_json(path: Path | str) -> dict | None:
-    """The JSON object in `path` (UTF-8); None when the file is missing, unreadable, not valid JSON, or not an object."""
+    """The JSON object in `path` (UTF-8, or cp1252 from an older version); None when the file is missing, unreadable, not valid JSON, or not an object."""
     try:
-        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        data = json.loads(textio.read_text(path))
     except (OSError, ValueError):  # ValueError covers JSONDecodeError and UnicodeDecodeError
         return None
     return data if isinstance(data, dict) else None

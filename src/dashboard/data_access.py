@@ -81,7 +81,7 @@ def save_participant_info(timestamp: str, gender: str, age: str) -> None:
     if raw is None:  # never overwrite a damaged session.json with just these two fields
         raise DamagedSessionFile(f"{ref.label}/{session_files.SESSION_FILE} is damaged, so the participant details were not saved")
     raw.setdefault("participant", {}).update(gender=gender, age=age_value)
-    ref.meta_path.write_text(json.dumps(raw, indent=2))
+    ref.meta_path.write_text(json.dumps(raw, indent=2), encoding="utf-8")
 
 
 def delete_session(timestamp: str) -> None:

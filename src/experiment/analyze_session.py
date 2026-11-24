@@ -25,6 +25,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from include.eye_tracking.constants import NEON_SCENE_WIDTH
+from src import textio
 from src.experiment import session_files
 from src.experiment.logger import read_trial_rows
 from src.experiment.session_files import DATA_DIR  # patched per module in tests, so always used by this bare name
@@ -104,12 +105,11 @@ def load_trace(path: Path, clock_offset_s: float, offset_history: list[dict] | N
     interpolated over the phone-clock time (the clocks drift); otherwise the single `clock_offset_s` applies throughout."""
     # x_px / NEON_SCENE_WIDTH also reads traces recorded before 2026-10-25 with the removed screen-mapped backends (x_px = screen ratio x NEON_SCENE_WIDTH).
     times, xs = [], []
-    with Path(path).open(newline="") as f:
-        for row in csv.DictReader(f):
-            if not row.get("x_px") or not row.get("device_unix_s"):
-                continue
-            times.append(float(row["device_unix_s"]))
-            xs.append(float(row["x_px"]) / NEON_SCENE_WIDTH)
+    for row in textio.read_csv(path):
+        if not row.get("x_px") or not row.get("device_unix_s"):
+            continue
+        times.append(float(row["device_unix_s"]))
+        xs.append(float(row["x_px"]) / NEON_SCENE_WIDTH)
     t, x = np.asarray(times), np.asarray(xs)
     if offset_history is not None and len(offset_history) >= 2:
         history = sorted(offset_history, key=lambda h: h["phone_unix_s"])
@@ -800,7 +800,7 @@ def write_flash_rows(path: Path, placed: list[Placed], gates: list, extra: dict[
     flash_rel_onset_ms is relative to the flash's own leg's saccade in return-jump runs (the nearest onset otherwise);
     flash_leg is blank for runs without return jumps; saccade_latency_ms is from the go cue (out) or the jump (return)."""
     extra = extra or {}
-    with Path(path).open("w", newline="") as f:
+    with Path(path).open("w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow([*extra, "trial", "contrast", "orientation", "outcome", "flash_rel_onset_ms", "inside_saccade", "condition", "gate_reason", "flash_leg", "saccade_latency_ms"])
         for i, (p, g) in enumerate(zip(placed, gates)):
@@ -841,7 +841,7 @@ def analyze(
     png = plot_report(placed, run.saccades, summary, out_dir / "plot.png", title=f"Session {stamp}")
     csv_path = write_flash_rows(out_dir / "flashes.csv", placed, gates)
     json_path = out_dir / "suppression.json"
-    json_path.write_text(json.dumps(saved, indent=2))
+    json_path.write_text(json.dumps(saved, indent=2), encoding="utf-8")
     report_path = out_dir / "report.txt"
     report_path.write_text(report + "\n", encoding="utf-8")
     return {"summary": summary, "report": report, "report_path": report_path, "png": png, "csv": csv_path, "suppression_json": json_path}

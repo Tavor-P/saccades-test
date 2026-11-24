@@ -59,4 +59,4 @@ def save_last_startup(values: dict) -> None:
     path = _settings_path()
     data = session_files.read_json(path) or {}  # a damaged settings file is replaced
     data["last_startup"] = values
-    path.write_text(json.dumps(data, indent=2))
+    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
