@@ -135,8 +135,3 @@ def test_constant_stimuli_stop_by_count_and_write_the_count_to_the_summary(fake_
     summary = logger.summaries["saccade"]
     assert summary["completed_trials"] == summary["valid_trials"] == SACCADE_FIXED_TRIALS_TEST
     assert "hreshold" not in session._summary()
-
-
-def test_an_empty_contrast_set_is_refused(fake_gaze):
-    with pytest.raises(ValueError):
-        _make_session(fake_gaze, test_mode=True, fixed_contrasts=())

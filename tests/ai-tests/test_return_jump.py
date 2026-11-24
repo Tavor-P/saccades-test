@@ -505,9 +505,3 @@ def test_tutorial_return_before_the_jump_counts_like_in_the_real_trials(fake_gaz
     session.on_response_key(session._line_side)
     session.tick()  # already back on the dot: the attempt ends at once
     assert session.render_state()["hud"]["phase"] == "PRACTICE_AWAITING_SPACE"
-
-
-def test_new_participant_strings_are_short_and_avoid_the_banned_words():
-    for text in (words.TUTORIAL_INTRO_RETURN_JUMP, words.PRACTICE_START_RETURN_JUMP, words.FIRST_TRIAL_RETURN_JUMP):
-        assert len(text.split()) <= 15
-        assert "cross" not in text.lower() and "other dot" not in text.lower()

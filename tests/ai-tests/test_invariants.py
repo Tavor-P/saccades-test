@@ -11,13 +11,10 @@ from src.experiment import simulation
 from src.experiment.simulation import ParticipantProfile, simulate_session
 
 
-def test_hostile_participants_terminate_cleanly_with_valid_rows():
+def test_hostile_and_random_participants_terminate_cleanly_with_valid_rows():
     for name in sorted(EXTREME_PROFILES):
         sim = simulate_session(max_trials=10, profile=ParticipantProfile(**EXTREME_PROFILES[name]), seed=1)
         assert check_session(sim) == [], name
-
-
-def test_random_participants_produce_valid_rows():
     for seed in range(12):
         rng = random.Random(1000 + seed)
         sim = simulate_session(max_trials=10, profile=ParticipantProfile(**random_profile(rng)), seed=seed)
