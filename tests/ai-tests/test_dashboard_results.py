@@ -246,3 +246,15 @@ def test_quality_rules_traffic_lights():
     q = results.run_quality(meta, {"n_saccade": 30, "n_fixation": 50, "method": "psychometric", "notes": []})
     assert q["overall"] == "green"
     assert results.run_quality({"head_motion": {"status": "unavailable (no IMU)"}}, {})["rules"][2]["light"] == "amber"
+
+
+def test_download_labels_and_the_bootstrap_count_are_defined_once():
+    import inspect
+
+    from src.dashboard import comparison
+    from src.experiment import analyze_participant as ap_module
+
+    assert comparison.DOWNLOAD_LABELS is results.DOWNLOAD_LABELS
+    for kind in ("flashes", "suppression", "summary", "report", "plot", "csv", "json"):
+        assert results.DOWNLOAD_LABELS[kind]
+    assert results.N_BOOT == ap_module.N_BOOT == inspect.signature(ap_module.analyze_participant).parameters["n_boot"].default

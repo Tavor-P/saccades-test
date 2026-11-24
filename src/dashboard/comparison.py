@@ -22,12 +22,7 @@ from src.experiment import study_summary
 N_BOOT = cmp.N_BOOT  # bootstrap resamples for the comparison CI (tests lower it)
 DASHBOARD_DIR = "dashboard"  # data/comparisons/dashboard/<hash>/
 FILES = {"csv": "comparison.csv", "json": "comparison.json", "report": "report.txt", "plot": "plot.png"}
-DOWNLOAD_LABELS = {
-    "csv": "comparison.csv (one row per person, for Excel / SPSS / R)",
-    "json": "comparison.json (every number, machine-readable)",
-    "report": "report.txt (the full text report)",
-    "plot": "plot.png (save the figure)",
-}
+DOWNLOAD_LABELS = results.DOWNLOAD_LABELS  # one table for all the pages (results.py)
 MAX_GROUP_CHARS = 40
 MAX_NOTE_CHARS = 200
 

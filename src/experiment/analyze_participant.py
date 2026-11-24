@@ -64,6 +64,7 @@ SUMMARY_KEYS = (
 # Run kinds never pool across each other: "single" (no return jump) and "return_jump/<trigger>" (the trigger changes the
 # movement itself). The return flash spread SD and leg fraction only change flash scheduling, so they do not split runs.
 SINGLE_RUN_KIND = "single"
+N_BOOT = 1000  # bootstrap fits for the participant's CI (the dashboard's results page uses the same)
 _GEOMETRY_FIELDS = ("screen_height_cm", "viewing_distance_cm", "line_offset_deg", "line_sd_deg")
 
 
@@ -275,7 +276,7 @@ def analyze_participant(
     write: bool = True,
     flash_delay_ms: float = 0.0,
     min_amplitude: float = MIN_AMPLITUDE,
-    n_boot: int = 1000,
+    n_boot: int = N_BOOT,
 ) -> ParticipantResult:
     """Pools every compatible run of one participant into one suppression index (see the module docstring). Writes
     report.txt / plot.png / flashes.csv / summary.json to `out_dir` (default data/<participant>/analysis/) unless

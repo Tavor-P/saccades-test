@@ -15,14 +15,14 @@ from pathlib import Path
 
 from include.eye_tracking.constants import NEON_GAP_THRESHOLD_MS
 from src.dashboard import data_access
-from src.experiment import analyze_participant as ap
 from src import textio
+from src.experiment import analyze_participant as ap
 from src.experiment import analyze_session as an
 from src.experiment import session_files
+from src.experiment.analyze_participant import N_BOOT  # read at call time (tests lower it)
 from src.experiment.flash_gates import FIXATION, SACCADE, TRACKING_GAP_MS
 from src.experiment.run_summary import MAX_GAP_MS, MAX_LATENCY_MS
 
-N_BOOT = 1000  # bootstrap fits for the participant CI (analyze_participant's default; tests lower it)
 _LOCK = threading.Lock()
 
 GREEN, AMBER, RED, GREY = "green", "amber", "red", "grey"
@@ -32,12 +32,15 @@ LIGHT_WORDS = {GREEN: "OK", AMBER: "Check", RED: "Problem", GREY: "Not recorded"
 # kind -> file name in the run's analysis/ folder. "plot" is shown inline, the others are downloads.
 RUN_FILES = {"report": "report.txt", "plot": "plot.png", "flashes": "flashes.csv", "suppression": "suppression.json"}
 PARTICIPANT_FILES = {"report": "report.txt", "plot": "plot.png", "flashes": "flashes.csv", "summary": "summary.json"}
+# kind -> link text of a downloadable file, for the run, participant and comparison pages (comparison.py reuses it)
 DOWNLOAD_LABELS = {
     "flashes": "flashes.csv (one row per flash)",
     "suppression": "suppression.json (the index, machine-readable)",
     "summary": "summary.json (the pooled result, machine-readable)",
+    "csv": "comparison.csv (one row per person, for Excel / SPSS / R)",
+    "json": "comparison.json (every number, machine-readable)",
     "report": "report.txt (the full text report)",
-    "plot": "plot.png",
+    "plot": "plot.png (save the figure)",
 }
 
 
