@@ -236,13 +236,13 @@ def test_analyze_writes_the_index_to_report_and_json(tmp_path):
     flashes = [(rel, "correct", c) for rel in (0, 10, -10, 20) for c in (0.1, 0.2)]
     stamp = _write_session(tmp_path, ONSETS, flashes)
     result = an.analyze(stamp, tmp_path)
-    assert "suppression index" in result["report"]
+    assert "Suppression index" in result["report"]
     saved = json.loads(result["suppression_json"].read_text())
     rows = list(csv.DictReader(result["csv"].open()))
     assert saved["conditions_from"] == "gates" and "notes" in saved
     assert saved["n_saccade"] == sum(r["condition"] == "saccade" for r in rows)
     assert saved["n_fixation"] == sum(r["condition"] == "fixation" for r in rows)
-    assert "conditions from the pre-specified gates" in result["report"]
+    assert "chosen by: the pre-specified gates" in result["report"]
 
 
 def test_gates_decide_the_conditions_and_excluded_flashes_are_left_out():
@@ -325,3 +325,61 @@ def test_clock_offset_history_is_interpolated_over_the_trace(tmp_path):
     assert t - np.asarray([1000.0, 1060.0, 1120.0, 1180.0]) == pytest.approx([0.250, 0.260, 0.270, 0.270])
     t, _ = an.load_trace(path, 0.25, [history[0]])  # a single entry (or none) falls back to the scalar offset
     assert t - np.asarray([1000.0, 1060.0, 1120.0, 1180.0]) == pytest.approx([0.25] * 4)
+
+
+# -- the readable report and the grouped bar chart -----------------------------------------------------------------------------
+
+
+def test_report_opens_with_a_plain_summary_and_ends_with_the_technical_details(tmp_path):
+    stamp = _write_session(tmp_path, ONSETS, [(rel, "correct", c) for rel in (0, 10, -10, 20) for c in (0.1, 0.2)])
+    report = an.analyze(stamp, tmp_path, out_dir=tmp_path / "out")["report"]
+    heads = ["SUMMARY", "DATA QUALITY", "MAIN COMPARISON", "ACCURACY BY FLASH TIME", "ACCURACY BY CONTRAST", "TECHNICAL DETAILS"]
+    assert [report.index(h) for h in heads] == sorted(report.index(h) for h in heads)
+    summary, details = report[: report.index("DATA QUALITY")], report[report.index("TECHNICAL DETAILS"):]
+    assert "Flashes during a saccade:" in summary and "Flashes during fixation:" in summary and "too few for a firm conclusion" in summary
+    assert "Fisher exact test" in report and "confidence interval" in summary
+    assert "(min_amplitude)" in details and "(near_onset_ms)" in details and "min_amplitude=" not in details  # no name=value dump
+    assert all(len(line) < 160 for line in report.splitlines()) and report.isascii()
+
+
+def test_report_says_when_it_is_a_test_run_and_only_then(tmp_path):
+    flashes = [(rel, "correct", 0.1) for rel in (0, 10, 400)]
+    stamp = _write_session(tmp_path, ONSETS, flashes)
+    assert "TEST run" not in an.analyze(stamp, tmp_path, out_dir=tmp_path / "a")["report"]
+    summary = an.analyze(stamp, tmp_path, out_dir=tmp_path / "b")["summary"]
+    assert "TEST run" in an.format_report(summary, test_run=True) and "TEST run" not in an.format_report(summary)
+
+
+def test_every_threshold_has_a_readable_name_and_one_line(tmp_path):
+    from src.experiment.analysis_report import THRESHOLD_DOC
+
+    record = an.thresholds_record()
+    assert set(record) == set(THRESHOLD_DOC)  # a new analysis constant needs a plain-language description
+    lines = [ln for ln in an.format_thresholds(record).splitlines() if ln.strip().endswith(")")]
+    assert len(lines) == len(record) and all(f"({name})" in ln for name, ln in zip(sorted(record, key=list(THRESHOLD_DOC).index), lines, strict=True))
+
+
+def test_geometry_lines_keep_the_placeholder_warning_in_plain_words():
+    from src.experiment.geometry import Geometry
+
+    text = an.format_geometry(Geometry.default().as_settings())
+    assert "PLACEHOLDER" in text and "NOT measured" in text and "26 cm high, viewed from 50 cm" in text
+    assert "PLACEHOLDER" not in an.format_geometry(Geometry(19.5, 60).as_settings())
+
+
+def test_condition_bars_put_the_two_red_bars_together_and_the_two_blue_bars_together():
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import to_hex
+
+    from src.experiment.analysis_output import AWAY_COLOUR, NEAR_COLOUR, _condition_bars
+
+    summary = {"near_onset": (4, 10), "beyond": (13, 14), "inside": (3, 6), "outside": (20, 24), "p_near_vs_beyond": 0.009}
+    fig, ax = plt.subplots()
+    _condition_bars(ax, summary)
+    bars = sorted(ax.patches, key=lambda b: b.get_x())
+    assert [to_hex(b.get_facecolor()) for b in bars] == [NEAR_COLOUR.lower(), NEAR_COLOUR.lower(), AWAY_COLOUR.lower(), AWAY_COLOUR.lower()]
+    centres = [b.get_x() + b.get_width() / 2 for b in bars]
+    assert centres[3] - centres[2] == centres[1] - centres[0] < centres[2] - centres[1]  # a visible gap between the groups
+    assert [round(b.get_height()) for b in bars] == [40, 50, 93, 83]
+    assert "p = 0.009" in ax.get_title() and ax.get_ylabel() == "Accuracy (%)"
+    plt.close(fig)

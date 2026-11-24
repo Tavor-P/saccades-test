@@ -135,6 +135,12 @@ class RunAnalysis:
     def stamp(self) -> str:
         return self.ref.label
 
+    @property
+    def is_test(self) -> bool:
+        """A Test-mode run: session.json says so, or (no/damaged session.json) the folder name ends in `_test`."""
+        mode = (self.meta.get("run") or {}).get("mode")
+        return mode == "test" if mode else self.stamp.endswith("_test")
+
 
 def analyze_run(
     ref: session_files.SessionRef,
@@ -208,11 +214,10 @@ def analyze(
     run = analyze_run(ref, clock_offset_ms, flash_delay_ms, min_amplitude, near_ms, far_ms)
     stamp, summary, suppression, placed, gates = run.stamp, run.summary, run.suppression, run.placed, run.gates
     thresholds = thresholds_record(min_amplitude, flash_delay_ms, near_ms, far_ms)
-    report = format_report(summary, label=f"(session {stamp})", geometry=run.geometry_line, thresholds=thresholds) + "\n" + format_gate_report(summary["gates"]) + "\n" + format_suppression(suppression)
+    report = format_report(summary, label=f"(session {stamp})", geometry=run.geometry_line, thresholds=thresholds, test_run=run.is_test)
     saved = suppression
     if run.return_jump:
         assert run.return_latency is not None and run.by_leg is not None  # always set for return-jump runs
-        report = format_return_latency(run.return_latency) + "\n" + report + "\n" + format_leg_suppression(run.by_leg)
         saved = {**suppression, "by_leg": {leg: run.by_leg[leg] for leg in LEGS}, "return_latency": run.return_latency}
 
     out_dir = Path(out_dir) if out_dir is not None else ref.analysis_dir

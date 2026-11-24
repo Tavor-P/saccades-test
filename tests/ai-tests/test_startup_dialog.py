@@ -179,7 +179,7 @@ def test_analyze_header_line_from_the_recorded_geometry():
 
     assert format_geometry(None) is None and format_geometry({"viewing_distance_cm": 50}) is None  # old sessions
     line = format_geometry(Geometry(19.5, 60).as_settings())
-    assert "19.5 cm high at 60 cm" in line and "PLACEHOLDER" not in line
+    assert "19.5 cm high, viewed from 60 cm" in line and "PLACEHOLDER" not in line
     assert "PLACEHOLDER" in format_geometry(Geometry.default().as_settings())
 
 

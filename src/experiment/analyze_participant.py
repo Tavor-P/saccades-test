@@ -28,6 +28,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from src.experiment import session_files
+from src.experiment.analysis_report import format_table, index_meaning
 from src.experiment.analyze_session import (
     DATA_DIR,
     LEGS,
@@ -415,12 +416,8 @@ def headline(summary: dict) -> str:
 
 def meaning(summary: dict) -> str | None:
     """How to read the index's scale, which differs between the threshold ratio and the accuracy fallback."""
-    if summary["method"] == "psychometric":
-        return "What it means: 0 = no suppression, 1 = the line is never seen during saccades, negative = seen better during saccades."
-    if summary["method"] == "accuracy":
-        return ("What it means: the difference in proportion correct (fixation minus saccade). 0 = no difference; about 0.5 = guessing "
-                "during saccades while fixation is perfect (it cannot reach 1, because guessing still gives 50 % correct).")
-    return None
+    text = index_meaning(summary["method"])
+    return None if text is None else f"What it means: {text}"
 
 
 def _run_index_text(record: dict) -> str:
@@ -460,22 +457,24 @@ def format_participant_report(result: ParticipantResult) -> str:
 
     if s["runs_used"]:
         lines += ["", f"Settings shared by the pooled runs: contrasts {_fmt_contrasts(s['contrasts_pct'])}; screen {_fmt_geometry(s['geometry'])}."]
-    if s.get("analysis_thresholds"):
-        lines += ["", format_thresholds(s["analysis_thresholds"])]
-    lines += ["", "Details (all pooled runs):"]
+    lines += ["", "Details below cover all pooled runs."]
     lines.append(format_gate_report({**{c: (s["correct"][c], s["n_flashes"][c]) for c in CONDITIONS}, "reasons": s["exclusion_reasons"]}))
-    lines.append("  by contrast (correct/flashes):")
+    lines += ["", "  Accuracy by contrast (correct / flashes):", ""]
+    rows = []
     for c in sorted({row["contrast_pct"] for row in s["by_contrast"]}):
         cells = {row["condition"]: row for row in s["by_contrast"] if row["contrast_pct"] == c}
-        lines.append(f"    {c:5.1f}%: saccade {cells[SACCADE]['correct']}/{cells[SACCADE]['n']}, fixation {cells[FIXATION]['correct']}/{cells[FIXATION]['n']}, excluded {cells[EXCLUDED]['n']}")
+        rows.append([f"{c:.1f}%", f"{cells[SACCADE]['correct']} / {cells[SACCADE]['n']}", f"{cells[FIXATION]['correct']} / {cells[FIXATION]['n']}", str(cells[EXCLUDED]["n"])])
+    lines += format_table(["Contrast", "Saccade flashes", "Fixation flashes", "Excluded"], rows, "rrrr")
     pooled = {"conditions_from": "gates", "near_ms": 0, "far_ms": 0, **{k: s[k] for k in ("index", "label", "threshold_saccade", "threshold_fixation", "notes")},
               "ci": s["ci"], "n_saccade": s["n_flashes"][SACCADE], "n_fixation": s["n_flashes"][FIXATION],
               "correct_saccade": s["correct"][SACCADE], "correct_fixation": s["correct"][FIXATION]}
-    lines.append(format_suppression(pooled))
+    lines += ["", format_suppression(pooled)]
     if s["slope"] is not None:
-        lines.append(f"    shared Weibull slope: {s['slope']:g}")
+        lines.append(f"    Shared Weibull slope: {s['slope']:g}")
     if s["by_leg"] is not None:
         lines += ["", f"Return-jump runs ({s['run_kind']}):", format_return_latency(s["return_latency"]), format_leg_suppression(s["by_leg"])]
+    if s.get("analysis_thresholds"):
+        lines += ["", "TECHNICAL DETAILS", "-----------------", format_thresholds(s["analysis_thresholds"])]
     lines += ["", "Files: report.txt (this), plot.png, flashes.csv (every pooled flash with its run), summary.json (machine-readable)."]
     return "\n".join(lines)
 

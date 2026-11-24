@@ -7,11 +7,48 @@ import matplotlib
 
 matplotlib.use("Agg")  # headless: only renders PNG files
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
+from matplotlib.patches import Patch
 
+from include.experiment.analysis_constants import FAR_MS, NEAR_ONSET_MS
 from src.experiment.saccade_detection import Placed, Saccade
 from src.experiment.suppression_stats import wilson
 
 # -- plot ----------------------------------------------------------------------------------------
+
+
+NEAR_COLOUR, AWAY_COLOUR = "#C44E52", "#4C72B0"  # red = during / near a saccade, blue = away from saccades
+
+
+def _condition_bars(ax, summary: dict) -> None:
+    """Accuracy per condition: the two 'during / near a saccade' bars (red) side by side, a gap, then the two 'away' bars (blue)."""
+    bars = [  # (x, label, (correct, n), colour)
+        (0.0, f"within +/-{NEAR_ONSET_MS:.0f} ms\nof saccade onset", summary["near_onset"], NEAR_COLOUR),
+        (1.0, "inside a\nsaccade", summary["inside"], NEAR_COLOUR),
+        (2.7, f"{NEAR_ONSET_MS:.0f}-{FAR_MS:.0f} ms from\nsaccade onset", summary["beyond"], AWAY_COLOUR),
+        (3.7, "outside a\nsaccade", summary["outside"], AWAY_COLOUR),
+    ]
+    for x, _, (k, n), colour in bars:
+        pct = 100 * k / n if n else 0.0
+        ax.bar(x, pct, width=0.8, color=colour, zorder=2)
+        if n:
+            lo, hi = wilson(k, n)
+            ax.errorbar(x, pct, yerr=[[100 * (k / n - lo)], [100 * (hi - k / n)]], color="black", capsize=4, linewidth=1.5, zorder=3)
+            ax.text(x, 100 * hi + 2, f"{pct:.0f}%\nn={n}", ha="center", va="bottom", fontsize=9, fontweight="bold")
+        else:
+            ax.text(x, 3, "no\nflashes", ha="center", va="bottom", fontsize=9, color="#555555")
+    ax.axhline(50, color="#555555", linestyle="--", linewidth=1, zorder=1)
+    ax.set_xticks([x for x, *_ in bars], [label for _, label, *_ in bars], fontsize=8)
+    ax.set_xlim(-0.7, 4.4)
+    ax.set_ylim(0, 118)
+    ax.set_yticks(range(0, 101, 20))
+    ax.set_ylabel("Accuracy (%)")
+    ax.grid(True, alpha=0.3, axis="y", zorder=0)
+    ax.legend(handles=[Patch(color=NEAR_COLOUR, label="During / near a saccade"), Patch(color=AWAY_COLOUR, label="Away from saccades"),
+                       Line2D([], [], color="#555555", linestyle="--", label="chance (50%)")],
+              loc="upper center", bbox_to_anchor=(0.5, -0.17), ncol=3, fontsize=8, frameon=False)
+    p = summary["p_near_vs_beyond"]
+    ax.set_title("Accuracy near vs away from saccades" + (f"\n(Fisher p = {p:.3f}, near onset vs further away)" if p is not None else ""), fontsize=10)
 
 
 def plot_report(placed: list[Placed], saccades: list[Saccade], summary: dict, out_path: Path, title: str = "") -> Path:
@@ -47,17 +84,7 @@ def plot_report(placed: list[Placed], saccades: list[Saccade], summary: dict, ou
     ax_scatter.set_title("Every flash")
     ax_scatter.legend(fontsize=8, loc="best")
 
-    groups = [("near onset", summary["near_onset"]), ("50-300 ms away", summary["beyond"]), ("inside saccade", summary["inside"]), ("outside saccade", summary["outside"])]
-    labels = [f"{name}\n(n={n})" for name, (_, n) in groups]
-    values = [100 * k / n if n else 0 for _, (k, n) in groups]
-    cis = [wilson(k, n) for _, (k, n) in groups]
-    ax_bars.bar(labels, values, color=["#C44E52", "#4C72B0", "#C44E52", "#4C72B0"], yerr=[[100 * (v / 100 - lo) for v, (lo, _) in zip(values, cis)], [100 * (hi - v / 100) for v, (_, hi) in zip(values, cis)]], capsize=4)
-    ax_bars.set_ylim(0, 105)
-    ax_bars.set_ylabel("correct (%)")
-    p = summary["p_near_vs_beyond"]
-    ax_bars.set_title("By condition" + (f" (near vs beyond: p={p:.3f})" if p is not None else ""))
-    ax_bars.tick_params(axis="x", labelsize=8)
-    ax_bars.grid(True, alpha=0.3, axis="y")
+    _condition_bars(ax_bars, summary)
 
     fig.suptitle(title or "Saccadic suppression analysis")
     out_path = Path(out_path)
