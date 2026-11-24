@@ -24,6 +24,7 @@ from include.experiment.analysis_constants import (
 from src.timebase import ms_to_s, s_to_ms
 
 SACCADE, FIXATION, EXCLUDED = "saccade", "fixation", "excluded"
+NOT_MOVING_REASON = "near a saccade but the eye was not moving fast at the flash"  # the exclusion reason report.txt counts before / after onset
 
 
 @dataclass(frozen=True)
@@ -76,7 +77,7 @@ def classify_flash(
 
     # Within +-FIXATION_EXCLUSION_MS of a saccade: it is neither clean fixation nor yet a saccade flash.
     if speed is None or speed < MIN_FLASH_SPEED:
-        return GateResult(EXCLUDED, "near a saccade but the eye was not moving fast at the flash", speed, latency_ms)
+        return GateResult(EXCLUDED, NOT_MOVING_REASON, speed, latency_ms)
     if speed > MAX_FLASH_SPEED:
         return GateResult(EXCLUDED, "gaze speed at the flash is implausibly high", speed, latency_ms)
     if latency_ms is not None and not LATENCY_RANGE_MS[0] <= latency_ms <= LATENCY_RANGE_MS[1]:
@@ -139,7 +140,7 @@ def classify_leg_flash(
     if nearest is not own:
         return GateResult(EXCLUDED, f"near a saccade other than this trial's {leg} saccade", speed, latency_ms)
     if speed is None or speed < MIN_FLASH_SPEED:
-        return GateResult(EXCLUDED, "near a saccade but the eye was not moving fast at the flash", speed, latency_ms)
+        return GateResult(EXCLUDED, NOT_MOVING_REASON, speed, latency_ms)
     if speed > MAX_FLASH_SPEED:
         return GateResult(EXCLUDED, "gaze speed at the flash is implausibly high", speed, latency_ms)
     if latency_ms is not None:

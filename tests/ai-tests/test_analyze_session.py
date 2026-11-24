@@ -211,7 +211,7 @@ def test_ceiling_falls_back_to_a_labelled_accuracy_index():
     assert r["index"] == pytest.approx(0.4)
     assert r["ci"][0] < 0.4 < r["ci"][1]
     assert any("psychometric index not computed" in n for n in r["notes"])
-    assert "ACCURACY index" in an.format_suppression(r)
+    assert "accuracy fallback" in an.format_suppression(r)
 
 
 def test_all_correct_everywhere_is_flagged_as_ceiling_not_a_threshold():
@@ -242,7 +242,7 @@ def test_analyze_writes_the_index_to_report_and_json(tmp_path):
     assert saved["conditions_from"] == "gates" and "notes" in saved
     assert saved["n_saccade"] == sum(r["condition"] == "saccade" for r in rows)
     assert saved["n_fixation"] == sum(r["condition"] == "fixation" for r in rows)
-    assert "conditions from the pre-specified gates" in result["report"]
+    assert "Excluded: " in result["report"] and "AMOUNT" in result["report"]
 
 
 def test_gates_decide_the_conditions_and_excluded_flashes_are_left_out():
@@ -325,3 +325,128 @@ def test_clock_offset_history_is_interpolated_over_the_trace(tmp_path):
     assert t - np.asarray([1000.0, 1060.0, 1120.0, 1180.0]) == pytest.approx([0.250, 0.260, 0.270, 0.270])
     t, _ = an.load_trace(path, 0.25, [history[0]])  # a single entry (or none) falls back to the scalar offset
     assert t - np.asarray([1000.0, 1060.0, 1120.0, 1180.0]) == pytest.approx([0.25] * 4)
+
+
+# -- the human-first report: the same layout every run -----------------------------------------------------------------------------
+
+SECTIONS = ["DATA QUALITY", "INDEX FIT", "ACCURACY BY FLASH TIME", "ACCURACY BY CONTRAST", "SUPPRESSION INDEX BY LEG", "RETURN LATENCY", "TECHNICAL DETAILS"]
+GOOD_META = {"gaze_quality": {"latency_ms_median": 14.0, "longest_gap_ms": 20.0, "clock_offset_status": "ok"}, "head_motion": {"status": "ok", "flagged_trials": 0}}
+
+
+def test_report_has_the_three_line_top_block_then_the_same_sections_every_run(tmp_path):
+    stamp = _write_session(tmp_path, ONSETS, [(rel, "correct", c) for rel in (0, 10, -10, 20) for c in (0.1, 0.2)])
+    report = an.analyze(stamp, tmp_path, out_dir=tmp_path / "out")["report"]
+    lines = report.splitlines()
+    top = lines[3:6]
+    assert [ln.split()[0] for ln in top] == ["QUALITY", "RESULT", "AMOUNT"]
+    assert top[2].split()[1:3] == ["TOO", "FEW"] and "usable of 8 (need 12+ each for a threshold fit)" in top[2]
+    assert [report.index(h) for h in SECTIONS] == sorted(report.index(h) for h in SECTIONS)
+    assert "no return jump in this run" in report and report.count("no return jump in this run") == 2  # legs and return latency still have their section
+    assert "WARNING" not in report and "MAIN COMPARISON" not in report and report.count("Suppression index") == 0  # said once, in RESULT
+    assert "No answer: 0 (scored as not correct, like a wrong answer; not excluded)" in report
+    assert "Excluded as not moving fast yet:" in report and report.encode("cp1252")
+    assert all(len(line) < 170 for line in lines)
+
+
+def test_report_says_when_it_is_a_test_run_and_only_then(tmp_path):
+    flashes = [(rel, "correct", 0.1) for rel in (0, 10, 400)]
+    stamp = _write_session(tmp_path, ONSETS, flashes)
+    assert "TEST run" not in an.analyze(stamp, tmp_path, out_dir=tmp_path / "a")["report"]
+    summary = an.analyze(stamp, tmp_path, out_dir=tmp_path / "b")["summary"]
+    assert "TEST run" in an.format_report(summary, test_run=True) and "TEST run" not in an.format_report(summary)
+
+
+def test_quality_line_reads_session_json_and_says_unknown_for_missing_fields():
+    from src.experiment.run_quality import quality_line, run_facts
+
+    status, text = quality_line([run_facts(GOOD_META, 0, 30)])
+    assert status == "OK" and text == "gaze delay 14 ms · clock offset ok · head still · 0 flashes lost to tracking"
+    status, text = quality_line([run_facts({}, None, None)])  # an old or damaged session.json: never a crash
+    assert status == "CHECK" and "gaze delay unknown" in text and "clock offset unknown" in text and "head unknown" in text and "tracking loss unknown" in text
+    assert quality_line([run_facts("damaged", 0, 30)])[0] == "CHECK"
+    bad_clock = {**GOOD_META, "gaze_quality": {**GOOD_META["gaze_quality"], "clock_offset_status": "failed (timeout)"}}
+    assert quality_line([run_facts(bad_clock, 0, 30)])[0] == "BAD"
+    slow = {**GOOD_META, "gaze_quality": {**GOOD_META["gaze_quality"], "latency_ms_median": 400.0}}
+    assert quality_line([run_facts(slow, 0, 30)])[0] == "CHECK"
+    flagged = {**GOOD_META, "head_motion": {"status": "ok", "flagged_trials": 2}}
+    assert quality_line([run_facts(flagged, 1, 30)])[0] == "CHECK" and "1 flashes lost to tracking" in quality_line([run_facts(flagged, 1, 30)])[1]
+    assert quality_line([run_facts(GOOD_META, 10, 30)])[0] == "BAD"  # a third of the flashes lost to tracking
+
+
+def test_pooled_quality_line_takes_the_worst_run_and_a_delay_range():
+    from src.experiment.run_quality import quality_line, run_facts
+
+    slow = {**GOOD_META, "gaze_quality": {**GOOD_META["gaze_quality"], "latency_ms_median": 20.0}}
+    status, text = quality_line([run_facts(GOOD_META, 0, 30), run_facts(slow, 2, 30)])
+    assert status == "CHECK" and "gaze delay 14-20 ms" in text and "2 flashes lost to tracking" in text
+
+
+def test_dashboard_lights_and_report_quality_share_the_same_rules():
+    from src.dashboard import results
+    from src.experiment import run_quality
+
+    assert results.latency_light is run_quality.latency_light and results.LATENCY_RULE is run_quality.LATENCY_RULE
+
+
+def test_return_latency_flags_a_spread_that_is_off_by_more_than_a_quarter():
+    base = {"trials_jumped": 80, "forced_jumps": 0, "no_return_found": 0, "n": 80, "median_ms": 150.0, "sd_ms": 70.0, "robust_sd_ms": 64.0,
+            "share_predictive": 0.0, "live_n": 0, "return_flash_spread_sd_ms": 40.0, "return_jump_trigger": "arrival"}
+    assert "measured 64 ms vs set 40 ms: consider raising RETURN_FLASH_SPREAD_SD_MS" in an.format_return_latency(base)
+    assert "consider lowering" in an.format_return_latency({**base, "robust_sd_ms": 20.0})
+    assert "CHECK" not in an.format_return_latency({**base, "robust_sd_ms": 45.0})  # within 25 %
+    assert "no return jump in these runs" in an.format_return_latency(None, "these runs")
+
+
+def test_leg_table_gives_each_legs_flash_count_and_saccade_flashes():
+    leg = {"index": None, "ci": None, "method": None, "n_saccade": 0, "n_fixation": 9, "correct_saccade": 0, "correct_fixation": 8}
+    text = an.format_leg_suppression({"out": leg, "return": {**leg, "n_saccade": 4, "correct_saccade": 3}, "pooled": {**leg, "n_saccade": 4}}, {"out": 6, "return": 24})
+    out_row = next(ln for ln in text.splitlines() if ln.split()[:1] == ["out"])
+    assert out_row.split()[1:3] == ["6", "0"] and next(ln for ln in text.splitlines() if ln.split()[:1] == ["pooled"]).split()[1:3] == ["30", "4"]
+
+
+def test_not_moving_fast_exclusions_are_split_into_before_and_after_onset():
+    from src.experiment.flash_gates import EXCLUDED, NOT_MOVING_REASON, GateResult
+
+    def placed(rel):
+        return an.Placed(an.Flash(0, 1000.0, 0.06, "above", "correct"), rel, False)
+
+    gates = [GateResult(EXCLUDED, NOT_MOVING_REASON)] * 4 + [GateResult(EXCLUDED, "tracking gap around the flash")]
+    assert an.speed_exclusions([placed(-30.0), placed(-5.0), placed(20.0), placed(None), placed(10.0)], gates) == (2, 1, 1)
+    text = "\n".join(an.format_excluded({"excluded": [0, 5], "reasons": {"x": 5}}, (2, 1, 0)))
+    assert "2 before saccade onset, 1 after" in text and "Excluded: 5 (5 x x)" in text
+
+
+def test_only_thresholds_that_differ_from_the_defaults_are_printed():
+    assert "defaults (analysis_constants.py)" in an.format_thresholds(an.thresholds_record())
+    text = an.format_thresholds(an.thresholds_record(min_amplitude=0.2, flash_delay_ms=15.0))
+    lines = [ln.strip() for ln in text.splitlines()[1:]]
+    assert lines == ["min_amplitude = 0.2  (default 0.12)", "flash_delay_ms = 15  (default 0)"]
+    assert an.thresholds_record(min_amplitude=0.2)["min_amplitude"] == 0.2 and "speed_high" in an.thresholds_record()  # the record itself stays complete
+
+
+def test_geometry_is_one_line_with_a_short_placeholder_note():
+    from src.experiment.geometry import Geometry
+
+    text = an.format_geometry(Geometry.default().as_settings())
+    assert text.count("\n") == 0 and "Screen 26 cm @ 50 cm (29.1 deg)" in text and text.endswith("[placeholder, not measured]")
+    assert "placeholder" not in an.format_geometry(Geometry(19.5, 60).as_settings())
+    assert "Screen geometry: not recorded" in an.format_report(an.summarize([], []) | {"gates": {"saccade": [0, 0], "fixation": [0, 0], "excluded": [0, 0], "reasons": {}},
+                                                                                       "suppression": an.suppression_index([])}, geometry=None)
+
+
+def test_condition_bars_put_the_two_red_bars_together_and_the_two_blue_bars_together():
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import to_hex
+
+    from src.experiment.analysis_output import AWAY_COLOUR, NEAR_COLOUR, _condition_bars
+
+    summary = {"near_onset": (4, 10), "beyond": (13, 14), "inside": (3, 6), "outside": (20, 24), "p_near_vs_beyond": 0.009}
+    fig, ax = plt.subplots()
+    _condition_bars(ax, summary)
+    bars = sorted(ax.patches, key=lambda b: b.get_x())
+    assert [to_hex(b.get_facecolor()) for b in bars] == [NEAR_COLOUR.lower(), NEAR_COLOUR.lower(), AWAY_COLOUR.lower(), AWAY_COLOUR.lower()]
+    centres = [b.get_x() + b.get_width() / 2 for b in bars]
+    assert centres[3] - centres[2] == centres[1] - centres[0] < centres[2] - centres[1]  # a visible gap between the groups
+    assert [round(b.get_height()) for b in bars] == [40, 50, 93, 83]
+    assert "p = 0.009" in ax.get_title() and ax.get_ylabel() == "Accuracy (%)"
+    plt.close(fig)
