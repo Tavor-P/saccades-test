@@ -1,6 +1,7 @@
 """Relations between tuning constants that must always hold. A violated relation usually means a
 recent retune broke an assumption elsewhere (the tuning comments in constants.py say which)."""
 
+from include.experiment import analysis_constants as a
 from include.experiment import constants as c
 from include.eye_tracking import constants as g
 from src.experiment.simulation import FRAME_HZ
@@ -51,3 +52,24 @@ def test_return_jump_constants():
     assert c.RETURN_JUMP_LANDING_TIMEOUT_MS >= c.DEFAULT_REACTION_TIME_MS + max(c.CONTROL_OFFSETS_MS) + c.TIMING_JITTER_MS
     assert c.RETURN_JUMP_TRIGGER in ("arrival", "onset")
     assert 0 < c.RETURN_FLASH_SPREAD_SD_MS <= c.FLASH_SPREAD_SD_MS
+
+
+def test_analysis_thresholds():
+    """The post-hoc analysis' thresholds (include/experiment/analysis_constants.py) keep their intended order."""
+    assert 0 < a.SPEED_LOW < a.SPEED_HIGH  # hysteresis: a movement ends below the speed that started it
+    assert 0 < a.MIN_AMPLITUDE < 1  # a ratio of the scene width
+    assert 0 < a.NEAR_ONSET_MS < a.FAR_MS
+    assert list(a.BIN_EDGES_MS) == sorted(set(a.BIN_EDGES_MS)) and a.BIN_EDGES_MS[0] < 0 < a.BIN_EDGES_MS[-1]
+    assert 0 < a.TRACKING_GAP_MS and 0 < a.FIXATION_EXCLUSION_MS < a.FAR_MS
+    assert 0 < a.LATENCY_RANGE_MS[0] < a.LATENCY_RANGE_MS[1]
+    assert 0 < a.AMPLITUDE_RANGE_REL[0] < 1 < a.AMPLITUDE_RANGE_REL[1]
+    assert 0 < a.MIN_FLASH_SPEED < a.MAX_FLASH_SPEED
+    assert a.MIN_FLASH_SPEED >= a.SPEED_LOW  # a saccade flash needs at least the speed that still counts as moving
+    assert a.RETURN_LATENCY_MAX_MS > 0
+    assert a.OUT_SEARCH_S[0] <= 0 < a.OUT_SEARCH_S[1] and a.RETURN_SEARCH_AFTER_JUMP_S > 0
+    assert 0 < a.RETURN_MIN_AMPLITUDE_REL <= 1
+    assert 0 < a.MIN_ACCURACY_TRIALS < a.MIN_FIT_TRIALS
+    assert 0 < a.LAPSE < 1 - a.CHANCE and a.CHANCE == 0.5  # 2AFC: up or down
+    assert a.THRESHOLD_EXTRAPOLATION > 1
+    assert 0 < a.BOOT_MIN_IDENTIFIED_SHARE <= 1 and a.BOOT_MIN_IDENTIFIED > 0
+    assert a.CHANCE < a.CHANCE + a.ACCURACY_FLOOR_MARGIN < a.ACCURACY_CEILING <= 1
