@@ -38,7 +38,7 @@ Printable version: [docs/experimenter_checklist.md](docs/experimenter_checklist.
 4. Read the participant script below, then follow the narrated tutorial (SPACE advances; Esc quits and keeps the data).
 5. At the end the console and `RUN_SUMMARY.txt` in the run folder show what happened and the next commands; SPACE closes the window.
 6. Export the scene video from the phone and attach it (see [Glasses video](#glasses-video)).
-7. Analyse: dashboard **Analyse** button, or `launchers\analyze_latest.bat`; after several runs of one person, `launchers\analyze_participant.bat`.
+7. Analyse: each run is analysed automatically when it ends (`analysis/` in its folder; rerun with the command below). Dashboard **Analyse** button, or `launchers\analyze_latest.bat`; after several runs of one person, `launchers\analyze_participant.bat`.
 
 > **Participant script.** "Look at the dot and press SPACE when you are ready. After a moment, with a beep, it jumps to the other side of the screen: look at it as fast as you can.
 > Around then a very faint thin line flashes for an instant above or below it. Press UP if it was above, DOWN if below, and guess if you are not sure.
@@ -70,7 +70,7 @@ Click a field's name or its **?** for a help bubble. The last values are remembe
    With **Return jump** on, once the eye has arrived (`RETURN_JUMP_TRIGGER` "arrival"; "onset" jumps at the start of the movement; `RETURN_JUMP_LANDING_TIMEOUT_MS` forces it) the target jumps back to the start symbol
    and the eye follows it, so a trial has an out and a return saccade but still only ONE flash: on the return leg in `RETURN_LEG_FLASH_FRACTION` (0.8) of trials (timed from the jump, spread `RETURN_FLASH_SPREAD_SD_MS` 40 ms,
    a guess to be measured), else on the out leg. Not yet run on glasses.
-5. **End.** A plain-language summary and the `analyze_session` command are printed. Fixation data come from the control flashes and far-from-saccade flashes of the same trials, sorted after the fact.
+5. **End.** A plain-language summary is printed, and the run is analysed automatically (top of the report printed; rerun with `analyze_session`, see below). Fixation data come from the control flashes and far-from-saccade flashes of the same trials, sorted after the fact.
 
 The phone records the scene video during the trials; a failure there never stops the session. `Esc` quits at once.
 

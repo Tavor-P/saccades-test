@@ -4,6 +4,7 @@ classes, not here; this module and rendering.py are the only ones that need Psyc
 
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 
 from psychopy import event, gui, sound, visual
 
@@ -438,6 +439,28 @@ def main() -> None:
     if lost is not None:  # the fullscreen window is closed now, so the box is visible
         show_error_box(NEON_LOST_TITLE, _neon_lost_message(lost, logger.folder))
         raise SystemExit(2)
+    _auto_analyze(logger.folder)  # after the window closes: the participant never waits on it
+
+
+def _auto_analyze(folder: Path) -> None:
+    """Analyses the finished run into its analysis/ folder, as analyze_session does, and prints the report's top block.
+    Never raises: the run is already saved, and a failure only means the analysis is rerun by hand."""
+    from src.experiment import analyze_session  # lazy: keeps start-up fast
+
+    print("Analysing this run...", flush=True)
+    run_ref = f"{folder.parent.name}/{folder.name}"  # participant/folder: unambiguous even if another participant has a run with the same name
+    try:
+        result = analyze_session.analyze(str(folder), data_dir=folder.parent.parent)
+    except Exception as exc:
+        print(f"Automatic analysis skipped: {exc}. Rerun later with: scripts/py.ps1 -m src.experiment.analyze_session {run_ref}", flush=True)
+        return
+    top_block: list[str] = []
+    for line in str(result["report"]).splitlines():
+        if not line.strip():
+            break
+        top_block.append(line)
+    print("\n".join(top_block))
+    print(f"Analysis folder: {result['report_path'].parent}", flush=True)
 
 
 NEON_LOST_TITLE = "Lost the Neon glasses"
@@ -484,7 +507,7 @@ def _run_phases(
         return  # quit early
     if result.calibration_ratios is not None:
         logger.set_calibration(*result.calibration_ratios)
-    print(f"Run finished. Analyse it with: scripts/py.ps1 -m src.experiment.analyze_session {logger.folder.name}")
+    print("Run finished.")
 
 
 if __name__ == "__main__":

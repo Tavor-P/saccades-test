@@ -179,7 +179,7 @@ def build_run_summary(run_folder) -> str:
         "NEXT STEPS",
         "1. Export the scene video (mp4) of this recording from the phone / Pupil Cloud to the PC.",
         f"2. .\\scripts\\py.ps1 -m src.experiment.import_glasses_video {path} C:\\path\\to\\scene_video.mp4",
-        f"3. .\\scripts\\py.ps1 -m src.experiment.analyze_session {path}",
+        f"3. analysis\\ is written automatically when the run ends. To redo it (e.g. after step 2): .\\scripts\\py.ps1 -m src.experiment.analyze_session {path}",
     ]
     return "\n".join(out) + "\n"
 

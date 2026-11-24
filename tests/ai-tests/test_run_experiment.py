@@ -207,7 +207,10 @@ def test_main_passes_the_found_address_to_both_gaze_sources_and_session_json(mon
     monkeypatch.setattr(run_experiment, "finish_run_summary", Mock(return_value=False))
     tutorial = Mock(return_value=None)  # participant quits during the tutorial
     monkeypatch.setattr(run_experiment, "run_tutorial_phase", tutorial)
+    auto = Mock()
+    monkeypatch.setattr(run_experiment, "_auto_analyze", auto)
     run_experiment.main()
+    auto.assert_called_once_with(logger.folder)  # a run that ends normally (even after quitting early) is analysed
     assert tutorial.call_args.kwargs["neon_address"] == ("192.168.43.1", 8080)
     assert tutorial.call_args.kwargs["return_jump"] is True
     logger.set_return_jump.assert_called_once_with(True)
@@ -242,6 +245,8 @@ def test_main_turns_a_lost_neon_into_a_plain_message_box_and_exit_2_after_closin
     monkeypatch.setattr(run_experiment, "run_saccade_phase", Mock(side_effect=NeonConnectionError("The Neon phone at 192.168.43.1:8080 does not answer.")))
     boxes = []
     monkeypatch.setattr(run_experiment, "show_error_box", lambda title, text: boxes.append((title, text, win.close.called)))
+    auto = Mock()
+    monkeypatch.setattr(run_experiment, "_auto_analyze", auto)
     with pytest.raises(SystemExit) as info:
         run_experiment.main()
     assert info.value.code == 2
@@ -249,8 +254,50 @@ def test_main_turns_a_lost_neon_into_a_plain_message_box_and_exit_2_after_closin
     assert boxes[0][2], "the fullscreen window must be closed before the box is shown"
     logger.close.assert_called_once()
     done_screen.assert_not_called()
+    auto.assert_not_called()  # a lost Neon leaves a partial run: no automatic analysis
     err = capsys.readouterr().err
     assert "does not answer" in err and "Traceback" not in err
+
+
+# -- automatic analysis when a run ends ------------------------------------------------------------------------------
+
+
+def _fake_analysis(report: str):
+    from pathlib import Path
+
+    def fake(run, data_dir, **_):
+        assert Path(run).is_absolute()  # the full run folder, so a same-named run of another participant is never picked
+        return {"report": report, "report_path": Path(run) / "analysis" / "report.txt"}
+
+    return fake
+
+
+def test_auto_analyze_prints_the_report_top_block_and_the_analysis_folder(monkeypatch, tmp_path, capsys):
+    from src.experiment import analyze_session, run_experiment
+
+    report ="QUALITY  good\nRESULT   -12 %\nAMOUNT   3 flashes\n\nDetails below the blank line\nnot shown\n"
+    monkeypatch.setattr(analyze_session, "analyze", _fake_analysis(report))
+    folder = tmp_path / "P01" / "2026-11-24_10-00-00"
+    run_experiment._auto_analyze(folder)
+    out = capsys.readouterr().out
+    assert "Analysing this run..." in out
+    assert "QUALITY  good\nRESULT   -12 %\nAMOUNT   3 flashes" in out
+    assert "Details below" not in out
+    assert "Analysis folder:" in out and "analysis" in out
+
+
+def test_auto_analyze_swallows_a_failed_analysis_and_prints_the_rerun_command(monkeypatch, tmp_path, capsys):
+    from src.experiment import analyze_session, run_experiment
+
+    def boom(*_args, **_kwargs):
+        raise ValueError("no gaze trace in this run")
+
+    monkeypatch.setattr(analyze_session, "analyze", boom)
+    folder = tmp_path / "P01" / "2026-11-24_10-00-00"
+    run_experiment._auto_analyze(folder)  # returns normally: the run is already saved
+    out = capsys.readouterr().out
+    assert "Automatic analysis skipped: no gaze trace in this run." in out
+    assert "scripts/py.ps1 -m src.experiment.analyze_session P01/2026-11-24_10-00-00" in out
 
 
 def _saccade_phase_with(monkeypatch, gaze, **patches):
