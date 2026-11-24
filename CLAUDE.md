@@ -35,6 +35,10 @@ backend. Participant/experimenter docs: [README.md](README.md).
   (never `git add -A` / `commit -a`); don't touch other sessions' files, tell the user instead.
 - PowerShell 5.1 has no `&&`; keep each file's line endings (CRLF). `.gitignore` has `data/`, which matches any `data` folder (tests: use `tests/fixtures/`).
 - `data/` is git-ignored runtime output and participant data is personal data: never commit or print it, never write to it from tests/simulations, never copy real sessions into `tests/fixtures/`.
+- **Test budget: a new feature does NOT get new tests by default.** Add a test only for (a) a bug fix that could come back, (b) an on-disk contract (trials.csv columns,
+  JSON schemas, folder layout), or (c) when the user asks. Otherwise rely on the existing tests, the simulator and a manual check, and say so. When a test is needed, extend an existing
+  one (one more assert or parameter) before writing a new function; never add a new test file without asking. If your change makes a test obsolete, delete or merge it in the same commit.
+  Run only the tests for the area you changed while working; the full suite is run once, by the coordinating session, before a merge.
 - Report test results truthfully (ran / skipped). The whole suite passes with none skipped, in ~30-35 s (pytest-xdist: pytest.ini runs 6 workers, `--dist loadgroup`; was ~2 min serial).
   Keep it fast: share expensive setup (module-scoped fixtures), keep simulated runs small, and do not render real plots or run 1000 bootstrap refits where a test only needs a file or a CI to exist
   (see tests/ai-tests/conftest.py: PNGs are stubbed except in `REAL_PLOT_TESTS`, `suppression_index` runs 300 resamples). Tests must not share paths or global state (xdist): use `tmp_path`.
@@ -136,7 +140,7 @@ Paths are checked by `tests/test_docs.py` - keep them real.
 
 ## How to verify a change (cheapest first)
 
-1. **Session/scoring/logger logic**: add or update a test (`FakeGazeSource` + `fake_time`, or the simulator), run pytest. A previously passing test that now fails means behaviour changed: decide if intended before editing it.
+1. **Session/scoring/logger logic**: run the existing tests for that area; extend one only under the test budget (Rules) (`FakeGazeSource` + `fake_time`, or the simulator). A previously passing test that now fails means behaviour changed: decide if intended before editing it.
 2. **Whole-session behaviour or a timing constant**: `run_sim.py` (`--set NAME=VALUE`, `--sweep NAME=a,b,c --seeds 5`, `--timeline`); trust relative comparisons only. After session/scoring changes also run `tests/ai-tests/find_bugs.py --sessions 300`.
 3. **Gaze source**: `tests/test_neon_source.py` / `tests/test_gaze_trace.py` patterns (fake device, or replay the fixture via `ReplayGazeSource`).
 4. **Needs real eyes/glasses/screen**: write the measurement script and ask the human; don't guess numbers.
@@ -146,8 +150,8 @@ Paths are checked by `tests/test_docs.py` - keep them real.
 ## Recipes
 
 - **Add a trials.csv column / `TrialResult` field**: field in `include/experiment/types.py` (default `None`) -> one `Column(...)` in `TRIAL_COLUMNS` (`logger.py`) or a reasoned entry in `DROPPED_FROM_CSV` -> `trial_from_row`
-  -> set it in `trial_record.saccade_trial_result` (called from `session.py` `_finish_trial`) -> test (see `tests/ai-tests/test_tracking_quality.py`). Old CSVs must still load.
-- **Change a tuning constant**: edit in `include/**/constants.py` (read its comment), then `--sweep` in the simulator and pytest.
+  -> set it in `trial_record.saccade_trial_result` (called from `session.py` `_finish_trial`) -> extend the existing round-trip test (`tests/ai-tests/test_tracking_quality.py` pattern; a contract, so it is in the test budget). Old CSVs must still load.
+- **Change a tuning constant**: edit in `include/**/constants.py` (read its comment), then `--sweep` in the simulator and that area's tests (`test_constants_sanity.py` checks relations; no new test).
 - **Add a gaze backend**: implement `GazeSource`, select it in `build_gaze_source()` (lazy import), reuse `GazeMapper`.
 - **Reproduce a bug without hardware**: replay a recorded trace via `ReplayGazeSource`, or use a `ParticipantProfile` in the simulator.
 
