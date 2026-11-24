@@ -49,6 +49,7 @@ from src.experiment.session_config import SessionConfig, TutorialHandoff
 from src.experiment.space_input import SpaceTally
 from src.experiment.trial_factory import build_saccade_sequence, generate_next_saccade_trial
 from src.experiment.trial_legs import SampleFeed, TrialLegs, clamped_gaze_latency_ms, timestamp_latency_s
+from src.experiment.trial_record import saccade_trial_result
 from src.experiment.trial_mechanics import (
     OnsetDetector,
     RollingReactionTime,
@@ -747,10 +748,7 @@ class ExperimentSession:
 
     def _finish_trial(self) -> None:
         trial = self._current_trial_spec
-        legs = self._legs
-        saccade_duration_ms = legs.saccade_duration_ms()
-        flash_onset_at, _ = self._flash_leg_onset_landing()
-        if not legs.leg_moved(self._flash_leg) or not self._line_actually_shown:
+        if not self._legs.leg_moved(self._flash_leg) or not self._line_actually_shown:
             outcome = "timeout"  # no saccade (on the flash's leg), or the trial ended before its flash fired
         else:
             outcome = score_outcome(self._responded, self._answer_side, trial.line_side)
@@ -761,39 +759,25 @@ class ExperimentSession:
         tracking_ok = (not (self._tracking_lost_near_flash or head_moved)) if self._line_actually_shown else None
 
         if not trial.practice:
-            result = TrialResult(
-                index=trial.index,
-                phase="saccade",
-                source=trial.source,
-                target=trial.target,
-                saccade_duration_ms=saccade_duration_ms,
+            result = saccade_trial_result(
+                trial,
+                self._legs,
+                outcome=outcome,
                 flash_shown=self._line_actually_shown,
+                flash_leg=self._flash_leg,
+                flash_scheduled_at=self._flash_scheduled_at,
+                flash_unix_ms=self._flash_unix_ms,
                 contrast=self._trial_contrast,
-                line_side=trial.line_side if self._line_actually_shown else None,
+                flash_during_saccade=self._flash_during_saccade,
+                tracking_ok=tracking_ok,
                 responded=self._responded,
                 answer_side=self._answer_side,
                 response_time_ms=self._response_time_ms,
-                outcome=outcome,
                 reaction_latency_ms=self._reaction_latency_ms,
                 onset_detection_lag_ms=self._onset_detection_lag_ms,
-                flash_during_saccade=self._flash_during_saccade,
-                timing_offset_ms=trial.timing_offset_ms,
-                flash_unix_ms=self._flash_unix_ms,
-                tracking_ok=tracking_ok,
-                flash_relative_to_onset_ms=(
-                    (self._flash_scheduled_at - flash_onset_at) * 1000
-                    if self._line_actually_shown and flash_onset_at is not None
-                    else None
-                ),
                 avg_rt_used_ms=self._trial_avg_rt_ms,
                 scheduled_delay_ms=self._trial_scheduled_delay_ms,
                 gaze_latency_ms=self._trial_gaze_latency_ms,
-                flash_leg=self._flash_leg if self._line_actually_shown else None,
-                jump_back_ms_after_go_cue=legs.ms_after_go_cue(legs.jump_at),
-                return_reaction_ms=legs.return_reaction_ms,
-                jump_back_forced=legs.jump_forced,
-                out_arrival_ms_after_go_cue=legs.ms_after_go_cue(legs.out_arrived_at),
-                left_target_before_jump=legs.left_target_before_jump(),
             )
             self._logger.log(result)
             self._results.append(result)
