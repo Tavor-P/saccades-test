@@ -220,9 +220,9 @@ def test_main_passes_the_found_address_to_both_gaze_sources_and_session_json(mon
 def test_main_turns_a_lost_neon_into_a_plain_message_box_and_exit_2_after_closing_the_window(monkeypatch, capsys):
     import pytest
 
-    from src.eye_tracking.neon_source import NeonConnectionError
     from src.experiment import run_experiment
     from src.experiment.geometry import Geometry
+    from src.eye_tracking.neon_source import NeonConnectionError
 
     monkeypatch.setattr(run_experiment.sys, "setswitchinterval", lambda *_: None)
     monkeypatch.setattr(run_experiment, "prompt_session_info", lambda: ("P01", False, False, False, (0.04,), Geometry.default(), 80.0, "", True))

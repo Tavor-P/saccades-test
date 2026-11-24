@@ -41,13 +41,15 @@ def test_seeds_are_deterministic_and_profile_reaction_time_and_dropouts_show_up(
     a = simulate_session(max_trials=6, seed=5)
     b = simulate_session(max_trials=6, seed=5)
     c = simulate_session(max_trials=6, seed=6)
-    key = lambda s: [(r.outcome, r.contrast, r.reaction_latency_ms) for r in s.saccade_results]
+    def key(s):
+        return [(r.outcome, r.contrast, r.reaction_latency_ms) for r in s.saccade_results]
     assert key(a) == key(b)
     assert key(a) != key(c)
 
     fast = simulate_session(max_trials=8, seed=1, profile=ParticipantProfile(reaction_ms_mean=180, reaction_ms_sd=5))
     slow = simulate_session(max_trials=8, seed=1, profile=ParticipantProfile(reaction_ms_mean=320, reaction_ms_sd=5))
-    mean = lambda s: sum(r.reaction_latency_ms for r in s.saccade_results if r.reaction_latency_ms) / len(s.saccade_results)
+    def mean(s):
+        return sum(r.reaction_latency_ms for r in s.saccade_results if r.reaction_latency_ms) / len(s.saccade_results)
     assert mean(slow) - mean(fast) == pytest.approx(140, abs=30)
 
     sim = simulate_session(max_trials=25, seed=3, profile=ParticipantProfile(dropout_rate_per_s=4.0))

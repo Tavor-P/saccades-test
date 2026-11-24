@@ -14,8 +14,9 @@ import math
 import statistics
 from bisect import bisect_right
 from collections import deque
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, NamedTuple
+from typing import NamedTuple
 
 from include.eye_tracking.constants import (
     NEON_HISTORY_SAMPLES,
@@ -26,8 +27,8 @@ from include.eye_tracking.constants import (
 )
 from include.eye_tracking.interfaces import GazeSource
 from include.eye_tracking.types import GazeSample, GazeZone
-from src.eye_tracking.gaze_mapping import GazeMapper
 from src import textio, timebase
+from src.eye_tracking.gaze_mapping import GazeMapper
 
 TRACE_FIELDS = ["t_s", "device_unix_s", "x_px", "worn"]
 
@@ -168,6 +169,7 @@ class ReplayGazeSource(GazeSource):
         """Feeds every row that has arrived by now through the mapper; returns the current trace time."""
         trace_time = self._times[0] + self.elapsed_s
         stop = bisect_right(self._times, trace_time)
+        assert self._t0 is not None  # set by start()
         for i in range(self._next_row, stop):
             self._latest = self._sample_for(self._trace[i], self._t0 + self._capture_rel[i])
             self._history.append(self._latest)

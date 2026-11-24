@@ -22,17 +22,17 @@ import statistics
 from collections import deque
 from dataclasses import dataclass, field
 
-from include.eye_tracking.interfaces import GazeSource
-from include.eye_tracking.types import GazeSample, GazeZone
 from include.experiment.constants import CROSS_POSITION, DOT_POSITION, RETURN_JUMP_DEFAULT, SCREEN_HEIGHT_CM, VIEWING_DISTANCE_CM
 from include.experiment.types import Side, TrialResult
-from src.eye_tracking.head_monitor import HeadMotionTracker
+from include.eye_tracking.interfaces import GazeSource
+from include.eye_tracking.types import GazeSample, GazeZone
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.scoring import is_valid_for_saccadic_analysis
 from src.experiment.session import ExperimentSession
 from src.experiment.session_config import SessionConfig
-from src.timebase import ms_to_s, s_to_ms
 from src.eye_tracking.gaze_mapping import GazeMapper
+from src.eye_tracking.head_monitor import HeadMotionTracker
+from src.timebase import ms_to_s, s_to_ms
 
 GAZE_HZ = 240  # simulated tracker rate
 FRAME_HZ = 60  # simulated display/tick rate (ExperimentSession.tick() runs once per frame)
@@ -200,7 +200,7 @@ class SimulatedGazeSource(GazeSource):
         self._latest = GazeSample(zone=GazeZone.UNKNOWN, ratio=None, face_found=False, timestamp=0.0)
         self._history: deque[GazeSample] = deque(maxlen=GAZE_HZ)  # ~1 s of samples, like a real source's buffer
         self.gaze_latency_ms: float | None = None  # what a real source (Neon) measures; set from the profile by the participant
-        self.head_motion = None  # optional HeadMotionTracker fed by the participant (ParticipantProfile.head_spikes)
+        self.head_motion: HeadMotionTracker | None = None  # optional HeadMotionTracker fed by the participant (ParticipantProfile.head_spikes)
 
     def push(self, ratio: float | None, t: float) -> None:
         if ratio is None:
@@ -302,6 +302,7 @@ class SimulatedParticipant:
         speed = next((dps for start, end, dps in self._p.head_spikes if start <= t < end), 0.0)
         self._head_yaw_deg += speed / GAZE_HZ
         half = math.radians(self._head_yaw_deg) / 2
+        assert self._gaze.head_motion is not None  # only called when head spikes are configured
         self._gaze.head_motion.add(t, (0.0, 0.0, speed), (0.0, 0.0, math.sin(half), math.cos(half)))
 
     def feed_gaze(self, t: float) -> None:
@@ -417,6 +418,7 @@ class SimulatedParticipant:
         has not even started (a forced jump after a very slow start), it is cancelled and the eye simply stays put."""
         self._jump_back_seen = True
         if self._return_planned:
+            assert self._prev_move is not None  # planning the return saccade needs the out movement
             out_start = self._prev_move[2]
             if t < out_start:  # forced jump before the out saccade began: both saccades are dropped
                 self._fixate(self._prev_move[0], t)

@@ -3,8 +3,8 @@
 import json
 
 import pytest
-
 from helpers import NullLogger as _NullLogger
+
 from include.experiment.constants import CALIBRATION_ROUNDS, FOREPERIOD_MAX_MS, RESPONSE_WINDOW_MS
 from include.experiment.types import Side
 from src.experiment.pausable_clock import PausableClock
@@ -175,8 +175,8 @@ def test_space_during_the_foreperiod_neither_restarts_it_nor_starts_the_next_tri
 
 
 def test_space_after_answering_starts_the_next_trial_as_soon_as_it_is_ready(fake_gaze, fake_time):
-    from include.eye_tracking.types import GazeZone
     from include.experiment.constants import GAZE_LANDING_STABILITY_MS, SACCADE_ONSET_STABILITY_MS
+    from include.eye_tracking.types import GazeZone
 
     session = _make_experiment(fake_gaze)
     _to_awaiting_space(session, fake_gaze)

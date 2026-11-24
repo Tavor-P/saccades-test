@@ -1,6 +1,7 @@
 from unittest.mock import Mock
 
 from helpers import wait_until
+
 from src.experiment.narrator import Narrator
 
 

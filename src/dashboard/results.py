@@ -14,8 +14,8 @@ from datetime import datetime
 from pathlib import Path
 
 from include.eye_tracking.constants import NEON_GAP_THRESHOLD_MS
-from src.dashboard import data_access
 from src import textio
+from src.dashboard import data_access
 from src.experiment import analyze_participant as ap
 from src.experiment import analyze_session as an
 from src.experiment import session_files
@@ -67,8 +67,8 @@ def _mtime(path: Path) -> float | None:
 
 def _is_fresh(outputs: list[Path], inputs: list[Path]) -> bool:
     """Every output exists and is newer than every existing input file."""
-    out_times = [_mtime(p) for p in outputs]
-    if not out_times or any(t is None for t in out_times):
+    out_times = [t for t in (_mtime(p) for p in outputs) if t is not None]
+    if not outputs or len(out_times) != len(outputs):
         return False
     in_times = [t for t in (_mtime(p) for p in inputs) if t is not None]
     return not in_times or min(out_times) > max(in_times)
@@ -104,7 +104,7 @@ def _rule(name: str, light: str, value: str, rule: str) -> dict:
 
 def _worst(lights) -> str:
     lights = [x for x in lights if x != GREY]
-    return max(lights, key=_SEVERITY.get) if lights else GREY
+    return max(lights, key=lambda light: _SEVERITY[light]) if lights else GREY
 
 
 LATENCY_RULE = (f"Green: the median gaze delay (phone to this computer) is at most {MAX_LATENCY_MS:.0f} ms. Amber: longer, or not recorded. "

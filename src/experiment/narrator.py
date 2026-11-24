@@ -23,7 +23,7 @@ class Narrator:
     """
 
     def __init__(self) -> None:
-        self._queue: "queue.Queue[str | None]" = queue.Queue()
+        self._queue: queue.Queue[str | None] = queue.Queue()
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._lock = threading.Lock()
         self._pending = 0

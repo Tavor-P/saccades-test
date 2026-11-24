@@ -1,6 +1,5 @@
 import pytest
 
-from include.eye_tracking.types import GazeSample, GazeZone
 from include.experiment import participant_text as words
 from include.experiment.constants import (
     CALIBRATION_ROUNDS,
@@ -13,6 +12,7 @@ from include.experiment.constants import (
     TUTORIAL_QUIZ_STREAK_TARGET,
 )
 from include.experiment.types import Side, Target
+from include.eye_tracking.types import GazeSample, GazeZone
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.tutorial_session import TutorialSession
 

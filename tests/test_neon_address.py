@@ -95,7 +95,8 @@ def test_wifi_name_is_the_ssid_line_not_bssid():
 
 def test_a_working_given_address_is_used_without_searching():
     calls = []
-    discover = lambda: pytest.fail("discovery must not run")
+    def discover():
+        return pytest.fail("discovery must not run")
     r = resolve_neon_address("192.168.0.60", 8080, probe=fake_probe({("192.168.0.60", 8080)}, calls), discover=discover, gateways=lambda: [])
     assert r.ok and (r.address, r.port, r.source) == ("192.168.0.60", 8080, SOURCE_GIVEN)
     assert calls == [("192.168.0.60", 8080)] and r.label() == "192.168.0.60:8080 (address in the dialog)"
@@ -262,7 +263,7 @@ class HalfBuiltDevice:
         raise OSError("Cannot connect to host 192.168.0.60:8080 ssl:default [The semaphore timeout period has expired]")
 
     def __del__(self):
-        self._event_manager  # AttributeError, as in the real library
+        self._event_manager  # noqa: B018 - attribute access is the point (raises AttributeError like the real library)
 
 
 @pytest.fixture

@@ -4,13 +4,13 @@ arrival or the out onset; forced at RETURN_JUMP_LANDING_TIMEOUT_MS), and each tr
 import csv
 
 import pytest
+from helpers import NullLogger
 
-from include.eye_tracking.types import GazeZone
 from include.experiment import participant_text as words
 from include.experiment.constants import (
     CALIBRATION_ROUNDS,
-    DOT_POSITION,
     CROSS_POSITION,
+    DOT_POSITION,
     FOREPERIOD_MAX_MS,
     GAZE_LANDING_STABILITY_MS,
     RETURN_JUMP_DEFAULT,
@@ -21,16 +21,14 @@ from include.experiment.constants import (
     TUTORIAL_QUIZ_STREAK_TARGET,
 )
 from include.experiment.types import Side, Target, TrialResult, TrialSpec
-from helpers import NullLogger
+from include.eye_tracking.types import GazeSample, GazeZone
+from src.experiment import session as session_module
+from src.experiment import tutorial_session as tutorial_module
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.session import ExperimentSession
 from src.experiment.session_config import SessionConfig, TutorialHandoff
-from include.eye_tracking.types import GazeSample
-from src.experiment import session as session_module
-from src.experiment import tutorial_session as tutorial_module
 from src.experiment.trial_mechanics import OnsetDetector, RollingReactionTime, ShuffledBag, flash_leg_pool, line_position
 from src.experiment.tutorial_session import TutorialSession
-
 
 pytestmark = pytest.mark.usefixtures("no_flash_jitter")
 

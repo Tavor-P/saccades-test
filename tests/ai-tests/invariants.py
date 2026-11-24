@@ -9,15 +9,15 @@ When an invariant fails, first decide whether the *invariant* is wrong or the
 
 from include.experiment import constants as _constants  # read at call time: override_constants patches the module
 from include.experiment.constants import (
-    RESPONSE_WINDOW_MS,
-    SACCADE_ONSET_STABILITY_MS,
-    PRACTICE_CONTRAST,
     CONTROL_OFFSETS_MS,
     FLASH_SPREAD_SD_MS,
     FLASH_WINDOW_MAX_MS,
     FLASH_WINDOW_MIN_MS,
+    PRACTICE_CONTRAST,
+    RESPONSE_WINDOW_MS,
     RETURN_JUMP_LANDING_TIMEOUT_MS,
     RETURN_LEG_FLASH_FRACTION,
+    SACCADE_ONSET_STABILITY_MS,
     SACCADE_TIMEOUT_MS,
     TIMING_JITTER_MS,
     TIMING_OFFSETS_MS,

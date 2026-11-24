@@ -117,7 +117,7 @@ def probe_status_note(address: str, port: int, timeout_s: float = NEON_PROBE_TIM
     try:
         with opener.open(f"http://{address}:{port}/api/status", timeout=timeout_s) as response:
             body = json.loads(response.read().decode("utf-8", "replace"))
-    except (socket.timeout, TimeoutError):
+    except TimeoutError:
         return f"no answer within {timeout_s:g} s", None
     except urllib.error.HTTPError as exc:
         return f"something answered, but not the Neon Companion app (HTTP {exc.code})", None

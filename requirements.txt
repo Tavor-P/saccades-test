@@ -13,3 +13,7 @@ opencv-python==4.8.1.78
 # Pupil Labs Neon glasses gaze source (src/eye_tracking/neon_source.py).
 pupil-labs-realtime-api
 
+
+# Dev tools (not needed to run the experiment): lint + type check, kept clean by tests/test_lint.py.
+ruff>=0.6
+mypy>=1.10

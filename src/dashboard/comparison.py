@@ -153,9 +153,9 @@ def run_comparison(a_tokens: list[str], b_tokens: list[str], include_test: bool)
     return {
         "headline": result.headline,
         "mode": result.mode,
-        "mode_words": cmp.MODE_NAMES.get(result.mode, "not possible"),
-        "requested_words": cmp.MODE_NAMES.get(result.requested_mode, ""),
-        "how_to_read": HOW_TO_READ.get(result.mode, NOT_COMPARABLE_HELP),
+        "mode_words": cmp.MODE_NAMES.get(result.mode or "", "not possible"),
+        "requested_words": cmp.MODE_NAMES.get(result.requested_mode or "", ""),
+        "how_to_read": HOW_TO_READ.get(result.mode or "", NOT_COMPARABLE_HELP),
         "name_a": result.name_a,
         "name_b": result.name_b,
         "people": [_person_row(p, known) for p in result.people],

@@ -3,7 +3,7 @@ TrialLegs onto a TrialResult. Pure: scoring, the tracking/head gate and logging 
 
 from include.experiment.types import Side, TrialResult, TrialSpec
 from src.experiment.trial_legs import TrialLegs
-from src.timebase import ms_to_s, s_to_ms
+from src.timebase import s_to_ms
 
 
 def saccade_trial_result(

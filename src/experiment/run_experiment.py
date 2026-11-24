@@ -16,11 +16,8 @@ from include.experiment.constants import (
     WARNING_TONE_VOLUME,
 )
 from include.experiment.types import Side
-from src.eye_tracking.gaze_factory import BACKEND_NEON, build_gaze_source
-from src.eye_tracking.neon_source import NeonConnectionError  # no device library at import time (pupil_labs loads lazily in start())
-from src.eye_tracking.neon_address import FAILURE_TITLE, Resolution, failure_message, network_summary, parse_address, resolve_neon_address
-from src.experiment.glasses_video import END_FLASH_COUNT, SYNC_FLASH_COUNT
 from src.experiment.geometry import Geometry
+from src.experiment.glasses_video import END_FLASH_COUNT, SYNC_FLASH_COUNT
 from src.experiment.logger import ResultLogger
 from src.experiment.narrator import Narrator
 from src.experiment.pausable_clock import PausableClock
@@ -41,10 +38,12 @@ from src.experiment.rendering import (  # noqa: F401 (re-exported: tests import 
 from src.experiment.run_summary import finish_run_summary
 from src.experiment.session import ExperimentSession
 from src.experiment.session_config import SessionConfig, TutorialHandoff
-from src.experiment.space_input import NarrationKeyGate, deliver_space, leaves_complete_screen
 from src.experiment.settings import saccade_contrast_levels
+from src.experiment.space_input import NarrationKeyGate, deliver_space, leaves_complete_screen
 from src.experiment.tutorial_session import TutorialSession
-
+from src.eye_tracking.gaze_factory import BACKEND_NEON, build_gaze_source
+from src.eye_tracking.neon_address import FAILURE_TITLE, Resolution, failure_message, network_summary, parse_address, resolve_neon_address
+from src.eye_tracking.neon_source import NeonConnectionError  # no device library at import time (pupil_labs loads lazily in start())
 
 # Answer keys: UP = the line was above the target, DOWN = below (LEFT/RIGHT are not used).
 _RESPONSE_KEY_SIDE = {key: Side.ABOVE for key in ABOVE_RESPONSE_KEYS} | {key: Side.BELOW for key in BELOW_RESPONSE_KEYS}

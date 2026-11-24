@@ -22,8 +22,6 @@ from pathlib import Path
 
 import numpy as np
 
-from src.experiment import session_files
-from src.experiment.session_files import DATA_DIR  # patched per module in tests, so always used by this bare name
 from include.experiment.analysis_constants import (  # noqa: F401 (re-exported)
     BIN_EDGES_MS,
     CHANCE,
@@ -39,6 +37,20 @@ from include.experiment.analysis_constants import (  # noqa: F401 (re-exported)
     SPEED_HIGH,
     SPEED_LOW,
 )
+from src.experiment import session_files
+from src.experiment.analysis_output import plot_report, write_flash_rows  # noqa: F401 (re-exported)
+from src.experiment.analysis_report import (  # noqa: F401 (re-exported)
+    _ms,
+    _pct,
+    format_gate_report,
+    format_geometry,
+    format_leg_suppression,
+    format_report,
+    format_return_latency,
+    format_suppression,
+    format_thresholds,
+    thresholds_record,
+)
 from src.experiment.flash_gates import (  # noqa: F401 (re-exported)
     EXCLUDED,
     FIXATION,
@@ -49,7 +61,20 @@ from src.experiment.flash_gates import (  # noqa: F401 (re-exported)
     classify_leg_flash,
     summarize_gates,
 )
+from src.experiment.leg_gating import (  # noqa: F401 (re-exported)
+    LEGS,
+    TrialSaccades,
+    _robust_sd,
+    classify_leg_flashes,
+    find_trial_saccades,
+    is_return_jump,
+    leg_subset,
+    place_leg_flashes,
+    return_latency_stats,
+    suppression_by_leg,
+)
 from src.experiment.saccade_detection import Flash, Placed, Saccade, detect_saccades, load_flashes, load_trace, place_flashes  # noqa: F401
+from src.experiment.session_files import DATA_DIR  # patched per module in tests, so always used by this bare name
 from src.experiment.suppression_stats import (  # noqa: F401 (re-exported)
     _EXTRAPOLATION,
     _SLOPES,
@@ -65,33 +90,7 @@ from src.experiment.suppression_stats import (  # noqa: F401 (re-exported)
     suppression_index,
     wilson,
 )
-from src.experiment.leg_gating import (  # noqa: F401 (re-exported)
-    LEGS,
-    TrialSaccades,
-    _robust_sd,
-    classify_leg_flashes,
-    find_trial_saccades,
-    is_return_jump,
-    leg_subset,
-    place_leg_flashes,
-    return_latency_stats,
-    suppression_by_leg,
-)
-from src.experiment.analysis_report import (  # noqa: F401 (re-exported)
-    _ms,
-    _pct,
-    format_gate_report,
-    format_geometry,
-    format_leg_suppression,
-    format_report,
-    format_return_latency,
-    format_suppression,
-    format_thresholds,
-    thresholds_record,
-)
-from src.experiment.analysis_output import plot_report, write_flash_rows  # noqa: F401 (re-exported)
 from src.timebase import ms_to_s
-
 
 # -- driver --------------------------------------------------------------------------------------
 
@@ -212,6 +211,7 @@ def analyze(
     report = format_report(summary, label=f"(session {stamp})", geometry=run.geometry_line, thresholds=thresholds) + "\n" + format_gate_report(summary["gates"]) + "\n" + format_suppression(suppression)
     saved = suppression
     if run.return_jump:
+        assert run.return_latency is not None and run.by_leg is not None  # always set for return-jump runs
         report = format_return_latency(run.return_latency) + "\n" + report + "\n" + format_leg_suppression(run.by_leg)
         saved = {**suppression, "by_leg": {leg: run.by_leg[leg] for leg in LEGS}, "return_latency": run.return_latency}
 

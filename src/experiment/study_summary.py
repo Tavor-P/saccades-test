@@ -13,8 +13,8 @@ from pathlib import Path
 
 import numpy as np
 
-from include.eye_tracking.constants import NEON_GAP_THRESHOLD_MS
 from include.experiment.constants import TRACKING_LOSS_WINDOW_MS
+from include.eye_tracking.constants import NEON_GAP_THRESHOLD_MS
 from src.experiment.analyze_session import DATA_DIR
 from src.experiment.compare import EXPLORATORY_BELOW, MIN_FLASHES_PER_CONDITION, load_person
 from src.experiment.participants import all_participants, list_labels

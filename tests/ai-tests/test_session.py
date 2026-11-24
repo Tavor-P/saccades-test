@@ -1,6 +1,7 @@
 import pytest
+from helpers import NullLogger as _NullLogger
 
-from include.eye_tracking.types import GazeZone
+from include.experiment import participant_text as words
 from include.experiment.constants import (
     CALIBRATION_ROUNDS,
     CROSS_POSITION,
@@ -19,13 +20,11 @@ from include.experiment.constants import (
     SACCADE_ONSET_STABILITY_MS,
     SACCADE_TIMEOUT_MS,
 )
-from include.experiment import participant_text as words
 from include.experiment.types import Side, Target, TrialResult, TrialSpec
+from include.eye_tracking.types import GazeZone
 from src.experiment.pausable_clock import PausableClock
-from helpers import NullLogger as _NullLogger
 from src.experiment.session import ExperimentSession, Phase
 from src.experiment.session_config import SessionConfig, TutorialHandoff
-
 
 pytestmark = pytest.mark.usefixtures("no_flash_jitter")
 
@@ -51,7 +50,7 @@ def _complete_calibration(session) -> None:
     calibration now (see _complete_calibration_and_rt_test for the combined
     helper most tests actually want)."""
     session.on_space()  # WAITING_TO_START -> CALIBRATE_LEFT (round 1)
-    for round_number in range(1, CALIBRATION_ROUNDS + 1):
+    for _round_number in range(1, CALIBRATION_ROUNDS + 1):
         session.on_space()  # CALIBRATE_LEFT -> CALIBRATE_CENTER
         session.on_space()  # CALIBRATE_CENTER -> CALIBRATE_RIGHT
         session.on_space()  # -> next round's CALIBRATE_LEFT, or RT_TEST_AWAITING_SPACE on the last round

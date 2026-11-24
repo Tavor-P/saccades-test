@@ -10,10 +10,11 @@ import json
 import platform
 import statistics
 import subprocess
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Iterator
+from typing import Any
 
 from include.experiment.constants import (
     LINE_OFFSET_DEG,
@@ -25,7 +26,6 @@ from include.experiment.types import Side, Target, TrialResult
 from src import textio, timebase
 from src.experiment import session_files
 from src.experiment.session_files import DATA_DIR  # patched per module in tests, so always used by this bare name
-
 
 # -- trials.csv schema ----------------------------------------------------------------------------
 
@@ -171,7 +171,7 @@ _LEGACY_SIDES = {"vertical": Side.ABOVE, "horizontal": Side.BELOW}
 
 
 def _parse_side(value: str | None) -> Side | None:
-    return _LEGACY_SIDES.get(value) or _parse_enum(Side, value)
+    return _LEGACY_SIDES.get(value or "") or _parse_enum(Side, value)
 
 
 def trial_from_row(row: dict) -> TrialResult:
@@ -221,7 +221,8 @@ def _git_state() -> dict:
     """Commit SHA + whether the tree had uncommitted changes, so a results file
     can be tied back to the exact code that produced it. Best effort."""
     try:
-        run = lambda *args: subprocess.run(["git", *args], cwd=session_files.REPO_ROOT, capture_output=True, text=True, timeout=5, check=True).stdout.strip()
+        def run(*args):
+            return subprocess.run(["git", *args], cwd=session_files.REPO_ROOT, capture_output=True, text=True, timeout=5, check=True).stdout.strip()
         return {"sha": run("rev-parse", "HEAD"), "dirty": bool(run("status", "--porcelain"))}
     except (OSError, subprocess.SubprocessError):  # no git on the PATH, not a repository, or git hung (timeout)
         return {"sha": None, "dirty": None}
@@ -332,7 +333,7 @@ class ResultLogger:
         self._writer.writeheader()
         self._rows: list[TrialResult] = []
 
-        self._metadata = {
+        self._metadata: dict[str, Any] = {
             "participant": {"id": participant_id, "gender": None, "age": None},
             "run": {
                 "mode": None if test_mode is None else ("test" if test_mode else "real"),

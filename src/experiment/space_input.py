@@ -12,7 +12,7 @@ Rules (each is tested in tests/ai-tests/test_space_input.py):
 from __future__ import annotations
 
 from collections import Counter
-from typing import Callable
+from collections.abc import Callable
 
 
 class SpaceTally:

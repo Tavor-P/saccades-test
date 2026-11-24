@@ -19,6 +19,7 @@ import sys
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import matplotlib
 
@@ -254,14 +255,14 @@ def _leg_record(s: dict) -> dict:
 
 
 def _run_record(e: RunEntry) -> dict:
-    record = {"run": e.name, "run_key": e.ref.key, "date": e.date, "mode": e.mode}
+    record: dict[str, Any] = {"run": e.name, "run_key": e.ref.key, "date": e.date, "mode": e.mode}
     if e.analysis is not None:
         record["run_kind"] = e.run_kind
         n, s = e.counts(), e.analysis.suppression
         record.update(
             n_saccade=n[SACCADE], n_fixation=n[FIXATION], n_excluded=n[EXCLUDED],
             index=s["index"], ci=None if s["ci"] is None else list(s["ci"]), method=s["method"], notes=list(s["notes"]),
-            contrasts_pct=list(e.contrasts_pct), contrasts_from=e.contrasts_from, geometry=e.geometry,
+            contrasts_pct=list(e.contrasts_pct or ()), contrasts_from=e.contrasts_from, geometry=e.geometry,
             gaze_latency_ms_median=e.quality.get("latency_ms_median"), longest_gap_ms=e.quality.get("longest_gap_ms"),
             gaps_over_threshold=e.quality.get("gaps_over_threshold"),
         )
@@ -303,11 +304,14 @@ def analyze_participant(
                 e.excluded_reason = _incompatibility(e, used[0])
     excluded = [e for e in candidates if e not in used]
 
-    placed, gates, run_of_flash = [], [], []
-    for e in used:
-        placed += e.analysis.placed
-        gates += e.analysis.gates
-        run_of_flash += [e.name] * len(e.analysis.placed)
+    used_analyses = [(e, e.analysis) for e in used if e.analysis is not None]  # every pooled run was analysed
+    placed: list[Any] = []
+    gates: list[Any] = []
+    run_of_flash: list[str] = []
+    for e, analysis in used_analyses:
+        placed += analysis.placed
+        gates += analysis.gates
+        run_of_flash += [e.name] * len(analysis.placed)
     suppression = suppression_index(placed, gates=gates, n_boot=n_boot)
     gate_counts = summarize_gates(placed, gates)
     slope = _pooled_slope(placed, gates) if suppression["method"] == "psychometric" else None
@@ -317,10 +321,10 @@ def analyze_participant(
         legs = suppression_by_leg(placed, gates, n_boot=n_boot)
         by_leg = {leg: _leg_record(legs[leg]) for leg in LEGS}
         by_leg["pooled"] = _leg_record(suppression)
-        flashes = [p.flash for e in used for p in e.analysis.placed]
-        trials = [tr for e in used for tr in e.analysis.trials]
-        return_latency = return_latency_stats(flashes, trials, used[-1].analysis.meta.get("settings") or {})
-        return_latency["return_flash_spread_sd_ms_by_run"] = {e.name: (e.analysis.meta.get("settings") or {}).get("return_flash_spread_sd_ms") for e in used}
+        flashes = [p.flash for _, a in used_analyses for p in a.placed]
+        trials = [tr for _, a in used_analyses for tr in a.trials or ()]
+        return_latency = return_latency_stats(flashes, trials, used_analyses[-1][1].meta.get("settings") or {})
+        return_latency["return_flash_spread_sd_ms_by_run"] = {e.name: (a.meta.get("settings") or {}).get("return_flash_spread_sd_ms") for e, a in used_analyses}
 
     summary = {
         "schema_version": SCHEMA_VERSION,
@@ -339,7 +343,7 @@ def analyze_participant(
         "correct": {c: gate_counts[c][0] for c in CONDITIONS},
         "by_contrast": _by_contrast(placed, gates),
         "exclusion_reasons": dict(gate_counts["reasons"]),
-        "contrasts_pct": list(used[0].contrasts_pct) if used else None,
+        "contrasts_pct": list(used[0].contrasts_pct or ()) if used else None,
         "geometry": used[0].geometry if used else None,
         "runs_used": [_run_record(e) for e in used],
         "runs_excluded": [_run_record(e) for e in excluded],
@@ -432,8 +436,9 @@ def _num(v, fmt="{:.0f}") -> str:
 def format_participant_report(result: ParticipantResult) -> str:
     s = result.summary
     lines = [f"Participant {s['participant']}: pooled saccadic-suppression analysis", "", headline(s)]
-    if meaning(s):
-        lines.append(meaning(s))
+    meaning_text = meaning(s)
+    if meaning_text:
+        lines.append(meaning_text)
     skipped = s["analysis"]["test_runs_skipped"]
     if s["runs_excluded"]:
         lines += ["", f"NOT POOLED: {_plural(len(s['runs_excluded']), 'run')} left out:"]

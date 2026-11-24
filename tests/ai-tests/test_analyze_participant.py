@@ -5,8 +5,8 @@ import csv
 import json
 
 import pytest
-
 import synthetic_runs as sr
+
 from src.experiment import analyze_participant as ap
 from src.experiment import analyze_session as an
 
