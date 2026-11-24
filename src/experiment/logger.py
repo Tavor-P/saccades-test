@@ -284,15 +284,6 @@ def _psychopy_version() -> str | None:
         return None
 
 
-def _neon_address() -> str | None:
-    try:
-        from include.eye_tracking.constants import NEON_DEVICE_ADDRESS, NEON_DEVICE_PORT
-
-        return f"{NEON_DEVICE_ADDRESS}:{NEON_DEVICE_PORT}" if NEON_DEVICE_ADDRESS else "auto-discovered"
-    except Exception:
-        return None
-
-
 def _median(values: list[float]) -> float | None:
     return round(statistics.median(values), 1) if values else None
 
@@ -363,7 +354,7 @@ class ResultLogger:
                 "calibration": None,
                 **_settings_constants(),
             },
-            "hardware": {"display_refresh_hz": None, "neon_device": _neon_address()},
+            "hardware": {"display_refresh_hz": None, "neon_device": None},  # neon_device: set by set_neon_device() with the address the start-up check found
             "results": {"phases": {}, "saccade_phase_summary": {}},
             "gaze_quality": None,
             "head_motion": None,

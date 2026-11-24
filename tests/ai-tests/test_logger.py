@@ -165,3 +165,12 @@ def test_best_effort_lookups_only_swallow_the_errors_they_expect(monkeypatch):
     assert "x" not in logger_module._settings_constants()  # an unimportable module is skipped
     monkeypatch.setitem(logger_module._SETTINGS_CONSTANTS, "include.experiment.constants", ("NO_SUCH_CONSTANT_XYZ",))
     assert logger_module._settings_constants().get("no_such_constant_xyz") is None  # the test above is what catches a typo
+
+
+def test_neon_device_is_not_recorded_until_the_real_address_is_known(tmp_path, monkeypatch):
+    """The NEON_DEVICE_ADDRESS default is only a first guess for the dialog; the run records the address that answered."""
+    log = _make_logger(tmp_path, monkeypatch)
+    log.close()
+    assert _meta(tmp_path)["hardware"]["neon_device"] is None
+    log.set_neon_device("192.168.43.1:8080 (auto-discovered)")
+    assert _meta(tmp_path)["hardware"]["neon_device"] == "192.168.43.1:8080 (auto-discovered)"
