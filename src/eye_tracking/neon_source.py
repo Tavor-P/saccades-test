@@ -14,6 +14,11 @@ from include.eye_tracking.constants import (
     NEON_MAX_PLAUSIBLE_LATENCY_MS,
     NEON_HISTORY_SAMPLES,
     NEON_LATENCY_WINDOW_SAMPLES,
+    NEON_LATENCY_MEDIAN_EVERY_N_SAMPLES,
+    NEON_MAX_LATENCY_SAMPLES,
+    NEON_MAX_LOGGED_ERROR_KINDS,
+    NEON_RECEIVE_IDLE_SLEEP_S,
+    NEON_INGEST_ERROR_SLEEP_S,
     NEON_CLOCK_REESTIMATE_S,
     NEON_CLOCK_REESTIMATE_MAX_STD_MS,
     NEON_CLOCK_ESTIMATE_TIMEOUT_S,
@@ -31,9 +36,6 @@ from src.eye_tracking.gaze_mapping import GazeMapper
 from src.eye_tracking.gaze_trace import GazeTraceWriter
 from src.eye_tracking.head_monitor import HeadMotionTracker
 from src import timebase
-
-_MAX_LATENCY_SAMPLES = 100_000  # ~8 min at 200 Hz; older samples drop off, bounding memory
-_MAX_LOGGED_ERROR_KINDS = 50  # distinct error signatures remembered for log de-duplication
 
 
 class NeonConnectionError(RuntimeError):
@@ -128,7 +130,7 @@ class NeonGazeSource(GazeSource):
         self._clock_offset_status = "not started"
         self.phone_ip: str | None = None  # the IP the phone reports (time echo and the gaze stream use it), set by start()
         self._roundtrip_ms: float | None = None
-        self._latencies_ms: deque[float] = deque(maxlen=_MAX_LATENCY_SAMPLES)
+        self._latencies_ms: deque[float] = deque(maxlen=NEON_MAX_LATENCY_SAMPLES)
         self._history: deque[GazeSample] = deque(maxlen=NEON_HISTORY_SAMPLES)  # for samples_since()
         self._recent_latencies_ms: deque[float] = deque(maxlen=NEON_LATENCY_WINDOW_SAMPLES)
         self._latency_median_ms: float | None = None
@@ -159,7 +161,7 @@ class NeonGazeSource(GazeSource):
         with self._lock:
             self._error_count += 1
             self._last_error = f"{where}: {text}"
-            is_new = key not in self._seen_errors and len(self._seen_errors) < _MAX_LOGGED_ERROR_KINDS
+            is_new = key not in self._seen_errors and len(self._seen_errors) < NEON_MAX_LOGGED_ERROR_KINDS
             if is_new:
                 self._seen_errors.add(key)
         if is_new:
@@ -199,13 +201,13 @@ class NeonGazeSource(GazeSource):
                 self._record_error("receive_gaze_datum", exc)
                 datum = None
             if datum is None:
-                time.sleep(0.005)
+                time.sleep(NEON_RECEIVE_IDLE_SLEEP_S)
                 continue
             try:
                 self._ingest(datum.x, getattr(datum, "worn", True), getattr(datum, "timestamp_unix_seconds", None))
             except Exception as exc:
                 self._record_error("ingest", exc)
-                time.sleep(0.005)
+                time.sleep(NEON_INGEST_ERROR_SLEEP_S)
 
     # -- head-movement monitor (IMU) ----------------------------------------------------------------
     # One separate daemon thread that wakes HEAD_POLL_HZ times a second, does a non-blocking receive (timeout 0) and a handful of
@@ -437,7 +439,7 @@ class NeonGazeSource(GazeSource):
             latency_ms = timebase.s_to_ms(arrival - raw)
             self._recent_latencies_ms.append(latency_ms)
             self._latencies_ms.append(latency_ms)
-            if self._samples % 20 == 0 or self._latency_median_ms is None:
+            if self._samples % NEON_LATENCY_MEDIAN_EVERY_N_SAMPLES == 0 or self._latency_median_ms is None:
                 self._latency_median_ms = statistics.median(self._recent_latencies_ms)
             if 0.0 <= latency_ms <= NEON_MAX_PLAUSIBLE_LATENCY_MS:
                 capture = raw
