@@ -5,30 +5,33 @@ dots named by position ("on the left"), never "the other dot" or "cross". The su
 # -- tutorial intro (SPACE advances; the first line is the start screen) --
 TUTORIAL_WELCOME = "Welcome. Keep your head still on the chin rest. Press SPACE."
 TUTORIAL_INTRO = (
-    "When the dot jumps to the other side, look at it right away.",
-    "A thin line flashes briefly. Press UP if it was above, DOWN if below.",
+    "Look at the dot. When it jumps to the other side, look there right away.",
+    "A thin line flashes. Press UP if it was above the dot, DOWN if below.",
     "The line can be very faint. If you are not sure, guess.",
     "You can rest between trials. Nothing starts until you press SPACE.",
 )
 # Run setting "Return jump" on: shown after the first intro line, and replacing the practice/first-trial lines below.
-TUTORIAL_INTRO_RETURN_JUMP = "Then it jumps back to the left. Follow it back right away."
+TUTORIAL_INTRO_RETURN_JUMP = "Then it jumps back to where it started. Look back right away."
 
 # -- calibration (tutorial and, without a tutorial, the saccade phase) --
 CALIBRATE_LEFT = "Look at the dot on the left, then press SPACE."
 CALIBRATE_CENTER = "Look at the middle dot, then press SPACE."
 CALIBRATE_RIGHT = "Look at the dot on the right, then press SPACE."
+# Rounds 2 and 3 start again at the left; only that screen is spoken (the centre and right screens stay silent).
+CALIBRATE_LEFT_AGAIN = "Once more: look at the dot on the left, then press SPACE."
+CALIBRATE_LEFT_LAST = "Last time: look at the dot on the left, then press SPACE."
 
 # -- quiz and practice (tutorial) --
 QUIZ = "Press UP if the line is above the dot, DOWN if it is below."
 PRACTICE_INTRO = "Practice lines are clear. Real ones are much fainter, so guessing is normal."
 PRACTICE_DONE = "Practice done. The real test starts now. Press SPACE."
-PRACTICE_START_RETURN_JUMP = "Press SPACE. Look at the dot on the left. Follow it there and back."
+PRACTICE_START_RETURN_JUMP = "Press SPACE. Look at the left dot. Follow it when it jumps and returns."
 
 # -- saccade phase --
 RT_TEST_INTRO = "Press SPACE. Look at the dot on the left. Follow it when it jumps."
 ANSWER = "Press UP if the line was above, DOWN if below. If unsure, guess."
 FIRST_TRIAL = "Nothing starts until you press SPACE. Follow the dot when it jumps."
-FIRST_TRIAL_RETURN_JUMP = "Nothing starts until you press SPACE. Follow the dot there and back."
+FIRST_TRIAL_RETURN_JUMP = "Nothing starts until you press SPACE. Follow the dot when it jumps and returns."
 FINISHED = "All done. Thank you!"
 
 # -- glasses-video sync step --

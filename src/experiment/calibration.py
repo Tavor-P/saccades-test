@@ -1,9 +1,20 @@
 """The 3-point gaze calibration (left, center, right), repeated CALIBRATION_ROUNDS times; round 1 is discarded as the least reliable."""
 
+from include.experiment import participant_text as words
 from include.experiment.constants import CALIBRATION_ROUNDS
 from src.experiment.space_input import CalibrationLatch, SpaceTally
 
 STEP_LEFT, STEP_CENTER, STEP_RIGHT = 0, 1, 2
+
+
+def calibration_text(step: int, round_number: int) -> str:
+    """The caption for one calibration screen. Round 1 names all three dots; later rounds speak only the return to the
+    left dot ("Once more" / "Last time"), because that jump back is the moment participants get lost."""
+    if round_number == 1:
+        return (words.CALIBRATE_LEFT, words.CALIBRATE_CENTER, words.CALIBRATE_RIGHT)[step]
+    if step != STEP_LEFT:
+        return ""
+    return words.CALIBRATE_LEFT_LAST if round_number >= CALIBRATION_ROUNDS else words.CALIBRATE_LEFT_AGAIN
 
 
 def average_calibration_rounds(

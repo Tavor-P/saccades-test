@@ -268,3 +268,21 @@ def test_practice_waits_for_space_swaps_500_to_1000_ms_later_flashes_clearly_and
     session.tick()
     assert session.render_state()["hud"]["phase"] == "PRACTICE_AWAITING_SPACE"
     assert session.render_state()["instructions"] == ""  # later trials are silent
+
+
+def test_calibration_rounds_2_and_3_speak_their_own_return_to_the_left_dot(fake_gaze):
+    fake_gaze.average_recent_ratio = lambda: 0.5
+    session = _make_session(fake_gaze)
+    _press_through_intro(session)
+    left_texts, other_texts = [], []
+    for _ in range(CALIBRATION_ROUNDS):
+        left_texts.append(session.render_state()["instructions"])
+        session.on_space()
+        other_texts.append(session.render_state()["instructions"])
+        session.on_space()
+        other_texts.append(session.render_state()["instructions"])
+        session.on_space()
+    assert left_texts == [words.CALIBRATE_LEFT, words.CALIBRATE_LEFT_AGAIN, words.CALIBRATE_LEFT_LAST]
+    assert len(set(left_texts)) == 3  # distinct strings, so the narrator speaks each one
+    assert other_texts == [words.CALIBRATE_CENTER, words.CALIBRATE_RIGHT, "", "", "", ""]
+
