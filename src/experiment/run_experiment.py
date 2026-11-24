@@ -448,13 +448,11 @@ def _auto_analyze(folder: Path) -> None:
     from src.experiment import analyze_session  # lazy: keeps start-up fast
 
     print("Analysing this run...", flush=True)
+    run_ref = f"{folder.parent.name}/{folder.name}"  # participant/folder: unambiguous even if another participant has a run with the same name
     try:
-        result = analyze_session.analyze(folder.name, data_dir=folder.parent.parent)
+        result = analyze_session.analyze(str(folder), data_dir=folder.parent.parent)
     except Exception as exc:
-        print(
-            f"Automatic analysis skipped: {exc}. Rerun later with: scripts/py.ps1 -m src.experiment.analyze_session {folder.name}",
-            flush=True,
-        )
+        print(f"Automatic analysis skipped: {exc}. Rerun later with: scripts/py.ps1 -m src.experiment.analyze_session {run_ref}", flush=True)
         return
     top_block: list[str] = []
     for line in str(result["report"]).splitlines():

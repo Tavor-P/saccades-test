@@ -265,8 +265,9 @@ def test_main_turns_a_lost_neon_into_a_plain_message_box_and_exit_2_after_closin
 def _fake_analysis(report: str):
     from pathlib import Path
 
-    def fake(timestamp, data_dir, **_):
-        return {"report": report, "report_path": Path(data_dir) / "P01" / timestamp / "analysis" / "report.txt"}
+    def fake(run, data_dir, **_):
+        assert Path(run).is_absolute()  # the full run folder, so a same-named run of another participant is never picked
+        return {"report": report, "report_path": Path(run) / "analysis" / "report.txt"}
 
     return fake
 
@@ -296,7 +297,7 @@ def test_auto_analyze_swallows_a_failed_analysis_and_prints_the_rerun_command(mo
     run_experiment._auto_analyze(folder)  # returns normally: the run is already saved
     out = capsys.readouterr().out
     assert "Automatic analysis skipped: no gaze trace in this run." in out
-    assert "scripts/py.ps1 -m src.experiment.analyze_session 2026-11-24_10-00-00" in out
+    assert "scripts/py.ps1 -m src.experiment.analyze_session P01/2026-11-24_10-00-00" in out
 
 
 def _saccade_phase_with(monkeypatch, gaze, **patches):
