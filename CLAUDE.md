@@ -35,7 +35,7 @@ backend. Participant/experimenter docs: [README.md](README.md).
   (never `git add -A` / `commit -a`); don't touch other sessions' files, tell the user instead.
 - PowerShell 5.1 has no `&&`; keep each file's line endings (CRLF). `.gitignore` has `data/`, which matches any `data` folder (tests: use `tests/fixtures/`).
 - `data/` is git-ignored runtime output and participant data is personal data: never commit or print it, never write to it from tests/simulations, never copy real sessions into `tests/fixtures/`.
-- Report test results truthfully (ran / skipped). Suite: 358 tests pass, none skipped, ~2-4 min.
+- Report test results truthfully (ran / skipped). Suite: 360 tests pass, none skipped, ~2-4 min.
 
 ## Commands (all through the wrapper)
 
@@ -80,6 +80,9 @@ Paths are checked by `tests/test_docs.py` - keep them real.
 | `include/eye_tracking/constants.py` | gaze constants incl. `GAZE_DEAD_ZONE`, all `NEON_*` |
 | `include/eye_tracking/interfaces.py`, `types.py` | `GazeSource` (the only gaze interface sessions use); `GazeZone`, `GazeSample` |
 | `src/experiment/session.py` | `ExperimentSession`: saccade phase state machine (core logic) |
+| `src/experiment/session_config.py` | `SessionConfig` (run settings) + `TutorialHandoff` (tutorial calibration/RT samples): `ExperimentSession(gaze, logger, clock, config=, handoff=)` |
+| `src/experiment/trial_legs.py` | `TrialLegs` (out onset/landing, return jump, return onset/landing per trial) + `SampleFeed` (new samples, capture times): shared by session and tutorial |
+| `src/experiment/trial_record.py` | `saccade_trial_result()`: a finished main trial's `TrialResult` row |
 | `src/experiment/tutorial_session.py` | `TutorialSession`: intro -> calibration -> quiz -> 8 practice trials |
 | `src/experiment/run_experiment.py` | entry point + PsychoPy rendering; the only PsychoPy-dependent module |
 | `src/experiment/startup_dialog.py`, `startup_model.py` | PyQt6 dialog; Qt-free model (`StartupSettings`, `validate`, `HELP_TEXTS`) |
@@ -130,7 +133,7 @@ Paths are checked by `tests/test_docs.py` - keep them real.
 ## Recipes
 
 - **Add a trials.csv column / `TrialResult` field**: field in `include/experiment/types.py` (default `None`) -> one `Column(...)` in `TRIAL_COLUMNS` (`logger.py`) or a reasoned entry in `DROPPED_FROM_CSV` -> `trial_from_row`
-  -> set it where `session.py` builds the `TrialResult` -> test (see `tests/ai-tests/test_tracking_quality.py`). Old CSVs must still load.
+  -> set it in `trial_record.saccade_trial_result` (called from `session.py` `_finish_trial`) -> test (see `tests/ai-tests/test_tracking_quality.py`). Old CSVs must still load.
 - **Change a tuning constant**: edit in `include/**/constants.py` (read its comment), then `--sweep` in the simulator and pytest.
 - **Add a gaze backend**: implement `GazeSource`, select it in `build_gaze_source()` (lazy import), reuse `GazeMapper`.
 - **Reproduce a bug without hardware**: replay a recorded trace via `ReplayGazeSource`, or use a `ParticipantProfile` in the simulator.
@@ -156,7 +159,7 @@ Paths are checked by `tests/test_docs.py` - keep them real.
   A run = tutorial (optional) -> saccade phase (`SACCADE_FIXED_TRIALS_TEST` 30 / `_REAL` 150) -> a console line naming the `analyze_session` command. No pause menu, rest break, session cap or recalibration.
 - **Gaze is behind `GazeSource`.** `NeonGazeSource` polls `receive_gaze_datum()` on a thread, turns scene gaze x / `NEON_SCENE_WIDTH` into a 0-1 ratio; `GazeMapper` does calibration fit, dead zone, smoothing.
   `build_gaze_source()` imports it lazily, so session logic and the simulator run without `pupil-labs-realtime-api`.
-- **Shared logic lives once**: `OnsetDetector`, `is_valid_for_saccadic_analysis()`, `RollingReactionTime`, `CalibrationLatch`. Reuse them, don't hand-roll.
+- **Shared logic lives once**: `OnsetDetector`, `is_valid_for_saccadic_analysis()`, `RollingReactionTime`, `CalibrationLatch`, `TrialLegs`/`SampleFeed` (trial gaze legs, real and practice). Reuse them, don't hand-roll.
 - **Test doubles**: `FakeGazeSource` (set `.zone`/`.face_found`/`.position`; `position` must move with `.zone`) and `fake_time` (patches `timebase._clock`, never the global `time`).
 - **Simulator**: `simulation.py` runs the real `ExperimentSession` against `SimulatedParticipant` (reads only `render_state()`), `SimulatedClock`, `SimulatedGazeSource`; no PsychoPy, no files,
   deterministic per `seed`. `ParticipantProfile` = knobs (RT, thresholds incl. suppression, tracker noise/latency, dropouts, `head_spikes`); `simulate_session()` returns `flash_truth`.

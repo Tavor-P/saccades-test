@@ -30,6 +30,7 @@ from src.eye_tracking.head_monitor import HeadMotionTracker
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.scoring import is_valid_for_saccadic_analysis
 from src.experiment.session import ExperimentSession
+from src.experiment.session_config import SessionConfig
 from src.eye_tracking.gaze_mapping import GazeMapper
 
 GAZE_HZ = 240  # simulated tracker rate
@@ -538,8 +539,8 @@ def simulate_session(
         logger = MemoryLogger()
         events: list[tuple[float, str]] = []
         session = ExperimentSession(
-            gaze, logger=logger, clock=clock, test_mode=test_mode, skip_practice_trials=skip_practice_trials,
-            return_jump=return_jump,
+            gaze, logger=logger, clock=clock,
+            config=SessionConfig(test_mode=test_mode, skip_practice_trials=skip_practice_trials, return_jump=return_jump),
         )
         if profile.head_spikes:
             gaze.head_motion = HeadMotionTracker()

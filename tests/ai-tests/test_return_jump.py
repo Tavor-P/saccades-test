@@ -24,6 +24,7 @@ from include.experiment.types import Side, Target, TrialResult, TrialSpec
 from helpers import NullLogger
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.session import ExperimentSession
+from src.experiment.session_config import SessionConfig, TutorialHandoff
 from include.eye_tracking.types import GazeSample
 from src.experiment import session as session_module
 from src.experiment import tutorial_session as tutorial_module
@@ -36,12 +37,17 @@ pytestmark = pytest.mark.usefixtures("no_flash_jitter")
 AVG_RT_MS = 200.0
 
 
-def _session(fake_gaze, return_jump: bool = True, leg: str = "out", **kwargs) -> ExperimentSession:
+def _session(
+    fake_gaze, return_jump: bool = True, leg: str = "out", precomputed_return_rt_samples_ms: list[float] | None = None
+) -> ExperimentSession:
     """A seeded session (average RT 200 ms) waiting for SPACE on one DOT -> CROSS trial whose flash goes on `leg`."""
     session = ExperimentSession(
-        fake_gaze, logger=NullLogger(), clock=PausableClock(), test_mode=True,
-        precomputed_calibration_ratios=(0.3, 0.5, 0.7), precomputed_rt_samples_ms=[AVG_RT_MS] * 3,
-        return_jump=return_jump, **kwargs,
+        fake_gaze, logger=NullLogger(), clock=PausableClock(),
+        config=SessionConfig(test_mode=True, return_jump=return_jump),
+        handoff=TutorialHandoff(
+            calibration_ratios=(0.3, 0.5, 0.7), rt_samples_ms=[AVG_RT_MS] * 3,
+            return_rt_samples_ms=precomputed_return_rt_samples_ms,
+        ),
     )
     session.on_space()  # WAITING_TO_START -> the first main trial
     session._current_trial_spec = TrialSpec(index=0, source=Target.DOT, target=Target.CROSS, line_side=Side.ABOVE)
@@ -467,6 +473,40 @@ def test_tutorial_onset_trigger_jumps_before_the_arrival(fake_gaze, fake_time, m
     fake_time(SACCADE_ONSET_STABILITY_MS / 1000 + 0.01)
     session.tick()
     assert session._jump_at is not None and not session._out_arrived
+
+
+def test_tutorial_return_before_the_jump_counts_like_in_the_real_trials(fake_gaze, fake_time):
+    """Shared TrialLegs rules: the return leg is listened to from the out arrival, so a return made while a late out-leg
+    flash holds the jump has already landed when the target jumps, and its latency is negative (the old tutorial copy
+    started the return landing only at the jump)."""
+    session = _tutorial_at_practice(fake_gaze)
+    session._flash_leg = "out"
+    session._leg_bag = ShuffledBag(["out"])
+    fake_gaze.zone = GazeZone.LEFT
+    session.on_space()
+    fake_time(FOREPERIOD_MAX_MS / 1000 + 0.1)
+    session.tick()
+    session._flash_scheduled_at = session._trial_start + 1.0  # a late out-leg flash holds the jump back
+    fake_time(0.2)
+    fake_gaze.zone = GazeZone.RIGHT
+    session.tick()  # out arrival
+    fake_time(SACCADE_ONSET_STABILITY_MS / 1000 + 0.01)
+    session.tick()
+    fake_gaze.zone = GazeZone.LEFT  # back on the dot before the jump
+    fake_time(0.05)
+    session.tick()
+    fake_time(GAZE_LANDING_STABILITY_MS / 1000 + 0.01)
+    session.tick()
+    assert session._jump_at is None and session._out_arrived
+
+    fake_time(session._flash_scheduled_at - session._clock.now() + 0.001)
+    session.tick()  # the out-leg flash is drawn
+    session.tick()  # ... and gone: the target jumps back
+    assert session._jump_at is not None
+    assert len(session.return_rt_samples_ms) == 1 and session.return_rt_samples_ms[0] < 0
+    session.on_response_key(session._line_side)
+    session.tick()  # already back on the dot: the attempt ends at once
+    assert session.render_state()["hud"]["phase"] == "PRACTICE_AWAITING_SPACE"
 
 
 def test_new_participant_strings_are_short_and_avoid_the_banned_words():

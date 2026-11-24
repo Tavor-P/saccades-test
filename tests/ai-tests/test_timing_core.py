@@ -18,6 +18,7 @@ from src.experiment import logger as logger_module
 from src.experiment.logger import ResultLogger
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.session import ExperimentSession
+from src.experiment.session_config import SessionConfig
 from src.experiment.trial_mechanics import RollingReactionTime, robust_average_ms
 from test_session import (
     _complete_calibration,
@@ -253,7 +254,9 @@ def test_meta_has_provenance_science_constants_and_phase_summaries(tmp_path, mon
 
 
 def _finished_session(fake_gaze, logger):
-    session = ExperimentSession(fake_gaze, logger=logger, clock=PausableClock(), skip_practice_trials=True, test_mode=True)
+    session = ExperimentSession(
+        fake_gaze, logger=logger, clock=PausableClock(), config=SessionConfig(skip_practice_trials=True, test_mode=True)
+    )
     cap = session._fixed_trials
     session._results = [
         TrialResult(

@@ -31,6 +31,7 @@ from src.experiment.narrator import Narrator
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.run_summary import finish_run_summary
 from src.experiment.session import ExperimentSession
+from src.experiment.session_config import SessionConfig, TutorialHandoff
 from src.experiment.space_input import NarrationKeyGate, deliver_space, leaves_complete_screen
 from src.experiment.settings import saccade_contrast_levels
 from src.experiment.tutorial_session import TutorialSession
@@ -430,16 +431,20 @@ def run_saccade_phase(
             gaze,
             logger=logger,
             clock=clock,
-            show_gaze_indicator=show_gaze_indicator,
-            test_mode=test_mode,
-            precomputed_calibration_ratios=precomputed_calibration_ratios,
-            skip_practice_trials=skip_practice_trials,
-            precomputed_rt_samples_ms=precomputed_rt_samples_ms,
-            fixed_contrasts=saccade_contrasts,
-            geometry=geometry,
-            flash_spread_sd_ms=flash_spread_sd_ms,
-            return_jump=return_jump,
-            precomputed_return_rt_samples_ms=precomputed_return_rt_samples_ms,
+            config=SessionConfig(
+                test_mode=test_mode,
+                show_gaze_indicator=show_gaze_indicator,
+                skip_practice_trials=skip_practice_trials,
+                fixed_contrasts=saccade_contrasts,
+                geometry=geometry,
+                flash_spread_sd_ms=flash_spread_sd_ms,
+                return_jump=return_jump,
+            ),
+            handoff=TutorialHandoff(
+                calibration_ratios=precomputed_calibration_ratios,
+                rt_samples_ms=precomputed_rt_samples_ms,
+                return_rt_samples_ms=precomputed_return_rt_samples_ms,
+            ),
         )
         go_cue_tone = build_go_cue_tone()
         presenter = FramePresenter(stimuli, narrator)
