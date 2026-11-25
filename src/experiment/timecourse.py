@@ -98,13 +98,14 @@ def timecourse_curve(
     sigma_ms: float = TIMECOURSE_SIGMA_MS,
     n_boot: int = 1000,
     seed: int = 0,
+    range_ms: tuple[float, float] = TIMECOURSE_RANGE_MS,
 ) -> dict:
     """The time-course numbers of `placed` (with their gate results, same order): JSON-ready, lists per grid point
     ({"grid_ms", "p", "lo", "hi", "n_eff", "status"}), the fixation baseline, the lowest drawn point and the counts.
-    `gates` None: the baseline is the flashes at least FAR_MS from every onset (the index's window rule)."""
-    grid = curve_grid()
+    `gates` None: the baseline is the flashes at least FAR_MS from every onset (the index's window rule). `range_ms`: the grid's first and last point."""
+    grid = curve_grid(range_ms)
     rel, ok = timed_flashes(placed, gates)
-    keep = np.abs(rel) <= max(abs(TIMECOURSE_RANGE_MS[0]), abs(TIMECOURSE_RANGE_MS[1])) + _KERNEL_REACH_SD * sigma_ms
+    keep = np.abs(rel) <= max(abs(range_ms[0]), abs(range_ms[1])) + _KERNEL_REACH_SD * sigma_ms
     rel_k, ok_k = rel[keep], ok[keep]
     p, n_eff = kernel_estimate(rel_k, ok_k, grid, sigma_ms)
     lo, hi = _bootstrap_band(rel_k, ok_k, grid, sigma_ms, n_boot, seed)
@@ -115,7 +116,7 @@ def timecourse_curve(
     _, fixation, source = _select_conditions(placed, NEAR_ONSET_MS, FAR_MS, gates)
     k_fix, n_fix = sum(f.flash.correct for f in fixation), len(fixation)
     return {
-        "sigma_ms": sigma_ms, "step_ms": TIMECOURSE_STEP_MS, "range_ms": list(TIMECOURSE_RANGE_MS), "n_boot": n_boot,
+        "sigma_ms": sigma_ms, "step_ms": TIMECOURSE_STEP_MS, "range_ms": list(range_ms), "n_boot": n_boot,
         "min_effective_n_drawn": TIMECOURSE_MIN_EFFECTIVE_N_DRAWN, "min_effective_n_solid": TIMECOURSE_MIN_EFFECTIVE_N_SOLID,
         "n_flashes": int(len(rel)), "n_correct": int(ok.sum()),
         "grid_ms": _listed(grid, 1), "p": _listed(p, 4), "lo": _listed(lo, 4), "hi": _listed(hi, 4), "n_eff": _listed(n_eff, 1), "status": status,

@@ -29,16 +29,17 @@ RUN_NOTE = "Per-run plots are an indication only; the pooled per-person plot is 
 POOLED_NOTE = "This pooled per-person plot is the one to read; single-run plots are an indication only."
 Y_LIMITS = (-14.0, 114.0)  # room for the raw-trial rug above 100 % and below 0 %
 RUG_BAND = 7.0  # height of the rug's jitter
+BY_CONTRAST_RANGE_MS = (-300.0, 700.0)  # x range of timecourse_by_contrast.png (a plot setting, not an analysis threshold): wide enough for the flashes before onset and the +400/+500 ms controls, so accuracy outside the saccade is visible too
 
 
 def _arr(values: list) -> np.ndarray:
     return np.asarray([np.nan if v is None else v for v in values], dtype=float)
 
 
-def _draw_curve(ax, tc: dict, rel: np.ndarray, ok: np.ndarray, median_saccade_ms: float | None) -> np.ndarray:
+def _draw_curve(ax, tc: dict, rel: np.ndarray, ok: np.ndarray, median_saccade_ms: float | None, range_ms: tuple[float, float] = TIMECOURSE_RANGE_MS) -> np.ndarray:
     """One time-course panel's contents (curve, band, fixation band, onset line, chance line, per-flash dots, axes); returns
-    `in_range`, which flashes lie inside the x range. The caller adds title, x axis and any histogram."""
-    lo_x, hi_x = TIMECOURSE_RANGE_MS
+    `in_range`, which flashes lie inside the x range `range_ms`. The caller adds title, x axis and any histogram."""
+    lo_x, hi_x = range_ms
     grid, p, lo, hi = (_arr(tc[k]) for k in ("grid_ms", "p", "lo", "hi"))
     status = np.asarray(tc["status"])
     shown = np.isin(status, (LOW, OK)) & np.isfinite(p)
@@ -185,10 +186,10 @@ def _draw_contrast_panel(ax, contrast: float, placed: list[Placed], gates: list 
     members = [i for i, p in enumerate(placed) if p.flash.contrast == contrast]
     sub = [placed[i] for i in members]
     sub_gates = None if gates is None else [gates[i] for i in members]
-    tc = timecourse_curve(sub, sub_gates)
+    tc = timecourse_curve(sub, sub_gates, range_ms=BY_CONTRAST_RANGE_MS)
     rel, ok = timed_flashes(sub, sub_gates)
-    in_range = _draw_curve(ax, tc, rel, ok, median_saccade_ms)
-    ax.set_title(f"Contrast {100 * contrast:g} %: {int(in_range.sum())} flashes in range, {tc['baseline']['n']} fixation flashes", fontsize=10, loc="left")
+    in_range = _draw_curve(ax, tc, rel, ok, median_saccade_ms, BY_CONTRAST_RANGE_MS)
+    ax.set_title(f"Contrast {100 * contrast:g} %: {int(in_range.sum())} flashes shown, {tc['baseline']['n']} fixation flashes", fontsize=10, loc="left")
     if not (np.isin(np.asarray(tc["status"]), (LOW, OK)) & np.isfinite(_arr(tc["p"]))).any():
         ax.text(0.5, 0.62, "curve hidden: too few flashes at every time (dots = single flashes)", transform=ax.transAxes, ha="center", va="center", fontsize=8, color="#555555",
                 bbox={"facecolor": "white", "alpha": 0.8, "edgecolor": "none"}, zorder=5)
@@ -206,13 +207,13 @@ def plot_timecourse_by_contrast(
     """Accuracy vs flash time from saccade onset, one stacked panel per contrast level (shared x axis), each from that contrast's flashes only.
     Most of each curve is usually hidden by the effective-n rule (a run has only a few flashes near onset); the dots show every flash."""
     contrasts = sorted({p.flash.contrast for p in placed})
-    fig, axes = plt.subplots(max(len(contrasts), 1), 1, sharex=True, figsize=(10, 3.0 * max(len(contrasts), 1) + 1.4), layout="constrained", squeeze=False)
+    fig, axes = plt.subplots(max(len(contrasts), 1), 1, sharex=True, figsize=(12, 3.0 * max(len(contrasts), 1) + 1.4), layout="constrained", squeeze=False)
     tc = None
     for ax, contrast in zip(axes[:, 0], contrasts):
         tc = _draw_contrast_panel(ax, contrast, placed, gates, median_saccade_ms)
     if tc is None:
         axes[0, 0].text(0.5, 0.5, "no flashes", transform=axes[0, 0].transAxes, ha="center", va="center", color="#777777")
-        axes[0, 0].set_xlim(*TIMECOURSE_RANGE_MS)
+        axes[0, 0].set_xlim(*BY_CONTRAST_RANGE_MS)
     axes[-1, 0].set_xlabel("flash time relative to saccade onset (ms)")
     if tc is not None:
         fig.legend(handles=_legend_handles(tc, median_saccade_ms, "fixation flashes of that contrast (95% CI band)"), loc="outside lower center", ncol=2, fontsize=8, frameon=False)
