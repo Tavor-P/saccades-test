@@ -6,7 +6,7 @@ nearest saccade onset, and reports detection accuracy as a function of flash tim
 saccadic-suppression curve - plus a plot and a per-flash CSV. The live `flash_during_saccade` flag is not used.
 
 Run it on the latest session with no arguments, or give a session timestamp (unix), a run folder name, `participant/folder`
-or a path. Output goes to the run folder's `analysis/` (report.txt, plot.png, gaze_timeline.png, flashes.csv, suppression.json).
+or a path. Output goes to the run folder's `analysis/` (report.txt, plot.png, timecourse_by_contrast.png, gaze_timeline.png, flashes.csv, suppression.json).
 Units: gaze x is a 0-1 ratio of the scene (or screen) width per `x_px / NEON_SCENE_WIDTH` (traces recorded with the since-removed screen-mapped backends hold the screen ratio x NEON_SCENE_WIDTH in x_px, so old sessions analyse the same way); speeds are ratio/s.
 The steps live in saccade_detection (trace, flashes, saccades), flash_gates + leg_gating (conditions), suppression_stats (counts,
 index), analysis_report (text) and analysis_output (plot, per-flash CSV); thresholds in include/experiment/analysis_constants.py.
@@ -38,7 +38,7 @@ from include.experiment.analysis_constants import (  # noqa: F401 (re-exported)
     SPEED_LOW,
 )
 from src.experiment import session_files
-from src.experiment.analysis_output import plot_report, write_flash_rows  # noqa: F401 (re-exported)
+from src.experiment.analysis_output import plot_report, plot_timecourse_by_contrast, write_flash_rows  # noqa: F401 (re-exported)
 from src.experiment.analysis_report import (  # noqa: F401 (re-exported)
     _ms,
     _pct,
@@ -228,7 +228,7 @@ def analyze(
     """Runs the whole analysis for one session (`timestamp`: anything session_files.find_session accepts; default the
     newest). Writes the report text, plot, per-flash CSV and suppression json to `out_dir` (default: the run folder's
     analysis/ folder) and returns
-    {"summary", "report", "report_path", "png", "gaze_png", "csv", "suppression_json"}."""
+    {"summary", "report", "report_path", "png", "by_contrast_png", "gaze_png", "csv", "suppression_json"}."""
     data_dir = Path(data_dir)
     ref = session_files.find_session(data_dir, timestamp or latest_timestamp(data_dir))
     if ref is None:
@@ -249,13 +249,14 @@ def analyze(
     out_dir = Path(out_dir) if out_dir is not None else ref.analysis_dir
     out_dir.mkdir(parents=True, exist_ok=True)
     png = plot_report(placed, run.saccades, summary, out_dir / "plot.png", title=f"Session {stamp}", gates=gates)
+    by_contrast_png = plot_timecourse_by_contrast(placed, gates, summary.get("median_saccade_ms"), out_dir / "timecourse_by_contrast.png", title=f"Session {stamp}")
     gaze_png = plot_gaze_timeline(run.t, run.x, run.saccades, placed, gates, out_dir / "gaze_timeline.png", title=f"Session {stamp}", flash_delay_ms=flash_delay_ms)
     csv_path = write_flash_rows(out_dir / "flashes.csv", placed, gates)
     json_path = out_dir / "suppression.json"
     json_path.write_text(json.dumps(saved, indent=2), encoding="utf-8")
     report_path = out_dir / "report.txt"
     report_path.write_text(report + "\n", encoding="utf-8")
-    return {"summary": summary, "report": report, "report_path": report_path, "png": png, "gaze_png": gaze_png, "csv": csv_path, "suppression_json": json_path}
+    return {"summary": summary, "report": report, "report_path": report_path, "png": png, "by_contrast_png": by_contrast_png, "gaze_png": gaze_png, "csv": csv_path, "suppression_json": json_path}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -274,7 +275,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
     print(result["report"])
-    print(f"\nreport: {result['report_path']}\nplot: {result['png']}\ngaze timeline: {result['gaze_png']}\nper-flash rows: {result['csv']}\nsuppression index: {result['suppression_json']}")
+    print(f"\nreport: {result['report_path']}\nplot: {result['png']}\nper-contrast time courses: {result['by_contrast_png']}\ngaze timeline: {result['gaze_png']}\nper-flash rows: {result['csv']}\nsuppression index: {result['suppression_json']}")
     return 0
 
 

@@ -99,7 +99,7 @@ def run_file(timestamp: str, kind: str):
         abort(404)
     if not path.exists():
         abort(404)
-    return send_file(path, as_attachment=kind not in ("plot", "gaze"), download_name=path.name)
+    return send_file(path, as_attachment=kind not in ("plot", "by_contrast", "gaze"), download_name=path.name)
 
 
 @app.get("/participants/<pid>/results")
@@ -127,7 +127,7 @@ def participant_file(pid: str, kind: str):
     path = results.participant_file(pid, kind)
     if not path.exists():
         abort(404)
-    return send_file(path, as_attachment=kind != "plot", download_name=f"{pid}_{path.name}")
+    return send_file(path, as_attachment=kind not in ("plot", "by_contrast"), download_name=f"{pid}_{path.name}")
 
 
 # -- group labels, comparison, study summary (numbers from compare.py / study_summary.py via comparison.py) ------------

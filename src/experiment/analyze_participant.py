@@ -24,7 +24,7 @@ from typing import Any
 import numpy as np
 
 from src.experiment import session_files
-from src.experiment.analysis_output import plot_timecourse_figure
+from src.experiment.analysis_output import plot_timecourse_by_contrast, plot_timecourse_figure
 from src.experiment.analysis_report import (
     format_companion,
     format_excluded,
@@ -382,6 +382,7 @@ def analyze_participant(
         result.paths = {
             "report": out / "report.txt",
             "png": plot_participant(result, out / "plot.png"),
+            "by_contrast_png": plot_participant_by_contrast(result, out / "timecourse_by_contrast.png"),
             "csv": write_flash_rows(out / "flashes.csv", placed, gates, {
                 "run": run_of_flash, "run_date": [dates[r] for r in run_of_flash], "mode": [modes[r] for r in run_of_flash]}),
             "summary": out / "summary.json",
@@ -512,6 +513,14 @@ def plot_participant(result: ParticipantResult, out_path: Path) -> Path:
                                   out_path, title=f"Participant {s['participant']}: {headline(s)}", pooled=True)
 
 
+def plot_participant_by_contrast(result: ParticipantResult, out_path: Path) -> Path:
+    """The pooled time course split by contrast level (one panel per level)."""
+    s = result.summary
+    durations = [x.duration_ms for x in result.saccades]
+    return plot_timecourse_by_contrast(result.placed, result.gates, float(np.median(durations)) if durations else None, out_path,
+                                       title=f"Participant {s['participant']}", pooled=True)
+
+
 # -- CLI -----------------------------------------------------------------------------------------
 
 
@@ -529,7 +538,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Error: {exc}")
         return 1
     print(result.report)
-    print(f"\nreport: {result.paths['report']}\nplot: {result.paths['png']}\nper-flash rows: {result.paths['csv']}\nsummary: {result.paths['summary']}")
+    print(f"\nreport: {result.paths['report']}\nplot: {result.paths['png']}\nper-contrast time courses: {result.paths['by_contrast_png']}\nper-flash rows: {result.paths['csv']}\nsummary: {result.paths['summary']}")
     return 0
 
 
