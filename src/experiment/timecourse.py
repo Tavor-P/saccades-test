@@ -113,10 +113,12 @@ def point_status(n_eff: float) -> str:
 
 
 def _adaptive_status(rel: np.ndarray, grid: np.ndarray, n_eff: np.ndarray, sigma_used: np.ndarray, sigma_ms: float) -> list[str]:
-    """Drawing status of an adaptive-bandwidth curve: "none" where no flash lies within the bandwidth, "ok" (solid) where the bandwidth
+    """Drawing status of an adaptive-bandwidth curve: "none" outside the span of the flashes (no extrapolation past the outermost one) and
+    where no flash lies within the bandwidth, "ok" (solid) where the bandwidth
     stayed at the base SD and the effective n is high enough, else "low" (grey dashed: widened / indicative)."""
     nearest = np.abs(grid[:, None] - rel[None, :]).min(axis=1) if len(rel) else np.full(len(grid), np.inf)
-    return [NONE if d > h else OK if h <= sigma_ms + 1e-9 and n >= TIMECOURSE_MIN_EFFECTIVE_N_SOLID else LOW for d, h, n in zip(nearest, sigma_used, n_eff)]
+    outside = (grid < rel.min()) | (grid > rel.max()) if len(rel) else np.ones(len(grid), dtype=bool)
+    return [NONE if out or d > h else OK if h <= sigma_ms + 1e-9 and n >= TIMECOURSE_MIN_EFFECTIVE_N_SOLID else LOW for out, d, h, n in zip(outside, nearest, sigma_used, n_eff)]
 
 
 def _listed(a: np.ndarray, digits: int) -> list:
