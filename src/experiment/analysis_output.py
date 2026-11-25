@@ -29,6 +29,8 @@ RUN_NOTE = "Per-run plots are an indication only; the pooled per-person plot is 
 POOLED_NOTE = "This pooled per-person plot is the one to read; single-run plots are an indication only."
 Y_LIMITS = (-14.0, 114.0)  # room for the raw-trial rug above 100 % and below 0 %
 RUG_BAND = 7.0  # height of the rug's jitter
+BY_CONTRAST_NEIGHBOURS = 5  # per-contrast panels (plot settings, not analysis thresholds): with so few flashes per contrast the kernel SD grows to the distance of the k-th nearest flash...
+BY_CONTRAST_MAX_SIGMA_MS = 150.0  # ...but at most this (from TIMECOURSE_SIGMA_MS up); the curve is then "the average of the nearest k flashes", drawn dashed where it widened
 BY_CONTRAST_RANGE_MS = (-300.0, 700.0)  # x range of timecourse_by_contrast.png (a plot setting, not an analysis threshold): wide enough for the flashes before onset and the +400/+500 ms controls, so accuracy outside the saccade is visible too
 
 
@@ -128,14 +130,15 @@ def _draw_by_contrast(ax, sac: list[Placed], fix: list[Placed], suppression: dic
         ax.legend(fontsize=8, loc="lower right")
 
 
-def _legend_handles(tc: dict, median_saccade_ms: float | None, fixation_label: str | None = None) -> list:
-    """The shared legend of both time-course figures; `fixation_label` None: the pooled-contrast baseline's numbers."""
+def _legend_handles(tc: dict, median_saccade_ms: float | None, fixation_label: str | None = None, dashed_label: str | None = None) -> list:
+    """The shared legend of both time-course figures; `fixation_label` None: the pooled-contrast baseline's numbers,
+    `dashed_label` None: the "fewer than N effective flashes" text of the fixed-kernel figure."""
     base = tc["baseline"]
     if fixation_label is None:
         fixation_label = f"fixation flashes: {100 * base['p']:.0f}% correct, n={base['n']} (95% CI band)" if base["n"] else "fixation flashes: none"
     handles = [
         Line2D([], [], color=CURVE_COLOUR, linewidth=2.2, label=f"accuracy (Gaussian kernel, SD {tc['sigma_ms']:g} ms; shaded: 95% bootstrap band)"),
-        Line2D([], [], color="#8A8A8A", linestyle="--", linewidth=1.6, label=f"fewer than {tc['min_effective_n_solid']:g} effective flashes (hidden below {tc['min_effective_n_drawn']:g})"),
+        Line2D([], [], color="#8A8A8A", linestyle="--", linewidth=1.6, label=dashed_label or f"fewer than {tc['min_effective_n_solid']:g} effective flashes (hidden below {tc['min_effective_n_drawn']:g})"),
         Patch(color=FIXATION_COLOUR, alpha=0.4, label=fixation_label),
         Line2D([], [], color=CHANCE_COLOUR, linestyle="--", label="chance (50%)"),
     ]
@@ -186,12 +189,12 @@ def _draw_contrast_panel(ax, contrast: float, placed: list[Placed], gates: list 
     members = [i for i, p in enumerate(placed) if p.flash.contrast == contrast]
     sub = [placed[i] for i in members]
     sub_gates = None if gates is None else [gates[i] for i in members]
-    tc = timecourse_curve(sub, sub_gates, range_ms=BY_CONTRAST_RANGE_MS)
+    tc = timecourse_curve(sub, sub_gates, range_ms=BY_CONTRAST_RANGE_MS, neighbours=BY_CONTRAST_NEIGHBOURS, max_sigma_ms=BY_CONTRAST_MAX_SIGMA_MS)
     rel, ok = timed_flashes(sub, sub_gates)
     in_range = _draw_curve(ax, tc, rel, ok, median_saccade_ms, BY_CONTRAST_RANGE_MS)
     ax.set_title(f"Contrast {100 * contrast:g} %: {int(in_range.sum())} flashes shown, {tc['baseline']['n']} fixation flashes", fontsize=10, loc="left")
     if not (np.isin(np.asarray(tc["status"]), (LOW, OK)) & np.isfinite(_arr(tc["p"]))).any():
-        ax.text(0.5, 0.62, "curve hidden: too few flashes at every time (dots = single flashes)", transform=ax.transAxes, ha="center", va="center", fontsize=8, color="#555555",
+        ax.text(0.5, 0.62, "no curve: no flashes of this contrast with a known onset", transform=ax.transAxes, ha="center", va="center", fontsize=8, color="#555555",
                 bbox={"facecolor": "white", "alpha": 0.8, "edgecolor": "none"}, zorder=5)
     return tc
 
@@ -205,7 +208,7 @@ def plot_timecourse_by_contrast(
     pooled: bool = False,
 ) -> Path:
     """Accuracy vs flash time from saccade onset, one stacked panel per contrast level (shared x axis), each from that contrast's flashes only.
-    Most of each curve is usually hidden by the effective-n rule (a run has only a few flashes near onset); the dots show every flash."""
+    With few flashes per contrast the kernel widens (k-nearest-neighbour bandwidth) so a basic curve is still drawn, dashed where widened; the dots show every flash."""
     contrasts = sorted({p.flash.contrast for p in placed})
     fig, axes = plt.subplots(max(len(contrasts), 1), 1, sharex=True, figsize=(12, 3.0 * max(len(contrasts), 1) + 1.4), layout="constrained", squeeze=False)
     tc = None
@@ -216,7 +219,8 @@ def plot_timecourse_by_contrast(
         axes[0, 0].set_xlim(*BY_CONTRAST_RANGE_MS)
     axes[-1, 0].set_xlabel("flash time relative to saccade onset (ms)")
     if tc is not None:
-        fig.legend(handles=_legend_handles(tc, median_saccade_ms, "fixation flashes of that contrast (95% CI band)"), loc="outside lower center", ncol=2, fontsize=8, frameon=False)
+        dashed = f"widened: where flashes are sparse the curve averages the nearest {BY_CONTRAST_NEIGHBOURS} flashes (SD {tc['sigma_ms']:g}-{BY_CONTRAST_MAX_SIGMA_MS:g} ms)"
+        fig.legend(handles=_legend_handles(tc, median_saccade_ms, "fixation flashes of that contrast (95% CI band)", dashed), loc="outside lower center", ncol=2, fontsize=8, frameon=False)
     fig.suptitle(f"{title or 'Saccadic suppression analysis'}: accuracy vs flash time, per contrast\n{POOLED_NOTE if pooled else RUN_NOTE}", fontsize=11)
     return _save(fig, out_path)
 
