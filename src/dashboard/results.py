@@ -45,8 +45,10 @@ LIGHT_WORDS = {GREEN: "OK", AMBER: "Check", RED: "Problem", GREY: "Not recorded"
 
 # kind -> file name in the run's analysis/ folder. "plot" is shown inline, the others are downloads.
 # "gaze" (gaze_timeline.png) is shown inline under the plot; an analysis folder without it counts as stale and is re-analysed.
-RUN_FILES = {"report": "report.txt", "plot": "plot.png", "gaze": "gaze_timeline.png", "flashes": "flashes.csv", "suppression": "suppression.json"}
-PARTICIPANT_FILES = {"report": "report.txt", "plot": "plot.png", "flashes": "flashes.csv", "summary": "summary.json"}
+# "by_contrast" (timecourse_by_contrast.png) is shown under the plot but is optional: an older analysis without it is not stale.
+RUN_FILES = {"report": "report.txt", "plot": "plot.png", "by_contrast": "timecourse_by_contrast.png", "gaze": "gaze_timeline.png", "flashes": "flashes.csv", "suppression": "suppression.json"}
+PARTICIPANT_FILES = {"report": "report.txt", "plot": "plot.png", "by_contrast": "timecourse_by_contrast.png", "flashes": "flashes.csv", "summary": "summary.json"}
+OPTIONAL_FILES = ("by_contrast",)  # not needed for an analysis to count as fresh
 # kind -> link text of a downloadable file, for the run, participant and comparison pages (comparison.py reuses it)
 DOWNLOAD_LABELS = {
     "flashes": "flashes.csv (one row per flash)",
@@ -57,6 +59,7 @@ DOWNLOAD_LABELS = {
     "report": "report.txt (the full text report)",
     "plot": "plot.png (save the figure)",
     "gaze": "gaze_timeline.png (eye position over the run, with every flash)",
+    "by_contrast": "timecourse_by_contrast.png (accuracy vs time from saccade onset, one panel per contrast)",
 }
 
 
@@ -201,7 +204,7 @@ def run_file(ref: session_files.SessionRef, kind: str) -> Path:
 
 
 def run_is_fresh(ref: session_files.SessionRef) -> bool:
-    return _is_fresh([run_file(ref, k) for k in RUN_FILES], _run_inputs(ref))
+    return _is_fresh([run_file(ref, k) for k in RUN_FILES if k not in OPTIONAL_FILES], _run_inputs(ref))
 
 
 def analyse_run(timestamp: str) -> None:
@@ -263,7 +266,7 @@ def run_page(timestamp: str, force: bool = False) -> dict:
         "analysed_at": _stamp(_mtime(run_file(ref, "suppression"))),
         "quality": run_quality(meta, suppression),
         "runs": None,
-        "downloads": [k for k in ("flashes", "suppression", "report", "plot", "gaze") if run_file(ref, k).exists()],
+        "downloads": [k for k in ("flashes", "suppression", "report", "plot", "by_contrast", "gaze") if run_file(ref, k).exists()],
         "companion": _companion_text(suppression),
         "report_text": _read_text(run_file(ref, "report")),
         "include_test": None,
@@ -312,7 +315,7 @@ def participant_is_fresh(pid: str, include_test: bool) -> bool:
         return False  # a run was added or removed since
     _, entries = ap.find_runs(pid, _data_dir())
     inputs = [p for e in entries for p in _run_inputs(e.ref)]
-    return _is_fresh([participant_file(pid, k) for k in PARTICIPANT_FILES], inputs)
+    return _is_fresh([participant_file(pid, k) for k in PARTICIPANT_FILES if k not in OPTIONAL_FILES], inputs)
 
 
 def overview() -> list[dict]:
@@ -373,7 +376,7 @@ def participant_page(pid: str, include_test: bool = False, force: bool = False) 
         "analysed_at": _stamp(_mtime(participant_file(pid, "summary"))),
         "quality": participant_quality(pid, summary),
         "runs": runs,
-        "downloads": [k for k in ("flashes", "summary", "report", "plot") if participant_file(pid, k).exists()],
+        "downloads": [k for k in ("flashes", "summary", "report", "plot", "by_contrast") if participant_file(pid, k).exists()],
         "companion": _companion_text(summary),
         "report_text": _read_text(participant_file(pid, "report")),
         "include_test": include_test,

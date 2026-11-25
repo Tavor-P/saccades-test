@@ -95,9 +95,9 @@ data/<participant id>/<YYYY-MM-DD_HH-MM-SS>[_test]/
   gaze_trace.csv       raw Neon gaze with the phone's capture times
   head_motion.csv      IMU head speed and drift (only if the IMU worked)
   RUN_SUMMARY.txt      plain-language end-of-run summary
-  analysis/            report.txt, plot.png, flashes.csv, suppression.json (analyze_session)
+  analysis/            report.txt, plot.png, timecourse_by_contrast.png, flashes.csv, suppression.json (analyze_session)
   glasses/             the phone's video + video_sync.json + flash_video_times.csv (import_glasses_video)
-data/<participant id>/analysis/   report.txt, plot.png, flashes.csv, summary.json (schema 4), all runs pooled (analyze_participant)
+data/<participant id>/analysis/   report.txt, plot.png, timecourse_by_contrast.png, flashes.csv, summary.json (schema 4), all runs pooled (analyze_participant)
 data/participants.json            group labels
 data/study_summary.csv + .txt    one row per participant (study_summary)
 data/comparisons/<date-time>_<A>_vs_<B>/   report.txt, comparison.csv, comparison.json, plot.png (compare; the dashboard uses data/comparisons/dashboard/)
@@ -138,7 +138,7 @@ For anyone who does not program. The numbers are exploratory (feasibility pilot)
 ### How to read the numbers
 
 - **Suppression index (0 to 1)** = `1 - threshold(fixation) / threshold(saccade)`. 0 = seen as well during saccades as during fixation; 1 = never seen during saccades; negative = better during saccades. Per person.
-- **The plot** (`plot.png`): left, % correct against flash time from saccade onset (ms; return-jump flashes from their own leg's onset): a smooth curve with a 95 % band, the fixation flashes' accuracy as a blue band, each flash as a dot (correct at the top, wrong at the bottom), and the number of flashes per 25 ms underneath. A dashed grey curve means fewer than 20 effective flashes there (nothing is drawn below 10). Right, % correct against contrast for the saccade and the fixation flashes, with the fitted curves when the index has a fit. A single run's plot is an indication only; the pooled per-person plot is the one to read.
+- **The plot** (`plot.png`): left, % correct against flash time from saccade onset (ms; return-jump flashes from their own leg's onset): a smooth curve with a 95 % band, the fixation flashes' accuracy as a blue band, each flash as a dot (correct at the top, wrong at the bottom), and the number of flashes per 25 ms underneath. A dashed grey curve means fewer than 20 effective flashes there (nothing is drawn below 10). Right, % correct against contrast for the saccade and the fixation flashes, with the fitted curves when the index has a fit. A single run's plot is an indication only; the pooled per-person plot is the one to read. `timecourse_by_contrast.png` is the same time course split by contrast level, one panel per level; each panel has only that contrast's flashes, so most of a curve is usually hidden and the dots (every flash) are the data.
 - **Companion numbers** (report.txt "Companion numbers", suppression.json / summary.json `companion`): the accuracy difference fixation minus saccade in percentage points, relative suppression S = (p_fix - p_sac) / (p_fix - 0.5) (0 = none, 1 = guessing during saccades; not given with fewer than 15 saccade flashes or fixation accuracy below 65 %), and, with a threshold fit, the log10 threshold ratio. They sit next to the index; the index stays the headline.
 - **95 % CI**: the range the true number plausibly lies in (resampling flashes; for groups, people). Wide = uncertain. For a difference, a CI that excludes 0 means the data show a difference; one that includes 0 means they cannot tell.
 - **p-value** (group vs group only, Mann-Whitney): the chance of a difference this large if the groups did not differ. Below 0.05 is the usual "evidence of a difference"; a large p does not show the groups are the same.

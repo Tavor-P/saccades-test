@@ -77,6 +77,11 @@
 
     {% set plot_url = url_for('run_file', timestamp=page.key, kind='plot') if page.kind == 'run' else url_for('participant_file', pid=page.key, kind='plot') %}
     {% if 'plot' in page.downloads %}<img class="plot" src="{{ plot_url }}" alt="Accuracy against flash time and contrast">{% endif %}
+    {% if 'by_contrast' in page.downloads %}
+    <h2>Accuracy over time, one panel per contrast level</h2>
+    <p class="muted">Each panel uses only that contrast's flashes, so most of a curve is usually hidden (too few flashes); the dots are the single flashes (top = correct, bottom = wrong).</p>
+    <img class="plot" src="{{ url_for('run_file', timestamp=page.key, kind='by_contrast') if page.kind == 'run' else url_for('participant_file', pid=page.key, kind='by_contrast') }}" alt="Accuracy against flash time from saccade onset, one panel per contrast level">
+    {% endif %}
     {% if page.companion %}
     <h2>Companion numbers</h2>
     <ul class="companion">{% for line in page.companion %}<li>{{ line }}</li>{% endfor %}</ul>
