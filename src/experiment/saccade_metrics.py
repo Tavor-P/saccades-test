@@ -8,6 +8,7 @@ the calibrated ratio between them. Each run is converted with its own calibratio
 
 import math
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 
@@ -46,6 +47,7 @@ class LegTrial:
 
     found: bool
     corrective: bool = False
+    corrective_chance: bool = False  # the same detection in an equally long stretch of fixation before the go cue
     latency_ms: float | None = None  # from the go cue (out) / the jump (return)
     amplitude_deg: float | None = None
     gain: float | None = None
@@ -89,18 +91,28 @@ def run_conversion(settings: dict | None) -> Conversion:
     return Conversion(left, right, degrees, bool(s.get("geometry_is_placeholder")))
 
 
-def has_corrective(primary: Saccade, small: list[Saccade], end: float) -> bool:
-    """A smaller saccade (from the low-threshold detection `small`) starting shortly after `primary` ended and before `end`."""
-    first, last = primary.offset + ms_to_s(CORRECTIVE_WINDOW_MS[0]), min(primary.offset + ms_to_s(CORRECTIVE_WINDOW_MS[1]), end)
+def has_corrective(primary: Saccade, small: list[Saccade], first: float, last: float) -> bool:
+    """A saccade much smaller than `primary` (from the low-threshold detection `small`) with its onset in [first, last)."""
     low, high = (share * primary.amplitude for share in CORRECTIVE_AMPLITUDE_REL)
     return any(first <= s.onset < last and low <= s.amplitude < high for s in small)
 
 
-def leg_trial(saccade: Saccade | None, anchor_s: float, conversion: Conversion, small: list[Saccade], end: float) -> LegTrial:
-    """The values of one primary saccade; `anchor_s` = go cue / jump, `end` = where the search for a corrective saccade stops."""
+def corrective_flags(primary: Saccade, small: list[Saccade], end: float, cue: float) -> tuple[bool, bool]:
+    """(a corrective saccade after `primary`, the chance baseline). The search starts shortly after `primary` ends and stops at
+    `end` at the latest; the baseline runs the same detection over a stretch of the same length ending just before the go cue,
+    when the eye rests on the start symbol: what fixational movements, noise and blinks produce by themselves."""
+    gap, longest = (ms_to_s(v) for v in CORRECTIVE_WINDOW_MS)
+    first, last = primary.offset + gap, min(primary.offset + longest, end)
+    if last <= first:
+        return False, False
+    return has_corrective(primary, small, first, last), has_corrective(primary, small, cue - gap - (last - first), cue - gap)
+
+
+def leg_trial(saccade: Saccade | None, anchor_s: float, conversion: Conversion, corrective: tuple[bool, bool] = (False, False)) -> LegTrial:
+    """The values of one primary saccade; `anchor_s` = go cue / jump, `corrective` = corrective_flags()."""
     if saccade is None:
         return LegTrial(False)
-    values = {"latency_ms": s_to_ms(saccade.onset - anchor_s), "duration_ms": saccade.duration_ms}
+    values: dict[str, Any] = {"latency_ms": s_to_ms(saccade.onset - anchor_s), "duration_ms": saccade.duration_ms}
     left, right = conversion.left_ratio, conversion.right_ratio
     if left is not None and right is not None:
         span = right - left
@@ -112,7 +124,7 @@ def leg_trial(saccade: Saccade | None, anchor_s: float, conversion: Conversion, 
             error = float(direction * (saccade.x1 - target) * deg_per_ratio)
             values.update(amplitude_deg=saccade.amplitude * deg_per_ratio, landing_error_deg=error, landing_error_abs_deg=abs(error),
                           peak_velocity_deg_s=saccade.peak_speed * deg_per_ratio)
-    return LegTrial(True, has_corrective(saccade, small, end), **values)
+    return LegTrial(True, *corrective, **values)
 
 
 def run_saccades(flashes: list[Flash], trials: list[TrialSaccades], t: np.ndarray, x: np.ndarray, settings: dict | None) -> RunSaccades:
@@ -126,13 +138,14 @@ def run_saccades(flashes: list[Flash], trials: list[TrialSaccades], t: np.ndarra
         if f.go_cue is None:
             continue
         next_cue = next((c for c in cues if c > f.go_cue), math.inf)
-        out.append(leg_trial(tr.out, f.go_cue, conversion, small, next_cue if tr.back is None else min(tr.back.onset, next_cue)))
+        out_end = next_cue if tr.back is None else min(tr.back.onset, next_cue)
+        out.append(leg_trial(tr.out, f.go_cue, conversion, (False, False) if tr.out is None else corrective_flags(tr.out, small, out_end, f.go_cue)))
         if f.jump is None:
             continue
         if f.jump_forced:
             forced += 1
         else:
-            back.append(leg_trial(tr.back, f.jump, conversion, small, next_cue))
+            back.append(leg_trial(tr.back, f.jump, conversion, (False, False) if tr.back is None else corrective_flags(tr.back, small, next_cue, f.go_cue)))
     jumped = any(f.jump is not None for f in flashes)
     return RunSaccades(conversion, {"out": out, "return": back if jumped else None}, forced)
 
@@ -155,6 +168,7 @@ def _leg_summary(trials: list[LegTrial]) -> dict:
         "anticipation": sum(tr.latency_ms < ANTICIPATION_LATENCY_MS for tr in found if tr.latency_ms is not None),
         "before_cue": sum(tr.latency_ms < 0 for tr in found if tr.latency_ms is not None),
         "corrective": sum(tr.corrective for tr in found),
+        "corrective_chance": sum(tr.corrective_chance for tr in found),
     }
     return {
         "trials": len(trials),

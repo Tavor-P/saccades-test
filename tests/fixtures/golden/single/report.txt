@@ -84,6 +84,7 @@ SACCADE METRICS
     No saccade detected: 0/60 = 0% of trials
     Anticipation (latency < 80 ms): 0/60 = 0% of trials
     Corrective saccade after it: 0/60 = 0% of trials
+      same detection in fixation before the go cue (chance level): 0/60 = 0%
 
   Return leg: no return jump
 
@@ -91,7 +92,7 @@ SACCADE METRICS
     from screen height and viewing distance, scaled by each run's calibration.
   Peak velocity is approximate and reads low: 200 Hz Neon samples, speed from a 3-sample smoothed trace.
   Corrective: a further saccade of 4-50% of the first one's size, starting 20-400 ms after it ends;
-    tracker noise or blinks can count (not yet checked on real recordings).
+    noise, blinks and fixational movements count too, so compare it with the chance level (not validated on glasses).
   A saccade is a movement of at least the minimum amplitude (Technical details); tracking loss counts as no saccade.
 
 TECHNICAL DETAILS

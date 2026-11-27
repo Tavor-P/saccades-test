@@ -301,7 +301,8 @@ def _saccade_leg_lines(name: str, cue: str, leg: dict) -> list[str]:
     early = f"Anticipation (latency < {analysis_constants.ANTICIPATION_LATENCY_MS:g} ms)"
     lines += [f"    No saccade detected: {share['no_saccade']} of trials",
               f"    {early}: {share['anticipation']} of trials" + (f", {counts['before_cue']} of them before the {cue}" if counts["anticipation"] else ""),
-              f"    Corrective saccade after it: {share['corrective']} of trials"]
+              f"    Corrective saccade after it: {share['corrective']} of trials",
+              f"      same detection in fixation before the go cue (chance level): {share['corrective_chance']}"]
     return lines
 
 
@@ -312,7 +313,7 @@ def _conversion_notes(c: dict) -> list[str]:
         gap = [f"Not converted: {', '.join(missing)} (gain needs the calibration, degrees need both)."]
     else:
         gap = []
-    if not c["target_distance_deg"]:
+    if not c["target_distance_deg"] or c["runs_without_calibration"] == c["runs"]:
         return ["Degrees: n/a.", *gap]
     distance = "/".join(f"{d:.1f}" for d in c["target_distance_deg"])
     placeholder = ", PLACEHOLDER screen geometry" if c["geometry_is_placeholder"] else ""
@@ -337,7 +338,7 @@ def saccade_metric_lines(m: dict) -> list[str]:
             *(f"  {line}" for line in _conversion_notes(m["conversion"])),
             "  Peak velocity is approximate and reads low: 200 Hz Neon samples, speed from a 3-sample smoothed trace.",
             f"  Corrective: a further saccade of {low:g}-{high:g}% of the first one's size, starting {after:g}-{until:g} ms after it ends;",
-            "    tracker noise or blinks can count (not yet checked on real recordings).",
+            "    noise, blinks and fixational movements count too, so compare it with the chance level (not validated on glasses).",
             "  A saccade is a movement of at least the minimum amplitude (Technical details); tracking loss counts as no saccade."]
 
 

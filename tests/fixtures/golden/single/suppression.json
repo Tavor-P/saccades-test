@@ -541,13 +541,15 @@
           "no_saccade": 0,
           "anticipation": 0,
           "before_cue": 0,
-          "corrective": 0
+          "corrective": 0,
+          "corrective_chance": 0
         },
         "shares": {
           "no_saccade": 0.0,
           "anticipation": 0.0,
           "before_cue": 0.0,
-          "corrective": 0.0
+          "corrective": 0.0,
+          "corrective_chance": 0.0
         },
         "latency_ms": {
           "n": 60,

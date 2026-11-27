@@ -292,7 +292,7 @@ def test_participant_page_shows_the_companion_numbers_and_reanalyses_an_older_su
     page = _html(client.get(f"/participants/{PID}/results"))
     assert "Companion numbers" in page and "companion secondary" in page and "<h2>Saccade metrics" in page
     path = data / PID / "analysis" / "summary.json"
-    for old in (3, 4):
+    for old in (3, 4, 5):
         summary = json.loads(path.read_text())
         assert summary["schema_version"] == 6
         summary.pop("secondary_onset_window")
