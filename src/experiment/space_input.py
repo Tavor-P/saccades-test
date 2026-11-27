@@ -4,9 +4,11 @@ Rules (each is tested in tests/ai-tests/test_space_input.py):
 - Calibration: one press is enough. If the gaze window is not full yet, the press is latched (`CalibrationLatch`) and the
   step completes the moment the window fills.
 - Tutorial narration: a press made while the narrator is speaking is held (`NarrationKeyGate`) and delivered once speech ends.
-- Trials: a press is accepted in the AWAITING_SPACE phases. During the foreperiod or the trial it is ignored (it must not
-  restart the foreperiod or start the next trial), except a press after the participant has already answered, which
-  starts the next trial the moment it is ready. Every ignored press is counted per phase with its reason (`SpaceTally`).
+- Trials: a press is accepted in the AWAITING_SPACE phases. During the foreperiod or the running trial it is ignored (it
+  must not restart the foreperiod or start the next trial), with two exceptions that start the next trial the moment it is
+  ready: a press after the participant has already answered, and a press once the flash has fired and the eye movements
+  are over, which gives up the answer (a miss). There is no answer deadline. Every ignored press is counted per phase with
+  its reason (`SpaceTally`).
 """
 
 from __future__ import annotations

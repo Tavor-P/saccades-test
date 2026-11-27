@@ -1,7 +1,7 @@
 """Gaze bookkeeping of one saccade trial, shared by ExperimentSession and TutorialSession: the per-tick sample feed and the legs
 (out onset -> out landing/arrival -> jump back -> return onset -> return landing). PsychoPy-free; times are capture times on the
-session clock. The sessions keep the policy: which leg flashes, when the flash fires, symbol visibility, the response window
-and when a trial is logged."""
+session clock. The sessions keep the policy: which leg flashes, when the flash fires, symbol visibility, the answer / SPACE
+that ends a trial and when it is logged."""
 
 from include.experiment.constants import (
     GAZE_LANDING_STABILITY_MS,
@@ -179,13 +179,12 @@ class TrialLegs:
         self.jump_at = now
         self.jump_forced = forced
 
-    def track_return(self, samples) -> tuple[float | None, bool]:
-        """Feeds the return-leg onset detector and landing. Returns (signed return latency ms if measured by this call,
-        whether the return landed in this call)."""
+    def track_return(self, samples) -> float | None:
+        """Feeds the return-leg onset detector and landing. Returns the signed return latency (ms) if this call measured it."""
         if self.return_feed_from is None:
             self.return_feed_from = self.out_arrived_at if self.out_arrived_at is not None else self.jump_at
         if self.return_feed_from is None:
-            return None, False
+            return None
         if self.return_onset is None:
             # wait_for_baseline: the eye may still be flying towards the target; approaching is not leaving.
             self.return_onset = OnsetDetector(self._target_zone, wait_for_baseline=True)
@@ -199,13 +198,23 @@ class TrialLegs:
         if detector.confirmed and self.jump_at is not None and self.return_reaction_ms is None:
             assert detector.since is not None  # confirmed
             self.return_reaction_ms = measured = s_to_ms(detector.since - self.jump_at)  # signed: < 0 = left before the jump
-        was_landed = self.return_landing.landed
         self.return_landing.feed(feed)
-        return measured, self.return_landing.landed and not was_landed
+        return measured
 
     def return_timed_out(self, now: float) -> bool:
         """No return landing within SACCADE_TIMEOUT_MS of the jump."""
         return self.jump_at is not None and not self.return_landing.landed and now - self.jump_at >= ms_to_s(SACCADE_TIMEOUT_MS)
+
+    # -- end of the trial's movements ------------------------------------------
+
+    def timed_out(self, now: float, return_jump: bool) -> bool:
+        """The final landing (return-jump trials: back on the start symbol) never came in time."""
+        return self.return_timed_out(now) if return_jump else self.out_timed_out(now)
+
+    def movement_over(self, now: float, return_jump: bool) -> bool:
+        """No further eye movement is awaited: the final landing (return-jump trials: after the jump) or its timeout."""
+        landed = self.jump_at is not None and self.return_landing.landed if return_jump else self.out_landing.landed
+        return landed or self.timed_out(now, return_jump)
 
     # -- derived values (trials.csv) ---------------------------------------------
 

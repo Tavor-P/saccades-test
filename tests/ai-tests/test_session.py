@@ -13,7 +13,6 @@ from include.experiment.constants import (
     NUM_RT_TEST_TRIALS_REAL,
     NUM_RT_TEST_TRIALS_TEST,
     PRACTICE_CONTRAST,
-    RESPONSE_WINDOW_MS,
     RT_AVERAGE_ROLLING_WINDOW,
     SACCADE_FIXED_TRIALS_REAL,
     SACCADE_FIXED_TRIALS_TEST,
@@ -97,8 +96,8 @@ def _trigger_onset_and_landing(session, fake_gaze, fake_time, target_zone) -> No
     flash_during_saccade True - the flash's scheduled time falls between
     the onset and landing timestamps (see the flash_during_saccade tests
     below for the other three cases). The trial doesn't finalize yet
-    though - flash_decided+landed alone isn't enough without a response or
-    a closed response window (see the tests below)."""
+    though - flash_decided+landed alone isn't enough without an answer or
+    a SPACE press (see the tests below)."""
     fake_gaze.zone = GazeZone.CENTER
     session.tick()  # starts the onset stability timer
     fake_time(SACCADE_ONSET_STABILITY_MS / 1000 + 0.01)
@@ -119,6 +118,13 @@ def _saccade_results(session) -> list:
     ExperimentSession._finish_rt_test_attempt) - filter those out for tests
     that only care about the actual saccade trial(s) they set up."""
     return [r for r in session.results if r.phase == "saccade"]
+
+
+def _give_up(session) -> None:
+    """SPACE without an answer once the trial is physically done: scored a miss on the next tick."""
+    session.tick()  # the flash frame is over
+    session.on_space()
+    session.tick()
 
 
 def _set_single_trial(session, **kwargs) -> None:
@@ -216,7 +222,7 @@ def test_rt_test_falls_back_to_default_when_every_attempt_times_out(fake_gaze, f
 # -- open-loop flash scheduling ------------------------------------------------
 
 
-def test_flash_and_response_window_follow_the_schedule_not_gaze(fake_gaze, fake_time):
+def test_flash_and_answering_follow_the_schedule_not_gaze(fake_gaze, fake_time):
     # Open loop: the flash fires at the scheduled time even if gaze never moves...
     session = _make_session(fake_gaze)
     _complete_calibration_and_rt_test(session, fake_gaze, fake_time, reaction_time_s=0.2)
@@ -230,7 +236,7 @@ def test_flash_and_response_window_follow_the_schedule_not_gaze(fake_gaze, fake_
     session.tick()
     assert session.render_state()["line"]["visible"] is True
 
-    # ...and an early onset does not open the response window before the flash.
+    # ...and an early onset does not let an answer in before the flash.
     session = _make_session(fake_gaze)
     _complete_calibration_and_rt_test(session, fake_gaze, fake_time, reaction_time_s=0.2)
     _set_single_trial(session)
@@ -240,10 +246,12 @@ def test_flash_and_response_window_follow_the_schedule_not_gaze(fake_gaze, fake_
     fake_time(SACCADE_ONSET_STABILITY_MS / 1000 + 0.01)
     session.tick()
     assert session._onset_detector.confirmed is True
-    assert session._response_window_open is False
+    session.on_response_key(Side.ABOVE)
+    assert session._responded is False
     fake_time(0.2)
     session.tick()
-    assert session._response_window_open is True
+    session.on_response_key(Side.ABOVE)
+    assert session._responded is True
 
 
 def test_fast_lander_does_not_finalize_before_the_scheduled_flash(fake_gaze, fake_time):
@@ -260,11 +268,14 @@ def test_fast_lander_does_not_finalize_before_the_scheduled_flash(fake_gaze, fak
     assert len(_saccade_results(session)) == 0
 
     fake_time(0.2)
-    session.tick()  # flash fires and the response window opens - still not finalized this same tick
+    session.tick()  # flash fires - still not finalized this same tick
     assert len(_saccade_results(session)) == 0
-    fake_time(RESPONSE_WINDOW_MS / 1000 + 0.1)  # window closes without a response
+    fake_time(60.0)  # no deadline: it waits for the answer or SPACE
     session.tick()
+    assert len(_saccade_results(session)) == 0
+    _give_up(session)
     assert len(_saccade_results(session)) == 1
+    assert session.render_state()["hud"]["phase"] == "FOREPERIOD"  # the same press started the next trial
 
 
 # -- flash_during_saccade and scoring ------------------------------
@@ -332,6 +343,10 @@ def test_flash_during_saccade_false_after_landing_and_none_without_landing(fake_
     session.tick()
     fake_time(SACCADE_TIMEOUT_MS / 1000)
     session.tick()
+    fake_gaze.zone = GazeZone.RIGHT  # arriving after the timeout, while only the answer is awaited, is not a landing
+    session.tick()
+    fake_time(GAZE_LANDING_STABILITY_MS / 1000 + 0.01)
+    _give_up(session)
     assert _saccade_results(session)[0].flash_during_saccade is None
 
 
@@ -343,11 +358,14 @@ def test_wrong_answer_and_no_answer_are_scored(fake_gaze, fake_time, answer, exp
     _enter_trial_active(session, fake_time)
     _trigger_onset_and_landing(session, fake_gaze, fake_time, GazeZone.RIGHT)
     if answer is None:
-        fake_time(RESPONSE_WINDOW_MS / 1000 + 0.1)
+        _give_up(session)
     else:
+        fake_time(5.0)  # a slow answer still counts
         session.on_response_key(answer)
-    session.tick()
-    assert _saccade_results(session)[0].outcome == expected
+        session.tick()
+    (row,) = _saccade_results(session)
+    assert row.outcome == expected
+    assert row.response_time_ms is None if answer is None else row.response_time_ms > 5000
 
 
 def test_practice_trial_is_not_logged(fake_gaze, fake_time):
@@ -395,8 +413,7 @@ def _run_trial_with_reaction_time(session, fake_gaze, fake_time, index: int, rea
     session.tick()
     fake_time(GAZE_LANDING_STABILITY_MS / 1000 + 0.01)
     session.tick()
-    fake_time(RESPONSE_WINDOW_MS / 1000 + 0.1)
-    session.tick()  # finalizes as a miss
+    _give_up(session)  # finalizes as a miss
 
 
 def test_average_updates_at_every_detected_eye_movement_and_the_next_trial_uses_it(fake_gaze, fake_time):
@@ -490,8 +507,7 @@ def _run_valid_trial(session, fake_gaze, fake_time, index: int) -> None:
     _set_single_trial(session, index=index)
     _enter_trial_active(session, fake_time)
     _trigger_onset_and_landing(session, fake_gaze, fake_time, GazeZone.RIGHT)
-    fake_time(RESPONSE_WINDOW_MS / 1000 + 0.1)
-    session.tick()
+    _give_up(session)
 
 
 def test_main_block_stops_after_the_fixed_trial_count(fake_gaze, fake_time):

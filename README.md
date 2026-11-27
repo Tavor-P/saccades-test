@@ -67,7 +67,8 @@ Click a field's name or its **?** for a help bubble. The last values are remembe
 3. **Green sync flashes**: the screen flashes green three times before the first trial and once at the end (announced aloud; normal). They align the phone's video to the PC clock.
 4. **Trials** (150 Real, 30 Test). The participant presses **SPACE** to start each trial (the wait is their break). 0.5-1 s later the dot swaps to the cross with a beep and they look to it as fast as they can.
    A thin line flashes for one frame 2 deg above or below the target, at a random time on a bell curve centred on the average reaction time (0-500 ms after the swap), plus some control flashes
-   (about 2 in 11) 400-500 ms after it, when the eye has already landed. They press **Up** or **Down** within 1 s; a missed flash is still guessed. Every trial flashes.
+   (about 2 in 11) 400-500 ms after it, when the eye has already landed. They press **Up** or **Down**, and guess if they saw nothing. Every trial flashes. There is no time limit: the answer counts until they press **SPACE**
+   for the next trial. A trial ends once it is answered and the eye has landed; SPACE without an answer (accepted once the eye has landed) scores it `no_answer` and starts the next trial.
    With **Return jump** on, once the eye has arrived (`RETURN_JUMP_TRIGGER` "arrival"; "onset" jumps at the start of the movement; `RETURN_JUMP_LANDING_TIMEOUT_MS` forces it) the target jumps back to the start symbol
    and the eye follows it, so a trial has an out and a return saccade but still only ONE flash: on the return leg in `RETURN_LEG_FLASH_FRACTION` (0.8) of trials (timed from the jump, spread `RETURN_FLASH_SPREAD_SD_MS` 40 ms,
    a guess to be measured), else on the out leg. Not yet run on glasses.
@@ -217,7 +218,7 @@ participant's pooled analysis with it).
 | `_ARRAY_API not found` / `numpy.core.multiarray failed to import` | numpy/opencv drifted: reinstall `requirements.txt` (it pins working versions) |
 | "Neon glasses not found" at start | Read the list of addresses tried. Phone and PC on one network (guest/campus Wi-Fi often blocks devices: use the phone's hotspot). Hotspot: join it from the PC, keep the Companion app open with the glasses plugged in, type the address the app shows into **Neon address** (or leave it blank); if the PC can't see the hotspot, turn on its 2.4 GHz / "Maximise compatibility" option |
 | Eye tracking seems inaccurate | Redo calibration, looking steadily at each target; keep the head still afterwards |
-| SPACE seems to do nothing | Presses during a trial's wait are ignored by design; they are counted in the console summary and `ignored_space_presses` |
+| SPACE seems to do nothing | Presses during a trial's wait, or while the eye is still moving on an unanswered trial, are ignored by design (counted in the console summary and `ignored_space_presses`). If the eye is never seen to land (poor tracking) SPACE works after `SACCADE_TIMEOUT_MS` (15 s) |
 | Glasses recording `failed` in `session.json` | The recording may need the Companion app open with a wearer and workspace selected (not verified); other data is unaffected |
 
 ## Research background

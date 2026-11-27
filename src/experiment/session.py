@@ -25,7 +25,6 @@ from include.experiment.constants import (
     NUM_RT_TEST_TRIALS_REAL,
     NUM_RT_TEST_TRIALS_TEST,
     PRACTICE_CONTRAST,
-    RESPONSE_WINDOW_MS,
     RETURN_FLASH_SPREAD_SD_MS,
     RETURN_JUMP_TRIGGER,
     RETURN_LEG_FLASH_FRACTION,
@@ -199,7 +198,7 @@ class ExperimentSession:
         self._dot_visible = False
         self._cross_visible = False
         self._calibration = CalibrationRounds(gaze_source)
-        self._space_ahead = False  # SPACE pressed after answering, before the next trial is ready
+        self._space_ahead = False  # SPACE that ends the running trial (see on_space) and then starts the next one
         self.space_tally = SpaceTally(lambda: self._phase.name)
         self._results: list[TrialResult] = []
         self._clear_trial_state()
@@ -240,11 +239,12 @@ class ExperimentSession:
         self._line_actually_shown = False
         self._flash_during_saccade: bool | None = None
         self._tracking_lost_near_flash = False
+        self._head_moved_near_flash = False
         self._trial_contrast: float | None = None  # contrast actually used for this trial's flash, if any
         self._reaction_latency_ms: float | None = None
         self._onset_detection_lag_ms: float | None = None
-        self._response_window_open = False
-        self._response_deadline = 0.0
+        # Flash fired and the eye movements done (landing or timeout): the legs stop listening, only the answer / SPACE is awaited.
+        self._gaze_record_closed = False
         self._responded = False
         self._answer_side: Side | None = None
         self._response_time_ms: float | None = None
@@ -320,8 +320,9 @@ class ExperimentSession:
             self._start_rt_test_foreperiod()
         elif self._phase is Phase.AWAITING_SPACE:
             self._start_foreperiod()
-        elif self._phase is Phase.TRIAL_ACTIVE and self._responded:
-            # Answered already: this press starts the next trial the moment it is ready (see _deliver_space_ahead).
+        elif self._phase is Phase.TRIAL_ACTIVE and (self._responded or self._only_answer_pending()):
+            # Answered already, or only the answer is missing and this press gives it up (a miss). Either way the trial ends
+            # on a tick, not here (an answer from this same frame still counts), and the press then starts the next trial.
             self._space_ahead = True
         elif self._phase is not Phase.COMPLETE:
             # Foreperiod: must not restart it or start the next trial. Active phases: responses come from
@@ -341,8 +342,12 @@ class ExperimentSession:
         self._space_ahead = False
         if self._phase in (Phase.AWAITING_SPACE, Phase.RT_TEST_AWAITING_SPACE):
             self.on_space()
-        else:
+        elif self._responded:  # unanswered: the press ended the last trial, so it did something
             self.space_tally.record("early press, no trial left to start")
+
+    def _only_answer_pending(self) -> bool:
+        """The trial is physically done: eye movements over and the flash gone from the screen."""
+        return self._gaze_record_closed and not self._line_visible
 
     def _line_state(self, trial: TrialSpec | None) -> dict:
         side = trial.line_side if trial is not None else None
@@ -360,16 +365,13 @@ class ExperimentSession:
 
     def on_response_key(self, answer: Side) -> None:
         """Called when an arrow key is pressed during a trial: UP reports
-        `Side.ABOVE`, DOWN reports `Side.BELOW` - see run_experiment.py's key dispatch."""
-        if self._phase is not Phase.TRIAL_ACTIVE:
+        `Side.ABOVE`, DOWN reports `Side.BELOW` - see run_experiment.py's key dispatch.
+        Accepted from the flash on, with no deadline, until the trial ends (see _finish_if_over)."""
+        if self._phase is not Phase.TRIAL_ACTIVE or self._responded or not self._flash_decided:
             return
-        if self._responded or not self._response_window_open:
-            return
-        now = self._clock.now()
-        if now <= self._response_deadline:
-            self._responded = True
-            self._answer_side = answer
-            self._response_time_ms = s_to_ms(now - self._flash_shown_at) if self._flash_shown_at else None
+        self._responded = True
+        self._answer_side = answer
+        self._response_time_ms = s_to_ms(self._clock.now() - self._flash_shown_at) if self._flash_shown_at else None
 
     def _begin_after_calibration(self) -> None:
         """Measures the participant's reaction time first, unless the tutorial already did (seeded
@@ -609,7 +611,8 @@ class ExperimentSession:
         now = self._clock.now()
         new_samples = self._feed.new_samples(sample)
 
-        self._measure_reaction(new_samples)
+        if not self._gaze_record_closed:
+            self._measure_reaction(new_samples)
         flash_fired_this_tick = self._fire_flash_if_due(trial, now)
 
         # Frame-counted (not time-based) so the flash lasts exactly N drawn frames whatever the refresh rate; skipped on the
@@ -619,34 +622,35 @@ class ExperimentSession:
             if self._line_frames_remaining <= 0:
                 self._line_visible = False
 
-        if self._response_window_open and now > self._response_deadline:
-            self._response_window_open = False
-
         if any(
             not s.face_found and abs(s_t - self._flash_scheduled_at) <= ms_to_s(TRACKING_LOSS_WINDOW_MS)
             for s, s_t in new_samples
         ):
             self._tracking_lost_near_flash = True
+        # Checked on every tick: the head monitor keeps only HEAD_BUFFER_S of samples and the answer has no deadline.
+        self._head_moved_near_flash = self._head_moved_near_flash or self._head_speed_spike_near_flash()
 
-        if self._return_jump:
-            self._tick_return_jump(trial, new_samples, now)
-            return
+        if not self._gaze_record_closed:
+            if self._return_jump:
+                self._tick_return_jump(trial, new_samples, now)
+            else:
+                self._active_legs.track_out_landing(new_samples)
+        self._finish_if_over(now)
 
-        # Landing is flagged at once but the trial is not finalized: a real reaction time can outlast how quickly landing is
-        # detected, so ending the trial here would cut off a still-valid response.
-        self._active_legs.track_out_landing(new_samples)
-
-        if self._active_legs.out_timed_out(now):
+    def _finish_if_over(self, now: float) -> None:
+        """A trial ends once the flash has fired, the eye movements are over (landing or timeout) AND the participant has
+        answered or pressed SPACE; there is no answer deadline. One that can only be a 'timeout' ends at its timeout."""
+        legs = self._active_legs
+        if legs.timed_out(now, self._return_jump) and self._ends_as_timeout():
             self._finish_trial()
             return
-
-        # Also requires the scheduled flash to have fired: a fast lander (common at a +40 ms offset against a stale
-        # average) cannot finalize before their flash happens.
-        if self._landed and self._flash_decided and (self._responded or not self._response_window_open):
+        # The flash condition: a fast lander (common at a +40 ms offset against a stale average) must still get their flash.
+        self._gaze_record_closed = self._flash_decided and legs.movement_over(now, self._return_jump)
+        if self._only_answer_pending() and (self._responded or self._space_ahead):
             self._finish_trial()
 
     def _tick_return_jump(self, trial: TrialSpec, new_samples, now: float) -> None:
-        """The rest of a return-jump trial tick: out arrival / onset -> jump back -> return onset/landing -> finish."""
+        """The gaze side of a return-jump trial tick: out arrival / onset -> jump back -> return onset/landing."""
         legs = self._active_legs
         legs.track_arrival(new_samples)
         # An out-leg flash is drawn (and gone) before the target jumps, so the jump never overlaps it.
@@ -657,22 +661,10 @@ class ExperimentSession:
 
         # The return leg is listened to from the out arrival (or the jump, if that came first): a predictive return
         # saccade may start BEFORE the jump frame (negative return latency), e.g. while a late out-leg flash holds the jump.
-        return_latency_ms, just_landed = legs.track_return(new_samples)
+        return_latency_ms = legs.track_return(new_samples)
         if return_latency_ms is not None and not legs.jump_forced:
             # After a forced jump the eye may not be on the target: no clean return latency.
             self._return_rt.add(return_latency_ms)
-        if legs.jump_at is None:
-            return
-        if just_landed and self._flash_decided and not self._responded:
-            # The answer is asked once the eye is back: the full window counts from the return landing.
-            self._response_window_open = True
-            self._response_deadline = max(self._response_deadline, now + ms_to_s(RESPONSE_WINDOW_MS))
-
-        if legs.return_timed_out(now):
-            self._finish_trial()
-            return
-        if legs.return_landing.landed and self._flash_decided and (self._responded or not self._response_window_open):
-            self._finish_trial()
 
     def _jump_back(self, trial: TrialSpec, now: float, forced: bool) -> None:
         """The target jumps back: the start symbol reappears (the new saccade target), the one just reached disappears.
@@ -737,8 +729,6 @@ class ExperimentSession:
         if self._flash_decided or now < self._flash_scheduled_at:
             return False
         self._flash_decided = True
-        self._response_window_open = True
-        self._response_deadline = now + ms_to_s(RESPONSE_WINDOW_MS)
         self._flash_shown_at = now
         self._flash_unix_ms = self._clock.unix_ms()
         self._line_visible = True
@@ -774,14 +764,18 @@ class ExperimentSession:
             return None
         return onset <= self._flash_scheduled_at <= landed_since
 
+    def _ends_as_timeout(self) -> bool:
+        """No saccade (on the flash's leg), or no flash yet: whatever the answer, the outcome is 'timeout'."""
+        return not self._active_legs.leg_moved(self._flash_leg) or not self._line_actually_shown
+
     def _finish_trial(self) -> None:
         trial = self._active_trial
-        if not self._active_legs.leg_moved(self._flash_leg) or not self._line_actually_shown:
-            outcome = "timeout"  # no saccade (on the flash's leg), or the trial ended before its flash fired
+        if self._ends_as_timeout():
+            outcome = "timeout"
         else:
             outcome = score_outcome(self._responded, self._answer_side, trial.line_side)
         self._flash_during_saccade = self._compute_flash_during_saccade()
-        head_moved = self._head_speed_spike_near_flash()
+        head_moved = self._head_moved_near_flash or self._head_speed_spike_near_flash()
         if head_moved and not trial.practice:
             self.head_flagged_trials += 1
         tracking_ok = (not (self._tracking_lost_near_flash or head_moved)) if self._line_actually_shown else None

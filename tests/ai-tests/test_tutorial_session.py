@@ -266,7 +266,10 @@ def test_practice_waits_for_space_swaps_500_to_1000_ms_later_flashes_clearly_and
 
     fake_time(SACCADE_TIMEOUT_MS / 1000)
     session.tick()
-    assert session.render_state()["hud"]["phase"] == "PRACTICE_AWAITING_SPACE"
+    assert session.render_state()["hud"]["phase"] == "PRACTICE_ACTIVE"  # no answer deadline, as in the real trials
+    session.on_space()  # gives up the answer: this attempt ends and the same press starts the next one
+    session.tick()
+    assert session.render_state()["hud"]["phase"] == "PRACTICE_FOREPERIOD"
     assert session.render_state()["instructions"] == ""  # later trials are silent
 
 

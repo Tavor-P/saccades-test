@@ -487,14 +487,17 @@ class SimulatedParticipant:
         seen = self._rng.random() < p_seen
         where = "during saccade (suppressed)" if suppressed else "outside saccade"
         self._log(t, f"flash shown: contrast {contrast:.3f}, {where}; P(seen)={p_seen:.2f} -> {'seen' if seen else 'not seen'}")
+        answer = None
         if seen:
             answer = line_side
         elif self._rng.random() < self._p.guess_response_probability:
             answer = self._rng.choice([Side.ABOVE, Side.BELOW])
-        else:
-            return  # no response -> "miss"
         delay = ms_to_s(max(0.15, self._rng.gauss(self._p.response_ms_mean, self._p.response_ms_sd)))
-        self._pending_response = (t + delay, answer)
+        if answer is None:
+            # Gives up -> "miss": SPACE (retried by observe() until the trial is done and the phase changes).
+            self._pending_space_at = t + delay
+        else:
+            self._pending_response = (t + delay, answer)
 
 
 @dataclass

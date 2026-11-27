@@ -28,7 +28,7 @@ PROFILE_RANGES = {
     "reaction_ms_sd": (1, 150),
     "saccade_ms_min": (20, 60),
     "saccade_ms_max": (60, 140),
-    "response_ms_mean": (150, 1100),  # beyond the response window = late responses
+    "response_ms_mean": (150, 1100),  # flash to key press (no deadline; also the wait before SPACE when giving up)
     "response_ms_sd": (5, 300),
     "threshold_contrast": (0.01, 0.4),
     "suppressed_threshold_contrast": (0.02, 0.6),
@@ -47,7 +47,7 @@ PROFILE_RANGES = {
 EXTREME_PROFILES = {
     "never_responds": {"guess_response_probability": 0.0, "threshold_contrast": 1e6, "suppressed_threshold_contrast": 1e6},
     "always_sees": {"threshold_contrast": 1e-6, "suppressed_threshold_contrast": 1e-6},
-    "responds_after_window": {"response_ms_mean": 1500, "response_ms_sd": 50},
+    "answers_very_late": {"response_ms_mean": 20_000, "response_ms_sd": 50},  # longer than any buffer or timeout
     "very_slow_saccade_start": {"reaction_ms_mean": 2500, "reaction_ms_sd": 100},
     "tracker_dies_often": {"dropout_rate_per_s": 3.0, "dropout_ms": 250},
     "huge_latency": {"tracker_latency_ms": 400.0},

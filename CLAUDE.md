@@ -205,7 +205,11 @@ Paths are checked by `tests/test_docs.py` - keep them real.
 
 SPACE presses are never silently dropped; every ignored one is counted in `session.space_tally` (phase + reason) and saved as `ignored_space_presses`.
 - Calibration: one press suffices; if `average_recent_ratio()` is still `None` it is latched and `tick()` completes the step when the window is full ("TRACKING LOST?" after 3 s).
-- Trials: accepted in `AWAITING_SPACE`; the swap follows `FOREPERIOD_MIN_MS`-`FOREPERIOD_MAX_MS` (500-1000 ms). Ignored during the foreperiod; during a trial ignored until answered, then carried to start the next.
+- Trials: accepted in `AWAITING_SPACE`; the swap follows `FOREPERIOD_MIN_MS`-`FOREPERIOD_MAX_MS` (500-1000 ms). Ignored during the foreperiod. **No answer deadline**: UP/DOWN counts from the flash until the trial ends
+  (`answer_ms` can be many seconds). A trial ends once the flash has fired, the movements are over (final landing or `SACCADE_TIMEOUT_MS`; `TrialLegs.movement_over`) and it is answered or SPACE gave it up (`no_answer`);
+  a 'timeout' trial that never got a landing still ends by itself at the timeout. During a running trial SPACE is carried over to start the next one if already answered or only the answer is pending, else ignored
+  (a mid-flight press is not latched: it would turn nearly every such trial into a miss at landing). The carried press acts on the next tick, so an answer in the same frame counts. Same rule in tutorial practice.
+  From then on the legs stop listening (`_gaze_record_closed`) and a head spike near the flash is latched per tick (`HEAD_BUFFER_S` is only 10 s).
 - Same-frame repeats collapse to one; a press before a phase's first screen is discarded; the press in the frame COMPLETE first appears doesn't dismiss it.
 - Tutorial: `run_tutorial_phase` withholds key/tick forwarding while `narrator.is_speaking` and delivers one held SPACE afterwards.
 
