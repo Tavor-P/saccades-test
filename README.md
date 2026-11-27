@@ -70,8 +70,8 @@ Click a field's name or its **?** for a help bubble. The last values are remembe
    (about 2 in 11) 400-500 ms after it, when the eye has already landed. They press **Up** or **Down**, and guess if they saw nothing. Every trial flashes. There is no time limit: the answer counts until they press **SPACE**
    for the next trial. A trial ends once it is answered and the eye has landed; SPACE without an answer (accepted once the eye has landed) scores it `no_answer` and starts the next trial.
    With **Return jump** on, once the eye has arrived (`RETURN_JUMP_TRIGGER` "arrival"; "onset" jumps at the start of the movement; `RETURN_JUMP_LANDING_TIMEOUT_MS` forces it) the target jumps back to the start symbol
-   and the eye follows it, so a trial has an out and a return saccade but still only ONE flash: on the return leg in `RETURN_LEG_FLASH_FRACTION` (0.8) of trials (timed from the jump, spread `RETURN_FLASH_SPREAD_SD_MS` 40 ms,
-   a guess to be measured), else on the out leg. Not yet run on glasses.
+   and the eye follows it, so a trial has an out and a return saccade but still only ONE flash: on the return leg in `RETURN_LEG_FLASH_FRACTION` (0.8) of trials (timed from the jump, spread `RETURN_FLASH_SPREAD_SD_MS` 110 ms,
+   from one real run's measured 118 ms; recheck on more runs), else on the out leg.
 5. **End.** A plain-language summary is printed, and the run is analysed automatically (top of the report printed; rerun with `analyze_session`, see below). Fixation data come from the control flashes and far-from-saccade flashes of the same trials, sorted after the fact.
 
 The phone records the scene video during the trials; a failure there never stops the session. `Esc` quits at once.

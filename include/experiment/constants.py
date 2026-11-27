@@ -198,11 +198,13 @@ RETURN_JUMP_TRIGGER = "arrival"
 # another ~200-300 ms for its correction; 1500 leaves room for both without letting a lost track stall the trial.
 RETURN_JUMP_LANDING_TIMEOUT_MS = 1500
 # Return-leg flash timing: a bell curve like FLASH_SPREAD_SD_MS's, centred on the rolling return-latency average and cut to
-# FLASH_WINDOW_MIN_MS..FLASH_WINDOW_MAX_MS after the JUMP-BACK frame. Narrower than the out leg's because a practised,
-# predictable return saccade should vary less. 40 is a GUESS: set it from the return_reaction_ms SD of the first glasses runs.
+# FLASH_WINDOW_MIN_MS..FLASH_WINDOW_MAX_MS after the JUMP-BACK frame. Set from a measurement: one real 150-trial glasses
+# run, return-latency robust SD 118 ms (median 207 ms). The first guess, 40, expected a practised, predictable return to vary
+# less than the out leg; it did not, and most return-leg flashes missed the return saccade. Recheck on more runs
+# (analyze_session's return-latency report). It may be wider than FLASH_SPREAD_SD_MS, the out leg's spread.
 # The return average keeps negative and near-zero latencies (anticipatory returns); once it is <= 0 every non-control
 # return flash is drawn at the jump-back frame itself (0 ms), the earliest moment a return flash can exist.
-RETURN_FLASH_SPREAD_SD_MS = 40
+RETURN_FLASH_SPREAD_SD_MS = 110
 
 # Fixed probe contrasts for the saccade phase (method of constant stimuli), drawn without
 # repeats like the timing offsets. (An adaptive ZEST staircase was used once and removed: it only

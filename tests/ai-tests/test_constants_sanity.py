@@ -50,7 +50,8 @@ def test_return_jump_constants():
     assert c.RETURN_JUMP_LANDING_TIMEOUT_MS < c.SACCADE_TIMEOUT_MS
     assert c.RETURN_JUMP_LANDING_TIMEOUT_MS >= c.DEFAULT_REACTION_TIME_MS + max(c.CONTROL_OFFSETS_MS) + c.TIMING_JITTER_MS
     assert c.RETURN_JUMP_TRIGGER in ("arrival", "onset")
-    assert 0 < c.RETURN_FLASH_SPREAD_SD_MS <= c.FLASH_SPREAD_SD_MS
+    # Not bounded by the out leg's FLASH_SPREAD_SD_MS: measured return latencies turned out to vary more.
+    assert 0 < c.RETURN_FLASH_SPREAD_SD_MS < c.FLASH_WINDOW_MAX_MS - c.FLASH_WINDOW_MIN_MS
 
 
 def test_analysis_thresholds():
