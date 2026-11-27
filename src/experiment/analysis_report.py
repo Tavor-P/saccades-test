@@ -133,6 +133,23 @@ def format_top_block(quality: tuple[str, str] | None, suppression: dict, n_sacca
     return "\n".join([_top_line("QUALITY", q_status, q_text), format_suppression(suppression), _top_line("AMOUNT", "TOO FEW" if few else "OK", amount)])
 
 
+def secondary_lines(s: dict) -> list[str]:
+    """The secondary index (suppression_stats.onset_window_index()) in words: report.txt and the dashboard show the same lines."""
+    if s["index"] is None:
+        value = "cannot be computed"
+    else:
+        value = f"{s['index']:+.2f}, {_ci_text(s['ci'])}" + (" (accuracy fallback)" if s["method"] == "accuracy" else "")
+    lines = [f"Secondary suppression index (not the headline): {value}",
+             f"{s['n_saccade']} onset-window flashes ({s['correct_saccade']} correct) vs {s['n_fixation']} fixation flashes ({s['correct_fixation']} correct)",
+             f"Onset window: within +/-{s['onset_window_ms']:g} ms of the flash's own saccade onset; the headline's saccade gates without the minimum speed"]
+    return lines + [f"Note: {n}".replace("saccade flashes", "onset-window flashes").replace(" saccade, ", " onset-window, ") for n in s["notes"]]
+
+
+def format_secondary(s: dict | None) -> list[str]:
+    """SECONDARY INDEX section, directly under the top block (nothing for a result without it)."""
+    return [] if s is None else [*heading("Secondary index"), *(f"  {line}" for line in secondary_lines(s))]
+
+
 def format_index_fit(s: dict) -> list[str]:
     """INDEX FIT section: the threshold contrasts of the index and its notes (always present)."""
     fitted = s["index"] is not None and s["threshold_saccade"] is not None
@@ -314,7 +331,7 @@ def format_report(
     title = f"Saccade-phase analysis {label}".strip()
     gates = summary["gates"]
     top = format_top_block(quality, summary["suppression"], gates[SACCADE][1], gates[FIXATION][1], summary["flashes"], " · TEST run" if test_run else "")
-    lines = [title, "=" * len(title), "", top, *_data_quality(summary, speed), *format_index_fit(summary["suppression"]), *format_companion(summary.get("companion"), summary.get("timecourse")), *_time_windows(summary),
-             *_by_contrast(summary), format_leg_suppression(summary.get("by_leg"), leg_flashes), format_return_latency(summary.get("return_latency")),
-             *format_technical(geometry, thresholds)]
+    lines = [title, "=" * len(title), "", top, *format_secondary(summary.get("secondary_onset_window")), *_data_quality(summary, speed), *format_index_fit(summary["suppression"]),
+             *format_companion(summary.get("companion"), summary.get("timecourse")), *_time_windows(summary), *_by_contrast(summary), format_leg_suppression(summary.get("by_leg"), leg_flashes),
+             format_return_latency(summary.get("return_latency")), *format_technical(geometry, thresholds)]
     return "\n".join(lines)

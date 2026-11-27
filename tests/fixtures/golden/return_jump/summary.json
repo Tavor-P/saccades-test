@@ -1,5 +1,5 @@
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "participant": "GOLD",
   "generated_at": "",
   "include_test": false,
@@ -275,6 +275,7 @@
     "min_fit_trials": 12,
     "min_flash_speed": 2.0,
     "near_onset_ms": 50.0,
+    "onset_window_ms": 50.0,
     "out_search_s": [
       -0.2,
       1.5
@@ -794,5 +795,22 @@
       "status": "ok",
       "n_eff": 21.4
     }
+  },
+  "secondary_onset_window": {
+    "conditions_from": "onset window",
+    "n_saccade": 33,
+    "n_fixation": 82,
+    "correct_saccade": 24,
+    "correct_fixation": 73,
+    "method": "psychometric",
+    "index": 0.318708,
+    "ci": null,
+    "label": "1 - CS_saccade/CS_fixation from per-condition Weibull thresholds (2AFC, guess 0.5, lapse 0.02, shared slope)",
+    "threshold_saccade": 0.0681292,
+    "threshold_fixation": 0.0464159,
+    "notes": [
+      "no CI: only 100 of 100 bootstrap fits were identified (need >= 75% and >= 200)"
+    ],
+    "onset_window_ms": 50.0
   }
 }

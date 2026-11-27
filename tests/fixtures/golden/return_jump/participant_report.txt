@@ -5,6 +5,13 @@ QUALITY  CHECK     gaze delay 18 ms · clock offset unknown in 2 of 2 runs · he
 RESULT   +0.37     suppression index, 95% CI not available
 AMOUNT   OK        38 saccade / 82 fixation flashes usable of 120 (need 12+ each for a threshold fit) · 2 runs pooled
 
+SECONDARY INDEX
+---------------
+  Secondary suppression index (not the headline): +0.32, 95% CI not available
+  33 onset-window flashes (24 correct) vs 82 fixation flashes (73 correct)
+  Onset window: within +/-50 ms of the flash's own saccade onset; the headline's saccade gates without the minimum speed
+  Note: no CI: only 100 of 100 bootstrap fits were identified (need >= 75% and >= 200)
+
 All analysed runs were pooled.
 
 RUNS POOLED

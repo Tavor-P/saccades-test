@@ -187,6 +187,10 @@ def test_the_analysis_writes_the_companion_numbers_and_the_time_course(tmp_path)
     assert "COMPANION NUMBERS" in report and "percentage points" in report and "Threshold ratio saccade / fixation: log10" in report
     assert report.index("INDEX FIT") < report.index("COMPANION NUMBERS") < report.index("ACCURACY BY FLASH TIME")
     assert report.splitlines()[3].startswith("QUALITY") and report.splitlines()[4].startswith("RESULT")  # the top block is unchanged
+    secondary = saved["secondary_onset_window"]
+    assert secondary["conditions_from"] == "onset window" and secondary["n_fixation"] == saved["n_fixation"]
+    assert report.index("RESULT") < report.index("SECONDARY INDEX") < report.index("DATA QUALITY")
+    assert f"{secondary['n_saccade']} onset-window flashes" in report
 
 
 def test_the_new_constants_are_in_the_thresholds_record():
@@ -196,6 +200,7 @@ def test_the_new_constants_are_in_the_thresholds_record():
     assert record["timecourse_sigma_ms"] == 20.0 and record["timecourse_step_ms"] == 5.0 and record["timecourse_range_ms"] == [-150.0, 200.0]
     assert record["timecourse_min_effective_n_drawn"] == 10.0 and record["timecourse_min_effective_n_solid"] == 20.0
     assert record["relative_suppression_min_saccade_flashes"] == 15 and record["stratum_min_saccade_flashes"] == 5
+    assert record["onset_window_ms"] == 50.0
 
 
 def test_timecourse_figure_draws_run_pooled_and_sparse_data(tmp_path):

@@ -38,6 +38,13 @@ BOOT_MIN_IDENTIFIED = 200  # ...and at least this many of them
 ACCURACY_FLOOR_MARGIN = 0.1  # accuracy fallback refused when fixation accuracy is below CHANCE + this (flashes not visible at all)
 ACCURACY_CEILING = 0.95  # both conditions at or above this accuracy -> noted: the accuracy index cannot show suppression
 
+# -- secondary suppression index (flash_gates.onset_window_gates, suppression_stats.onset_window_index) ----------------------
+# Pre-specified beside the headline (saccade-gate) index: flashes within +-this of their OWN leg's saccade onset (inclusive), moving
+# or not (suppression starts ~50 ms before onset: Diamond, Ross & Morrone 2000), against the same fixation-gate flashes. Every other
+# saccade gate applies (tracking gap, own leg, forced jump, latency, amplitude, MAX_FLASH_SPEED); only MIN_FLASH_SPEED is dropped.
+# Must stay below FIXATION_EXCLUSION_MS, so no flash can be in both conditions.
+ONSET_WINDOW_MS = 50.0
+
 # -- time-course figure (timecourse.py, analysis_output.plot_timecourse_figure) ----------------------------------------------
 TIMECOURSE_SIGMA_MS = 20.0  # Gaussian kernel SD of the accuracy-vs-time curve (Nadaraya-Watson); 15 / 20 / 25 were compared in the simulator
 TIMECOURSE_STEP_MS = 5.0  # the curve is evaluated every this many ms...

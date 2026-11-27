@@ -74,6 +74,9 @@
       <div>{{ page.headline }}</div>
       {% if page.meaning %}<div class="meaning">{{ page.meaning }}</div>{% endif %}
     </div>
+    {% if page.secondary %}
+    <ul class="companion secondary">{% for line in page.secondary %}<li>{{ line }}</li>{% endfor %}</ul>
+    {% endif %}
 
     {% set plot_url = url_for('run_file', timestamp=page.key, kind='plot') if page.kind == 'run' else url_for('participant_file', pid=page.key, kind='plot') %}
     {% if 'plot' in page.downloads %}<img class="plot" src="{{ plot_url }}" alt="Accuracy against flash time and contrast">{% endif %}

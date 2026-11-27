@@ -511,5 +511,25 @@
       "status": "ok",
       "n_eff": 21.1
     }
+  },
+  "secondary_onset_window": {
+    "conditions_from": "onset window",
+    "n_saccade": 18,
+    "n_fixation": 36,
+    "correct_saccade": 9,
+    "correct_fixation": 35,
+    "method": "accuracy",
+    "index": 0.472222,
+    "ci": [
+      0.233581,
+      0.683157
+    ],
+    "label": "ACCURACY index (not a threshold ratio): accuracy_fixation - accuracy_saccade",
+    "threshold_saccade": null,
+    "threshold_fixation": null,
+    "notes": [
+      "psychometric index not computed: accuracy at ceiling or floor across the tested contrasts, so a threshold is not identified"
+    ],
+    "onset_window_ms": 50.0
   }
 }

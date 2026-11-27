@@ -61,6 +61,7 @@ def test_analysis_thresholds():
     assert 0 < a.NEAR_ONSET_MS < a.FAR_MS
     assert list(a.BIN_EDGES_MS) == sorted(set(a.BIN_EDGES_MS)) and a.BIN_EDGES_MS[0] < 0 < a.BIN_EDGES_MS[-1]
     assert 0 < a.TRACKING_GAP_MS and 0 < a.FIXATION_EXCLUSION_MS < a.FAR_MS
+    assert 0 < a.ONSET_WINDOW_MS < a.FIXATION_EXCLUSION_MS  # no flash can be both in the secondary index's window and fixation
     assert 0 < a.LATENCY_RANGE_MS[0] < a.LATENCY_RANGE_MS[1]
     assert 0 < a.AMPLITUDE_RANGE_REL[0] < 1 < a.AMPLITUDE_RANGE_REL[1]
     assert 0 < a.MIN_FLASH_SPEED < a.MAX_FLASH_SPEED

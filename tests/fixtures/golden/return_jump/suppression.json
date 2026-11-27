@@ -523,6 +523,26 @@
       "n_eff": 12.1
     }
   },
+  "secondary_onset_window": {
+    "conditions_from": "onset window",
+    "n_saccade": 18,
+    "n_fixation": 40,
+    "correct_saccade": 13,
+    "correct_fixation": 34,
+    "method": "psychometric",
+    "index": 0.264358,
+    "ci": [
+      -0.258925,
+      0.601893
+    ],
+    "label": "1 - CS_saccade/CS_fixation from per-condition Weibull thresholds (2AFC, guess 0.5, lapse 0.02, shared slope)",
+    "threshold_saccade": 0.0681292,
+    "threshold_fixation": 0.0501187,
+    "notes": [
+      "3% of bootstrap fits were unidentified and excluded from the CI"
+    ],
+    "onset_window_ms": 50.0
+  },
   "by_leg": {
     "out": {
       "conditions_from": "gates",

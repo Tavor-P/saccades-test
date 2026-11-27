@@ -18,6 +18,7 @@ from include.experiment.analysis_constants import (
     LATENCY_RANGE_MS,
     MAX_FLASH_SPEED,
     MIN_FLASH_SPEED,
+    ONSET_WINDOW_MS,
     RETURN_LATENCY_MAX_MS,
     TRACKING_GAP_MS,
 )
@@ -26,6 +27,7 @@ from src.timebase import ms_to_s, s_to_ms
 SACCADE, FIXATION, EXCLUDED = "saccade", "fixation", "excluded"
 NOT_MOVING_REASON = "near a saccade but the eye was not moving fast at the flash"  # the exclusion reason report.txt counts before / after onset
 TRACKING_GAP_REASON = "tracking gap around the flash"  # the exclusion reason the time-course figure leaves out (no valid data at all)
+OUTSIDE_WINDOW_REASON = "outside the onset window"  # secondary index only: a flash that passes the saccade gates but is too far from onset
 
 
 @dataclass(frozen=True)
@@ -62,16 +64,18 @@ def has_tracking_gap(t: np.ndarray, when: float, half_window_ms: float = FIXATIO
     return bool(len(window) < 2 or s_to_ms(np.max(np.diff(window))) > TRACKING_GAP_MS)
 
 
-def classify_flash(
+def classify_flash(  # noqa: PLR0913 - gate inputs plus the one threshold the secondary index changes
     when: float,
     saccades: list,
     t: np.ndarray,
     x: np.ndarray,
     go_cue: float | None = None,
     median_amplitude: float | None = None,
+    min_speed: float = MIN_FLASH_SPEED,
 ) -> GateResult:
     """Label one flash drawn at PC time `when` (display delay already added). `go_cue` is the trial's target
-    onset (PC unix s) for the latency gate; without it that gate is skipped."""
+    onset (PC unix s) for the latency gate; without it that gate is skipped. `min_speed` 0 turns the
+    moving-fast gate off (the secondary index, see onset_window_gates)."""
     if has_tracking_gap(t, when):
         return GateResult(EXCLUDED, TRACKING_GAP_REASON)
     if not saccades:
@@ -85,7 +89,7 @@ def classify_flash(
         return GateResult(FIXATION, f"{gap_ms:.0f} ms from the nearest saccade", speed, latency_ms)
 
     # Within +-FIXATION_EXCLUSION_MS of a saccade: it is neither clean fixation nor yet a saccade flash.
-    if speed is None or speed < MIN_FLASH_SPEED:
+    if speed is None or speed < min_speed:
         return GateResult(EXCLUDED, NOT_MOVING_REASON, speed, latency_ms)
     if speed > MAX_FLASH_SPEED:
         return GateResult(EXCLUDED, "gaze speed at the flash is implausibly high", speed, latency_ms)
@@ -98,13 +102,21 @@ def classify_flash(
     return GateResult(SACCADE, "fast gaze movement at the flash", speed, latency_ms)
 
 
-def classify_flashes(placed: list, saccades: list, t: np.ndarray, x: np.ndarray, flash_delay_ms: float = 0.0, go_cues: list | None = None) -> list[GateResult]:
+def classify_flashes(  # noqa: PLR0913 - classify_flash's inputs for every flash
+    placed: list,
+    saccades: list,
+    t: np.ndarray,
+    x: np.ndarray,
+    flash_delay_ms: float = 0.0,
+    go_cues: list | None = None,
+    min_speed: float = MIN_FLASH_SPEED,
+) -> list[GateResult]:
     """`placed[i].flash.time` against the saccades; `go_cues[i]` is that flash's trial start (or None)."""
     median_amp = float(np.median([s.amplitude for s in saccades])) if saccades else None
     out = []
     for i, p in enumerate(placed):
         cue = go_cues[i] if go_cues is not None else None
-        out.append(classify_flash(p.flash.time + ms_to_s(flash_delay_ms), saccades, t, x, cue, median_amp))
+        out.append(classify_flash(p.flash.time + ms_to_s(flash_delay_ms), saccades, t, x, cue, median_amp, min_speed))
     return out
 
 
@@ -127,6 +139,7 @@ def classify_leg_flash(  # noqa: C901, PLR0911, PLR0913 - gate decision ladder, 
     anchor: float | None,
     median_amplitude: float | None = None,
     jump_forced: bool = False,
+    min_speed: float = MIN_FLASH_SPEED,
 ) -> GateResult:
     """Label one flash of a return-jump trial. `own` is this trial's saccade of the flash's `leg` ('out' | 'return'), or None
     when none was found; `anchor` the latency reference (go cue for 'out', jump-back frame for 'return'; PC unix s);
@@ -148,7 +161,7 @@ def classify_leg_flash(  # noqa: C901, PLR0911, PLR0913 - gate decision ladder, 
         return GateResult(EXCLUDED, f"near a saccade but no {leg} saccade was found in this trial", speed, latency_ms)
     if nearest is not own:
         return GateResult(EXCLUDED, f"near a saccade other than this trial's {leg} saccade", speed, latency_ms)
-    if speed is None or speed < MIN_FLASH_SPEED:
+    if speed is None or speed < min_speed:
         return GateResult(EXCLUDED, NOT_MOVING_REASON, speed, latency_ms)
     if speed > MAX_FLASH_SPEED:
         return GateResult(EXCLUDED, "gaze speed at the flash is implausibly high", speed, latency_ms)
@@ -162,6 +175,23 @@ def classify_leg_flash(  # noqa: C901, PLR0911, PLR0913 - gate decision ladder, 
         if not AMPLITUDE_RANGE_REL[0] <= rel <= AMPLITUDE_RANGE_REL[1]:
             return GateResult(EXCLUDED, f"{leg} saccade amplitude {rel:.2f}x the session's {leg} median", speed, latency_ms)
     return GateResult(SACCADE, f"fast gaze movement at the flash ({leg} saccade)", speed, latency_ms)
+
+
+# -- the secondary index's conditions -------------------------------------------------------------------------------------
+
+
+def onset_window_gates(placed: list, any_speed: list[GateResult]) -> list[GateResult]:
+    """Conditions of the secondary index. `any_speed` is the run classified with `min_speed=0` (classify_flashes or the
+    per-leg rules); SACCADE then means: passes every saccade gate but the speed minimum AND |rel_ms| (time from its own
+    saccade's onset) <= ONSET_WINDOW_MS. FIXATION flashes are the headline's own; everything else is EXCLUDED."""
+    out = []
+    for p, g in zip(placed, any_speed, strict=True):
+        if g.condition == SACCADE and (p.rel_ms is None or abs(p.rel_ms) > ONSET_WINDOW_MS):
+            g = GateResult(EXCLUDED, OUTSIDE_WINDOW_REASON, g.speed, g.latency_ms)
+        elif g.condition == SACCADE:
+            g = GateResult(SACCADE, "within the onset window", g.speed, g.latency_ms)
+        out.append(g)
+    return out
 
 
 def summarize_gates(placed: list, results: list[GateResult]) -> dict:

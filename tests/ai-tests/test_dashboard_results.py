@@ -278,23 +278,25 @@ def test_an_old_run_analysis_without_the_gaze_timeline_is_rerun_and_one_without_
     page = client.get(f"/runs/{START}/results")
     assert page.status_code == 200 and (analysis / "gaze_timeline.png").exists()  # stale, so analysed again
     saved = json.loads((analysis / "suppression.json").read_text())
-    saved.pop("companion"), saved.pop("timecourse")  # ...and one from before the companion numbers
+    saved.pop("companion"), saved.pop("timecourse"), saved.pop("secondary_onset_window")  # ...and one from before the companion numbers
     (analysis / "suppression.json").write_text(json.dumps(saved), encoding="utf-8")
     later = os.stat(_run_folder(data) / "trials.csv").st_mtime + 100
     for f in analysis.iterdir():
         os.utime(f, (later, later))
     page = client.get(f"/runs/{START}/results")
-    assert page.status_code == 200 and "Companion numbers" not in _html(page)
+    assert page.status_code == 200 and "Companion numbers" not in _html(page) and "companion secondary" not in _html(page)  # (report.txt still shows both)
 
 
-def test_participant_page_shows_the_companion_numbers_and_reanalyses_a_schema_3_summary(client, data):
-    assert "Companion numbers" in _html(client.get(f"/participants/{PID}/results"))
+def test_participant_page_shows_the_companion_numbers_and_reanalyses_an_older_summary(client, data):
+    page = _html(client.get(f"/participants/{PID}/results"))
+    assert "Companion numbers" in page and "companion secondary" in page
     path = data / PID / "analysis" / "summary.json"
-    summary = json.loads(path.read_text())
-    assert summary["schema_version"] == 4
-    summary.pop("companion"), summary.pop("timecourse")
-    summary["schema_version"] = 3
-    path.write_text(json.dumps(summary), encoding="utf-8")
-    page = client.get(f"/participants/{PID}/results")
-    assert page.status_code == 200 and "Companion numbers" in _html(page)  # re-analysed, now schema 4
-    assert json.loads(path.read_text())["schema_version"] == 4
+    for old in (3, 4):
+        summary = json.loads(path.read_text())
+        assert summary["schema_version"] == 5
+        summary.pop("secondary_onset_window")
+        summary["schema_version"] = old
+        path.write_text(json.dumps(summary), encoding="utf-8")
+        page = client.get(f"/participants/{PID}/results")
+        assert page.status_code == 200 and "companion secondary" in _html(page)  # re-analysed
+        assert json.loads(path.read_text())["schema_version"] == 5
