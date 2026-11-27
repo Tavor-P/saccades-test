@@ -152,6 +152,7 @@ def test_backends_are_imported_lazily():
         ("src.eye_tracking.neon_address", {"pupil_labs", "PySpin", "mediapipe", "psychopy", "cv2"}),
         ("src.eye_tracking.gaze_trace", {"PySpin", "mediapipe", "psychopy", "cv2"}),
         ("src.experiment.simulation", {"PySpin", "mediapipe", "psychopy", "pyglet", "cv2"}),
+        ("src.experiment.startup_launch", {"psychopy", "pyglet", "pandas", "scipy", "matplotlib", "cv2"}),  # the dialog must come up fast
     ]
 
     def run(case):
