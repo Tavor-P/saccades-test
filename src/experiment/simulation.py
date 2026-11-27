@@ -125,9 +125,7 @@ class ParticipantProfile:
     # the participant has seen one jump-back, every later return is PLANNED at the go cue, independent of when the jump
     # comes: latency from the TRUE out landing starts at ~reaction_ms_mean/_sd and shrinks with each return-jump trial n
     # towards return_learned_ms/_sd_ms (exp(-n / return_learn_trials)). So returns can start before the jump frame
-    # (negative return_reaction_ms). All three numbers are GUESSES (predictive saccades to a just-left place). With the
-    # main trials' stay on the target (RETURN_JUMP_MAIN_DWELL_*) such a return leaves before the stay is complete, so
-    # nearly every jump of this participant is forced.
+    # (negative return_reaction_ms). All three numbers are GUESSES (predictive saccades to a just-left place).
     return_mode: str = "reactive"
     return_learned_ms: float = 40.0
     return_learned_sd_ms: float = 15.0

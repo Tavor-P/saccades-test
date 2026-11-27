@@ -66,14 +66,14 @@ Click a field's name or its **?** for a help bubble. The last values are remembe
 1. **Tutorial** (optional, narrated and captioned): intro, calibration, a how-to-answer quiz (line above/below a dot, 3 correct in a row) and 8 practice trials that seed the reaction-time average. No feedback on answers.
 2. **Calibration**: look steadily at each of 3 targets, 3 rounds (without the tutorial, a short reaction-time test and practice follow).
    In the tutorial's practice trials and in that test and practice, the symbols swap back only after the eye has stayed on the
-   target for `RETURN_JUMP_DWELL_MS` (400 ms); the real trials with **Return jump** on wait a shorter, random time (step 4).
+   target for `RETURN_JUMP_DWELL_MS` (400 ms); the real trials with **Return jump** on wait a much shorter, random time (step 4).
 3. **Green sync flashes**: the screen flashes green three times before the first trial and once at the end (announced aloud; normal). They align the phone's video to the PC clock.
 4. **Trials** (150 Real, 30 Test). The participant presses **SPACE** to start each trial (the wait is their break). 0.25-1.5 s later (random, so it cannot be timed) the dot swaps to the cross with a beep and they look to it as fast as they can.
    A thin line flashes for one frame 2 deg above or below the target, at a random time on a bell curve centred on the average reaction time (0-500 ms after the swap), plus some control flashes
    (about 2 in 11) 400-500 ms after it, when the eye has already landed. They must press **Up** or **Down**, guessing if they are not sure (forced choice). Every trial flashes. There is no time limit.
    A trial ends once it is answered and the eye has landed; **SPACE** never skips an unanswered flash (it shows and speaks a "guess" reminder instead). The one exception: if no saccade on the flash's leg is seen by the
    15 s timeout (`SACCADE_TIMEOUT_MS`), the trial ends by itself (`timeout`).
-   With **Return jump** on, once the eye has arrived and stayed on the target without a break for a random 200-400 ms (`RETURN_JUMP_MAIN_DWELL_MIN_MS`/`_MAX_MS`, drawn per trial and saved as `jump_back_dwell_ms`;
+   With **Return jump** on, once the eye has arrived and stayed on the target without a break for a random 25-50 ms (`RETURN_JUMP_MAIN_DWELL_MIN_MS`/`_MAX_MS`, drawn per trial and saved as `jump_back_dwell_ms`;
    this is `RETURN_JUMP_TRIGGER` "arrival", while "onset" jumps at the start of the movement without waiting; `RETURN_JUMP_LANDING_TIMEOUT_MS`, plus that stay if the eye had arrived, forces it) the target jumps back to the start symbol
    and the eye follows it, so a trial has an out and a return saccade but still only ONE flash: on the return leg in `RETURN_LEG_FLASH_FRACTION` (0.8) of trials (timed from the jump, spread `RETURN_FLASH_SPREAD_SD_MS` 110 ms,
    from one real run's measured 118 ms; recheck on more runs), else on the out leg.

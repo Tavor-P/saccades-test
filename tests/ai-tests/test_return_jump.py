@@ -249,17 +249,17 @@ def test_the_default_trigger_is_arrival_and_main_trials_jump_after_a_drawn_stay_
     dwell = session._legs.dwell.dwell_ms / 1000
     assert RETURN_JUMP_MAIN_DWELL_MIN_MS <= dwell * 1000 <= RETURN_JUMP_MAIN_DWELL_MAX_MS
     assert session._jump_at is None and session._landed  # the arrival is still the out landing
-    fake_time(0.05)
+    fake_time(0.002)
     fake_gaze.position = 0.9  # a corrective saccade towards the start, still inside the target zone
     session.tick()
-    fake_time(SACCADE_ONSET_STABILITY_MS / 1000 + 0.01)
+    fake_time(SACCADE_ONSET_STABILITY_MS / 1000 + 0.001)  # long enough to confirm an onset, shorter than any stay
     session.tick()
     fake_gaze.position = None
     session.tick()
-    fake_time(arrival + dwell - 0.01 - session._clock.now())
+    fake_time(arrival + dwell - 0.003 - session._clock.now())
     session.tick()
     assert session._jump_at is None
-    fake_time(0.02)
+    fake_time(0.005)
     session.tick()
     jump = session._jump_at
     assert jump is not None and session._jump_forced is False

@@ -210,7 +210,8 @@ RETURN_LEG_FLASH_FRACTION = 0.8
 #   "arrival": the eye has arrived and STAYED on the target: a continuous stay in the target zone for a dwell drawn per
 #              trial from RETURN_JUMP_MAIN_DWELL_MIN_MS..MAX_MS (practice: RETURN_JUMP_DWELL_MS). It used to jump on the
 #              first in-zone sample, ~19 ms before the true landing in the simulator, and the participant reported the
-#              target flashing back the moment they reached it.
+#              target flashing back the moment they reached it. With the stay the jump comes roughly at the landing to
+#              ~30 ms after it (simulator).
 #   "onset":   the out saccade's confirmed onset, the same OnsetDetector rule the RT test uses to hide its cross. The jump
 #              is drawn ~25 ms after the real onset, i.e. MID-saccade: the eye lands where the target used to be.
 # Either way the jump never comes before an out-leg flash has been drawn (it waits for it). "arrival" for now; the user picks.
@@ -227,13 +228,14 @@ RETURN_JUMP_LANDING_TIMEOUT_MS = 1500
 # jump (an eye that arrived but did not stay gets this long on top). Return latencies of these practice trials are not
 # added to the return average.
 RETURN_JUMP_DWELL_MS = 400
-# Main trials, "arrival" trigger: the same continuous stay, its length drawn per trial, uniform over this range, so that the
-# jump time (and with it the return saccade) cannot be anticipated. Logged as jump_back_dwell_ms. The return leg and its
+# Main trials, "arrival" trigger: the same continuous stay, its length drawn per trial, uniform over this range (too narrow
+# to stop a participant anticipating the jump). Logged as jump_back_dwell_ms. The return leg and its
 # flash still start at the jump frame, and these return latencies feed the return average. The return-leg detectors start
 # listening when the stay is complete, so a corrective saccade during the stay is not taken for the return saccade.
+# 25-50 ms (the user's choice): a short extra moment on the target; gaze runs at ~200 Hz, so 25 ms is about 5 samples.
 # "onset" main trials do not wait: that trigger exists to jump mid-saccade. Not yet run on glasses.
-RETURN_JUMP_MAIN_DWELL_MIN_MS = 200
-RETURN_JUMP_MAIN_DWELL_MAX_MS = 400
+RETURN_JUMP_MAIN_DWELL_MIN_MS = 25
+RETURN_JUMP_MAIN_DWELL_MAX_MS = 50
 # Return-leg flash timing: a bell curve like FLASH_SPREAD_SD_MS's, centred on the rolling return-latency average and cut to
 # FLASH_WINDOW_MIN_MS..FLASH_WINDOW_MAX_MS after the JUMP-BACK frame. Set from a measurement: one real 150-trial glasses
 # run, return-latency robust SD 118 ms (median 207 ms). The first guess, 40, expected a practised, predictable return to vary

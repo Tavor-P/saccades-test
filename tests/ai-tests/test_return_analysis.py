@@ -13,7 +13,6 @@ import synthetic_runs as sr
 from src.experiment import analyze_participant as ap
 from src.experiment import analyze_session as an
 from src.experiment import flash_gates as fg
-from src.experiment import session as session_module
 from src.experiment import session_files
 from src.experiment import simulation as sim
 from src.experiment.logger import read_trial_rows
@@ -192,13 +191,7 @@ def simulated(request, tmp_path_factory):
     profile = sim.ParticipantProfile(return_mode=request.param)
     # Seed 2: with the current random stream seed 1 leaves only 2 out-leg flashes in the saccade gate (other seeds: 5-12),
     # too few to check anything on that leg.
-    with pytest.MonkeyPatch.context() as patch:
-        if request.param == "learned":
-            # Predictive returns leave before the main trials' stay is complete, so with it nearly every jump is forced
-            # (no usable return leg). The analysis of predictive returns is checked with the jump on arrival.
-            patch.setattr(session_module, "RETURN_JUMP_MAIN_DWELL_MIN_MS", 0)
-            patch.setattr(session_module, "RETURN_JUMP_MAIN_DWELL_MAX_MS", 0)
-        result, ref = sim_runs.simulate_run(tmp_path_factory.mktemp(f"sim_{request.param}"), profile, seed=2, n_trials=150)
+    result, ref = sim_runs.simulate_run(tmp_path_factory.mktemp(f"sim_{request.param}"), profile, seed=2, n_trials=150)
     return request.param, result, an.analyze_run(ref)
 
 
