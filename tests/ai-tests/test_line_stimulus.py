@@ -1,4 +1,4 @@
-"""The line-stimulus branch: a thin horizontal line 2 deg above/below the saccade target (Braun, Schutz & Gegenfurtner 2021),
+"""The line-stimulus branch: a thin horizontal line LINE_OFFSET_DEG (3 deg since 2026-11-27) above/below the saccade target (Braun, Schutz & Gegenfurtner 2021),
 answered with UP / DOWN. Placement in each session, key mapping, the above/below quiz, scoring and old-CSV compatibility."""
 
 import pytest
@@ -35,7 +35,7 @@ pytestmark = pytest.mark.usefixtures("no_flash_jitter")
 def test_side_enum_constants_and_line_position_shifted_up_or_down_with_the_geometry():
     assert {s.value for s in Side} == {"above", "below"}
     assert {random_side() for _ in range(200)} == {Side.ABOVE, Side.BELOW}
-    assert LINE_OFFSET_DEG == 2.0 and LINE_SD_DEG == 0.15
+    assert LINE_OFFSET_DEG == 3.0 and LINE_SD_DEG == 0.15
     default = Geometry.default()
     offset = default.line_offset_height_units
     assert offset == pytest.approx(LINE_OFFSET_DEG / default.height_deg)

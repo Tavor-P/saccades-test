@@ -30,7 +30,9 @@ SCREEN_HEIGHT_CM = 26.0
 # Sizes in degrees depend on the screen height and viewing distance, which the startup dialog asks for each run (src/experiment/geometry.py
 # turns them into the values the line uses); VIEWING_DISTANCE_CM / SCREEN_HEIGHT_CM above are only the
 # defaults (24-inch placeholders). A saccade between dot and cross spans a different angle on every screen width and distance.
-LINE_OFFSET_DEG = 2.0  # distance of the line's centre above/below the target
+# 3 deg since 2026-11-27 (the user's decision: one real run was at ceiling with the line 2 deg away; Braun et al. used 2).
+# Runs at 2 and 3 deg never pool: analyze_participant and compare key on line_offset_deg (session.json settings).
+LINE_OFFSET_DEG = 3.0  # distance of the line's centre above/below the target
 LINE_SD_DEG = 0.15  # vertical standard deviation of the Gaussian profile
 LINE_WIDTH_SCREENS = 24.0  # drawn this many screen widths wide so the horizontal Gaussian edge-fade is invisible (~1 % at the screen edge)
 # The flash is drawn for this many frames (the grating's own constants live on the `grating` branch). A single frame,
