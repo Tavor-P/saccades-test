@@ -199,8 +199,9 @@ def _calibration_wait_text(waited_s: float | None) -> str:
 
 def narrate_if_changed(narrator: Narrator, text: str, last_spoken: str | None) -> str | None:
     """Speaks `text` only if it differs from what was last spoken and returns the new last-spoken value. Instructions stay
-    constant across many frames, so speaking unconditionally would queue the same phrase over and over. Blank text is never
-    spoken and does not count as spoken (the caption keeps showing the previous, already-read text)."""
+    constant across many frames, so speaking unconditionally would restart the same phrase every frame; a changed text
+    replaces the old line (Narrator.speak). Blank text is never spoken and does not count as spoken (the caption keeps
+    showing the previous text, whose line may finish)."""
     if not text:
         return last_spoken
     if text != last_spoken:
@@ -212,9 +213,11 @@ def update_caption(
     narrator: Narrator, caption_stim, state: dict, last_spoken: str | None, last_caption: str
 ) -> tuple[str | None, str]:
     """Per-frame caption: shown and spoken in lockstep. While state["hide_caption"] is set (the real measured trials) it is
-    hidden and silent, and both memories reset so the next caption (e.g. the end-of-phase message) is shown and spoken even
-    if it repeats an earlier string. Returns (last_spoken, last_caption)."""
+    hidden and silent (a line still playing is cut off, once), and both memories reset so the next caption (e.g. the
+    end-of-phase message) is shown and spoken even if it repeats an earlier string. Returns (last_spoken, last_caption)."""
     if state.get("hide_caption"):
+        if last_spoken is not None:
+            narrator.silence()
         caption_stim.text = ""
         caption_stim.opacity = 0.0
         return None, ""

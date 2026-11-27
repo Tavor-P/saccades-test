@@ -3,6 +3,11 @@
 import queue
 import threading
 
+# SAPI SpeechVoiceSpeakFlags: speak in the background (so a newer line can cut it off) / first drop whatever SAPI is saying.
+_SPEAK_ASYNC = 1
+_PURGE_BEFORE_SPEAK = 2
+_POLL_MS = 20  # how often the thread, while a line plays, checks whether a newer one replaced it
+
 
 class Narrator:
     """Speaks instruction text aloud on a background thread, using Windows'
@@ -20,13 +25,19 @@ class Narrator:
     render loop would stall rendering for that whole duration. COM objects
     are apartment-threaded, so the SAPI voice has to be created and used on
     the same thread that will call it - see _run().
+
+    A new line replaces the old one: screens can be skipped faster than their
+    lines are spoken, so speak() drops everything queued or playing. Each such
+    call starts a new "generation"; the thread skips, or stops waiting for,
+    anything from an older one.
     """
 
     def __init__(self) -> None:
-        self._queue: queue.Queue[str | None] = queue.Queue()
+        self._queue: queue.Queue[tuple[int, str, bool] | None] = queue.Queue()  # (generation, text, interrupt)
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._lock = threading.Lock()
         self._pending = 0
+        self._generation = 0
         self._thread.start()
 
     def _run(self) -> None:
@@ -37,33 +48,45 @@ class Narrator:
         try:
             voice = win32com.client.Dispatch("SAPI.SpVoice")
             while True:
-                text = self._queue.get()
-                if text is None:
+                item = self._queue.get()
+                if item is None:
                     return
                 try:
-                    voice.Speak(text)
+                    self._say(voice, *item)
                 finally:
                     with self._lock:
                         self._pending -= 1
         finally:
             pythoncom.CoUninitialize()
 
-    def speak(self, text: str) -> None:
-        """Queues text to be spoken. Already-queued/in-progress speech isn't
-        interrupted - calls just queue up and play in order, so callers
-        should only call this when the text actually changes (see
-        run_experiment.py), not every frame, or utterances would pile up
-        far behind what's currently true on screen."""
+    def _say(self, voice, generation: int, text: str, interrupt: bool) -> None:
+        """Narrator thread only. Returns once `text` has been spoken or a newer generation replaced it (the newer line's
+        purge flag is what cuts the audio)."""
+        if generation != self._generation:
+            return  # replaced while still queued: never started
+        voice.Speak(text, _SPEAK_ASYNC | (_PURGE_BEFORE_SPEAK if interrupt else 0))
+        while text and generation == self._generation and not voice.WaitUntilDone(_POLL_MS):
+            pass
+
+    def speak(self, text: str, interrupt: bool = True) -> None:
+        """Speaks `text`, dropping any older speech still queued or playing. Callers should only call this when the text
+        actually changes (see rendering.narrate_if_changed): every call restarts the line. `interrupt=False` instead
+        says it after what is already queued (the head warning, which belongs to no screen); the next interrupting call
+        drops it like any other line."""
         with self._lock:
+            if interrupt:
+                self._generation += 1
             self._pending += 1
-        self._queue.put(text)
+            self._queue.put((self._generation, text, interrupt))
+
+    def silence(self) -> None:
+        """Drops all queued and playing speech."""
+        self.speak("")
 
     @property
     def is_speaking(self) -> bool:
-        """True while any queued utterance is still playing or waiting to
-        play. The tutorial frame loop uses this to hold off on forwarding
-        input until narration finishes, instead of interrupting speech
-        mid-sentence."""
+        """True while the latest line (or one queued after it) is still playing or waiting to play. The tutorial frame
+        loop uses this to hold off on forwarding input until narration finishes."""
         with self._lock:
             return self._pending > 0
 
