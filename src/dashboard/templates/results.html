@@ -89,6 +89,10 @@
     <h2>Companion numbers</h2>
     <ul class="companion">{% for line in page.companion %}<li>{{ line }}</li>{% endfor %}</ul>
     {% endif %}
+    {% if page.saccades %}
+    <h2>Saccade metrics</h2>
+    <pre style="overflow-x: auto">{{ page.saccades }}</pre>
+    {% endif %}
     {% if page.kind == 'run' and 'gaze' in page.downloads %}
     <h2>Eye position and flashes</h2>
     <p class="muted">Each row is 20 seconds. Grey = a detected saccade; each bar is a flash, darker = higher contrast; x = wrong answer. Click the picture to open it full size.</p>

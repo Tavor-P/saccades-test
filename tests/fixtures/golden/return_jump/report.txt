@@ -78,6 +78,41 @@ RETURN LATENCY
   Return flash spread SD (RETURN_FLASH_SPREAD_SD_MS): 40 ms; trigger arrival
   CHECK: measured 2 ms vs set 40 ms: consider lowering RETURN_FLASH_SPREAD_SD_MS
 
+SACCADE METRICS
+---------------
+  Out leg (from the go cue): 60 trials, saccade found in 60
+    Measure                                 n   Median   Robust SD    IQR
+    Latency (ms)                           60      203           2      3
+    Amplitude (deg)                        60     35.6         0    0.6
+    Gain (amplitude / target distance)     60     0.99        0   0.02
+    Landing error (deg, + = past target)   60     -0.2         0.1    0.2
+    Landing error, either way (deg)        60      0.2         0.1    0.2
+    Duration (ms)                          60       75           0      5
+    Peak velocity (deg/s)                  60      661           1      1
+    No saccade detected: 0/60 = 0% of trials
+    Anticipation (latency < 80 ms): 0/60 = 0% of trials
+    Corrective saccade after it: 0/60 = 0% of trials
+
+  Return leg (from the jump): 60 trials, saccade found in 60
+    Measure                                 n   Median   Robust SD    IQR
+    Latency (ms)                           60      153           2      3
+    Amplitude (deg)                        60     35.6         0    0.6
+    Gain (amplitude / target distance)     60     0.99        0   0.02
+    Landing error (deg, + = past target)   60     -0.2         0.1    0.2
+    Landing error, either way (deg)        60      0.2         0.1    0.2
+    Duration (ms)                          60       75           0      5
+    Peak velocity (deg/s)                  60      661           1      1
+    No saccade detected: 0/60 = 0% of trials
+    Anticipation (latency < 80 ms): 0/60 = 0% of trials
+    Corrective saccade after it: 0/60 = 0% of trials
+
+  Degrees: symbols 35.9 deg apart on an assumed 1.78:1 screen, PLACEHOLDER screen geometry,
+    from screen height and viewing distance, scaled by each run's calibration.
+  Peak velocity is approximate and reads low: 200 Hz Neon samples, speed from a 3-sample smoothed trace.
+  Corrective: a further saccade of 4-50% of the first one's size, starting 20-400 ms after it ends;
+    tracker noise or blinks can count (not yet checked on real recordings).
+  A saccade is a movement of at least the minimum amplitude (Technical details); tracking loss counts as no saccade.
+
 TECHNICAL DETAILS
 -----------------
   Screen geometry: not recorded

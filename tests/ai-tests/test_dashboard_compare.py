@@ -185,12 +185,12 @@ def test_old_schema_3_summaries_still_render_on_the_compare_and_study_pages(clie
     for pid in PEOPLE:
         path = data / pid / "analysis" / "summary.json"
         summary = json.loads(path.read_text(encoding="utf-8"))
-        assert summary["schema_version"] == 5 and "companion" in summary and "timecourse" in summary
+        assert summary["schema_version"] == 6 and "companion" in summary and "timecourse" in summary
         summary.pop("companion"), summary.pop("timecourse"), summary.pop("secondary_onset_window")
         summary["schema_version"] = 3
         path.write_text(json.dumps(summary), encoding="utf-8")
     page = _html(client.get("/compare?a=group:tbi&b=group:control"))
     assert "group vs group" in page and "Traceback" not in page
-    assert all(json.loads((data / pid / "analysis" / "summary.json").read_text())["schema_version"] == 5 for pid in PEOPLE)
+    assert all(json.loads((data / pid / "analysis" / "summary.json").read_text())["schema_version"] == 6 for pid in PEOPLE)
     study = client.get("/study")
     assert study.status_code == 200 and all(f'data-participant="{pid}"' in _html(study) for pid in PEOPLE)
