@@ -156,8 +156,20 @@ def test_analysis_of_a_new_run_writes_into_its_analysis_folder_and_gives_the_old
     stamp = _write_session(old_dir, ONSETS, PLAN)
     old = an.analyze(stamp, data_dir=old_dir)
     assert old["png"].name == "plot.png" and old["png"].parent == session_files.find_session(old_dir, stamp).analysis_dir
-    assert old["summary"] == new["summary"]
-    assert old["report"].splitlines()[1:] == new["report"].splitlines()[1:]  # identical apart from the session label line
+    # Saccade metrics need the go cue (flash_ms_after_go_cue) and the screen geometry, which grating-era runs lack: compared without them.
+    assert _without_saccade_metrics(old["summary"]) == _without_saccade_metrics(new["summary"])
+    old_lines, new_lines = (_without_metrics_section(r["report"]) for r in (old, new))
+    assert old_lines[1:] == new_lines[1:]  # identical apart from the session label line
+
+
+def _without_saccade_metrics(summary: dict) -> dict:
+    return {k: v for k, v in summary.items() if k != "saccade_metrics"}
+
+
+def _without_metrics_section(report: str) -> list[str]:
+    lines = report.splitlines()
+    start, end = lines.index("SACCADE METRICS"), lines.index("TECHNICAL DETAILS")
+    return lines[:start] + lines[end:]
 
 
 def test_analysis_accepts_the_folder_name_and_latest_looks_at_every_run(tmp_path, monkeypatch):
