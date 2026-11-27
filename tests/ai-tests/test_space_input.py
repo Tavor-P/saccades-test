@@ -197,20 +197,18 @@ def test_space_after_answering_starts_the_next_trial_as_soon_as_it_is_ready(fake
     session.tick()
     fake_time(max(session._flash_scheduled_at - session._clock.now(), 0.0) + 0.001)
     session.tick()  # flash fires
-    session.on_space()  # unanswered and still in flight: ignored and counted
-    assert session.space_tally.as_dict() == {"TRIAL_ACTIVE: during trial": 1}
     fake_gaze.zone = GazeZone.RIGHT if source_zone is not GazeZone.RIGHT else GazeZone.LEFT
     session.tick()
     fake_time(GAZE_LANDING_STABILITY_MS / 1000 + 0.01)
     session.tick()
 
-    session.on_space()  # landed: this press ends the trial on the next tick...
-    session.on_response_key(Side.ABOVE)  # ...so an answer arriving in the same frame still counts
+    session.on_space()  # judged on the next tick...
+    session.on_response_key(Side.ABOVE)  # ...so an answer arriving in the same frame counts, and so does the press
     assert _phase(session) == "TRIAL_ACTIVE"
     session.tick()  # trial finalizes -> AWAITING_SPACE -> the carried press starts the next foreperiod
     assert _phase(session) == "FOREPERIOD"
     assert session.results[-1].outcome in ("correct", "incorrect")
-    assert session.space_tally.total == 1
+    assert session.space_tally.total == 0
     session.on_space()
     assert session.space_tally.as_dict()["FOREPERIOD: during foreperiod"] == 1
 

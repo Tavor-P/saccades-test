@@ -43,7 +43,7 @@ Printable version: [docs/experimenter_checklist.md](docs/experimenter_checklist.
 
 > **Participant script.** "Look at the dot and press SPACE when you are ready. After a moment, with a beep, it jumps to the other side of the screen: look at it as fast as you can.
 > Around then a very faint thin line flashes for an instant above or below it. Press UP if it was above, DOWN if below, and guess if you are not sure.
-> You can rest between trials: nothing happens until you press SPACE."
+> Always answer: SPACE does nothing until you have. Then rest if you like; the next trial starts only when you press SPACE."
 
 ### The startup dialog
 
@@ -67,8 +67,9 @@ Click a field's name or its **?** for a help bubble. The last values are remembe
 3. **Green sync flashes**: the screen flashes green three times before the first trial and once at the end (announced aloud; normal). They align the phone's video to the PC clock.
 4. **Trials** (150 Real, 30 Test). The participant presses **SPACE** to start each trial (the wait is their break). 0.5-1 s later the dot swaps to the cross with a beep and they look to it as fast as they can.
    A thin line flashes for one frame 2 deg above or below the target, at a random time on a bell curve centred on the average reaction time (0-500 ms after the swap), plus some control flashes
-   (about 2 in 11) 400-500 ms after it, when the eye has already landed. They press **Up** or **Down**, and guess if they saw nothing. Every trial flashes. There is no time limit: the answer counts until they press **SPACE**
-   for the next trial. A trial ends once it is answered and the eye has landed; SPACE without an answer (accepted once the eye has landed) scores it `no_answer` and starts the next trial.
+   (about 2 in 11) 400-500 ms after it, when the eye has already landed. They must press **Up** or **Down**, guessing if they are not sure (forced choice). Every trial flashes. There is no time limit.
+   A trial ends once it is answered and the eye has landed; **SPACE** never skips an unanswered flash (it shows and speaks a "guess" reminder instead). The one exception: if no saccade on the flash's leg is seen by the
+   15 s timeout (`SACCADE_TIMEOUT_MS`), the trial ends by itself (`timeout`).
    With **Return jump** on, once the eye has arrived (`RETURN_JUMP_TRIGGER` "arrival"; "onset" jumps at the start of the movement; `RETURN_JUMP_LANDING_TIMEOUT_MS` forces it) the target jumps back to the start symbol
    and the eye follows it, so a trial has an out and a return saccade but still only ONE flash: on the return leg in `RETURN_LEG_FLASH_FRACTION` (0.8) of trials (timed from the jump, spread `RETURN_FLASH_SPREAD_SD_MS` 110 ms,
    from one real run's measured 118 ms; recheck on more runs), else on the out leg.
@@ -107,7 +108,7 @@ data/comparisons/<date-time>_<A>_vs_<B>/   report.txt, comparison.csv, compariso
 Test-mode runs (`_test`) are left out of every pooled analysis, comparison and study summary unless you ask (`--include-test`, or **Include test runs** in the dashboard).
 
 `trials.csv` columns (booleans `yes`/`no`; practice trials not written): `phase`, `trial`, `contrast_pct`, `flash_shown`, `flash_during_saccade` (live, unreliable), `answered`, `correct`,
-`outcome` (correct / wrong / no_answer / detected), `line_side` (above / below), `answer_side`, `flash_leg` (out / return), `flash_ms_after_go_cue`, `out_arrival_ms_after_go_cue`, `jump_back_ms_after_go_cue`, `reaction_ms`, `return_reaction_ms` (negative = left before the jump), `answer_ms`,
+`outcome` (correct / wrong / timeout / detected; `no_answer` only in runs from before answers were required, still scored as wrong), `line_side` (above / below), `answer_side`, `flash_leg` (out / return), `flash_ms_after_go_cue`, `out_arrival_ms_after_go_cue`, `jump_back_ms_after_go_cue`, `reaction_ms`, `return_reaction_ms` (negative = left before the jump), `answer_ms`,
 `flash_unix_ms`, `jump_back_forced`, `left_target_before_jump`, `tracking_ok`.
 `session.json` sections: `participant`, `run`, `settings`, `hardware`, `results`, `gaze_quality` (rate, gaps, latency, clock offset), `head_motion`, `ignored_space_presses`, `glasses_video`.
 
@@ -218,7 +219,7 @@ participant's pooled analysis with it).
 | `_ARRAY_API not found` / `numpy.core.multiarray failed to import` | numpy/opencv drifted: reinstall `requirements.txt` (it pins working versions) |
 | "Neon glasses not found" at start | Read the list of addresses tried. Phone and PC on one network (guest/campus Wi-Fi often blocks devices: use the phone's hotspot). Hotspot: join it from the PC, keep the Companion app open with the glasses plugged in, type the address the app shows into **Neon address** (or leave it blank); if the PC can't see the hotspot, turn on its 2.4 GHz / "Maximise compatibility" option |
 | Eye tracking seems inaccurate | Redo calibration, looking steadily at each target; keep the head still afterwards |
-| SPACE seems to do nothing | Presses during a trial's wait, or while the eye is still moving on an unanswered trial, are ignored by design (counted in the console summary and `ignored_space_presses`). If the eye is never seen to land (poor tracking) SPACE works after `SACCADE_TIMEOUT_MS` (15 s) |
+| SPACE seems to do nothing | Presses during a trial's wait, or on a trial that has no UP/DOWN answer yet, are ignored by design (counted in the console summary and `ignored_space_presses`). If the eye is never seen to land (poor tracking) an answered trial ends after `SACCADE_TIMEOUT_MS` (15 s) |
 | Glasses recording `failed` in `session.json` | The recording may need the Companion app open with a wearer and workspace selected (not verified); other data is unaffected |
 
 ## Research background

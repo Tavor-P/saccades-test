@@ -270,7 +270,8 @@ def run_tutorial_phase(
             if "escape" in keys:
                 return None
 
-            speaking = narrator.is_speaking
+            # The "answer first" reminder asks for a key press: it must not swallow that press while it is spoken.
+            speaking = narrator.is_speaking and not session.answer_reminder_showing
             # A SPACE pressed during narration is held and delivered when speech ends, never discarded.
             space_delivered, response_keys, duplicates = key_gate.route(keys, speaking)
             session.space_tally.record("duplicate press (same frame or while narrating)", duplicates)

@@ -45,7 +45,7 @@ from src.experiment.geometry import Geometry
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.scoring import is_valid_for_saccadic_analysis, score_outcome
 from src.experiment.session_config import SessionConfig, TutorialHandoff
-from src.experiment.space_input import SpaceTally
+from src.experiment.space_input import AnswerFirst, SpaceTally
 from src.experiment.trial_factory import build_saccade_sequence, generate_next_saccade_trial
 from src.experiment.trial_legs import SampleFeed, TrialLegs, clamped_gaze_latency_ms, timestamp_latency_s
 from src.experiment.trial_mechanics import (
@@ -198,7 +198,7 @@ class ExperimentSession:
         self._dot_visible = False
         self._cross_visible = False
         self._calibration = CalibrationRounds(gaze_source)
-        self._space_ahead = False  # SPACE that ends the running trial (see on_space) and then starts the next one
+        self._space_ahead = False  # SPACE pressed after answering, before the next trial is ready
         self.space_tally = SpaceTally(lambda: self._phase.name)
         self._results: list[TrialResult] = []
         self._clear_trial_state()
@@ -243,8 +243,9 @@ class ExperimentSession:
         self._trial_contrast: float | None = None  # contrast actually used for this trial's flash, if any
         self._reaction_latency_ms: float | None = None
         self._onset_detection_lag_ms: float | None = None
-        # Flash fired and the eye movements done (landing or timeout): the legs stop listening, only the answer / SPACE is awaited.
+        # Flash fired and the eye movements done (landing or timeout): the legs stop listening, only the answer is awaited.
         self._gaze_record_closed = False
+        self._answer_first = AnswerFirst()
         self._responded = False
         self._answer_side: Side | None = None
         self._response_time_ms: float | None = None
@@ -320,10 +321,11 @@ class ExperimentSession:
             self._start_rt_test_foreperiod()
         elif self._phase is Phase.AWAITING_SPACE:
             self._start_foreperiod()
-        elif self._phase is Phase.TRIAL_ACTIVE and (self._responded or self._only_answer_pending()):
-            # Answered already, or only the answer is missing and this press gives it up (a miss). Either way the trial ends
-            # on a tick, not here (an answer from this same frame still counts), and the press then starts the next trial.
+        elif self._phase is Phase.TRIAL_ACTIVE and self._responded:
+            # Answered already: this press starts the next trial the moment it is ready (see _deliver_space_ahead).
             self._space_ahead = True
+        elif self._phase is Phase.TRIAL_ACTIVE and self._flash_decided:
+            self._answer_first.press()  # forced choice: judged on the next tick (see AnswerFirst)
         elif self._phase is not Phase.COMPLETE:
             # Foreperiod: must not restart it or start the next trial. Active phases: responses come from
             # gaze/arrow keys. COMPLETE: the runner decides when to move on.
@@ -342,12 +344,13 @@ class ExperimentSession:
         self._space_ahead = False
         if self._phase in (Phase.AWAITING_SPACE, Phase.RT_TEST_AWAITING_SPACE):
             self.on_space()
-        elif self._responded:  # unanswered: the press ended the last trial, so it did something
+        else:
             self.space_tally.record("early press, no trial left to start")
 
-    def _only_answer_pending(self) -> bool:
-        """The trial is physically done: eye movements over and the flash gone from the screen."""
-        return self._gaze_record_closed and not self._line_visible
+    @property
+    def answer_reminder_showing(self) -> bool:
+        """True while the running trial shows ANSWER_FIRST (SPACE was pressed before an answer)."""
+        return self._phase is Phase.TRIAL_ACTIVE and self._answer_first.reminding
 
     def _line_state(self, trial: TrialSpec | None) -> dict:
         side = trial.line_side if trial is not None else None
@@ -610,6 +613,8 @@ class ExperimentSession:
         sample = self._gaze.latest_sample()
         now = self._clock.now()
         new_samples = self._feed.new_samples(sample)
+        if self._answer_first.judge(self._responded, self.space_tally):
+            self._space_ahead = True
 
         if not self._gaze_record_closed:
             self._measure_reaction(new_samples)
@@ -639,14 +644,15 @@ class ExperimentSession:
 
     def _finish_if_over(self, now: float) -> None:
         """A trial ends once the flash has fired, the eye movements are over (landing or timeout) AND the participant has
-        answered or pressed SPACE; there is no answer deadline. One that can only be a 'timeout' ends at its timeout."""
+        answered; there is no answer deadline. Only one that reaches its timeout as a 'timeout' trial (no saccade on the
+        flash's leg) ends by itself."""
         legs = self._active_legs
         if legs.timed_out(now, self._return_jump) and self._ends_as_timeout():
             self._finish_trial()
             return
         # The flash condition: a fast lander (common at a +40 ms offset against a stale average) must still get their flash.
         self._gaze_record_closed = self._flash_decided and legs.movement_over(now, self._return_jump)
-        if self._only_answer_pending() and (self._responded or self._space_ahead):
+        if self._gaze_record_closed and not self._line_visible and self._responded:
             self._finish_trial()
 
     def _tick_return_jump(self, trial: TrialSpec, new_samples, now: float) -> None:
@@ -825,6 +831,8 @@ class ExperimentSession:
     def _instructions(self) -> str:
         if self._phase is Phase.COMPLETE:
             return f"{words.FINISHED} {self._summary()} — Press SPACE to see your results"
+        if self.answer_reminder_showing:
+            return words.ANSWER_FIRST
         # The answer text is shared by AWAITING_SPACE (after the first trial), FOREPERIOD and TRIAL_ACTIVE
         # so it is spoken once and never flickers or repeats from trial to trial.
         if self._phase is Phase.AWAITING_SPACE:
@@ -924,8 +932,9 @@ class ExperimentSession:
 
     def _hide_caption(self) -> bool:
         """True during the real (non-practice) main-block trials: the runner then neither draws nor speaks the bottom caption.
-        Not on the very first screen of the block (after the tutorial there are no practice trials), which must say to press SPACE."""
-        if self._phase is Phase.AWAITING_SPACE and self._is_first_trial():
+        Not on the very first screen of the block (after the tutorial there are no practice trials), which must say to press SPACE,
+        nor while the ANSWER_FIRST reminder is up."""
+        if (self._phase is Phase.AWAITING_SPACE and self._is_first_trial()) or self.answer_reminder_showing:
             return False
         return self._phase in _MAIN_TRIAL_PHASES and not self._active_trial.practice
 

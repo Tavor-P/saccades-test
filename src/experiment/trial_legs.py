@@ -1,6 +1,6 @@
 """Gaze bookkeeping of one saccade trial, shared by ExperimentSession and TutorialSession: the per-tick sample feed and the legs
 (out onset -> out landing/arrival -> jump back -> return onset -> return landing). PsychoPy-free; times are capture times on the
-session clock. The sessions keep the policy: which leg flashes, when the flash fires, symbol visibility, the answer / SPACE
+session clock. The sessions keep the policy: which leg flashes, when the flash fires, symbol visibility, the answer
 that ends a trial and when it is logged."""
 
 from include.experiment.constants import (

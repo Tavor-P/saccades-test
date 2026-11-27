@@ -155,7 +155,7 @@ def build_run_summary(run_folder) -> str:
         if shown and counts["tracking_lost"] / shown > MAX_TRACKING_LOST_SHARE:
             warnings.append(f"Tracking was lost near {counts['tracking_lost']} of {shown} flashes ({100 * counts['tracking_lost'] / shown:.0f} %): those flashes are excluded.")
         if shown and counts["missing"] / shown > MAX_UNANSWERED_SHARE:
-            warnings.append(f"{counts['missing']} of {shown} flashes got no answer: was the participant pressing UP/DOWN before SPACE?")
+            warnings.append(f"{counts['missing']} of {shown} flashes got no answer: check the eye tracking (timeout trials) and the UP/DOWN keys.")
     out.append("")
     if rows and not (folder / session_files.GAZE_TRACE_FILE).exists():
         warnings.append(f"No {session_files.GAZE_TRACE_FILE} in this run: saccades cannot be found, so analyze_session cannot analyse it.")

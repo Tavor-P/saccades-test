@@ -22,7 +22,7 @@ CALIBRATE_LEFT_AGAIN = "Once more: look at the dot on the left, then press SPACE
 CALIBRATE_LEFT_LAST = "Last time: look at the dot on the left, then press SPACE."
 
 # -- quiz and practice (tutorial) --
-QUIZ = "Press UP if the line is above the dot, DOWN if it is below."
+QUIZ = "Press UP if the line is above the dot, DOWN if below. Not sure? Guess."
 PRACTICE_INTRO = "Practice lines are clear. Real ones are much fainter, so guessing is normal."
 PRACTICE_DONE = "Practice done. The real test starts now. Press SPACE."
 PRACTICE_START_RETURN_JUMP = "Press SPACE. Look at the left dot. Follow it when it jumps and returns."
@@ -30,6 +30,8 @@ PRACTICE_START_RETURN_JUMP = "Press SPACE. Look at the left dot. Follow it when 
 # -- saccade phase --
 RT_TEST_INTRO = "Press SPACE. Look at the dot on the left. Follow it when it jumps."
 ANSWER = "Press UP if the line was above, DOWN if below. If unsure, guess."
+# SPACE pressed on a flashed trial that has no answer yet (practice and real trials): an answer is required.
+ANSWER_FIRST = "First answer with UP or DOWN. Not sure? Guess."
 FIRST_TRIAL = "Nothing starts until you press SPACE. Follow the dot when it jumps."
 FIRST_TRIAL_RETURN_JUMP = "Nothing starts until you press SPACE. Follow the dot when it jumps and returns."
 FINISHED = "All done. Thank you!"

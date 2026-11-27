@@ -116,6 +116,8 @@ def _check_flash_fields(r, tag: str, sim: SimulationResult) -> list[str]:
 def _check_response_fields(r, tag: str) -> list[str]:
     """Response data, and that the outcome agrees with the answer (there is no answer deadline)."""
     v: list[str] = []
+    if r.flash_shown and not r.responded and r.outcome != "timeout":
+        v.append(f"{tag}: flashed trial ended without an answer as {r.outcome!r} (forced choice)")
     if r.responded:
         if r.flash_shown and r.response_time_ms is None:
             v.append(f"{tag}: responded to a flash but no response_time_ms")

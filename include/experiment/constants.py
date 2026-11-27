@@ -70,8 +70,8 @@ HARDWARE_CONTRAST_FLOOR = 2 / 255
 # a plain yes/no SPACE press, so accuracy can't be inflated by just always pressing "I saw it".
 ABOVE_RESPONSE_KEYS = ("up",)
 BELOW_RESPONSE_KEYS = ("down",)
-# No answer deadline: an answer counts from the flash until the participant's SPACE for the next trial (a SPACE without
-# an answer, once the eye movements are over, scores a miss). A fixed 1 s window turned slow answers into misses.
+# No answer deadline, and the choice is forced: SPACE never ends a flashed trial without UP or DOWN (a fixed 1 s window
+# turned slow answers into misses; allowing a skip let unseen flashes go unanswered instead of guessed).
 
 # Every trial waits for the participant to press SPACE (that wait is the built-in break); the
 # target (go-cue) then appears after a foreperiod randomized 500-1000ms from the press, during

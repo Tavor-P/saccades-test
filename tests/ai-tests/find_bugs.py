@@ -28,12 +28,12 @@ PROFILE_RANGES = {
     "reaction_ms_sd": (1, 150),
     "saccade_ms_min": (20, 60),
     "saccade_ms_max": (60, 140),
-    "response_ms_mean": (150, 1100),  # flash to key press (no deadline; also the wait before SPACE when giving up)
+    "response_ms_mean": (150, 1100),  # flash to key press (no deadline)
     "response_ms_sd": (5, 300),
     "threshold_contrast": (0.01, 0.4),
     "suppressed_threshold_contrast": (0.02, 0.6),
     "slope": (1.5, 14),
-    "guess_response_probability": (0.0, 1.0),
+    "space_before_guess_probability": (0.0, 1.0),
     "gaze_noise_ratio": (0.0, 0.03),
     "tracker_latency_ms": (0, 150),
     "dropout_rate_per_s": (0.0, 4.0),
@@ -45,7 +45,8 @@ PROFILE_RANGES = {
 
 # Hostile one-off situations that have to terminate cleanly.
 EXTREME_PROFILES = {
-    "never_responds": {"guess_response_probability": 0.0, "threshold_contrast": 1e6, "suppressed_threshold_contrast": 1e6},
+    # Sees nothing and tries SPACE before every guess: the ignored press must never end or stall a trial.
+    "never_sees": {"space_before_guess_probability": 1.0, "threshold_contrast": 1e6, "suppressed_threshold_contrast": 1e6},
     "always_sees": {"threshold_contrast": 1e-6, "suppressed_threshold_contrast": 1e-6},
     "answers_very_late": {"response_ms_mean": 20_000, "response_ms_sd": 50},  # longer than any buffer or timeout
     "very_slow_saccade_start": {"reaction_ms_mean": 2500, "reaction_ms_sd": 100},

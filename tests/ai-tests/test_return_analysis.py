@@ -174,7 +174,9 @@ def test_return_jump_runs_pool_together_but_never_with_single_runs_or_other_trig
 @pytest.fixture(scope="module", params=["reactive", "learned"])
 def simulated(request, tmp_path_factory):
     profile = sim.ParticipantProfile(return_mode=request.param)
-    result, ref = sim_runs.simulate_run(tmp_path_factory.mktemp(f"sim_{request.param}"), profile, seed=1, n_trials=150)
+    # Seed 2: with the current random stream seed 1 leaves only 2 out-leg flashes in the saccade gate (other seeds: 5-12),
+    # too few to check anything on that leg.
+    result, ref = sim_runs.simulate_run(tmp_path_factory.mktemp(f"sim_{request.param}"), profile, seed=2, n_trials=150)
     return request.param, result, an.analyze_run(ref)
 
 
