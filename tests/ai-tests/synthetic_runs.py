@@ -26,6 +26,7 @@ LATENCY_S = 0.2
 SACCADE_S = 0.08
 LO, HI = 0.40, 0.70
 DEFAULT_GEOMETRY = {"screen_height_cm": 26.0, "viewing_distance_cm": 50.0}
+CALIBRATION = {"left_ratio": LO, "center_ratio": (LO + HI) / 2, "right_ratio": HI}  # gaze ratio at the dot / centre / cross
 
 
 def _write_trace(folder: Path, t: np.ndarray, x: np.ndarray, start_unix: float) -> None:
@@ -108,6 +109,7 @@ def write_run(
         "line_sd_deg": 0.15,
         "geometry_is_placeholder": geometry == DEFAULT_GEOMETRY,
         "saccade_contrasts_pct": list(contrasts_pct) if record_contrasts else None,
+        "calibration": CALIBRATION,
     }
     meta = {
         "participant": {"id": participant},
@@ -231,6 +233,7 @@ def _return_jump_run(data_dir, participant, start_unix, n_trials, contrasts_pct,
         "line_sd_deg": 0.15,
         "geometry_is_placeholder": geometry == DEFAULT_GEOMETRY,
         "saccade_contrasts_pct": list(contrasts_pct),
+        "calibration": CALIBRATION,
         "return_jump": True,
         "return_jump_trigger": trigger,
         "return_flash_spread_sd_ms": 40.0,

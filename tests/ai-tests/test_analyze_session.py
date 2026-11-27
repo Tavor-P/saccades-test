@@ -311,7 +311,7 @@ def test_clock_offset_history_is_interpolated_over_the_trace(tmp_path):
 
 # -- the human-first report: the same layout every run -----------------------------------------------------------------------------
 
-SECTIONS = ["DATA QUALITY", "INDEX FIT", "ACCURACY BY FLASH TIME", "ACCURACY BY CONTRAST", "SUPPRESSION INDEX BY LEG", "RETURN LATENCY", "TECHNICAL DETAILS"]
+SECTIONS = ["DATA QUALITY", "INDEX FIT", "ACCURACY BY FLASH TIME", "ACCURACY BY CONTRAST", "SUPPRESSION INDEX BY LEG", "RETURN LATENCY", "SACCADE METRICS", "TECHNICAL DETAILS"]
 GOOD_META = {"gaze_quality": {"latency_ms_median": 14.0, "longest_gap_ms": 20.0, "clock_offset_status": "ok"}, "head_motion": {"status": "ok", "flagged_trials": 0}}
 
 

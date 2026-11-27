@@ -45,6 +45,17 @@ ACCURACY_CEILING = 0.95  # both conditions at or above this accuracy -> noted: t
 # Must stay below FIXATION_EXCLUSION_MS, so no flash can be in both conditions.
 ONSET_WINDOW_MS = 50.0
 
+# -- saccade metrics (saccade_metrics.py: latency, gain, landing error ... of each leg's primary saccade) ------------------------
+ANTICIPATION_LATENCY_MS = 80.0  # a saccade starting less than this after the go cue / jump cannot be a reaction to it
+# Corrective (secondary) saccades are far smaller than MIN_AMPLITUDE, so they get their own detection pass with lower thresholds:
+CORRECTIVE_SPEED_HIGH = 0.6  # speed (ratio/s) a corrective saccade must exceed...
+CORRECTIVE_SPEED_LOW = 0.35  # ...with onset/offset where it falls back under this
+CORRECTIVE_AMPLITUDE_REL = (0.04, 0.5)  # amplitude relative to the primary saccade; the upper end = RETURN_MIN_AMPLITUDE_REL (bigger moving back is a return)
+CORRECTIVE_WINDOW_MS = (20.0, 400.0)  # onset this long after the primary saccade ended (and before the return saccade / next go cue)
+# Degrees come from the run's calibration (gaze ratio at the two symbols) and the angle between the symbols on the screen:
+ASSUMED_SCREEN_ASPECT = 16 / 9  # width / height; session.json records the screen height and viewing distance only
+MIN_CALIBRATION_SPAN = 0.05  # calibration ratios at the two symbols closer than this: unusable, no gain or degrees
+
 # -- time-course figure (timecourse.py, analysis_output.plot_timecourse_figure) ----------------------------------------------
 TIMECOURSE_SIGMA_MS = 20.0  # Gaussian kernel SD of the accuracy-vs-time curve (Nadaraya-Watson); 15 / 20 / 25 were compared in the simulator
 TIMECOURSE_STEP_MS = 5.0  # the curve is evaluated every this many ms...

@@ -81,6 +81,7 @@ from src.experiment.relative_suppression import companion_numbers
 from src.experiment.run_quality import quality_line, run_facts
 from src.experiment.run_summary import trial_counts
 from src.experiment.saccade_detection import Flash, Placed, Saccade, detect_saccades, load_flashes, load_trace, place_flashes  # noqa: F401
+from src.experiment.saccade_metrics import RunSaccades, run_saccades, summarize_saccades
 from src.experiment.session_files import DATA_DIR  # patched per module in tests, so always used by this bare name
 from src.experiment.suppression_stats import (  # noqa: F401 (re-exported)
     _EXTRAPOLATION,
@@ -136,6 +137,8 @@ class RunAnalysis:
     by_leg: dict | None = None  # return-jump runs: suppression_by_leg()
     return_latency: dict | None = None  # return-jump runs: return_latency_stats()
     onset_gates: list = field(default_factory=list)  # the secondary index's conditions per flash (flash_gates.onset_window_gates)
+
+    saccade_trials: RunSaccades | None = None  # each trial's primary saccade(s), for the saccade metrics (always set by analyze_run)
 
     @property
     def return_jump(self) -> bool:
@@ -209,16 +212,19 @@ def analyze_run(
     summary["companion"] = companion_numbers(placed, gates, suppression)
     summary["secondary_onset_window"] = onset_window_index(placed, onset_gates)
     meta = meta or {}
+    settings = meta.get("settings") if isinstance(meta.get("settings"), dict) else None
+    saccade_trials = run_saccades(flashes, find_trial_saccades(flashes, saccades) if trials is None else trials, t, x, settings)
+    summary["saccade_metrics"] = summarize_saccades([saccade_trials])
     try:
         geometry_line = format_geometry(meta.get("settings"))
     except (AttributeError, KeyError):
         geometry_line = None
-    run = RunAnalysis(ref, meta, t, x, saccades, placed, gates, summary, suppression, geometry_line, onset_gates=onset_gates)
+    run = RunAnalysis(ref, meta, t, x, saccades, placed, gates, summary, suppression, geometry_line, onset_gates=onset_gates, saccade_trials=saccade_trials)
     if trials is not None:
         by_leg = suppression_by_leg(placed, gates, near_ms=near_ms, far_ms=far_ms)
         by_leg["pooled"] = suppression  # identical computation; keep the one object
         run.trials, run.by_leg = trials, by_leg
-        run.return_latency = return_latency_stats(flashes, trials, meta.get("settings") if isinstance(meta.get("settings"), dict) else None)
+        run.return_latency = return_latency_stats(flashes, trials, settings)
         summary["by_leg"], summary["return_latency"] = by_leg, run.return_latency
     return run
 
@@ -249,7 +255,8 @@ def analyze(
         leg_flashes = {leg: sum((p.flash.leg or "out") == leg for p in placed) for leg in LEGS}
     report = format_report(summary, label=f"(session {stamp})", geometry=run.geometry_line, thresholds=thresholds, test_run=run.is_test,
                            quality=run.quality_line(), leg_flashes=leg_flashes, speed=speed_exclusions(placed, gates))
-    saved = {**suppression, "companion": summary["companion"], "timecourse": summary["timecourse"], "secondary_onset_window": summary["secondary_onset_window"]}
+    saved = {**suppression, "companion": summary["companion"], "timecourse": summary["timecourse"], "secondary_onset_window": summary["secondary_onset_window"],
+             "saccade_metrics": summary["saccade_metrics"]}
     if run.return_jump:
         assert run.return_latency is not None and run.by_leg is not None  # always set for return-jump runs
         saved = {**saved, "by_leg": {leg: run.by_leg[leg] for leg in LEGS}, "return_latency": run.return_latency}

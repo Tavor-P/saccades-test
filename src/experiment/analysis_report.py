@@ -271,6 +271,82 @@ def format_return_latency(r: dict | None, what: str = "this run") -> str:
     return "\n".join(lines)
 
 
+# -- saccade metrics ------------------------------------------------------------------------------------------------------------
+
+# (saccade_metrics key, row label, number format)
+_SACCADE_ROWS = (
+    ("latency_ms", "Latency (ms)", "{:.0f}"),
+    ("amplitude_deg", "Amplitude (deg)", "{:.1f}"),
+    ("gain", "Gain (amplitude / target distance)", "{:.2f}"),
+    ("landing_error_deg", "Landing error (deg, + = past target)", "{:+.1f}"),
+    ("landing_error_abs_deg", "Landing error, either way (deg)", "{:.1f}"),
+    ("duration_ms", "Duration (ms)", "{:.0f}"),
+    ("peak_velocity_deg_s", "Peak velocity (deg/s)", "{:.0f}"),
+)
+
+
+def _saccade_leg_lines(name: str, cue: str, leg: dict) -> list[str]:
+    trials = leg["trials"]
+    lines = [f"  {name}: {trials} trials, saccade found in {leg['found']}"]
+    if not trials:
+        return lines
+    rows = []
+    for key, label, fmt in _SACCADE_ROWS:
+        s = leg[key]
+        spread = fmt.replace("+", "")
+        rows.append([label, str(s["n"]), _ms(s["median"], fmt), _ms(s["robust_sd"], spread), _ms(s["iqr"], spread)])
+    lines += format_table(["Measure", "n", "Median", "Robust SD", "IQR"], rows, "lrrrr", indent=4)
+    counts = leg["counts"]
+    share = {k: _pct((n, trials)) for k, n in counts.items()}
+    early = f"Anticipation (latency < {analysis_constants.ANTICIPATION_LATENCY_MS:g} ms)"
+    lines += [f"    No saccade detected: {share['no_saccade']} of trials",
+              f"    {early}: {share['anticipation']} of trials" + (f", {counts['before_cue']} of them before the {cue}" if counts["anticipation"] else ""),
+              f"    Corrective saccade after it: {share['corrective']} of trials",
+              f"      same detection in fixation before the go cue (chance level): {share['corrective_chance']}"]
+    return lines
+
+
+def _conversion_notes(c: dict) -> list[str]:
+    if c["runs_without_calibration"] or c["runs_without_geometry"]:
+        missing = [f"{c[key]} of {c['runs']} run(s) without {what}" for key, what in
+                   (("runs_without_calibration", "a usable calibration"), ("runs_without_geometry", "screen geometry")) if c[key]]
+        gap = [f"Not converted: {', '.join(missing)} (gain needs the calibration, degrees need both)."]
+    else:
+        gap = []
+    if not c["target_distance_deg"] or c["runs_without_calibration"] == c["runs"]:
+        return ["Degrees: n/a.", *gap]
+    distance = "/".join(f"{d:.1f}" for d in c["target_distance_deg"])
+    placeholder = ", PLACEHOLDER screen geometry" if c["geometry_is_placeholder"] else ""
+    return [f"Degrees: symbols {distance} deg apart on an assumed {c['screen_aspect_assumed']:.2f}:1 screen{placeholder},",
+            "  from screen height and viewing distance, scaled by each run's calibration.", *gap]
+
+
+def saccade_metric_lines(m: dict) -> list[str]:
+    """The lines under the SACCADE METRICS heading (a saccade_metrics.summarize_saccades() result; the dashboard shows them too)."""
+    out, back = m["legs"]["out"], m["legs"]["return"]
+    lines = _saccade_leg_lines("Out leg (from the go cue)", "go cue", out)
+    lines.append("")
+    if back is None:
+        lines.append("  Return leg: no return jump")
+    else:
+        lines += _saccade_leg_lines("Return leg (from the jump)", "jump", back)
+        if m["forced_jumps"]:
+            lines.append(f"    {m['forced_jumps']} forced jumps left out")
+    low, high = (100 * v for v in analysis_constants.CORRECTIVE_AMPLITUDE_REL)
+    after, until = analysis_constants.CORRECTIVE_WINDOW_MS
+    return [*lines, "",
+            *(f"  {line}" for line in _conversion_notes(m["conversion"])),
+            "  Peak velocity is approximate and reads low: 200 Hz Neon samples, speed from a 3-sample smoothed trace.",
+            f"  Corrective: a further saccade of {low:g}-{high:g}% of the first one's size, starting {after:g}-{until:g} ms after it ends;",
+            "    noise, blinks and fixational movements count too, so compare it with the chance level (not validated on glasses).",
+            "  A saccade is a movement of at least the minimum amplitude (Technical details); tracking loss counts as no saccade."]
+
+
+def format_saccade_metrics(m: dict | None) -> list[str]:
+    """SACCADE METRICS section (one line for a result without it)."""
+    return [*heading("Saccade metrics"), *(["  not computed"] if m is None else saccade_metric_lines(m))]
+
+
 # -- the per-run report ----------------------------------------------------------------------------------------------------
 
 
@@ -333,5 +409,6 @@ def format_report(
     top = format_top_block(quality, summary["suppression"], gates[SACCADE][1], gates[FIXATION][1], summary["flashes"], " · TEST run" if test_run else "")
     lines = [title, "=" * len(title), "", top, *format_secondary(summary.get("secondary_onset_window")), *_data_quality(summary, speed), *format_index_fit(summary["suppression"]),
              *format_companion(summary.get("companion"), summary.get("timecourse")), *_time_windows(summary), *_by_contrast(summary), format_leg_suppression(summary.get("by_leg"), leg_flashes),
-             format_return_latency(summary.get("return_latency")), *format_technical(geometry, thresholds)]
+             format_return_latency(summary.get("return_latency")), *format_saccade_metrics(summary.get("saccade_metrics")),
+             *format_technical(geometry, thresholds)]
     return "\n".join(lines)

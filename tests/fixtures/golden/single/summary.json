@@ -1,5 +1,5 @@
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "participant": "GOLD",
   "generated_at": "",
   "include_test": false,
@@ -183,6 +183,8 @@
       0.5,
       1.5
     ],
+    "anticipation_latency_ms": 80.0,
+    "assumed_screen_aspect": 1.77778,
     "bin_edges_ms": [
       -200,
       -150,
@@ -197,6 +199,16 @@
     "boot_min_identified": 200,
     "boot_min_identified_share": 0.75,
     "chance": 0.5,
+    "corrective_amplitude_rel": [
+      0.04,
+      0.5
+    ],
+    "corrective_speed_high": 0.6,
+    "corrective_speed_low": 0.35,
+    "corrective_window_ms": [
+      20.0,
+      400.0
+    ],
     "far_ms": 300.0,
     "fixation_exclusion_ms": 100.0,
     "gaze_timeline_bin_ms": 10.0,
@@ -210,6 +222,7 @@
     "max_flash_speed": 25.0,
     "min_accuracy_trials": 5,
     "min_amplitude": 0.12,
+    "min_calibration_span": 0.05,
     "min_fit_trials": 12,
     "min_flash_speed": 2.0,
     "near_onset_ms": 50.0,
@@ -751,5 +764,81 @@
       "29% of bootstrap fits were unidentified and excluded from the CI"
     ],
     "onset_window_ms": 50.0
+  },
+  "saccade_metrics": {
+    "legs": {
+      "out": {
+        "trials": 120,
+        "found": 120,
+        "counts": {
+          "no_saccade": 0,
+          "anticipation": 0,
+          "before_cue": 0,
+          "corrective": 0,
+          "corrective_chance": 0
+        },
+        "shares": {
+          "no_saccade": 0.0,
+          "anticipation": 0.0,
+          "before_cue": 0.0,
+          "corrective": 0.0,
+          "corrective_chance": 0.0
+        },
+        "latency_ms": {
+          "n": 120,
+          "median": 202.9,
+          "robust_sd": 1.70465,
+          "iqr": 3.22527
+        },
+        "amplitude_deg": {
+          "n": 120,
+          "median": 35.6297,
+          "robust_sd": 0.0320091,
+          "iqr": 0.596111
+        },
+        "gain": {
+          "n": 120,
+          "median": 0.993619,
+          "robust_sd": 0.000892649,
+          "iqr": 0.016624
+        },
+        "landing_error_deg": {
+          "n": 120,
+          "median": -0.173802,
+          "robust_sd": 0.129808,
+          "iqr": 0.177294
+        },
+        "landing_error_abs_deg": {
+          "n": 120,
+          "median": 0.173802,
+          "robust_sd": 0.129808,
+          "iqr": 0.177294
+        },
+        "duration_ms": {
+          "n": 120,
+          "median": 75.0,
+          "robust_sd": 0.0,
+          "iqr": 5.00011
+        },
+        "peak_velocity_deg_s": {
+          "n": 120,
+          "median": 660.723,
+          "robust_sd": 1.11009,
+          "iqr": 1.46344
+        }
+      },
+      "return": null
+    },
+    "forced_jumps": 0,
+    "conversion": {
+      "runs": 2,
+      "runs_without_calibration": 0,
+      "runs_without_geometry": 0,
+      "target_distance_deg": [
+        35.859
+      ],
+      "screen_aspect_assumed": 1.77778,
+      "geometry_is_placeholder": true
+    }
   }
 }

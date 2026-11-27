@@ -329,7 +329,7 @@ def test_schema_3_summary_without_companion_and_timecourse_still_loads_and_compa
     for pid in fresh:
         path = tmp_path / pid / "analysis" / "summary.json"
         summary = json.loads(path.read_text())
-        assert summary["schema_version"] == 5 and "companion" in summary and "secondary_onset_window" in summary
+        assert summary["schema_version"] == 6 and "companion" in summary and "secondary_onset_window" in summary
         summary.pop("companion"), summary.pop("timecourse"), summary.pop("secondary_onset_window")
         summary["schema_version"] = 3
         path.write_text(json.dumps(summary), encoding="utf-8")
@@ -345,7 +345,7 @@ def test_schema_3_summary_without_companion_and_timecourse_still_loads_and_compa
     path.write_text(json.dumps(summary), encoding="utf-8")
     four = cmp.load_person("S01", tmp_path, refresh=False)
     assert four.included and four.analysis_source == "saved" and four.index == fresh["S01"].index
-    assert "schema_version 4, expected 5" in cmp.load_person("S01", tmp_path).analysis_source
+    assert "schema_version 4, expected 6" in cmp.load_person("S01", tmp_path).analysis_source
 
 
 def test_end_to_end_single_vs_return_jump_is_refused(tmp_path):

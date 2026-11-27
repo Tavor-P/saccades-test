@@ -278,25 +278,26 @@ def test_an_old_run_analysis_without_the_gaze_timeline_is_rerun_and_one_without_
     page = client.get(f"/runs/{START}/results")
     assert page.status_code == 200 and (analysis / "gaze_timeline.png").exists()  # stale, so analysed again
     saved = json.loads((analysis / "suppression.json").read_text())
-    saved.pop("companion"), saved.pop("timecourse"), saved.pop("secondary_onset_window")  # ...and one from before the companion numbers
+    for key in ("companion", "timecourse", "secondary_onset_window", "saccade_metrics"):  # ...and one from before these numbers
+        saved.pop(key)
     (analysis / "suppression.json").write_text(json.dumps(saved), encoding="utf-8")
     later = os.stat(_run_folder(data) / "trials.csv").st_mtime + 100
     for f in analysis.iterdir():
         os.utime(f, (later, later))
     page = client.get(f"/runs/{START}/results")
-    assert page.status_code == 200 and "Companion numbers" not in _html(page) and "companion secondary" not in _html(page)  # (report.txt still shows both)
+    assert page.status_code == 200 and not any(x in _html(page) for x in ("Companion numbers", "companion secondary", "<h2>Saccade metrics"))  # (report.txt still shows them)
 
 
 def test_participant_page_shows_the_companion_numbers_and_reanalyses_an_older_summary(client, data):
     page = _html(client.get(f"/participants/{PID}/results"))
-    assert "Companion numbers" in page and "companion secondary" in page
+    assert "Companion numbers" in page and "companion secondary" in page and "<h2>Saccade metrics" in page
     path = data / PID / "analysis" / "summary.json"
-    for old in (3, 4):
+    for old in (3, 4, 5):
         summary = json.loads(path.read_text())
-        assert summary["schema_version"] == 5
+        assert summary["schema_version"] == 6
         summary.pop("secondary_onset_window")
         summary["schema_version"] = old
         path.write_text(json.dumps(summary), encoding="utf-8")
         page = client.get(f"/participants/{PID}/results")
         assert page.status_code == 200 and "companion secondary" in _html(page)  # re-analysed
-        assert json.loads(path.read_text())["schema_version"] == 5
+        assert json.loads(path.read_text())["schema_version"] == 6

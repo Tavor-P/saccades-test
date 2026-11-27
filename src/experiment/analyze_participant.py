@@ -31,6 +31,7 @@ from src.experiment.analysis_report import (
     format_index_fit,
     format_leg_suppression,
     format_return_latency,
+    format_saccade_metrics,
     format_secondary,
     format_table,
     format_technical,
@@ -60,9 +61,10 @@ from src.experiment.logger import read_trial_rows
 from src.experiment.relative_suppression import companion_numbers
 from src.experiment.run_quality import quality_line, run_facts
 from src.experiment.run_summary import trial_counts
+from src.experiment.saccade_metrics import summarize_saccades
 from src.experiment.timecourse import timecourse_curve
 
-SCHEMA_VERSION = 5  # 2: run_kind, by_leg, return_latency (return-jump runs); 3: analysis_thresholds; 4: companion, timecourse; 5: secondary_onset_window
+SCHEMA_VERSION = 6  # 2: run_kind, by_leg, return_latency (return-jump runs); 3: analysis_thresholds; 4: companion, timecourse; 5: secondary_onset_window; 6: saccade_metrics
 ANALYSIS_DIR = "analysis"  # data/<participant>/analysis/
 CONDITIONS = (SACCADE, FIXATION, EXCLUDED)
 # summary.json top-level keys. A comparison module reads these; add keys only with a SCHEMA_VERSION bump.
@@ -72,6 +74,7 @@ SUMMARY_KEYS = (
     "n_flashes", "correct", "by_contrast", "exclusion_reasons",
     "contrasts_pct", "geometry", "runs_used", "runs_excluded", "flashes_csv", "analysis",
     "run_kind", "by_leg", "return_latency", "analysis_thresholds", "companion", "timecourse", "secondary_onset_window",
+    "saccade_metrics",
 )
 # Run kinds never pool across each other: "single" (no return jump) and "return_jump/<trigger>" (the trigger changes the
 # movement itself). The return flash spread SD and leg fraction only change flash scheduling, so they do not split runs.
@@ -376,6 +379,8 @@ def analyze_participant(
         "companion": companion,  # accuracy difference (pp), relative suppression S, log10 threshold ratio (relative_suppression.py)
         "timecourse": timecourse,  # kernel accuracy-vs-onset-time curve, band, baseline (timecourse.py)
         "secondary_onset_window": secondary,  # secondary index: flashes within onset_window_ms of their own onset (suppression_stats.onset_window_index)
+        # latency, gain, landing error ... per leg over every pooled trial (saccade_metrics.py)
+        "saccade_metrics": summarize_saccades([a.saccade_trials for _, a in used_analyses if a.saccade_trials is not None]),
     }
     assert tuple(summary) == SUMMARY_KEYS
     result = ParticipantResult(pid, summary, "", used, excluded, placed, gates, run_of_flash, [s for _, a in used_analyses for s in a.saccades])
@@ -502,6 +507,7 @@ def format_participant_report(result: ParticipantResult) -> str:
     lines += format_table(["Contrast", "Saccade", "Fixation", "Excluded"], rows, "rrrr")
     leg_flashes = {leg: sum((p.flash.leg or "out") == leg for p in result.placed) for leg in LEGS} if s["by_leg"] is not None else None
     lines += [format_leg_suppression(s["by_leg"], leg_flashes, "these runs"), format_return_latency(s["return_latency"], "these runs")]
+    lines += format_saccade_metrics(s.get("saccade_metrics"))
     geometry = f"  Screen {_fmt_geometry(s['geometry'])}; contrasts {_fmt_contrasts(s['contrasts_pct'])}; run kind {s['run_kind']}" if s["runs_used"] else None
     lines += format_technical(geometry, s.get("analysis_thresholds"))
     lines += ["", "Files: report.txt (this), plot.png, flashes.csv (every pooled flash with its run), summary.json (machine-readable)."]

@@ -531,5 +531,81 @@
       "psychometric index not computed: accuracy at ceiling or floor across the tested contrasts, so a threshold is not identified"
     ],
     "onset_window_ms": 50.0
+  },
+  "saccade_metrics": {
+    "legs": {
+      "out": {
+        "trials": 60,
+        "found": 60,
+        "counts": {
+          "no_saccade": 0,
+          "anticipation": 0,
+          "before_cue": 0,
+          "corrective": 0,
+          "corrective_chance": 0
+        },
+        "shares": {
+          "no_saccade": 0.0,
+          "anticipation": 0.0,
+          "before_cue": 0.0,
+          "corrective": 0.0,
+          "corrective_chance": 0.0
+        },
+        "latency_ms": {
+          "n": 60,
+          "median": 202.9,
+          "robust_sd": 1.70501,
+          "iqr": 3.22527
+        },
+        "amplitude_deg": {
+          "n": 60,
+          "median": 35.6297,
+          "robust_sd": 0.0320091,
+          "iqr": 0.596111
+        },
+        "gain": {
+          "n": 60,
+          "median": 0.993619,
+          "robust_sd": 0.000892649,
+          "iqr": 0.016624
+        },
+        "landing_error_deg": {
+          "n": 60,
+          "median": -0.173802,
+          "robust_sd": 0.129808,
+          "iqr": 0.177294
+        },
+        "landing_error_abs_deg": {
+          "n": 60,
+          "median": 0.173802,
+          "robust_sd": 0.129808,
+          "iqr": 0.177294
+        },
+        "duration_ms": {
+          "n": 60,
+          "median": 75.0,
+          "robust_sd": 0.0,
+          "iqr": 5.00011
+        },
+        "peak_velocity_deg_s": {
+          "n": 60,
+          "median": 660.723,
+          "robust_sd": 1.11009,
+          "iqr": 1.46344
+        }
+      },
+      "return": null
+    },
+    "forced_jumps": 0,
+    "conversion": {
+      "runs": 1,
+      "runs_without_calibration": 0,
+      "runs_without_geometry": 0,
+      "target_distance_deg": [
+        35.859
+      ],
+      "screen_aspect_assumed": 1.77778,
+      "geometry_is_placeholder": true
+    }
   }
 }
