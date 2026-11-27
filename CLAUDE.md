@@ -89,6 +89,8 @@ Double-click launchers: `run_experiment.bat` in the repo root; `analyze_latest.b
   text, test areas (`-m <area>`) + test budget, pre-commit hook, `requirements-lock.txt`, ruff size/complexity limits, analysis golden snapshot test. First real-data check (one 30-trial test run): gaze delay 14 ms, return-latency robust SD ~64 ms vs the 40 ms setting.
 - **2026-11-25**: `timecourse_by_contrast.png` (run + pooled, dashboard results page): one panel per contrast, -300..+700 ms, adaptive kernel (`timecourse_curve(neighbours=)`: SD = distance to the
   5th nearest flash, 20-150 ms, dashed where widened, no curve past the outermost flash) so ~10 flashes per contrast still draw a curve. Plot only: plot.png, summary.json and the index are unchanged.
+- **2026-11-27**: line offset back to 2 deg (3 deg was hard to see), contrasts 2/3/4 %, optional onset-triggered flashes (off by default), practice/RT-test dwell before the swap back,
+  saccade metrics section (summary.json schema 6). Before switching onset-triggered flashes on, read the real saccade durations in the saccade metrics of a glasses run.
 - **Shipped setup**: flash times on a bell curve centred on the average RT (SD `FLASH_SPREAD_SD_MS` 80, dialog "Flash timing spread"), cut to 0-500 ms after the go cue; controls at avg RT +400/+500 +/-10 ms;
   fixed saccade contrasts; plain Neon, chin rest. Onboarding: calibration -> quiz -> 8 practice trials seeding the RT average. Every trial waits for SPACE.
 - **Simulation 2026-11-22** (code not kept): shifting the bell curve's centre earlier than the average RT gains almost nothing in the 50 ms before onset (spread is ~110 ms SD anyway; beyond -20 ms
