@@ -14,6 +14,7 @@ from include.experiment.constants import (
     FOREPERIOD_MAX_MS,
     FOREPERIOD_MIN_MS,
     LINE_DURATION_FRAMES,
+    RETURN_JUMP_DWELL_MS,
     RETURN_JUMP_TRIGGER,
     RETURN_LEG_FLASH_FRACTION,
     TUTORIAL_PRACTICE_ATTEMPTS,
@@ -62,8 +63,9 @@ class TutorialSession:
        -> key). The flash fires at the rolling robust average of this stage's own reaction times
        (DEFAULT_REACTION_TIME_MS until there are 3); each trial's onset latency is kept in `rt_samples_ms` to seed
        ExperimentSession's average instead of a separate RT test. With `return_jump` the practice trials also jump back
-       (like the real ones): the flash goes on the out or the return leg, and the return latencies
-       (`return_rt_samples_ms`) seed the saccade phase's return-latency average.
+       (like the real ones, but only once the eye has stayed on the target for RETURN_JUMP_DWELL_MS): the flash goes on
+       the out or the return leg. Return latencies after that wait are not collected (`return_rt_samples_ms` stays empty
+       unless the dwell is 0), so the saccade phase measures its own return-latency average.
 
     A short narrated INTRO (what you will see, what to do) runs before the calibration. There is no feedback on answers.
 
@@ -257,7 +259,8 @@ class TutorialSession:
             self._feed.latency_s = timestamp_latency_s(self._gaze, clamped_gaze_latency_ms(self._gaze))
             self._feed.last_sample_ts = self._gaze.latest_sample().timestamp
             self._legs = TrialLegs(
-                _zone_for(self._source), _zone_for(self._target), self._trial_start, trigger=self._return_jump_trigger
+                _zone_for(self._source), _zone_for(self._target), self._trial_start, trigger=self._return_jump_trigger,
+                dwell_ms=RETURN_JUMP_DWELL_MS,
             )
             # Open-loop, like the real saccade phase: scheduled off the rolling average of the reaction
             # times measured so far (updated at every detected eye movement; the default until there are 3).
@@ -331,7 +334,7 @@ class TutorialSession:
             self._jump_back(now, forced=forced)
 
         return_latency_ms = legs.track_return(new_samples)
-        if return_latency_ms is not None and not legs.jump_forced:
+        if return_latency_ms is not None and not legs.jump_forced and legs.dwell is None:
             self._return_rt.add(return_latency_ms)
 
     def _jump_back(self, now: float, forced: bool) -> None:

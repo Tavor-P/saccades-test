@@ -14,6 +14,7 @@ from include.experiment.constants import (
     FOREPERIOD_MAX_MS,
     GAZE_LANDING_STABILITY_MS,
     RETURN_JUMP_DEFAULT,
+    RETURN_JUMP_DWELL_MS,
     RETURN_JUMP_LANDING_TIMEOUT_MS,
     RETURN_LEG_FLASH_FRACTION,
     SACCADE_ONSET_STABILITY_MS,
@@ -434,8 +435,11 @@ def test_tutorial_practice_jumps_back_and_collects_return_latencies(fake_gaze, f
     fake_gaze.zone = GazeZone.RIGHT
     session.tick()
     fake_time(max(SACCADE_ONSET_STABILITY_MS, GAZE_LANDING_STABILITY_MS) / 1000 + 0.01)
-    session.tick()  # out landing -> jump back at once (the flash is on the return leg)
-    assert session._jump_at is not None
+    session.tick()  # on the target, but practice waits for a stay of RETURN_JUMP_DWELL_MS
+    assert session._jump_at is None
+    fake_time(RETURN_JUMP_DWELL_MS / 1000)
+    session.tick()
+    assert session._jump_at is not None and session._legs.jump_forced is False
     state = session.render_state()
     assert state["dot"]["visible"] and not state["cross"]["visible"]
 
@@ -451,57 +455,46 @@ def test_tutorial_practice_jumps_back_and_collects_return_latencies(fake_gaze, f
     session.tick()
     session.on_response_key(session._line_side)
     session.tick()
-    assert len(session.return_rt_samples_ms) == 1 and session.return_rt_samples_ms[0] > 0
+    assert session.return_rt_samples_ms == []  # a latency after the wait is not the main trials' movement
     assert session.render_state()["hud"]["phase"] == "PRACTICE_AWAITING_SPACE"
     assert session._source is Target.DOT  # every return-jump trial starts on the dot
 
 
-def test_tutorial_onset_trigger_jumps_before_the_arrival(fake_gaze, fake_time, monkeypatch):
-    monkeypatch.setattr(tutorial_module, "RETURN_JUMP_TRIGGER", "onset")
+@pytest.mark.parametrize("trigger", ["arrival", "onset"])
+def test_tutorial_practice_jumps_only_after_the_eye_has_stayed_on_the_target(fake_gaze, fake_time, monkeypatch, trigger):
+    """Regression: the target jumped back while the participant was still looking at it. Never reaching it still forces
+    the jump at the timeout."""
+    monkeypatch.setattr(tutorial_module, "RETURN_JUMP_TRIGGER", trigger)
     session = _tutorial_at_practice(fake_gaze)
-    session._flash_leg = "return"
     session._leg_bag = ShuffledBag(["return"])
-    fake_gaze.zone = GazeZone.LEFT
-    session.on_space()
-    fake_time(FOREPERIOD_MAX_MS / 1000 + 0.1)
-    session.tick()
-    fake_time(0.2)
-    fake_gaze.zone = GazeZone.CENTER
-    session.tick()
-    fake_time(SACCADE_ONSET_STABILITY_MS / 1000 + 0.01)
-    session.tick()
-    assert session._jump_at is not None and not session._out_arrived
+    session._flash_leg = "return"
 
+    def start_attempt() -> None:
+        fake_gaze.zone = GazeZone.LEFT
+        session.on_space()
+        fake_time(FOREPERIOD_MAX_MS / 1000 + 0.1)
+        session.tick()
 
-def test_tutorial_return_before_the_jump_counts_like_in_the_real_trials(fake_gaze, fake_time):
-    """Shared TrialLegs rules: the return leg is listened to from the out arrival, so a return made while a late out-leg
-    flash holds the jump has already landed when the target jumps, and its latency is negative (the old tutorial copy
-    started the return landing only at the jump)."""
-    session = _tutorial_at_practice(fake_gaze)
-    session._flash_leg = "out"
-    session._leg_bag = ShuffledBag(["out"])
-    fake_gaze.zone = GazeZone.LEFT
-    session.on_space()
-    fake_time(FOREPERIOD_MAX_MS / 1000 + 0.1)
-    session.tick()
-    session._flash_scheduled_at = session._trial_start + 1.0  # a late out-leg flash holds the jump back
-    fake_time(0.2)
-    fake_gaze.zone = GazeZone.RIGHT
-    session.tick()  # out arrival
-    fake_time(SACCADE_ONSET_STABILITY_MS / 1000 + 0.01)
-    session.tick()
-    fake_gaze.zone = GazeZone.LEFT  # back on the dot before the jump
-    fake_time(0.05)
-    session.tick()
-    fake_time(GAZE_LANDING_STABILITY_MS / 1000 + 0.01)
-    session.tick()
-    assert session._jump_at is None and session._out_arrived
+    def hold(zone: GazeZone, seconds: float) -> None:
+        fake_gaze.zone = zone
+        session.tick()
+        fake_time(seconds)
+        session.tick()
 
-    fake_time(session._flash_scheduled_at - session._clock.now() + 0.001)
-    session.tick()  # the out-leg flash is drawn
-    session.tick()  # ... and gone: the target jumps back
-    assert session._jump_at is not None
-    assert len(session.return_rt_samples_ms) == 1 and session.return_rt_samples_ms[0] < 0
-    session.on_response_key(session._line_side)
-    session.tick()  # already back on the dot: the attempt ends at once
-    assert session.render_state()["hud"]["phase"] == "PRACTICE_AWAITING_SPACE"
+    start_attempt()
+    stay = RETURN_JUMP_DWELL_MS / 1000
+    hold(GazeZone.CENTER, 0.05)  # onset
+    hold(GazeZone.RIGHT, stay - 0.05)
+    hold(GazeZone.CENTER, 0.05)  # leaving restarts the stay
+    hold(GazeZone.RIGHT, stay - 0.05)
+    assert session._jump_at is None
+    fake_time(0.06)
+    session.tick()
+    assert session._jump_at is not None and session._legs.jump_forced is False
+
+    session._finish_attempt()
+    session._flash_leg = "return"
+    start_attempt()
+    fake_time(RETURN_JUMP_LANDING_TIMEOUT_MS / 1000 + 0.001)
+    session.tick()  # never on the target
+    assert session._legs.jump_forced is True

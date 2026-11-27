@@ -189,8 +189,9 @@ RETURN_JUMP_DEFAULT = True
 # gets most because its flashes come on top of the out leg's. A guess: re-decide after the first glasses runs.
 RETURN_LEG_FLASH_FRACTION = 0.8
 # What makes the target jump back (the jump-back frame is the return leg's start, logged as jump_back_ms_after_go_cue):
-#   "arrival": the first live gaze sample inside the target zone. With the gaze stream ~13-20 ms late, the jump is drawn
-#              right after the real landing, so the return saccade answers a target that has just been reached.
+#   "arrival": the first live gaze sample inside the target zone. That zone starts ~60 % of the way (GAZE_DEAD_ZONE), so
+#              this can be before the eye has stopped: in the simulator (~90 ms flight, 16 ms gaze delay) the jump comes
+#              ~19 ms before the true landing, ~90 % of the way, about one frame before it is visible.
 #   "onset":   the out saccade's confirmed onset, the same OnsetDetector rule the RT test uses to hide its cross. The jump
 #              is drawn ~25 ms after the real onset, i.e. MID-saccade: the eye lands where the target used to be.
 # Either way the jump never comes before an out-leg flash has been drawn (it waits for it). "arrival" for now; the user picks.
@@ -199,6 +200,15 @@ RETURN_JUMP_TRIGGER = "arrival"
 # 1500 ms: a slow reaction (~500 ms) + saccade (~50) + gaze delay (~20) is ~600 ms, and a hypometric first saccade needs
 # another ~200-300 ms for its correction; 1500 leaves room for both without letting a lost track stall the trial.
 RETURN_JUMP_LANDING_TIMEOUT_MS = 1500
+# Practice and reaction-time-test trials only (tutorial practice, the saccade phase's RT test and practice): the symbols swap
+# back only after the eye has stayed on the target this long without a break. Without it the target left again while a
+# first-timer was still looking (the RT test reset it at the confirmed ONSET, mid-flight). 400 ms: long enough to finish
+# a corrective saccade and see the target, short enough not to drag. Replaces RETURN_JUMP_TRIGGER in those trials
+# (0 = no wait in return-jump practice). An eye never seen on the target: RETURN_JUMP_LANDING_TIMEOUT_MS still forces the
+# jump (an eye that arrived but did not stay gets this long on top). Main trials never wait: their return leg and its
+# flash start at the jump frame. Return latencies after such a wait are not added to the return average (answering a late
+# jump is not the main trials' movement).
+RETURN_JUMP_DWELL_MS = 400
 # Return-leg flash timing: a bell curve like FLASH_SPREAD_SD_MS's, centred on the rolling return-latency average and cut to
 # FLASH_WINDOW_MIN_MS..FLASH_WINDOW_MAX_MS after the JUMP-BACK frame. Set from a measurement: one real 150-trial glasses
 # run, return-latency robust SD 118 ms (median 207 ms). The first guess, 40, expected a practised, predictable return to vary

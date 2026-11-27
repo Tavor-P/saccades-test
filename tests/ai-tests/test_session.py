@@ -13,6 +13,8 @@ from include.experiment.constants import (
     NUM_RT_TEST_TRIALS_REAL,
     NUM_RT_TEST_TRIALS_TEST,
     PRACTICE_CONTRAST,
+    RETURN_JUMP_DWELL_MS,
+    RETURN_JUMP_LANDING_TIMEOUT_MS,
     RT_AVERAGE_ROLLING_WINDOW,
     SACCADE_FIXED_TRIALS_REAL,
     SACCADE_FIXED_TRIALS_TEST,
@@ -63,7 +65,11 @@ def _run_one_rt_test_attempt(session, fake_gaze, fake_time, reaction_time_s: flo
     fake_gaze.zone = GazeZone.RIGHT  # cross's zone - "left the source"
     session.tick()  # starts the onset stability timer
     fake_time(SACCADE_ONSET_STABILITY_MS / 1000 + 0.01)
-    session.tick()  # onset fires -> attempt finishes
+    session.tick()  # onset fires (the latency is measured here)
+    state = session.render_state()
+    assert state["hud"]["phase"] == "RT_TEST_ACTIVE" and state["cross"]["visible"]  # regression: no reset mid-flight
+    fake_time(RETURN_JUMP_DWELL_MS / 1000)
+    session.tick()  # the eye has stayed on the cross -> attempt finishes
 
 
 def _complete_rt_test(session, fake_gaze, fake_time, reaction_time_s: float = 0.2) -> None:
@@ -217,6 +223,21 @@ def test_rt_test_falls_back_to_default_when_every_attempt_times_out(fake_gaze, f
         fake_time(SACCADE_TIMEOUT_MS / 1000 + 0.1)
         session.tick()
     assert session._avg_reaction_time_ms == pytest.approx(DEFAULT_REACTION_TIME_MS)
+
+    # An eye that leaves the dot but never reaches the cross: the attempt still ends (and keeps its latency).
+    session = _make_session(fake_gaze, test_mode=True)
+    _complete_calibration(session)
+    session.on_space()
+    fake_time(FOREPERIOD_MAX_MS / 1000 + 0.1)
+    session.tick()
+    for zone, seconds in ((GazeZone.CENTER, 0.2), (GazeZone.CENTER, SACCADE_ONSET_STABILITY_MS / 1000 + 0.01)):
+        fake_gaze.zone = zone
+        fake_time(seconds)
+        session.tick()
+    assert session.results == []
+    fake_time(RETURN_JUMP_LANDING_TIMEOUT_MS / 1000)
+    session.tick()
+    assert [r.outcome for r in session.results] == ["detected"]
 
 
 # -- open-loop flash scheduling ------------------------------------------------
