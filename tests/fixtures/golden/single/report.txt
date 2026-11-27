@@ -5,6 +5,13 @@ QUALITY  CHECK     gaze delay 18 ms · clock offset unknown · head unknown · 0
 RESULT   +0.47     suppression index, 95% CI +0.25 to +0.66 (accuracy fallback)
 AMOUNT   OK        24 saccade / 36 fixation flashes usable of 60 (need 12+ each for a threshold fit)
 
+SECONDARY INDEX
+---------------
+  Secondary suppression index (not the headline): +0.47, 95% CI +0.23 to +0.68 (accuracy fallback)
+  18 onset-window flashes (9 correct) vs 36 fixation flashes (35 correct)
+  Onset window: within +/-50 ms of the flash's own saccade onset; the headline's saccade gates without the minimum speed
+  Note: psychometric index not computed: accuracy at ceiling or floor across the tested contrasts, so a threshold is not identified
+
 DATA QUALITY
 ------------
   Saccades found: 60 (median duration 75 ms, amplitude 0.3 of the width)

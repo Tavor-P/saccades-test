@@ -60,6 +60,12 @@ def test_each_flash_is_gated_against_its_own_legs_saccade(tmp_path):
         assert s["n_saccade"] == sum(g.condition == fg.SACCADE and p.flash.leg == leg for p, g in zip(run.placed, run.gates))
     assert run.by_leg["pooled"] is run.suppression
     assert run.by_leg["out"]["n_saccade"] + run.by_leg["return"]["n_saccade"] == run.by_leg["pooled"]["n_saccade"]
+    # the secondary index: each flash within +-50 ms of its OWN leg's onset, against exactly the headline's fixation flashes
+    for p, g, w in zip(run.placed, run.gates, run.onset_gates):
+        assert (w.condition == fg.FIXATION) == (g.condition == fg.FIXATION)
+        assert (w.condition == fg.SACCADE) == (planted[p.flash.trial][1] and abs(p.rel_ms) <= 50)
+    s2 = run.summary["secondary_onset_window"]
+    assert 0 < s2["n_saccade"] < run.suppression["n_saccade"] and s2["n_fixation"] == n_fix and s2["onset_window_ms"] == 50
 
 
 def test_return_latency_report_matches_the_planted_latencies(tmp_path):
@@ -120,6 +126,14 @@ def test_forced_jump_and_wrong_leg_and_slow_return_are_excluded():
     assert fg.classify_leg_flash(1.3, sacc, t, x, "return", back, anchor=1.35).condition == fg.FIXATION
     gap = fg.classify_leg_flash(1.42, sacc, t, x, "return", back, anchor=1.35)  # landing-to-return gap, within 100 ms of the return
     assert gap.condition == fg.EXCLUDED
+    # min_speed=0 (the secondary index) admits that still-eye flash 80 ms before onset, but keeps every other rule...
+    still = fg.classify_leg_flash(1.47, sacc, t, x, "return", back, anchor=1.35, min_speed=0.0)
+    assert still.condition == fg.SACCADE and still.speed < an.SPEED_LOW
+    assert fg.classify_leg_flash(1.47, sacc, t, x, "return", back, anchor=0.9, min_speed=0.0).condition == fg.EXCLUDED
+    assert fg.classify_leg_flash(1.47, sacc, t, x, "return", back, anchor=1.35, jump_forced=True, min_speed=0.0).condition == fg.EXCLUDED
+    # ...and the window itself is |time from the own onset| <= 50 ms
+    placed = [an.Placed(an.Flash(i, 0.0, 0.04, "above", "correct"), rel, False) for i, rel in enumerate((-50.0, -50.1, 50.0, 80.0))]
+    assert [g.condition for g in fg.onset_window_gates(placed, [still] * 4)] == [fg.SACCADE, fg.EXCLUDED, fg.SACCADE, fg.EXCLUDED]
 
 
 def test_runs_without_a_logged_jump_take_the_old_path_unchanged(tmp_path):
@@ -163,6 +177,7 @@ def test_return_jump_runs_pool_together_but_never_with_single_runs_or_other_trig
     assert s["by_leg"]["out"]["n_saccade"] + s["by_leg"]["return"]["n_saccade"] == s["n_flashes"]["saccade"]
     assert all(s["by_leg"][leg]["n_fixation"] == s["n_flashes"]["fixation"] for leg in an.LEGS)
     assert s["by_leg"]["pooled"]["index"] == s["index"]
+    assert s["secondary_onset_window"]["n_fixation"] == s["n_flashes"]["fixation"] and 0 < s["secondary_onset_window"]["n_saccade"]
     rl = s["return_latency"]
     assert rl["n"] == 180 and rl["share_predictive"] == 0.0 and len(rl["return_flash_spread_sd_ms_by_run"]) == 3
     json.dumps(s)  # summary.json must stay serialisable

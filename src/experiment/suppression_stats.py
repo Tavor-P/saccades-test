@@ -20,6 +20,7 @@ from include.experiment.analysis_constants import (
     MIN_ACCURACY_TRIALS,
     MIN_FIT_TRIALS,
     NEAR_ONSET_MS,
+    ONSET_WINDOW_MS,
     THRESHOLD_EXTRAPOLATION,
 )
 from src.experiment.flash_gates import FIXATION, SACCADE
@@ -265,4 +266,14 @@ def suppression_index(
     if fit_problem is not None:
         out["notes"].append(f"psychometric index not computed: {fit_problem}")
         _accuracy_index(out, len(sac), len(fix), min_accuracy_trials)
+    return out
+
+
+def onset_window_index(placed: list[Placed], window_gates: list, **kwargs) -> dict:
+    """The pre-specified SECONDARY index: suppression_index() on flash_gates.onset_window_gates (flashes within
+    +-ONSET_WINDOW_MS of their own saccade onset vs the headline's fixation flashes). Same keys as the headline's result,
+    where "saccade" counts the onset-window flashes; `onset_window_ms` replaces the unused near_ms / far_ms."""
+    out = suppression_index(placed, gates=window_gates, **kwargs)
+    del out["near_ms"], out["far_ms"]
+    out.update(conditions_from="onset window", onset_window_ms=ONSET_WINDOW_MS)
     return out

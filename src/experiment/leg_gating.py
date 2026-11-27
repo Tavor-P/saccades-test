@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from include.experiment.analysis_constants import OUT_SEARCH_S, RETURN_MIN_AMPLITUDE_REL, RETURN_SEARCH_AFTER_JUMP_S
+from include.experiment.analysis_constants import MIN_FLASH_SPEED, OUT_SEARCH_S, RETURN_MIN_AMPLITUDE_REL, RETURN_SEARCH_AFTER_JUMP_S
 from include.experiment.constants import MAD_TO_SD_FACTOR
 from src.experiment.flash_gates import FIXATION, SACCADE, classify_leg_flash
 from src.experiment.saccade_detection import Flash, Placed, Saccade
@@ -78,7 +78,15 @@ def place_leg_flashes(flashes: list[Flash], trials: list[TrialSaccades], flash_d
     return placed
 
 
-def classify_leg_flashes(placed: list[Placed], trials: list[TrialSaccades], saccades: list[Saccade], t: np.ndarray, x: np.ndarray, flash_delay_ms: float = 0.0) -> list:
+def classify_leg_flashes(  # noqa: PLR0913 - classify_leg_flash's inputs for every flash
+    placed: list[Placed],
+    trials: list[TrialSaccades],
+    saccades: list[Saccade],
+    t: np.ndarray,
+    x: np.ndarray,
+    flash_delay_ms: float = 0.0,
+    min_speed: float = MIN_FLASH_SPEED,
+) -> list:
     """flash_gates.classify_leg_flash for every flash; the amplitude gate uses each leg's own run median."""
     medians = {}
     for leg in LEGS:
@@ -88,7 +96,7 @@ def classify_leg_flashes(placed: list[Placed], trials: list[TrialSaccades], sacc
     for p, tr in zip(placed, trials):
         leg = "return" if p.flash.leg == "return" else "out"
         anchor = p.flash.jump if leg == "return" else p.flash.go_cue
-        out.append(classify_leg_flash(p.flash.time + ms_to_s(flash_delay_ms), saccades, t, x, leg, tr.of(leg), anchor, medians[leg], p.flash.jump_forced))
+        out.append(classify_leg_flash(p.flash.time + ms_to_s(flash_delay_ms), saccades, t, x, leg, tr.of(leg), anchor, medians[leg], p.flash.jump_forced, min_speed))
     return out
 
 

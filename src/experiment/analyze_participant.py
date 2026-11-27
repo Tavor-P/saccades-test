@@ -31,6 +31,7 @@ from src.experiment.analysis_report import (
     format_index_fit,
     format_leg_suppression,
     format_return_latency,
+    format_secondary,
     format_table,
     format_technical,
     format_top_block,
@@ -47,6 +48,7 @@ from src.experiment.analyze_session import (
     analyze_run,
     fit_pair_with_slope,
     load_flashes,
+    onset_window_index,
     return_latency_stats,
     suppression_by_leg,
     suppression_index,
@@ -60,7 +62,7 @@ from src.experiment.run_quality import quality_line, run_facts
 from src.experiment.run_summary import trial_counts
 from src.experiment.timecourse import timecourse_curve
 
-SCHEMA_VERSION = 4  # 2: run_kind, by_leg, return_latency (return-jump runs); 3: analysis_thresholds; 4: companion, timecourse
+SCHEMA_VERSION = 5  # 2: run_kind, by_leg, return_latency (return-jump runs); 3: analysis_thresholds; 4: companion, timecourse; 5: secondary_onset_window
 ANALYSIS_DIR = "analysis"  # data/<participant>/analysis/
 CONDITIONS = (SACCADE, FIXATION, EXCLUDED)
 # summary.json top-level keys. A comparison module reads these; add keys only with a SCHEMA_VERSION bump.
@@ -69,7 +71,7 @@ SUMMARY_KEYS = (
     "index", "ci", "method", "label", "threshold_saccade", "threshold_fixation", "slope", "notes",
     "n_flashes", "correct", "by_contrast", "exclusion_reasons",
     "contrasts_pct", "geometry", "runs_used", "runs_excluded", "flashes_csv", "analysis",
-    "run_kind", "by_leg", "return_latency", "analysis_thresholds", "companion", "timecourse",
+    "run_kind", "by_leg", "return_latency", "analysis_thresholds", "companion", "timecourse", "secondary_onset_window",
 )
 # Run kinds never pool across each other: "single" (no return jump) and "return_jump/<trigger>" (the trigger changes the
 # movement itself). The return flash spread SD and leg fraction only change flash scheduling, so they do not split runs.
@@ -315,14 +317,17 @@ def analyze_participant(
     used_analyses = [(e, e.analysis) for e in used if e.analysis is not None]  # every pooled run was analysed
     placed: list[Any] = []
     gates: list[Any] = []
+    onset_gates: list[Any] = []  # the secondary index's conditions, gated per run like `gates`
     run_of_flash: list[str] = []
     for e, analysis in used_analyses:
         placed += analysis.placed
         gates += analysis.gates
+        onset_gates += analysis.onset_gates
         run_of_flash += [e.name] * len(analysis.placed)
     suppression = suppression_index(placed, gates=gates, n_boot=n_boot)
     timecourse = timecourse_curve(placed, gates, n_boot=n_boot)
     companion = companion_numbers(placed, gates, suppression, n_boot=n_boot)
+    secondary = onset_window_index(placed, onset_gates, n_boot=n_boot)
     gate_counts = summarize_gates(placed, gates)
     slope = _pooled_slope(placed, gates) if suppression["method"] == "psychometric" else None
     kind = used[0].run_kind if used else None
@@ -370,6 +375,7 @@ def analyze_participant(
         "analysis_thresholds": thresholds_record(min_amplitude, flash_delay_ms),  # every rule that made this result (analysis_constants.py)
         "companion": companion,  # accuracy difference (pp), relative suppression S, log10 threshold ratio (relative_suppression.py)
         "timecourse": timecourse,  # kernel accuracy-vs-onset-time curve, band, baseline (timecourse.py)
+        "secondary_onset_window": secondary,  # secondary index: flashes within onset_window_ms of their own onset (suppression_stats.onset_window_index)
     }
     assert tuple(summary) == SUMMARY_KEYS
     result = ParticipantResult(pid, summary, "", used, excluded, placed, gates, run_of_flash, [s for _, a in used_analyses for s in a.saccades])
@@ -462,6 +468,7 @@ def format_participant_report(result: ParticipantResult) -> str:
     tail = f" \u00b7 {_plural(len(s['runs_used']), 'run')} pooled" + (" \u00b7 includes TEST runs" if any(r["mode"] == "test" for r in s["runs_used"]) else "")
     suppression = {k: s[k] for k in ("index", "ci", "method", "notes", "threshold_saccade", "threshold_fixation")}
     lines = [title, "=" * len(title), "", format_top_block(_quality(result), suppression, n_sac, n_fix, s["n_flashes"]["total"], tail)]
+    lines += format_secondary(s.get("secondary_onset_window"))
     skipped = s["analysis"]["test_runs_skipped"]
     if s["runs_excluded"]:
         lines += ["", f"NOT POOLED: {_plural(len(s['runs_excluded']), 'run')} left out:"]

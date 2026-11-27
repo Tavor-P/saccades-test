@@ -329,15 +329,23 @@ def test_schema_3_summary_without_companion_and_timecourse_still_loads_and_compa
     for pid in fresh:
         path = tmp_path / pid / "analysis" / "summary.json"
         summary = json.loads(path.read_text())
-        assert summary["schema_version"] == 4 and "companion" in summary and "timecourse" in summary
-        summary.pop("companion"), summary.pop("timecourse")
+        assert summary["schema_version"] == 5 and "companion" in summary and "secondary_onset_window" in summary
+        summary.pop("companion"), summary.pop("timecourse"), summary.pop("secondary_onset_window")
         summary["schema_version"] = 3
         path.write_text(json.dumps(summary), encoding="utf-8")
     old = {pid: cmp.load_person(pid, tmp_path, refresh=False) for pid in fresh}  # the saved schema-3 files are used as they are
     assert all(p.included and p.analysis_source == "saved" and p.index == fresh[pid].index for pid, p in old.items())
     result = cmp.compare(["S01"], ["S02"], tmp_path, n_boot=50, refresh=False)
     assert result.comparable and all(p.analysis_source == "saved" for p in result.people)
-    assert cmp.load_person("S01", tmp_path).analysis_source.startswith("re-analysed")  # refresh=True brings a schema-3 file up to schema 4
+    assert cmp.load_person("S01", tmp_path).analysis_source.startswith("re-analysed")  # refresh=True brings a schema-3 file up to the current schema
+    path = tmp_path / "S01" / "analysis" / "summary.json"  # a schema-4 file (no secondary index) is used as it is too
+    summary = json.loads(path.read_text())
+    summary.pop("secondary_onset_window")
+    summary["schema_version"] = 4
+    path.write_text(json.dumps(summary), encoding="utf-8")
+    four = cmp.load_person("S01", tmp_path, refresh=False)
+    assert four.included and four.analysis_source == "saved" and four.index == fresh["S01"].index
+    assert "schema_version 4, expected 5" in cmp.load_person("S01", tmp_path).analysis_source
 
 
 def test_end_to_end_single_vs_return_jump_is_refused(tmp_path):

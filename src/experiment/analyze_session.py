@@ -17,7 +17,7 @@ What they define and callers used from here is re-exported below, so `analyze_se
 import argparse
 import json
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
@@ -60,6 +60,7 @@ from src.experiment.flash_gates import (  # noqa: F401 (re-exported)
     SACCADE,
     classify_flashes,
     classify_leg_flash,
+    onset_window_gates,
     summarize_gates,
 )
 from src.experiment.gaze_timeline import plot_gaze_timeline
@@ -92,6 +93,7 @@ from src.experiment.suppression_stats import (  # noqa: F401 (re-exported)
     _weibull,
     fisher_p,
     fit_pair_with_slope,
+    onset_window_index,
     summarize,
     suppression_index,
     wilson,
@@ -133,6 +135,7 @@ class RunAnalysis:
     trials: list[TrialSaccades] | None = None  # return-jump runs: each flash's trial saccades (None for other runs)
     by_leg: dict | None = None  # return-jump runs: suppression_by_leg()
     return_latency: dict | None = None  # return-jump runs: return_latency_stats()
+    onset_gates: list = field(default_factory=list)  # the secondary index's conditions per flash (flash_gates.onset_window_gates)
 
     @property
     def return_jump(self) -> bool:
@@ -190,22 +193,27 @@ def analyze_run(
     trials = find_trial_saccades(flashes, saccades) if is_return_jump(flashes) else None
     if trials is None:
         placed = place_flashes(flashes, saccades, flash_delay_ms)
-        gates = classify_flashes(placed, saccades, t, x, flash_delay_ms, [p.flash.go_cue for p in placed])
+        go_cues = [p.flash.go_cue for p in placed]
+        gates = classify_flashes(placed, saccades, t, x, flash_delay_ms, go_cues)
+        any_speed = classify_flashes(placed, saccades, t, x, flash_delay_ms, go_cues, min_speed=0.0)
     else:
         placed = place_leg_flashes(flashes, trials, flash_delay_ms)
         gates = classify_leg_flashes(placed, trials, saccades, t, x, flash_delay_ms)
+        any_speed = classify_leg_flashes(placed, trials, saccades, t, x, flash_delay_ms, min_speed=0.0)
+    onset_gates = onset_window_gates(placed, any_speed)
     summary = summarize(placed, saccades)
     summary["gates"] = summarize_gates(placed, gates)
     suppression = suppression_index(placed, near_ms, far_ms, gates=gates)
     summary["suppression"] = suppression
     summary["timecourse"] = timecourse_curve(placed, gates)
     summary["companion"] = companion_numbers(placed, gates, suppression)
+    summary["secondary_onset_window"] = onset_window_index(placed, onset_gates)
     meta = meta or {}
     try:
         geometry_line = format_geometry(meta.get("settings"))
     except (AttributeError, KeyError):
         geometry_line = None
-    run = RunAnalysis(ref, meta, t, x, saccades, placed, gates, summary, suppression, geometry_line)
+    run = RunAnalysis(ref, meta, t, x, saccades, placed, gates, summary, suppression, geometry_line, onset_gates=onset_gates)
     if trials is not None:
         by_leg = suppression_by_leg(placed, gates, near_ms=near_ms, far_ms=far_ms)
         by_leg["pooled"] = suppression  # identical computation; keep the one object
@@ -241,7 +249,7 @@ def analyze(
         leg_flashes = {leg: sum((p.flash.leg or "out") == leg for p in placed) for leg in LEGS}
     report = format_report(summary, label=f"(session {stamp})", geometry=run.geometry_line, thresholds=thresholds, test_run=run.is_test,
                            quality=run.quality_line(), leg_flashes=leg_flashes, speed=speed_exclusions(placed, gates))
-    saved = {**suppression, "companion": summary["companion"], "timecourse": summary["timecourse"]}
+    saved = {**suppression, "companion": summary["companion"], "timecourse": summary["timecourse"], "secondary_onset_window": summary["secondary_onset_window"]}
     if run.return_jump:
         assert run.return_latency is not None and run.by_leg is not None  # always set for return-jump runs
         saved = {**saved, "by_leg": {leg: run.by_leg[leg] for leg in LEGS}, "return_latency": run.return_latency}
