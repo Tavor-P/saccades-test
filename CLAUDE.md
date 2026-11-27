@@ -24,14 +24,16 @@ backend. Participant/experimenter docs: [README.md](README.md).
   Sim (`--set ONSET_TRIGGER_DEFAULT=true`; 150 trials, 5 seeds, return latency 207 +- 118 ms, default participant): analysis saccade-gate flashes 29 off, 60 at 1/3, 78 at 1/2; fixation-gate 57 / 45 / 40; triggered flashes 41-61 ms
   after the TRUE onset (median ~50). The sim's saccades last ~110 ms: with 45-60 ms saccades 38 of 41 triggered flashes are still in flight, with 30-40 ms only 5, so check real saccade durations first. Unvalidated on glasses.
 - **Return jump** (dialog "Return jump", default `RETURN_JUMP_DEFAULT` on): after the out saccade the target jumps back to the start symbol (`RETURN_JUMP_TRIGGER` "arrival" (default)
-  or "onset"; `RETURN_JUMP_LANDING_TIMEOUT_MS` forces it: the main trials' rule; tutorial practice and the saccade phase's RT test/practice instead wait for a continuous stay of
-  `RETURN_JUMP_DWELL_MS` 400 on the target, `trial_legs.ArrivalDwell` - the RT test with or without return jump, its latency still measured at onset; those practice
-  trials add no return latencies, so the main block's return average starts empty; "arrival" itself fires ~19 ms before the true landing in the simulator), so
+  or "onset"; `RETURN_JUMP_LANDING_TIMEOUT_MS` forces it, plus the stay if the eye had arrived). "arrival" waits for a continuous stay on the target (`trial_legs.ArrivalDwell`): main trials draw it per trial from
+  `RETURN_JUMP_MAIN_DWELL_MIN_MS`-`MAX_MS` 25-50 (trials.csv `jump_back_dwell_ms`; their return latencies feed the return average, and their return leg is listened to only from the completed stay, so a corrective
+  saccade during it is no return); "onset" main trials never wait. Tutorial practice and the saccade phase's RT test/practice wait the fixed `RETURN_JUMP_DWELL_MS` 400 with either trigger (the RT test with or without
+  return jump, its latency still measured at onset); those practice trials add no return latencies, so the main block's return average starts empty. Pooling does NOT separate runs from before the main-trial stay
+  (jump on the first in-target sample, no `jump_back_dwell_ms`) from newer ones (same run kind). With the jump,
   each trial has an out and a return saccade but still ONE flash: `RETURN_LEG_FLASH_FRACTION` 0.8 on the return leg (timed
   from the jump frame, spread `RETURN_FLASH_SPREAD_SD_MS` 110, from one real 150-trial run's return-latency robust SD of 118 ms; recheck on more runs), else the out leg. trials.csv: `flash_leg`, `out_arrival_ms_after_go_cue`, signed `return_reaction_ms`
   (negative = left before the jump), `left_target_before_jump`. `analyze_session` gates each flash against its own leg's saccade (return must move back >= half the out amplitude),
   reports out / return / pooled indices and a return-latency report; summary.json schema 6 (3 added `analysis_thresholds`, 4 `companion` + `timecourse`, 5 `secondary_onset_window`, 6 `saccade_metrics`) pools only one run kind (`single` | `return_jump/<trigger>`); `compare` refuses mixed kinds.
-  Simulator `ParticipantProfile.return_mode="learned"` = predictive returns. Tests: `tests/ai-tests/test_return_jump.py`, `test_return_analysis.py` (`sim_runs.py` writes simulated runs as folders). Sim (150 trials, 5 seeds): valid in-saccade flashes 36 at spread 40 vs 22 at 110 with the default sim return latencies (narrower than real), 17 vs 16 with return latency 207 +- 118 ms; without the jump ~20 (older figure). Unvalidated on glasses.
+  Simulator `ParticipantProfile.return_mode="learned"` = predictive returns. Tests: `tests/ai-tests/test_return_jump.py`, `test_return_analysis.py` (`sim_runs.py` writes simulated runs as folders). Sim (150 trials, 5 seeds, before the main-trial stay): valid in-saccade flashes 36 at spread 40 vs 22 at 110 with the default sim return latencies (narrower than real), 17 vs 16 with return latency 207 +- 118 ms; without the jump ~20 (older figure). Unvalidated on glasses.
 
 ## Rules (read first)
 
@@ -91,6 +93,8 @@ Double-click launchers: `run_experiment.bat` in the repo root; `analyze_latest.b
   5th nearest flash, 20-150 ms, dashed where widened, no curve past the outermost flash) so ~10 flashes per contrast still draw a curve. Plot only: plot.png, summary.json and the index are unchanged.
 - **2026-11-27**: line offset back to 2 deg (3 deg was hard to see), contrasts 2/3/4 %, optional onset-triggered flashes (off by default), practice/RT-test dwell before the swap back,
   saccade metrics section (summary.json schema 6). Before switching onset-triggered flashes on, read the real saccade durations in the saccade metrics of a glasses run.
+- **2026-11-27, trial timing**: foreperiod 250-1500 ms (was 500-1000: 10 of 30 real out saccades were anticipations < 80 ms) and a random 25-50 ms stay on the target before the jump back in main trials (the
+  participant saw it jump back the moment they reached it). Neither is validated on glasses; the simulator cannot show whether anticipations drop. `RETURN_FLASH_SPREAD_SD_MS` 110 was measured without the stay: recheck it.
 - **Shipped setup**: flash times on a bell curve centred on the average RT (SD `FLASH_SPREAD_SD_MS` 80, dialog "Flash timing spread"), cut to 0-500 ms after the go cue; controls at avg RT +400/+500 +/-10 ms;
   fixed saccade contrasts; plain Neon, chin rest. Onboarding: calibration -> quiz -> 8 practice trials seeding the RT average. Every trial waits for SPACE.
 - **Simulation 2026-11-22** (code not kept): shifting the bell curve's centre earlier than the average RT gains almost nothing in the 50 ms before onset (spread is ~110 ms SD anyway; beyond -20 ms
@@ -219,7 +223,7 @@ Paths are checked by `tests/test_docs.py` - keep them real.
 
 SPACE presses are never silently dropped; every ignored one is counted in `session.space_tally` (phase + reason) and saved as `ignored_space_presses`.
 - Calibration: one press suffices; if `average_recent_ratio()` is still `None` it is latched and `tick()` completes the step when the window is full ("TRACKING LOST?" after 3 s).
-- Trials: accepted in `AWAITING_SPACE`; the swap follows `FOREPERIOD_MIN_MS`-`FOREPERIOD_MAX_MS` (500-1000 ms). Ignored during the foreperiod. **Forced choice, no answer deadline**: UP/DOWN counts from the flash until the trial ends
+- Trials: accepted in `AWAITING_SPACE`; the swap follows `FOREPERIOD_MIN_MS`-`FOREPERIOD_MAX_MS` (250-1500 ms). Ignored during the foreperiod. **Forced choice, no answer deadline**: UP/DOWN counts from the flash until the trial ends
   (`answer_ms` can be many seconds). A trial ends once the flash has fired, the movements are over (final landing or `SACCADE_TIMEOUT_MS`; `TrialLegs.movement_over`) AND it is answered; only one that reaches the timeout
   with no saccade on the flash's leg ends by itself ('timeout'), so new runs have no `no_answer`. During a running trial SPACE is carried over to start the next one once answered, else ignored and not latched: after the flash
   (`AnswerFirst`) it is tallied as not answered yet and `ANSWER_FIRST` is shown and spoken until the trial ends. That press is judged on the next tick, so an answer in the same frame counts. Same rules in tutorial practice.
@@ -230,7 +234,7 @@ SPACE presses are never silently dropped; every ignored one is counted in `sessi
 ## Tutorial hand-off and narration
 
 - Tutorial calibration ratios and RT samples (`precomputed_calibration_ratios`, `precomputed_rt_samples_ms`) go to `run_saccade_phase`, which then skips calibration/RT test/practice and seeds `RollingReactionTime`
-  (return-latency samples are handed over too, but stay empty while `RETURN_JUMP_DWELL_MS` > 0).
+  (return-latency samples are handed over too, but practice trials add none while `RETURN_JUMP_DWELL_MS` > 0; main trials do add theirs).
 - `update_caption()` shows and speaks in lockstep (`narrate_if_changed`); it re-speaks on every text change, so narrated strings stay under ~15 words and are never repeated. A new line replaces older speech (`Narrator.speak`), so skipped screens are not read afterwards; blank text keeps the old caption and lets its line finish; `hide_caption` turning on cuts it off (`silence()`). The head warning is queued (`interrupt=False`) after the frame's caption. `hide_caption` is True in real main trials except while the answer reminder is up; the HUD is Test-mode only.
 
 ## Gotchas that cost real debugging time

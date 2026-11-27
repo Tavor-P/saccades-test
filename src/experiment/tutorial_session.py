@@ -43,7 +43,7 @@ class Phase(Enum):
     CALIBRATE_RIGHT = auto()
     QUIZ = auto()  # "how to answer": mixed line sides, streak-gated
     PRACTICE_INTRO = auto()  # "practice lines are clear, real ones fainter"; SPACE starts the first attempt
-    PRACTICE_AWAITING_SPACE = auto()  # each attempt waits for SPACE; the foreperiod (500-1000 ms) starts on the press
+    PRACTICE_AWAITING_SPACE = auto()  # each attempt waits for SPACE; the foreperiod (FOREPERIOD_MIN_MS..MAX_MS) starts on the press
     PRACTICE_FOREPERIOD = auto()
     PRACTICE_ACTIVE = auto()
     COMPLETE = auto()

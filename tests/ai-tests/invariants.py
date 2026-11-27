@@ -273,6 +273,11 @@ def _check_return_jump_row(r, tag: str, return_jump: bool, trigger: str = "arriv
         v.append(f"{tag}: left_target_before_jump without an out arrival")
     if arrival is not None and (arrival < 0 or (not r.jump_back_forced and trigger == "arrival" and arrival > jump + 1e-6)):
         v.append(f"{tag}: out arrival {arrival:.1f} ms impossible (jump at {jump:.1f}, forced={r.jump_back_forced})")
+    dwell = r.jump_back_dwell_ms
+    if (dwell is not None) != (trigger == "arrival"):
+        v.append(f"{tag}: jump_back_dwell_ms {dwell!r} with trigger {trigger!r}")
+    elif dwell is not None and not r.jump_back_forced and (arrival is None or jump - arrival < dwell - 1e-6):
+        v.append(f"{tag}: jump at {jump:.1f} ms, less than the {dwell:.0f} ms stay after the out arrival ({arrival})")
     if r.scheduled_delay_ms is not None and r.flash_shown:
         if r.flash_leg == "return" and r.scheduled_delay_ms < jump - 1e-6:
             v.append(f"{tag}: return-leg flash at {r.scheduled_delay_ms:.1f} ms, before the jump-back at {jump:.1f} ms")

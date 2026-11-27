@@ -125,3 +125,7 @@ class TrialResult:
     # flashes"). An 'onset' row without a flash had no detected onset to trigger on. For shown 'onset' flashes
     # scheduled_delay_ms is still flash minus go cue; timing_offset_ms / avg_rt_used_ms are None (nothing was scheduled).
     flash_trigger: str | None = None
+    # Return-jump trials with the "arrival" trigger: this trial's drawn dwell (ms), the continuous stay on the target the
+    # jump back waited for (RETURN_JUMP_MAIN_DWELL_MIN_MS..MAX_MS; a forced jump may have come without it). None with the
+    # setting off, with the "onset" trigger, in rt_test rows and in CSVs logged before it existed.
+    jump_back_dwell_ms: float | None = None

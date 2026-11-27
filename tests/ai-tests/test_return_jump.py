@@ -16,6 +16,8 @@ from include.experiment.constants import (
     RETURN_JUMP_DEFAULT,
     RETURN_JUMP_DWELL_MS,
     RETURN_JUMP_LANDING_TIMEOUT_MS,
+    RETURN_JUMP_MAIN_DWELL_MAX_MS,
+    RETURN_JUMP_MAIN_DWELL_MIN_MS,
     RETURN_LEG_FLASH_FRACTION,
     SACCADE_ONSET_STABILITY_MS,
     TIMING_OFFSETS_MS,
@@ -34,6 +36,13 @@ from src.experiment.tutorial_session import TutorialSession
 pytestmark = pytest.mark.usefixtures("no_flash_jitter")
 
 AVG_RT_MS = 200.0
+
+
+@pytest.fixture(autouse=True)
+def no_main_dwell(monkeypatch):
+    """Main trials jump back on arrival, so a test can step through a trial; the dwell has its own test."""
+    monkeypatch.setattr(session_module, "RETURN_JUMP_MAIN_DWELL_MIN_MS", 0)
+    monkeypatch.setattr(session_module, "RETURN_JUMP_MAIN_DWELL_MAX_MS", 0)
 
 
 def _session(
@@ -221,8 +230,12 @@ def _finish(session, fake_gaze, fake_time) -> TrialResult:
     return row
 
 
-def test_the_default_trigger_is_arrival_and_jumps_on_the_first_in_target_sample(fake_gaze, fake_time):
+def test_the_default_trigger_is_arrival_and_main_trials_jump_after_a_drawn_stay_on_the_target(fake_gaze, fake_time, monkeypatch):
+    """Also guards the return leg's start: listened to during the stay, a corrective saccade there would be logged as a
+    return made long before the jump and drag the return average along."""
     assert session_module.RETURN_JUMP_TRIGGER == "arrival"
+    monkeypatch.setattr(session_module, "RETURN_JUMP_MAIN_DWELL_MIN_MS", RETURN_JUMP_MAIN_DWELL_MIN_MS)
+    monkeypatch.setattr(session_module, "RETURN_JUMP_MAIN_DWELL_MAX_MS", RETURN_JUMP_MAIN_DWELL_MAX_MS)
     session = _session(fake_gaze, leg="return")
     go = _go(session, fake_time)
     fake_time(0.15)
@@ -230,18 +243,34 @@ def test_the_default_trigger_is_arrival_and_jumps_on_the_first_in_target_sample(
     session.tick()
     fake_time(SACCADE_ONSET_STABILITY_MS / 1000 + 0.01)
     session.tick()
-    assert session._jump_at is None  # onset alone does not trigger "arrival"
     fake_gaze.zone = GazeZone.RIGHT
     session.tick()
     arrival = session._clock.now()
-    assert session._jump_at == pytest.approx(arrival)  # no 150 ms landing debounce any more
-    assert session._landed  # the out landing, in return-jump mode
+    dwell = session._legs.dwell.dwell_ms / 1000
+    assert RETURN_JUMP_MAIN_DWELL_MIN_MS <= dwell * 1000 <= RETURN_JUMP_MAIN_DWELL_MAX_MS
+    assert session._jump_at is None and session._landed  # the arrival is still the out landing
+    fake_time(0.002)
+    fake_gaze.position = 0.9  # a corrective saccade towards the start, still inside the target zone
+    session.tick()
+    fake_time(SACCADE_ONSET_STABILITY_MS / 1000 + 0.001)  # long enough to confirm an onset, shorter than any stay
+    session.tick()
+    fake_gaze.position = None
+    session.tick()
+    fake_time(arrival + dwell - 0.003 - session._clock.now())
+    session.tick()
+    assert session._jump_at is None
+    fake_time(0.005)
+    session.tick()
+    jump = session._jump_at
+    assert jump is not None and session._jump_forced is False
     fake_time(0.1)
     row = _finish(session, fake_gaze, fake_time)
     assert row.out_arrival_ms_after_go_cue == pytest.approx((arrival - go) * 1000)
-    assert row.jump_back_ms_after_go_cue == pytest.approx((arrival - go) * 1000)
+    assert row.jump_back_ms_after_go_cue == pytest.approx((jump - go) * 1000)
+    assert row.jump_back_dwell_ms == pytest.approx(dwell * 1000)
     assert row.left_target_before_jump is False
     assert row.return_reaction_ms == pytest.approx(100.0)
+    assert session.return_rt_samples_ms == pytest.approx([100.0])  # main-trial returns feed the return average
 
 
 def test_the_onset_trigger_jumps_at_the_confirmed_out_onset_and_still_measures_the_return(fake_gaze, fake_time, monkeypatch):
@@ -263,6 +292,7 @@ def test_the_onset_trigger_jumps_at_the_confirmed_out_onset_and_still_measures_t
     fake_time(0.12)
     session.tick()
     row = _finish(session, fake_gaze, fake_time)  # then turns back
+    assert row.jump_back_dwell_ms is None  # "onset" jumps mid-saccade: no stay to wait for
     assert row.jump_back_forced is False and row.out_arrival_ms_after_go_cue is not None
     assert row.return_reaction_ms == pytest.approx(150.0)
     assert row.left_target_before_jump is False  # it arrived only after the jump
@@ -374,7 +404,7 @@ def test_the_new_columns_round_trip_and_old_csvs_without_them_still_load(tmp_pat
             flash_shown=True, contrast=0.06, line_side=Side.BELOW, responded=True,
             answer_side=Side.BELOW, response_time_ms=300.0, outcome="correct",
             flash_leg="return", jump_back_ms_after_go_cue=412.5, return_reaction_ms=-18.25, jump_back_forced=False,
-            out_arrival_ms_after_go_cue=260.0, left_target_before_jump=True,
+            out_arrival_ms_after_go_cue=260.0, left_target_before_jump=True, jump_back_dwell_ms=312.5,
         )
     )
     log.close()
@@ -387,10 +417,11 @@ def test_the_new_columns_round_trip_and_old_csvs_without_them_still_load(tmp_pat
     assert back.jump_back_ms_after_go_cue == pytest.approx(412.5) and back.return_reaction_ms == pytest.approx(-18.25, abs=0.1)
     assert back.out_arrival_ms_after_go_cue == pytest.approx(260.0) and back.left_target_before_jump is True
     assert rows[0]["left_target_before_jump"] == "yes"
+    assert back.jump_back_dwell_ms == pytest.approx(312.5)
 
     new_columns = (
         "flash_leg", "jump_back_ms_after_go_cue", "return_reaction_ms", "jump_back_forced",
-        "out_arrival_ms_after_go_cue", "left_target_before_jump",
+        "out_arrival_ms_after_go_cue", "left_target_before_jump", "jump_back_dwell_ms",
     )
     old_fields = [name for name in rows[0] if name not in new_columns]
     old_path = tmp_path / "old_trials.csv"
@@ -402,6 +433,7 @@ def test_the_new_columns_round_trip_and_old_csvs_without_them_still_load(tmp_pat
     assert old.flash_leg is None and old.jump_back_ms_after_go_cue is None
     assert old.return_reaction_ms is None and old.jump_back_forced is None
     assert old.out_arrival_ms_after_go_cue is None and old.left_target_before_jump is None
+    assert old.jump_back_dwell_ms is None
 
 
 # -- tutorial practice ---------------------------------------------------------

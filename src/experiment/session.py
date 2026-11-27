@@ -31,6 +31,8 @@ from include.experiment.constants import (
     RETURN_FLASH_SPREAD_SD_MS,
     RETURN_JUMP_DWELL_MS,
     RETURN_JUMP_LANDING_TIMEOUT_MS,
+    RETURN_JUMP_MAIN_DWELL_MAX_MS,
+    RETURN_JUMP_MAIN_DWELL_MIN_MS,
     RETURN_JUMP_TRIGGER,
     RETURN_LEG_FLASH_FRACTION,
     SACCADE_FIXED_CONTRASTS,
@@ -76,7 +78,7 @@ class Phase(Enum):
     RT_TEST_FOREPERIOD = auto()
     RT_TEST_ACTIVE = auto()
     AWAITING_SPACE = auto()  # fixation symbol shown; the participant presses SPACE when ready for the next trial
-    FOREPERIOD = auto()  # 500-1000 ms after SPACE: only the current fixation symbol shown; target not revealed yet
+    FOREPERIOD = auto()  # FOREPERIOD_MIN_MS..MAX_MS after SPACE: only the current fixation symbol shown; target not revealed yet
     TRIAL_ACTIVE = auto()
     COMPLETE = auto()
 
@@ -567,7 +569,7 @@ class ExperimentSession:
 
     def _begin_foreperiod(self) -> None:
         """Shows the current fixation symbol and waits for the participant's SPACE; the
-        500-1000 ms foreperiod before the swap starts on the press (_start_foreperiod)."""
+        foreperiod (FOREPERIOD_MIN_MS..MAX_MS) before the swap starts on the press (_start_foreperiod)."""
         self._clear_trial_state()
         self._phase = Phase.AWAITING_SPACE
         # Explicit: the previous phase may have been the RT test, which tracks no TrialSpec.
@@ -591,7 +593,7 @@ class ExperimentSession:
         self._feed.last_sample_ts = self._gaze.latest_sample().timestamp
         self._legs = TrialLegs(
             zone_for(trial.source), zone_for(trial.target), self._trial_start_time, trigger=self._return_jump_trigger,
-            dwell_ms=RETURN_JUMP_DWELL_MS if trial.practice else 0,
+            dwell_ms=self._jump_dwell_ms(trial),
         )
         # Open-loop: the flash fires at a fixed delay from this instant, not when the gaze classifier detects onset. The
         # average is always set here: the RT test (or seeded samples) comes first. A return-leg flash is scheduled the same
@@ -610,6 +612,15 @@ class ExperimentSession:
         self._trial_avg_rt_ms = self._avg_reaction_time_ms
         self._trial_scheduled_delay_ms = self._flash_delay_ms(trial, self._average_ms)
         self._flash_scheduled_at = self._trial_start_time + ms_to_s(self._trial_scheduled_delay_ms)
+
+    def _jump_dwell_ms(self, trial: TrialSpec) -> float:
+        """How long the eye must stay on the target before the jump back: fixed in practice, drawn per main trial with the
+        "arrival" trigger, else 0 (return jump off, or "onset", which jumps mid-saccade)."""
+        if trial.practice:
+            return RETURN_JUMP_DWELL_MS
+        if self._return_jump and self._return_jump_trigger == "arrival":
+            return random.uniform(RETURN_JUMP_MAIN_DWELL_MIN_MS, RETURN_JUMP_MAIN_DWELL_MAX_MS)
+        return 0
 
     def _flash_delay_ms(self, trial: TrialSpec, average_ms: float, sd_ms: float | None = None) -> float:
         """Delay (ms) from the leg's start (go cue or jump back) to the flash. A TIMING_OFFSETS_MS label picks a slice of a
@@ -740,12 +751,13 @@ class ExperimentSession:
         if forced is not None:
             self._jump_back(trial, now, forced=forced)
 
-        # The return leg is listened to from the out arrival (or the jump, if that came first): a predictive return
-        # saccade may start BEFORE the jump frame (negative return latency), e.g. while a late out-leg flash holds the jump.
+        # A return saccade may start BEFORE the jump frame (negative return latency), e.g. while a late out-leg flash holds
+        # the jump; from when the return leg is listened to: TrialLegs.
         return_latency_ms = legs.track_return(new_samples)
-        if return_latency_ms is not None and not legs.jump_forced and legs.dwell is None:
-            # After a forced jump the eye may not be on the target: no clean return latency. After a practice dwell the
-            # movement is not the main trials' one (RETURN_JUMP_DWELL_MS).
+        practice_dwell = trial.practice and legs.dwell is not None
+        if return_latency_ms is not None and not legs.jump_forced and not practice_dwell:
+            # After a forced jump the eye may not be on the target: no clean return latency. Practice trials with a dwell
+            # add none either (RETURN_JUMP_DWELL_MS).
             self._return_rt.add(return_latency_ms)
 
     def _jump_back(self, trial: TrialSpec, now: float, forced: bool) -> None:

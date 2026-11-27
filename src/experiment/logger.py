@@ -105,6 +105,7 @@ TRIAL_COLUMNS: list[Column] = [
     Column("flash_ms_after_go_cue", "scheduled_delay_ms", lambda r: _num(r.scheduled_delay_ms)),
     Column("out_arrival_ms_after_go_cue", "out_arrival_ms_after_go_cue", lambda r: _num(r.out_arrival_ms_after_go_cue)),
     Column("jump_back_ms_after_go_cue", "jump_back_ms_after_go_cue", lambda r: _num(r.jump_back_ms_after_go_cue)),
+    Column("jump_back_dwell_ms", "jump_back_dwell_ms", lambda r: _num(r.jump_back_dwell_ms)),
     Column("reaction_ms", "reaction_latency_ms", lambda r: _num(r.reaction_latency_ms)),
     Column("return_reaction_ms", "return_reaction_ms", lambda r: _num(r.return_reaction_ms)),
     Column("answer_ms", "response_time_ms", lambda r: _num(r.response_time_ms)),
@@ -208,6 +209,7 @@ def trial_from_row(row: dict) -> TrialResult:
         out_arrival_ms_after_go_cue=_parse_float(row.get("out_arrival_ms_after_go_cue")),
         left_target_before_jump=_parse_optional_bool(row.get("left_target_before_jump")),
         flash_trigger=row.get("flash_trigger") or None,
+        jump_back_dwell_ms=_parse_float(row.get("jump_back_dwell_ms")),
     )
 
 
@@ -257,6 +259,8 @@ _SETTINGS_CONSTANTS = {
         "RETURN_LEG_FLASH_FRACTION",
         "RETURN_JUMP_LANDING_TIMEOUT_MS",
         "RETURN_JUMP_TRIGGER",
+        "RETURN_JUMP_MAIN_DWELL_MIN_MS",
+        "RETURN_JUMP_MAIN_DWELL_MAX_MS",
         "RETURN_FLASH_SPREAD_SD_MS",
         "ONSET_TRIGGER_FRACTION",
         "ONSET_TRIGGER_DELAY_MS",

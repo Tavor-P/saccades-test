@@ -62,4 +62,5 @@ def saccade_trial_result(  # noqa: PLR0913 - one arg per CSV column
         out_arrival_ms_after_go_cue=legs.ms_after_go_cue(legs.out_arrived_at),
         left_target_before_jump=legs.left_target_before_jump(),
         flash_trigger=trial.flash_trigger,
+        jump_back_dwell_ms=legs.dwell.dwell_ms if legs.dwell is not None else None,
     )

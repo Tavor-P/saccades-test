@@ -116,7 +116,7 @@ class ParticipantProfile:
     # Direction dependence: dot->cross (rightward) saccades are this much slower than cross->dot
     # ones; split +-half around the mean so the overall mean is unchanged.
     reaction_dir_offset_ms: float = 0.0
-    # Return jump (the target jumps back once the out landing is confirmed): latency from the jump-back to the
+    # Return jump (the target jumps back after the out saccade, see RETURN_JUMP_TRIGGER): latency from the jump-back to the
     # return saccade's start. None = 0.8 x reaction_ms_mean / 0.6 x reaction_ms_sd - A GUESS (a second, predictable
     # jump back to a just-seen place should be faster and less variable), not measured on this setup.
     return_reaction_ms_mean: float | None = None

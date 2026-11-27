@@ -76,10 +76,11 @@ BELOW_RESPONSE_KEYS = ("down",)
 # turned slow answers into misses; allowing a skip let unseen flashes go unanswered instead of guessed).
 
 # Every trial waits for the participant to press SPACE (that wait is the built-in break); the
-# target (go-cue) then appears after a foreperiod randomized 500-1000ms from the press, during
+# target (go-cue) then appears after a foreperiod randomized 250-1500ms from the press, during
 # which the observer fixates. (Diamond, Ross & Morrone 2000 used 800-1200ms after a warning tone.)
-FOREPERIOD_MIN_MS = 500
-FOREPERIOD_MAX_MS = 1000
+# Was 500-1000: easy to predict, and 10 of 30 out saccades in a real run were anticipations (latency < 80 ms).
+FOREPERIOD_MIN_MS = 250
+FOREPERIOD_MAX_MS = 1500
 
 SACCADE_TIMEOUT_MS = 15_000  # force-advance a trial if gaze never lands (broken tracking)
 # A flash-shown trial is flagged tracking_ok=False (and excluded from
@@ -194,8 +195,8 @@ ONSET_TRIGGER_FRACTION = 1 / 3
 # Extra wait after the onset is detected (ms). 0 = the very next frame; raise it to probe later in the saccade.
 ONSET_TRIGGER_DELAY_MS = 0
 
-# Return-jump trials (startup dialog "Return jump", first-time default RETURN_JUMP_DEFAULT): once the live classifier sees the
-# eye arrive at the saccade target (or leave the start, see RETURN_JUMP_TRIGGER), the target jumps straight back to where the eye started (the target symbol disappears and
+# Return-jump trials (startup dialog "Return jump", first-time default RETURN_JUMP_DEFAULT): once the live classifier has seen
+# the eye stay on the saccade target (or leave the start, see RETURN_JUMP_TRIGGER), the target jumps back to where the eye started (the target symbol disappears and
 # the start symbol reappears), the participant looks back, and only then the trial waits for the UP/DOWN answer. Each trial
 # still flashes exactly once, on the OUT leg (go cue -> target) or the RETURN leg (jump-back -> start symbol). The return
 # leg gives a second, largely free saccade per trial; it is scheduled off its own rolling return-latency average.
@@ -206,9 +207,11 @@ RETURN_JUMP_DEFAULT = True
 # gets most because its flashes come on top of the out leg's. A guess: re-decide after the first glasses runs.
 RETURN_LEG_FLASH_FRACTION = 0.8
 # What makes the target jump back (the jump-back frame is the return leg's start, logged as jump_back_ms_after_go_cue):
-#   "arrival": the first live gaze sample inside the target zone. That zone starts ~60 % of the way (GAZE_DEAD_ZONE), so
-#              this can be before the eye has stopped: in the simulator (~90 ms flight, 16 ms gaze delay) the jump comes
-#              ~19 ms before the true landing, ~90 % of the way, about one frame before it is visible.
+#   "arrival": the eye has arrived and STAYED on the target: a continuous stay in the target zone for a dwell drawn per
+#              trial from RETURN_JUMP_MAIN_DWELL_MIN_MS..MAX_MS (practice: RETURN_JUMP_DWELL_MS). It used to jump on the
+#              first in-zone sample, ~19 ms before the true landing in the simulator, and the participant reported the
+#              target flashing back the moment they reached it. With the stay the jump comes roughly at the landing to
+#              ~30 ms after it (simulator).
 #   "onset":   the out saccade's confirmed onset, the same OnsetDetector rule the RT test uses to hide its cross. The jump
 #              is drawn ~25 ms after the real onset, i.e. MID-saccade: the eye lands where the target used to be.
 # Either way the jump never comes before an out-leg flash has been drawn (it waits for it). "arrival" for now; the user picks.
@@ -217,15 +220,22 @@ RETURN_JUMP_TRIGGER = "arrival"
 # 1500 ms: a slow reaction (~500 ms) + saccade (~50) + gaze delay (~20) is ~600 ms, and a hypometric first saccade needs
 # another ~200-300 ms for its correction; 1500 leaves room for both without letting a lost track stall the trial.
 RETURN_JUMP_LANDING_TIMEOUT_MS = 1500
-# Practice and reaction-time-test trials only (tutorial practice, the saccade phase's RT test and practice): the symbols swap
+# Practice and reaction-time-test trials (tutorial practice, the saccade phase's RT test and practice): the symbols swap
 # back only after the eye has stayed on the target this long without a break. Without it the target left again while a
 # first-timer was still looking (the RT test reset it at the confirmed ONSET, mid-flight). 400 ms: long enough to finish
 # a corrective saccade and see the target, short enough not to drag. Replaces RETURN_JUMP_TRIGGER in those trials
 # (0 = no wait in return-jump practice). An eye never seen on the target: RETURN_JUMP_LANDING_TIMEOUT_MS still forces the
-# jump (an eye that arrived but did not stay gets this long on top). Main trials never wait: their return leg and its
-# flash start at the jump frame. Return latencies after such a wait are not added to the return average (answering a late
-# jump is not the main trials' movement).
+# jump (an eye that arrived but did not stay gets this long on top). Return latencies of these practice trials are not
+# added to the return average.
 RETURN_JUMP_DWELL_MS = 400
+# Main trials, "arrival" trigger: the same continuous stay, its length drawn per trial, uniform over this range (too narrow
+# to stop a participant anticipating the jump). Logged as jump_back_dwell_ms. The return leg and its
+# flash still start at the jump frame, and these return latencies feed the return average. The return-leg detectors start
+# listening when the stay is complete, so a corrective saccade during the stay is not taken for the return saccade.
+# 25-50 ms (the user's choice): a short extra moment on the target; gaze runs at ~200 Hz, so 25 ms is about 5 samples.
+# "onset" main trials do not wait: that trigger exists to jump mid-saccade. Not yet run on glasses.
+RETURN_JUMP_MAIN_DWELL_MIN_MS = 25
+RETURN_JUMP_MAIN_DWELL_MAX_MS = 50
 # Return-leg flash timing: a bell curve like FLASH_SPREAD_SD_MS's, centred on the rolling return-latency average and cut to
 # FLASH_WINDOW_MIN_MS..FLASH_WINDOW_MAX_MS after the JUMP-BACK frame. Set from a measurement: one real 150-trial glasses
 # run, return-latency robust SD 118 ms (median 207 ms). The first guess, 40, expected a practised, predictable return to vary
