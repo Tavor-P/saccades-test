@@ -34,6 +34,9 @@ class TrialSpec:
     # trials predating this field, or for anything that doesn't use open-loop
     # scheduling. See ExperimentSession._tick_trial_active.
     timing_offset_ms: int | None = None
+    # 'scheduled' (the open-loop delay above) or 'onset': flashed when the live onset detector fires on the flash's
+    # leg (ONSET_TRIGGER_FRACTION; such a trial has no timing_offset_ms).
+    flash_trigger: str = "scheduled"
 
 
 @dataclass
@@ -117,3 +120,8 @@ class TrialResult:
     jump_back_forced: bool | None = None
     out_arrival_ms_after_go_cue: float | None = None
     left_target_before_jump: bool | None = None
+    # Saccade phase, every row (None in rt_test rows and CSVs logged before it existed): what the trial's flash was timed
+    # by, 'scheduled' (open-loop delay) or 'onset' (the live onset on the flash's leg, run setting "Onset-triggered
+    # flashes"). An 'onset' row without a flash had no detected onset to trigger on. For shown 'onset' flashes
+    # scheduled_delay_ms is still flash minus go cue; timing_offset_ms / avg_rt_used_ms are None (nothing was scheduled).
+    flash_trigger: str | None = None

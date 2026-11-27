@@ -124,6 +124,10 @@ def summarize(sim: SimulationResult) -> dict:
         if r.avg_rt_used_ms is not None and r.flash_leg != "return" and (r.phase, r.index) in sim.trial_cues
     ]
     return_rows = [r for r in rows if r.jump_back_ms_after_go_cue is not None]
+    # Onset-triggered trials (zero / None when the mode is off): flashes shown, given up (no onset), truly in flight, and
+    # the live flash-minus-detected-onset times.
+    onset_rows = [r for r in rows if r.flash_trigger == "onset"]
+    onset_rel = [r.flash_relative_to_onset_ms for r in onset_rows if r.flash_relative_to_onset_ms is not None]
     return {
         "trials": len(rows),
         "session_completed": sim.session.render_state()["hud"]["phase"] == "COMPLETE",
@@ -154,6 +158,11 @@ def summarize(sim: SimulationResult) -> dict:
         "avg_rt_abs_err_vs_trial_ms": _mean([abs(a - c.latency_ms) for a, c in used]),  # vs this trial's actual latency
         # Return jump (all zero / None when the setting is off): flashes per leg, and of them the ones that really
         # fell in the saccade (ground truth) and the ones the live classifier keeps.
+        "onset_flashes": sum(r.flash_shown for r in onset_rows),
+        "onset_given_up": sum(not r.flash_shown for r in onset_rows),
+        "onset_truly_in_saccade": sum(r.index in truly_in_indices for r in onset_rows),
+        "scheduled_truly_in_saccade": sum(r.index in truly_in_indices for r in rows if r.flash_trigger == "scheduled"),
+        "onset_rel_ms_median": round(statistics.median(onset_rel), 1) if onset_rel else None,
         "return_jump_trials": len(return_rows),
         "forced_jump_backs": sum(r.jump_back_forced is True for r in rows),
         "mean_return_reaction_ms": _mean([r.return_reaction_ms for r in return_rows]),
@@ -187,6 +196,7 @@ SWEEP_METRICS = (
     "avg_rt_bias_ms", "avg_rt_abs_err_ms", "avg_rt_abs_err_vs_trial_ms",
     "valid_flashes", "flashes_truly_in_saccade", "truly_in_saccade_out", "truly_in_saccade_return",
     "forced_jump_backs", "mean_return_reaction_ms", "simulated_seconds",
+    "onset_flashes", "onset_given_up", "onset_truly_in_saccade", "scheduled_truly_in_saccade", "onset_rel_ms_median",
 )
 
 

@@ -177,6 +177,23 @@ TIMING_JITTER_MS = 10
 # () = no controls.
 CONTROL_OFFSETS_MS = (400, 500)
 
+# Onset-triggered (closed-loop) flashes: startup dialog "Onset-triggered flashes", first-time default ONSET_TRIGGER_DEFAULT.
+# Possible since gaze arrives ~13-20 ms late (it was ~95 ms when the open-loop timing above was built). When on, this share of
+# the main trials that would draw a bell-curve flash (dealt from a shuffled bag, so 1/3 is exact over every 3 such trials)
+# flashes on the first frame after the live OnsetDetector fires on the flash's own leg (out or return) instead. Control trials
+# are never triggered, so the fixation baseline keeps its flashes: of all main trials the triggered share is the fraction x 9/11.
+# The other trials stay scheduled, which keeps flashes before onset. Practice and tutorial trials are always scheduled.
+# Real delay from the eye's onset = the time to move past SACCADE_ONSET_DISPLACEMENT (~15 ms in the simulator) +
+# SACCADE_ONSET_STABILITY_MS + gaze delay (~15 ms) + up to one frame (+ display lag): about 40-60 ms in the simulator. A
+# saccade shorter than that is over before the flash, so check real saccade durations (analyze_session reports the median).
+# No onset on that leg by the time the trial gives up waiting for it = no flash, logged as a 'timeout' trial.
+# 1/3 is a guess (not yet run on glasses): enough triggered flashes to raise the saccade-gate count, few enough that the
+# flash does not become something the participant expects with every eye movement.
+ONSET_TRIGGER_DEFAULT = False
+ONSET_TRIGGER_FRACTION = 1 / 3
+# Extra wait after the onset is detected (ms). 0 = the very next frame; raise it to probe later in the saccade.
+ONSET_TRIGGER_DELAY_MS = 0
+
 # Return-jump trials (startup dialog "Return jump", first-time default RETURN_JUMP_DEFAULT): once the live classifier sees the
 # eye arrive at the saccade target (or leave the start, see RETURN_JUMP_TRIGGER), the target jumps straight back to where the eye started (the target symbol disappears and
 # the start symbol reappears), the participant looks back, and only then the trial waits for the UP/DOWN answer. Each trial

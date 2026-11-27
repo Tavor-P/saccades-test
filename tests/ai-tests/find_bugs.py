@@ -5,7 +5,7 @@
     python tests/ai-tests/find_bugs.py --extreme          # only hostile participants/trackers
 
 Each session draws a random ParticipantProfile (reaction time, noise, latency,
-dropouts, response behaviour ...) and switches the return jump on or off at random, runs the REAL ExperimentSession, then checks invariants.py and watches
+dropouts, response behaviour ...) and switches the return jump and onset-triggered flashes on or off at random, runs the REAL ExperimentSession, then checks invariants.py and watches
 for exceptions and hangs. Every finding prints a one-line command that reproduces
 it, so a failure can be handed straight to `run_sim.py --timeline`.
 Exit status is 1 if anything was found.
@@ -92,6 +92,9 @@ def main() -> int:
     # Hostile profiles run with the return jump at its default (on); random ones switch it off half the time, and
     # half of the jump-on ones use the "onset" trigger. A quarter of the random participants make learned (predictive) returns.
     cases = [(name, profile, {}) for name, profile in EXTREME_PROFILES.items()]
+    # The same hostile participants with every bell-curve trial onset-triggered (a missed onset must never stall a trial).
+    every_trial = {"ONSET_TRIGGER_DEFAULT": True, "ONSET_TRIGGER_FRACTION": 1.0}
+    cases += [(f"{name}_trigger", profile, every_trial) for name, profile in EXTREME_PROFILES.items()]
     if not a.extreme:
         for i in range(a.sessions):
             profile = random_profile(rng)
@@ -105,6 +108,11 @@ def main() -> int:
             if rng.random() < 0.25:
                 profile["return_mode"] = "learned"
                 suffix += "_learned"
+            if rng.random() < 0.5:
+                constants = {**constants, "ONSET_TRIGGER_DEFAULT": True}
+                suffix += "_trigger"
+                if rng.random() < 0.5:  # also off the default share and delay
+                    constants.update(ONSET_TRIGGER_FRACTION=1.0, ONSET_TRIGGER_DELAY_MS=rng.choice([0, 30, 200]))
             cases.append((f"random_{i}{suffix}", profile, constants))
 
     findings = []

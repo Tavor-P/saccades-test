@@ -149,6 +149,7 @@ class SaccadePhaseOptions:
     neon_address: tuple[str, int] | None = None
     return_jump: bool = False  # dialog "Return jump": the jump-back trials
     precomputed_return_rt_samples_ms: list[float] | None = None  # the tutorial's return latencies
+    onset_trigger: bool = False  # dialog "Onset-triggered flashes"
 
 
 def run_saccade_phase(
@@ -182,6 +183,7 @@ def run_saccade_phase(
                 geometry=o.geometry,
                 flash_spread_sd_ms=o.flash_spread_sd_ms,
                 return_jump=o.return_jump,
+                onset_trigger=o.onset_trigger,
             ),
             handoff=TutorialHandoff(
                 calibration_ratios=o.precomputed_calibration_ratios,
@@ -393,6 +395,7 @@ def main(session_info: SessionInfo | None = None) -> None:
         flash_spread_sd_ms,
         neon_address_text,
         return_jump,
+        onset_trigger,
     ) = session_info
 
     neon = find_neon_or_exit(neon_address_text)  # before the run folder and the fullscreen window exist
@@ -403,6 +406,7 @@ def main(session_info: SessionInfo | None = None) -> None:
     logger.set_geometry(geometry)
     logger.set_flash_spread_sd_ms(flash_spread_sd_ms)
     logger.set_return_jump(return_jump)
+    logger.set_onset_trigger(onset_trigger)
     win = build_window(fullscreen=True)
     logger.set_display_refresh_hz(measure_refresh_hz(win))
     stimuli = build_stimuli(win, show_hud=test_mode, geometry=geometry)
@@ -413,7 +417,7 @@ def main(session_info: SessionInfo | None = None) -> None:
     try:
         _run_phases(
             win, stimuli, logger, narrator, run_tutorial, show_gaze_indicator, test_mode, saccade_contrasts, geometry, flash_spread_sd_ms,
-            neon_address, return_jump,
+            neon_address, return_jump, onset_trigger,
         )
     except NeonConnectionError as exc:  # e.g. the phone slept between the tutorial and the saccade phase: plain message, no traceback
         lost = exc
@@ -463,7 +467,7 @@ def _neon_lost_message(exc: Exception, folder) -> str:
 
 def _run_phases(  # noqa: PLR0913 - one arg per dialog setting
     win, stimuli, logger, narrator, run_tutorial, show_gaze_indicator, test_mode, saccade_contrasts, geometry, flash_spread_sd_ms,
-    neon_address, return_jump=False,
+    neon_address, return_jump=False, onset_trigger=False,
 ) -> None:
     """Tutorial (optional) then the saccade phase; returns early if the participant quits."""
     precomputed_calibration_ratios = None
@@ -489,6 +493,7 @@ def _run_phases(  # noqa: PLR0913 - one arg per dialog setting
         neon_address=neon_address,
         return_jump=return_jump,
         precomputed_return_rt_samples_ms=precomputed_return_rt_samples_ms,
+        onset_trigger=onset_trigger,
     )
     result = run_saccade_phase(win, stimuli, logger, narrator, options)
     if result is None:

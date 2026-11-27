@@ -101,6 +101,7 @@ TRIAL_COLUMNS: list[Column] = [
     Column("line_side", "line_side", lambda r: _enum_value(r.line_side)),
     Column("answer_side", "answer_side", lambda r: _enum_value(r.answer_side)),
     Column("flash_leg", "flash_leg", lambda r: r.flash_leg or ""),
+    Column("flash_trigger", "flash_trigger", lambda r: r.flash_trigger or ""),
     Column("flash_ms_after_go_cue", "scheduled_delay_ms", lambda r: _num(r.scheduled_delay_ms)),
     Column("out_arrival_ms_after_go_cue", "out_arrival_ms_after_go_cue", lambda r: _num(r.out_arrival_ms_after_go_cue)),
     Column("jump_back_ms_after_go_cue", "jump_back_ms_after_go_cue", lambda r: _num(r.jump_back_ms_after_go_cue)),
@@ -206,6 +207,7 @@ def trial_from_row(row: dict) -> TrialResult:
         jump_back_forced=_parse_optional_bool(row.get("jump_back_forced")),
         out_arrival_ms_after_go_cue=_parse_float(row.get("out_arrival_ms_after_go_cue")),
         left_target_before_jump=_parse_optional_bool(row.get("left_target_before_jump")),
+        flash_trigger=row.get("flash_trigger") or None,
     )
 
 
@@ -256,6 +258,8 @@ _SETTINGS_CONSTANTS = {
         "RETURN_JUMP_LANDING_TIMEOUT_MS",
         "RETURN_JUMP_TRIGGER",
         "RETURN_FLASH_SPREAD_SD_MS",
+        "ONSET_TRIGGER_FRACTION",
+        "ONSET_TRIGGER_DELAY_MS",
     ),
     "include.eye_tracking.constants": ("GAZE_DEAD_ZONE",),
 }
@@ -427,6 +431,12 @@ class ResultLogger:
         """Whether this run used return-jump trials (startup dialog "Return jump"; RETURN_JUMP_DEFAULT is the first-time default).
         Absent in older session.json files, which never jumped back."""
         self._metadata["settings"]["return_jump"] = bool(enabled)
+        self._write_metadata()
+
+    def set_onset_trigger(self, enabled: bool) -> None:
+        """Whether some of this run's flashes were triggered by the live saccade onset (startup dialog "Onset-triggered
+        flashes"; the share is onset_trigger_fraction). Absent in older session.json files, where every flash was scheduled."""
+        self._metadata["settings"]["onset_trigger"] = bool(enabled)
         self._write_metadata()
 
     def set_display_refresh_hz(self, hz: float | None) -> None:

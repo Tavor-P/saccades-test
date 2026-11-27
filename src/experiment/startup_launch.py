@@ -8,8 +8,8 @@ from src.experiment.geometry import Geometry
 from src.experiment.settings import saccade_contrast_levels
 from src.experiment.startup_dialog import prompt_startup_settings
 
-# (participant_id, show_gaze_indicator, run_tutorial, test_mode, saccade_contrasts, geometry, flash_spread_sd_ms, neon_address_text, return_jump)
-SessionInfo = tuple[str, bool, bool, bool, tuple[float, ...], Geometry, float, str, bool]
+# (participant_id, show_gaze_indicator, run_tutorial, test_mode, saccade_contrasts, geometry, flash_spread_sd_ms, neon_address_text, return_jump, onset_trigger)
+SessionInfo = tuple[str, bool, bool, bool, tuple[float, ...], Geometry, float, str, bool, bool]
 
 _qt_app: object = None  # holds the QApplication: PyQt destroys it with its last Python reference
 
@@ -45,6 +45,7 @@ def prompt_session_info() -> SessionInfo | None:
         chosen.flash_spread_sd_ms,
         chosen.neon_address,
         chosen.return_jump,
+        chosen.onset_trigger,
     )
 
 

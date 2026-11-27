@@ -236,12 +236,17 @@ class ShuffledBag(Generic[_T]):
         return self._remaining.popleft()
 
 
+def share_pool(fraction: float, hit: str, miss: str) -> list[str]:
+    """The smallest pool of `hit`/`miss` labels whose `hit` share is `fraction` (denominator capped at 20), for a
+    ShuffledBag: 0.8 -> 4 x `hit` + 1 x `miss`, so every 5 draws split exactly."""
+    share = Fraction(min(max(fraction, 0.0), 1.0)).limit_denominator(20)
+    n_hit, n_total = share.numerator, share.denominator
+    return [hit] * n_hit + [miss] * (n_total - n_hit)
+
+
 def flash_leg_pool(return_fraction: float) -> list[str]:
-    """The smallest pool of 'out'/'return' leg labels whose return share is `return_fraction` (denominator capped at
-    20), for a ShuffledBag: 0.8 -> 4 x 'return' + 1 x 'out', so every 5 trials split exactly."""
-    share = Fraction(min(max(return_fraction, 0.0), 1.0)).limit_denominator(20)
-    n_return, n_total = share.numerator, share.denominator
-    return ["return"] * n_return + ["out"] * (n_total - n_return)
+    """share_pool of 'out'/'return' leg labels whose return share is `return_fraction`."""
+    return share_pool(return_fraction, "return", "out")
 
 
 def spread_flash_delay_ms(
