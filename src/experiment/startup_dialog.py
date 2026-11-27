@@ -340,7 +340,7 @@ class StartupDialog(QtWidgets.QDialog):
 
 def prompt_startup_settings(data_dir: Path | None = None) -> StartupSettings | None:
     """Show the startup dialog with the remembered values and return the validated choice (also remembered for next time), or None on Cancel."""
-    QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv)  # run_experiment calls psychopy.gui.ensureQtApp() first, so it is PsychoPy's own
+    QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv)  # a run already has startup_launch.ensure_qt_app()'s, shared with the PsychoPy window
     dialog = StartupDialog(defaults_from_disk(data_dir), data_dir)
     dialog.show()
     dialog.raise_()

@@ -105,7 +105,8 @@ Paths are checked by `tests/test_docs.py` - keep them real.
 | `src/experiment/trial_legs.py` | `TrialLegs` (out onset/landing, return jump, return onset/landing per trial) + `SampleFeed` (new samples, capture times): shared by session and tutorial |
 | `src/experiment/trial_record.py` | `saccade_trial_result()`: a finished main trial's `TrialResult` row |
 | `src/experiment/tutorial_session.py` | `TutorialSession`: intro -> calibration -> quiz -> 8 practice trials |
-| `src/experiment/run_experiment.py` | entry point: `main`, phase loops, dialog -> session wiring (`SaccadePhaseOptions`); re-exports the rendering names tests patch |
+| `src/experiment/run_experiment.py` | entry point (hands over to `startup_launch` above its imports): `main`, phase loops, dialog -> session wiring (`SaccadePhaseOptions`); re-exports the rendering names tests patch |
+| `src/experiment/startup_launch.py` | the command-line start, PsychoPy-free: `launch()` shows the dialog (`ensure_qt_app`, `prompt_session_info`) and only after OK imports `run_experiment` |
 | `src/experiment/rendering.py` | PsychoPy window, `build_stimuli`, `apply_render_state`/`draw_all`, captions + narration, `FramePresenter`, sync flashes; with run_experiment the only PsychoPy modules |
 | `src/experiment/startup_dialog.py`, `startup_model.py` | PyQt6 dialog; Qt-free model (`StartupSettings`, `validate`, `HELP_TEXTS`) |
 | `src/experiment/geometry.py` | `Geometry`: screen height + viewing distance -> degrees and the line's size in screen-height units |
@@ -216,6 +217,8 @@ SPACE presses are never silently dropped; every ignored one is counted in `sessi
 
 ## Gotchas that cost real debugging time
 
+- **PsychoPy is imported after the startup dialog** (it took ~9 s to appear, now ~1 s; the ~9 s wait is after OK): keep the `__main__` hand-over at the top of `run_experiment.py` above the imports, and PsychoPy/pyglet/pandas out of whatever `startup_launch` imports (`test_architecture_rules.py`).
+  No `psychopy.gui` for the dialog (~4 s with pandas; `ensure_qt_app()` makes the QApplication, which PsychoPy adopts), and no pre-import on a thread (pyglet ties its hidden GL window and event loop to the importing thread).
 - **Gaze latency (was ~90-100 ms, now ~13-20 ms)**: in Oct 2026 real sessions showed ~95 ms (`gaze_quality.latency_ms_median`) with the rate falling 200 -> ~160/s once the render loop started: the receiver thread
   starved by the render loop (same process/GIL). `run_experiment.main` has since set `sys.setswitchinterval(0.0005)` (5f5a0c6, 2026-10-22); every run on disk after it (2026-11-01..11-23) shows a median of 12.5-19.8 ms
   at ~199/s. Keep checking `latency_ms_median` per run; if it climbs again, next step is receiving Neon in its own process.

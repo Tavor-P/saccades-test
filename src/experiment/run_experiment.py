@@ -1,12 +1,22 @@
-"""Entry point (`-m src.experiment.run_experiment`): startup dialog, the dialog -> session wiring, and the per-phase frame loops that call
-each session's tick() + render_state() and draw the result (the drawing itself: rendering.py). All experiment logic lives in the session
-classes, not here; this module and rendering.py are the only ones that need PsychoPy."""
+"""Entry point (`-m src.experiment.run_experiment`): the dialog -> session wiring and the per-phase frame loops that call each session's
+tick() + render_state() and draw the result (the drawing itself: rendering.py). The startup dialog is in startup_launch.py, which runs before
+this module's imports. All experiment logic lives in the session classes, not here; this module and rendering.py are the only ones that need
+PsychoPy."""
+# ruff: noqa: E402 - the hand-over to the startup dialog has to run above the imports
+
+if __name__ == "__main__":
+    # Keep this above every other import: PsychoPy takes ~8 s to import, so startup_launch shows the dialog first and only after OK imports
+    # this module under its real name and calls main().
+    from src.experiment import startup_launch
+
+    startup_launch.launch()
+    raise SystemExit
 
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from psychopy import event, gui, sound, visual
+from psychopy import event, sound, visual
 
 from include.experiment.constants import (
     ABOVE_RESPONSE_KEYS,
@@ -39,8 +49,8 @@ from src.experiment.rendering import (  # noqa: F401 (re-exported: tests import 
 from src.experiment.run_summary import finish_run_summary
 from src.experiment.session import ExperimentSession
 from src.experiment.session_config import SessionConfig, TutorialHandoff
-from src.experiment.settings import saccade_contrast_levels
 from src.experiment.space_input import NarrationKeyGate, deliver_space, leaves_complete_screen
+from src.experiment.startup_launch import SessionInfo, prompt_session_info
 from src.experiment.tutorial_session import TutorialSession
 from src.eye_tracking.gaze_factory import BACKEND_NEON, build_gaze_source
 from src.eye_tracking.neon_address import FAILURE_TITLE, Resolution, failure_message, network_summary, parse_address, resolve_neon_address
@@ -349,31 +359,6 @@ def find_neon_or_exit(address_text: str, resolve=None, network=None, show_box=No
     raise SystemExit(2)
 
 
-def prompt_session_info() -> tuple[str, bool, bool, bool, tuple[float, ...], Geometry, float, str, bool] | None:
-    """The startup dialog (src/experiment/startup_dialog.py): Participant ID, Mode, Run tutorial, screen height/distance and, under Advanced, the saccade
-    phase's contrast range (min/max, see SACCADE_FIXED_CONTRASTS) and the Show gaze indicator toggle. Invalid input keeps the dialog open with a message.
-    Returns (participant_id, show_gaze_indicator, run_tutorial, test_mode, saccade_contrasts, geometry, flash_spread_sd_ms, neon_address_text,
-    return_jump),
-    or None if cancelled."""
-    from src.experiment.startup_dialog import prompt_startup_settings
-
-    gui.ensureQtApp()  # PsychoPy's own QApplication (Fusion style), shared with the dialog so the PsychoPy window created afterwards keeps working
-    chosen = prompt_startup_settings()
-    if chosen is None:
-        return None
-    return (
-        chosen.folder_id,
-        chosen.show_gaze_indicator,
-        chosen.run_tutorial,
-        chosen.test_mode,
-        saccade_contrast_levels(chosen.contrast_min_percent, chosen.contrast_max_percent),
-        chosen.geometry,
-        chosen.flash_spread_sd_ms,
-        chosen.neon_address,
-        chosen.return_jump,
-    )
-
-
 def show_done_screen(win: visual.Window, stimuli: dict, narrator: Narrator, folder) -> None:
     """Last screen of a run (also after Escape): where the results are; SPACE or ESCAPE closes. Spoken once, without the path."""
     caption = stimuli["caption"]
@@ -386,13 +371,15 @@ def show_done_screen(win: visual.Window, stimuli: dict, narrator: Narrator, fold
         win.flip()
 
 
-def main() -> None:
+def main(session_info: SessionInfo | None = None) -> None:
+    """`session_info`: the startup dialog's choices when it has already been shown (startup_launch, from the command line); None = ask now."""
     # Let the Neon receiver thread get the interpreter lock within ~0.5 ms instead of the default
     # 5 ms while the render loop is busy: in real sessions gaze delivery steps up ~65 ms late and
     # drops ~19% of samples once drawing starts (see CLAUDE.md). This is the confirmed fix for that
     # Oct 2026 ~95 ms delay: runs since show ~13-20 ms.
     sys.setswitchinterval(0.0005)
-    session_info = prompt_session_info()
+    if session_info is None:
+        session_info = prompt_session_info()
     if session_info is None:
         return  # cancelled the participant-info dialog
     (
@@ -508,7 +495,3 @@ def _run_phases(  # noqa: PLR0913 - one arg per dialog setting
     if result.calibration_ratios is not None:
         logger.set_calibration(*result.calibration_ratios)
     print("Run finished.")
-
-
-if __name__ == "__main__":
-    main()
