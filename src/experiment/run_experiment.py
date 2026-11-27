@@ -89,7 +89,7 @@ def warn_if_head_moved(session, narrator: Narrator) -> None:
     text = session.pop_head_warning()
     if text:
         print(f"WARNING: {text} (head rotated away from its orientation at calibration)", file=sys.stderr)
-        narrator.speak(text)
+        narrator.speak(text, interrupt=False)  # after any caption line, not instead of it
 
 
 def drain_stale_space(session) -> None:
@@ -208,7 +208,6 @@ def run_saccade_phase(
 
             space_delivered = deliver_keys(session, keys)
             session.tick()
-            warn_if_head_moved(session, narrator)
             state = session.render_state()
             phase = state["hud"]["phase"]
 
@@ -220,6 +219,7 @@ def run_saccade_phase(
             last_phase = phase
 
             presenter.update(state)
+            warn_if_head_moved(session, narrator)  # after the caption: a new line there would drop a warning spoken first
             draw_all(stimuli)
             win.flip()
     finally:

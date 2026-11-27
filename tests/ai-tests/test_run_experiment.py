@@ -68,6 +68,8 @@ def test_caption_rendering_and_update_caption_show_and_speak_in_lockstep():
     spoken, caption = update_caption(narrator, stim, {"instructions": text, "hide_caption": True}, text, text)
     narrator.speak.assert_not_called()
     assert (spoken, caption, stim.opacity) == (None, "", 0.0)
+    update_caption(narrator, stim, {"instructions": text, "hide_caption": True}, spoken, caption)
+    narrator.silence.assert_called_once_with()  # the old line is cut off once, not every hidden frame
     update_caption(narrator, stim, {"instructions": text}, spoken, caption)
     narrator.speak.assert_called_once_with(text)
 

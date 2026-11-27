@@ -217,7 +217,7 @@ SPACE presses are never silently dropped; every ignored one is counted in `sessi
 ## Tutorial hand-off and narration
 
 - Tutorial calibration ratios and RT samples (`precomputed_calibration_ratios`, `precomputed_rt_samples_ms`) go to `run_saccade_phase`, which then skips calibration/RT test/practice and seeds `RollingReactionTime`.
-- `update_caption()` shows and speaks in lockstep (`narrate_if_changed`); it re-speaks on every text change, so narrated strings stay under ~15 words and are never repeated. `hide_caption` is True in real main trials except while the answer reminder is up; the HUD is Test-mode only.
+- `update_caption()` shows and speaks in lockstep (`narrate_if_changed`); it re-speaks on every text change, so narrated strings stay under ~15 words and are never repeated. A new line replaces older speech (`Narrator.speak`), so skipped screens are not read afterwards; blank text keeps the old caption and lets its line finish; `hide_caption` turning on cuts it off (`silence()`). The head warning is queued (`interrupt=False`) after the frame's caption. `hide_caption` is True in real main trials except while the answer reminder is up; the HUD is Test-mode only.
 
 ## Gotchas that cost real debugging time
 
@@ -240,4 +240,4 @@ SPACE presses are never silently dropped; every ignored one is counted in `sessi
   (time echo + gaze stream use it) is saved as `hardware.neon_phone_ip` (warned if it differs). A `NeonConnectionError` later in the run -> window closes, "Lost the Neon glasses" box, exit 2.
 - **numpy/opencv pins**: `requirements.txt` keeps `numpy<2` plus matching opencv (`glasses_video.py` uses cv2). Bumping is untested: rerun the suite if you do.
 - **TTS narrator is Windows-only SAPI via COM** (`pywin32`). COM objects are apartment-threaded: create AND call `SAPI.SpVoice` on the same thread (`_run()` wraps its loop in `pythoncom.CoInitialize()`/`CoUninitialize()`).
-  `Speak()` blocks for the utterance, hence the dedicated thread; `speak()` does not interrupt queued speech, so callers must gate on changed text (`narrate_if_changed`) or utterances queue and lag the screen.
+  Speaking takes seconds, hence the dedicated thread. It speaks asynchronously with SAPI's purge flag and polls `WaitUntilDone`; `speak()` interrupts by default (a generation counter drops older lines), so callers must gate on changed text (`narrate_if_changed`) or every frame restarts the line.
