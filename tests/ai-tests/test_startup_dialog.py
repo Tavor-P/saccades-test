@@ -109,7 +109,7 @@ def test_neon_address_field_accepts_blank_ip_and_ip_port_rejects_the_rest_and_is
 def test_defaults_from_disk_shipped_remembered_and_damaged_files(data_dir):
     d = defaults_from_disk(data_dir)
     assert d == StartupSettings(run_tutorial=True)
-    assert d.contrast_min_percent == 4 and d.contrast_max_percent == 8
+    assert d.contrast_min_percent == 1.5 and d.contrast_max_percent == 3
 
     (data_dir / "p01" / "2026-01-01_10-00-00").mkdir(parents=True)
     (data_dir / "settings.json").write_text(json.dumps({"contrast_floor_percent": 1.5}))  # an old file's other keys must survive

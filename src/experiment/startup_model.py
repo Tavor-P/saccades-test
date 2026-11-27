@@ -48,7 +48,8 @@ FIELD_LABELS = {
     "show_gaze_indicator": "Show gaze indicator",
 }
 _CONTRAST_HELP = (
-    "Faintest and brightest line contrast in percent (default 4 and 8); three levels in between are shown. "
+    f"Faintest and brightest line contrast in percent (default {DEFAULT_SACCADE_CONTRAST_MIN_PERCENT:g} and "
+    f"{DEFAULT_SACCADE_CONTRAST_MAX_PERCENT:g}); three evenly spaced levels from one to the other are shown. "
     "Too faint = guessing; too bright = everyone gets it right."
 )
 # Field key -> help bubble text. One place for the dialog, the README and the tests.

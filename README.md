@@ -53,7 +53,7 @@ Printable version: [docs/experimenter_checklist.md](docs/experimenter_checklist.
 | Mode | **Real** (150 trials) or **Test** (30 trials, debug text top-left) |
 | Run tutorial | first-timer on-ramp; defaults to Yes for an ID without a folder under `data/` |
 | Screen height (cm) / Viewing distance (cm) | measure them (5-100 / 20-300; decimal comma accepted); saved in `session.json` |
-| *Advanced*: Saccade contrast min / max (%) | the fixed contrasts, spaced between these (defaults 4 and 8: levels 4, 6, 8) |
+| *Advanced*: Saccade contrast min / max (%) | the fixed contrasts, spaced between these (defaults 1.5 and 3: levels 1.5, 2.25, 3) |
 | *Advanced*: Flash timing spread (ms) | width (SD) of the bell curve of flash times around the average reaction time; default 80 (10-250) |
 | Return jump | default on: after the eye reaches the target it jumps back to the start (see step 4 below); off = one-jump trials |
 | *Advanced*: Show gaze indicator | debug aid |
@@ -234,13 +234,15 @@ participant's pooled analysis with it).
 | Flash trigger | live, 15 ms after online onset detection | scheduled on a bell curve around the person's average reaction time, judged **after the fact** from the raw trace |
 | Display | 120 Hz, 8 ms flash | 60 Hz, one frame (~17 ms) |
 | Saccade size | 10 deg | ~30-40 deg on a large screen (dot at 15 %, cross at 85 % of the width); depends on geometry |
-| Thresholds | staircase, then psychometric fit | fixed contrasts (default 4/6/8 %), then a Weibull fit |
+| Thresholds | staircase, then psychometric fit | fixed contrasts (default 1.5/2.25/3 %), then a Weibull fit |
 | Viewing | 90 cm, lab | chin rest, geometry from the startup dialog |
 
 ## Known limitations
 
 - **Untested on glasses:** line rendering at 60 Hz, tutorial and captions, results layout, phone recording and sync flashes, head monitor, every contrast level, and the dashboard pages in a real browser.
-- **Contrasts are a guess.** 4/6/8 % is only ~5-10 grey steps on an 8-bit display, so levels are coarse. Re-pilot and adjust in the startup dialog.
+- **Contrasts rest on one run.** The first real 150-trial run at 3/5.5/8 % was at ceiling, so the defaults are now 1.5/2.25/3 % (1 % did not show on the screen used). That is only ~2-4 grey steps on an 8-bit display, so levels
+  are very coarse, and the screen is not gamma-corrected, so the real contrast is probably higher than the nominal one. Re-pilot and adjust in the startup dialog (it remembers the last values: type the new ones once).
+  Runs with different contrasts are not pooled together.
 - **Screen geometry is only as good as what you type in**; the placeholders (26 cm at 50 cm) make degrees approximate. The geometry used is saved in `session.json` and printed in the analysis report.
 - **Gaze delay**: early runs (Oct 2026) saw gaze reach the PC ~90-100 ms late; since a fix that day, runs show ~13-20 ms. Check the gaze delay light after each run. The live `flash_during_saccade` flag is still only a guide; post-hoc judging from the phone's capture times is the real one.
 - **Timing is open-loop:** reaction times vary (SD ~60-80 ms), so only a minority of flashes land near onset (simulator: ~43 of 150, about 2 in 7, within +-50 ms, ~31 pass the saccade gate, ~55 fixation flashes). People with TBI may vary more.

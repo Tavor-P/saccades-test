@@ -210,17 +210,19 @@ RETURN_FLASH_SPREAD_SD_MS = 110
 # repeats like the timing offsets. (An adaptive ZEST staircase was used once and removed: it only
 # learned from flashes the live check said landed in the saccade, and with the ~90 ms gaze latency
 # almost none did, so it never adapted.) Every flash is judged afterwards from the raw gaze trace (accuracy vs flash time relative to saccade
-# onset). Line-stimulus defaults 4/6/8 %: an EDUCATED GUESS, not a measurement. The line sits next to the
-# saccade target and is much easier to see than the old off-centre grating: a Test-mode run at 10/15/20 % was
-# at ceiling (11/11 correct at fixation, 18/22 overall), leaving no headroom to see suppression, and the old
-# foveal grating threshold was ~1.3 %; the earlier 2/4/6 % guess was judged too hard. Re-pilot on glasses and
-# adjust in the startup dialog. The 8-bit display renders ~5 / 7.6 / 10 grey steps at the line's peak for
-# 4 / 6 / 8 %, so levels are coarse; the hardware floor (HARDWARE_CONTRAST_FLOOR, 0.78 %) still allows them. Must not be empty.
+# onset). Line-stimulus defaults 1.5/2.25/3 %. The first real 150-trial glasses run, at 3/5.5/8 %, was at ceiling (127 of
+# 128 answered trials correct), so the psychometric fit was unidentified and the threshold extrapolated to 1.6 %: no
+# headroom to see suppression. 1.5 % is the minimum because 1 % did not show on the user's screen. One run, one screen:
+# re-pilot and adjust in the startup dialog.
+# LEVELS ARE VERY COARSE: on an 8-bit display the line's peak is only ~1.9 / 2.9 / 3.8 grey steps from the background
+# (c/2*255), and the hardware floor (HARDWARE_CONTRAST_FLOOR, 0.78 %) is one step. The screen is also not gamma-corrected
+# (rendering.luminance_to_color is linear), so the real luminance contrast is probably higher than these nominal values.
+# Must not be empty.
 # The startup dialog's "Saccade contrast min/max (%)" fields (defaults: the ends of the tuple below)
 # rebuild it per session as SACCADE_CONTRAST_LEVELS evenly spaced values between them (see
 # src/experiment/settings.py); 1 level or min == max gives a single contrast.
 SACCADE_CONTRAST_LEVELS = 3
-SACCADE_FIXED_CONTRASTS = (0.04, 0.06, 0.08)
+SACCADE_FIXED_CONTRASTS = (0.015, 0.0225, 0.03)
 # Number of main-block saccade trials in that mode (the block stops by count):
 # ~20 % of flashes land in the saccade gate, so 150 trials give ~30 saccade-gate flashes (simulator).
 SACCADE_FIXED_TRIALS_TEST = 30
