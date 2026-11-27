@@ -13,6 +13,7 @@ from test_tracking_quality import _run_valid_saccade, _session_in_first_trial
 
 from include.experiment.constants import TRACKING_LOSS_WINDOW_MS
 from include.eye_tracking.constants import (
+    HEAD_BUFFER_S,
     HEAD_DRIFT_WARN_DEG,
     HEAD_MAX_SPEED_DPS,
     HEAD_WARN_MIN_INTERVAL_S,
@@ -250,7 +251,11 @@ def _first_trial_with_head(fake_gaze, fake_time):
 def test_head_speed_spike_only_at_the_flash_marks_the_trial_not_ok(fake_gaze, fake_time):
     session, tracker = _first_trial_with_head(fake_gaze, fake_time)
     tracker.add(session._flash_scheduled_at, (0, 0, HEAD_MAX_SPEED_DPS * 2), STILL)
-    result = _run_valid_saccade(session, fake_gaze, fake_time, lose_tracking_at_flash=False)
+    # A very late answer: by then the monitor's ring buffer has dropped the spike, the trial must still remember it.
+    result = _run_valid_saccade(
+        session, fake_gaze, fake_time, lose_tracking_at_flash=False,
+        before_answer=lambda: tracker.add(session._flash_scheduled_at + 2 * HEAD_BUFFER_S, (0, 0, 0), STILL),
+    )
     assert result.tracking_ok is False
     assert session.head_flagged_trials == 1
     assert session._valid_trial_count == 0  # excluded from analysis like a tracking loss

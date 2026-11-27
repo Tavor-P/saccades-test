@@ -19,7 +19,6 @@ from include.experiment.constants import (
     FLASH_SPREAD_SD_MS,
     GAZE_LANDING_STABILITY_MS,
     GAZE_LATENCY_MAX_MS,
-    RESPONSE_WINDOW_MS,
     SACCADE_TIMEOUT_MS,
 )
 from include.experiment.types import Side, Target, TrialResult
@@ -201,8 +200,7 @@ def test_saccade_duration_is_landing_minus_onset_or_none_without_a_saccade(fake_
         gaze.timestamp = start + dt
         session.tick()
     assert session._landed
-    fake_time(RESPONSE_WINDOW_MS / 1000 + 0.5)
-    gaze.timestamp = start + 1.0
+    session.on_response_key(Side.ABOVE)
     session.tick()
     assert _saccade_results(session)[0].saccade_duration_ms == pytest.approx(60.0)  # landing 0.26 - onset 0.20
 

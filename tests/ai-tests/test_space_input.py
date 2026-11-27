@@ -5,7 +5,7 @@ import json
 import pytest
 from helpers import NullLogger as _NullLogger
 
-from include.experiment.constants import CALIBRATION_ROUNDS, FOREPERIOD_MAX_MS, RESPONSE_WINDOW_MS
+from include.experiment.constants import CALIBRATION_ROUNDS, FOREPERIOD_MAX_MS
 from include.experiment.types import Side
 from src.experiment.pausable_clock import PausableClock
 from src.experiment.session import ExperimentSession
@@ -202,15 +202,13 @@ def test_space_after_answering_starts_the_next_trial_as_soon_as_it_is_ready(fake
     fake_time(GAZE_LANDING_STABILITY_MS / 1000 + 0.01)
     session.tick()
 
-    session.on_space()  # before answering: ignored and counted
-    assert session.space_tally.as_dict() == {"TRIAL_ACTIVE: during trial": 1}
-    session.on_response_key(Side.ABOVE)
-    session.on_space()  # answered: carried to the next trial
+    session.on_space()  # judged on the next tick...
+    session.on_response_key(Side.ABOVE)  # ...so an answer arriving in the same frame counts, and so does the press
     assert _phase(session) == "TRIAL_ACTIVE"
     session.tick()  # trial finalizes -> AWAITING_SPACE -> the carried press starts the next foreperiod
     assert _phase(session) == "FOREPERIOD"
-    assert session.space_tally.total == 1
-    fake_time(RESPONSE_WINDOW_MS / 1000)  # nothing further is pending
+    assert session.results[-1].outcome in ("correct", "incorrect")
+    assert session.space_tally.total == 0
     session.on_space()
     assert session.space_tally.as_dict()["FOREPERIOD: during foreperiod"] == 1
 

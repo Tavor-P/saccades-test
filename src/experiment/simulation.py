@@ -71,7 +71,9 @@ class ParticipantProfile:
     threshold_contrast: float = 0.05
     suppressed_threshold_contrast: float = 0.20
     slope: float = 6.0
-    guess_response_probability: float = 0.5  # when the flash was not seen, chance of guessing instead of "miss"
+    # An unseen flash is always guessed (forced choice). Chance of first pressing SPACE on it, which the session ignores
+    # (reminder), before the guess.
+    space_before_guess_probability: float = 0.0
     gaze_noise_ratio: float = 0.002  # sd of tracker noise on the raw gaze ratio (~0.2 deg)
     tracker_latency_ms: float = 16.0  # eye movement to sample availability (Neon: ~14-16 ms)
     dropout_rate_per_s: float = 0.0  # tracking losses (blinks etc.) per second
@@ -274,6 +276,7 @@ class SimulatedParticipant:
         self.saccade_onset: float | None = None
         self._pending_space_at: float | None = None  # re-armed for the phases where SPACE is used
         self._pending_response: tuple[float, Side] | None = None
+        self._early_space_at: float | None = None  # one SPACE before an unanswered trial's guess
         self._flash_seen = False
         # Ground truth for the flash currently in flight (None if none): True if it
         # really fell inside the participant's saccade. Collected by the simulator
@@ -352,6 +355,11 @@ class SimulatedParticipant:
 
         if phase == "TRIAL_ACTIVE" and state["line"]["visible"] and not self._flash_seen:
             self._see_flash(state, t)
+
+        if self._early_space_at is not None and t >= self._early_space_at:
+            self._early_space_at = None
+            self._log(t, "SPACE without an answer")
+            self._session.on_space()
 
         if self._pending_response is not None and t >= self._pending_response[0]:
             _, answer = self._pending_response
@@ -487,14 +495,13 @@ class SimulatedParticipant:
         seen = self._rng.random() < p_seen
         where = "during saccade (suppressed)" if suppressed else "outside saccade"
         self._log(t, f"flash shown: contrast {contrast:.3f}, {where}; P(seen)={p_seen:.2f} -> {'seen' if seen else 'not seen'}")
-        if seen:
-            answer = line_side
-        elif self._rng.random() < self._p.guess_response_probability:
-            answer = self._rng.choice([Side.ABOVE, Side.BELOW])
-        else:
-            return  # no response -> "miss"
+        answer = line_side if seen else self._rng.choice([Side.ABOVE, Side.BELOW])
         delay = ms_to_s(max(0.15, self._rng.gauss(self._p.response_ms_mean, self._p.response_ms_sd)))
-        self._pending_response = (t + delay, answer)
+        wait = delay
+        if not seen and self._p.space_before_guess_probability and self._rng.random() < self._p.space_before_guess_probability:
+            self._early_space_at = t + delay  # tries to move on without answering, then guesses
+            wait += delay
+        self._pending_response = (t + wait, answer)
 
 
 @dataclass

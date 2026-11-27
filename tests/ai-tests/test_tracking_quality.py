@@ -31,7 +31,7 @@ def _session_in_first_trial(fake_gaze, fake_time, **trial_spec):
     return session
 
 
-def _run_valid_saccade(session, fake_gaze, fake_time, lose_tracking_at_flash: bool) -> TrialResult:
+def _run_valid_saccade(session, fake_gaze, fake_time, lose_tracking_at_flash: bool, before_answer=lambda: None) -> TrialResult:
     fake_gaze.zone = GazeZone.CENTER
     session.tick()
     fake_time(SACCADE_ONSET_STABILITY_MS / 1000 + 0.01)
@@ -45,6 +45,7 @@ def _run_valid_saccade(session, fake_gaze, fake_time, lose_tracking_at_flash: bo
     session.tick()
     fake_time(GAZE_LANDING_STABILITY_MS / 1000 + 0.01)
     session.tick()  # landed
+    before_answer()
     session.on_response_key(Side.ABOVE)
     session.tick()
     return [r for r in session.results if r.phase == "saccade"][0]

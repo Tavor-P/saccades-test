@@ -266,7 +266,14 @@ def test_practice_waits_for_space_swaps_500_to_1000_ms_later_flashes_clearly_and
 
     fake_time(SACCADE_TIMEOUT_MS / 1000)
     session.tick()
-    assert session.render_state()["hud"]["phase"] == "PRACTICE_AWAITING_SPACE"
+    assert session.render_state()["hud"]["phase"] == "PRACTICE_ACTIVE"  # no answer deadline, as in the real trials
+    session.on_space()  # forced choice: SPACE does not end it, the participant is told why
+    session.tick()
+    assert session.render_state()["hud"]["phase"] == "PRACTICE_ACTIVE"
+    assert session.render_state()["instructions"] == words.ANSWER_FIRST and session.answer_reminder_showing
+    session.on_response_key(Side.ABOVE)
+    session.tick()
+    assert session.render_state()["hud"]["phase"] == "PRACTICE_AWAITING_SPACE"  # the ignored press was not latched
     assert session.render_state()["instructions"] == ""  # later trials are silent
 
 

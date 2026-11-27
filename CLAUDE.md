@@ -13,15 +13,15 @@ backend. Participant/experimenter docs: [README.md](README.md).
 - Geometry: the startup dialog asks for screen height and viewing distance; `geometry.Geometry` (built once in `main`) gives the line's offset/SD in screen-height units, passed to
   `ExperimentSession`/`TutorialSession` (`trial_mechanics.line_position`) and `build_stimuli(geometry=)`. `Geometry.default()` = the placeholder constants
   (`VIEWING_DISTANCE_CM`/`SCREEN_HEIGHT_CM`). Used geometry is in `session.json` `settings` and the `analyze_session` header.
-- **Contrasts are a guess**: `SACCADE_FIXED_CONTRASTS` 4/6/8 % (dialog min 4 / max 8, 3 levels), `HARDWARE_CONTRAST_FLOOR` 0.78 % (README "Known limitations").
+- **Contrasts rest on one run**: `SACCADE_FIXED_CONTRASTS` 1.5/2.25/3 % (dialog min 1.5 / max 3, 3 levels; ~1.9-3.8 grey steps, screen not gamma-corrected; the first real run at 3/5.5/8 % was at ceiling and 1 % did not show on the user's screen), `HARDWARE_CONTRAST_FLOOR` 0.78 % (README "Known limitations").
 - Rolling RT = `robust_average_ms` over the last `RT_AVERAGE_ROLLING_WINDOW` (12) latencies; fewer than `RT_MIN_SAMPLES_FOR_AVERAGE` (3) plausible samples keep the previous value
   (initially `DEFAULT_REACTION_TIME_MS`).
 - **Return jump** (dialog "Return jump", default `RETURN_JUMP_DEFAULT` on): after the out saccade the target jumps back to the start symbol (`RETURN_JUMP_TRIGGER` "arrival" (default)
   or "onset"; `RETURN_JUMP_LANDING_TIMEOUT_MS` forces it), so each trial has an out and a return saccade but still ONE flash: `RETURN_LEG_FLASH_FRACTION` 0.8 on the return leg (timed
-  from the jump frame, spread `RETURN_FLASH_SPREAD_SD_MS` 40 = a guess, measure it), else the out leg. trials.csv: `flash_leg`, `out_arrival_ms_after_go_cue`, signed `return_reaction_ms`
+  from the jump frame, spread `RETURN_FLASH_SPREAD_SD_MS` 110, from one real 150-trial run's return-latency robust SD of 118 ms; recheck on more runs), else the out leg. trials.csv: `flash_leg`, `out_arrival_ms_after_go_cue`, signed `return_reaction_ms`
   (negative = left before the jump), `left_target_before_jump`. `analyze_session` gates each flash against its own leg's saccade (return must move back >= half the out amplitude),
   reports out / return / pooled indices and a return-latency report; summary.json schema 4 (3 added `analysis_thresholds`, 4 adds `companion` + `timecourse`) pools only one run kind (`single` | `return_jump/<trigger>`); `compare` refuses mixed kinds.
-  Simulator `ParticipantProfile.return_mode="learned"` = predictive returns. Tests: `tests/ai-tests/test_return_jump.py`, `test_return_analysis.py` (`sim_runs.py` writes simulated runs as folders). Sim (150 trials): ~36 valid in-saccade flashes vs ~20 without the jump; the gain needs the narrow 40 ms spread. Unvalidated on glasses.
+  Simulator `ParticipantProfile.return_mode="learned"` = predictive returns. Tests: `tests/ai-tests/test_return_jump.py`, `test_return_analysis.py` (`sim_runs.py` writes simulated runs as folders). Sim (150 trials, 5 seeds): valid in-saccade flashes 36 at spread 40 vs 22 at 110 with the default sim return latencies (narrower than real), 17 vs 16 with return latency 207 +- 118 ms; without the jump ~20 (older figure). Unvalidated on glasses.
 
 ## Rules (read first)
 
@@ -87,7 +87,7 @@ Double-click launchers: `run_experiment.bat` in the repo root; `analyze_latest.b
   are tested only on simulator, fake devices and synthetic data.
 - **Known problems** (numbers in README "Known limitations"): (1) gaze delay is ~13-20 ms now (Gotchas); live `flash_during_saccade` is unvalidated, post-hoc analysis is the judgement. (2) RT SD ~60-80 ms: few flashes land near onset.
   (3) Geometry is the 26 cm / 50 cm placeholder until the user measures their monitor (dialog says so).
-- **Next**: (0) on glasses, measure the real return-latency spread (`analyze_session` return-latency report) and set `RETURN_FLASH_SPREAD_SD_MS` from it; (1) Test run, then several 150-trial Real runs per person on glasses; (2) measure real screen geometry; (3) confirm gaze latency stays ~15 ms on long real runs; (4) one-page grant figure; (5) clinical metadata fields (needs IRB).
+- **Next**: (0) recheck the return-latency spread on more glasses runs (`analyze_session` return-latency report): `RETURN_FLASH_SPREAD_SD_MS` 110 comes from one run; (1) Test run, then several 150-trial Real runs per person on glasses; (2) measure real screen geometry; (3) confirm gaze latency stays ~15 ms on long real runs; (4) one-page grant figure; (5) clinical metadata fields (needs IRB).
 
 ## Repo map
 
@@ -114,7 +114,7 @@ Paths are checked by `tests/test_docs.py` - keep them real.
 | `src/experiment/scoring.py` | `score_outcome`, `is_valid_for_saccadic_analysis` (the validity gate) |
 | `src/experiment/trial_mechanics.py` | `OnsetDetector`, `ShuffledBag`, `line_position`, `robust_average_ms`, `spread_flash_delay_ms`, `RollingReactionTime` |
 | `src/experiment/calibration.py` | `CalibrationRounds` (3 points x 3 rounds), `average_calibration_rounds` |
-| `src/experiment/space_input.py` | `CalibrationLatch`, `NarrationKeyGate`, `SpaceTally`, `deliver_space`, `leaves_complete_screen` |
+| `src/experiment/space_input.py` | `CalibrationLatch`, `NarrationKeyGate`, `SpaceTally`, `AnswerFirst`, `deliver_space`, `leaves_complete_screen` |
 | `src/timebase.py` | the ONE time source: `now()` = `perf_counter()`; `unix_now()`, `unix_ms()`; `ms_to_s()`/`s_to_ms()` (the only place the factor 1000 is written for time) |
 | `src/experiment/trial_factory.py` | trial sequences; every trial flashes |
 | `src/experiment/logger.py` | `ResultLogger`: `TRIAL_COLUMNS`, `DROPPED_FROM_CSV`, `trial_from_row`, `read_trial_rows`/`read_trials` (plain-named + grating-era columns) |
@@ -205,14 +205,18 @@ Paths are checked by `tests/test_docs.py` - keep them real.
 
 SPACE presses are never silently dropped; every ignored one is counted in `session.space_tally` (phase + reason) and saved as `ignored_space_presses`.
 - Calibration: one press suffices; if `average_recent_ratio()` is still `None` it is latched and `tick()` completes the step when the window is full ("TRACKING LOST?" after 3 s).
-- Trials: accepted in `AWAITING_SPACE`; the swap follows `FOREPERIOD_MIN_MS`-`FOREPERIOD_MAX_MS` (500-1000 ms). Ignored during the foreperiod; during a trial ignored until answered, then carried to start the next.
+- Trials: accepted in `AWAITING_SPACE`; the swap follows `FOREPERIOD_MIN_MS`-`FOREPERIOD_MAX_MS` (500-1000 ms). Ignored during the foreperiod. **Forced choice, no answer deadline**: UP/DOWN counts from the flash until the trial ends
+  (`answer_ms` can be many seconds). A trial ends once the flash has fired, the movements are over (final landing or `SACCADE_TIMEOUT_MS`; `TrialLegs.movement_over`) AND it is answered; only one that reaches the timeout
+  with no saccade on the flash's leg ends by itself ('timeout'), so new runs have no `no_answer`. During a running trial SPACE is carried over to start the next one once answered, else ignored and not latched: after the flash
+  (`AnswerFirst`) it is tallied as not answered yet and `ANSWER_FIRST` is shown and spoken until the trial ends. That press is judged on the next tick, so an answer in the same frame counts. Same rules in tutorial practice.
+  Once only the answer is awaited the legs stop listening (`_gaze_record_closed`); a head spike near the flash is latched per tick (`HEAD_BUFFER_S` is only 10 s).
 - Same-frame repeats collapse to one; a press before a phase's first screen is discarded; the press in the frame COMPLETE first appears doesn't dismiss it.
-- Tutorial: `run_tutorial_phase` withholds key/tick forwarding while `narrator.is_speaking` and delivers one held SPACE afterwards.
+- Tutorial: `run_tutorial_phase` withholds key/tick forwarding while `narrator.is_speaking` (except while `answer_reminder_showing`) and delivers one held SPACE afterwards.
 
 ## Tutorial hand-off and narration
 
 - Tutorial calibration ratios and RT samples (`precomputed_calibration_ratios`, `precomputed_rt_samples_ms`) go to `run_saccade_phase`, which then skips calibration/RT test/practice and seeds `RollingReactionTime`.
-- `update_caption()` shows and speaks in lockstep (`narrate_if_changed`); it re-speaks on every text change, so narrated strings stay under ~15 words and are never repeated. `hide_caption` is True in real main trials; the HUD is Test-mode only.
+- `update_caption()` shows and speaks in lockstep (`narrate_if_changed`); it re-speaks on every text change, so narrated strings stay under ~15 words and are never repeated. `hide_caption` is True in real main trials except while the answer reminder is up; the HUD is Test-mode only.
 
 ## Gotchas that cost real debugging time
 

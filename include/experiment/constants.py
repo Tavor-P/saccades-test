@@ -70,8 +70,8 @@ HARDWARE_CONTRAST_FLOOR = 2 / 255
 # a plain yes/no SPACE press, so accuracy can't be inflated by just always pressing "I saw it".
 ABOVE_RESPONSE_KEYS = ("up",)
 BELOW_RESPONSE_KEYS = ("down",)
-
-RESPONSE_WINDOW_MS = 1000
+# No answer deadline, and the choice is forced: SPACE never ends a flashed trial without UP or DOWN (a fixed 1 s window
+# turned slow answers into misses; allowing a skip let unseen flashes go unanswered instead of guessed).
 
 # Every trial waits for the participant to press SPACE (that wait is the built-in break); the
 # target (go-cue) then appears after a foreperiod randomized 500-1000ms from the press, during
@@ -198,27 +198,31 @@ RETURN_JUMP_TRIGGER = "arrival"
 # another ~200-300 ms for its correction; 1500 leaves room for both without letting a lost track stall the trial.
 RETURN_JUMP_LANDING_TIMEOUT_MS = 1500
 # Return-leg flash timing: a bell curve like FLASH_SPREAD_SD_MS's, centred on the rolling return-latency average and cut to
-# FLASH_WINDOW_MIN_MS..FLASH_WINDOW_MAX_MS after the JUMP-BACK frame. Narrower than the out leg's because a practised,
-# predictable return saccade should vary less. 40 is a GUESS: set it from the return_reaction_ms SD of the first glasses runs.
+# FLASH_WINDOW_MIN_MS..FLASH_WINDOW_MAX_MS after the JUMP-BACK frame. Set from a measurement: one real 150-trial glasses
+# run, return-latency robust SD 118 ms (median 207 ms). The first guess, 40, expected a practised, predictable return to vary
+# less than the out leg; it did not, and most return-leg flashes missed the return saccade. Recheck on more runs
+# (analyze_session's return-latency report). It may be wider than FLASH_SPREAD_SD_MS, the out leg's spread.
 # The return average keeps negative and near-zero latencies (anticipatory returns); once it is <= 0 every non-control
 # return flash is drawn at the jump-back frame itself (0 ms), the earliest moment a return flash can exist.
-RETURN_FLASH_SPREAD_SD_MS = 40
+RETURN_FLASH_SPREAD_SD_MS = 110
 
 # Fixed probe contrasts for the saccade phase (method of constant stimuli), drawn without
 # repeats like the timing offsets. (An adaptive ZEST staircase was used once and removed: it only
 # learned from flashes the live check said landed in the saccade, and with the ~90 ms gaze latency
 # almost none did, so it never adapted.) Every flash is judged afterwards from the raw gaze trace (accuracy vs flash time relative to saccade
-# onset). Line-stimulus defaults 4/6/8 %: an EDUCATED GUESS, not a measurement. The line sits next to the
-# saccade target and is much easier to see than the old off-centre grating: a Test-mode run at 10/15/20 % was
-# at ceiling (11/11 correct at fixation, 18/22 overall), leaving no headroom to see suppression, and the old
-# foveal grating threshold was ~1.3 %; the earlier 2/4/6 % guess was judged too hard. Re-pilot on glasses and
-# adjust in the startup dialog. The 8-bit display renders ~5 / 7.6 / 10 grey steps at the line's peak for
-# 4 / 6 / 8 %, so levels are coarse; the hardware floor (HARDWARE_CONTRAST_FLOOR, 0.78 %) still allows them. Must not be empty.
+# onset). Line-stimulus defaults 1.5/2.25/3 %. The first real 150-trial glasses run, at 3/5.5/8 %, was at ceiling (127 of
+# 128 answered trials correct), so the psychometric fit was unidentified and the threshold extrapolated to 1.6 %: no
+# headroom to see suppression. 1.5 % is the minimum because 1 % did not show on the user's screen. One run, one screen:
+# re-pilot and adjust in the startup dialog.
+# LEVELS ARE VERY COARSE: on an 8-bit display the line's peak is only ~1.9 / 2.9 / 3.8 grey steps from the background
+# (c/2*255), and the hardware floor (HARDWARE_CONTRAST_FLOOR, 0.78 %) is one step. The screen is also not gamma-corrected
+# (rendering.luminance_to_color is linear), so the real luminance contrast is probably higher than these nominal values.
+# Must not be empty.
 # The startup dialog's "Saccade contrast min/max (%)" fields (defaults: the ends of the tuple below)
 # rebuild it per session as SACCADE_CONTRAST_LEVELS evenly spaced values between them (see
 # src/experiment/settings.py); 1 level or min == max gives a single contrast.
 SACCADE_CONTRAST_LEVELS = 3
-SACCADE_FIXED_CONTRASTS = (0.04, 0.06, 0.08)
+SACCADE_FIXED_CONTRASTS = (0.015, 0.0225, 0.03)
 # Number of main-block saccade trials in that mode (the block stops by count):
 # ~20 % of flashes land in the saccade gate, so 150 trials give ~30 saccade-gate flashes (simulator).
 SACCADE_FIXED_TRIALS_TEST = 30

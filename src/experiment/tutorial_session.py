@@ -14,7 +14,6 @@ from include.experiment.constants import (
     FOREPERIOD_MAX_MS,
     FOREPERIOD_MIN_MS,
     LINE_DURATION_FRAMES,
-    RESPONSE_WINDOW_MS,
     RETURN_JUMP_TRIGGER,
     RETURN_LEG_FLASH_FRACTION,
     TUTORIAL_PRACTICE_ATTEMPTS,
@@ -27,7 +26,7 @@ from include.eye_tracking.interfaces import GazeSource
 from src.experiment.calibration import CalibrationRounds, calibration_text
 from src.experiment.geometry import Geometry
 from src.experiment.pausable_clock import PausableClock
-from src.experiment.space_input import SpaceTally
+from src.experiment.space_input import AnswerFirst, SpaceTally
 from src.experiment.trial_legs import SampleFeed, TrialLegs, clamped_gaze_latency_ms, timestamp_latency_s
 from src.experiment.trial_mechanics import RollingReactionTime, ShuffledBag, flash_leg_pool, line_position
 from src.experiment.trial_mechanics import random_side as _random_side
@@ -114,10 +113,11 @@ class TutorialSession:
         self._line_visible = False
         self._line_frames_remaining = 0
         self._line_actually_shown = False
-        self._response_window_open = False
-        self._response_deadline = 0.0
+        self._gaze_record_closed = False  # as in ExperimentSession: only the answer is still awaited
+        self._answer_first = AnswerFirst()
         self._responded = False
         self._answer_side: Side | None = None
+        self._space_ahead = False  # as in ExperimentSession: SPACE pressed after answering
         self._trial_start = 0.0
         # -- return jump (the same TrialLegs rules as ExperimentSession; read at construction like there) --
         self._return_jump_trigger = RETURN_JUMP_TRIGGER
@@ -177,10 +177,14 @@ class TutorialSession:
             self._on_calibration(self._calibration.press(self._clock.now(), self.space_tally))
         elif self._phase is Phase.PRACTICE_AWAITING_SPACE:
             self._start_foreperiod()
+        elif self._phase is Phase.PRACTICE_ACTIVE and self._responded:
+            self._space_ahead = True  # the real trials' rules (ExperimentSession.on_space)
+        elif self._phase is Phase.PRACTICE_ACTIVE and self._flash_decided:
+            self._answer_first.press()
         elif self._phase is not Phase.COMPLETE:
-            # QUIZ/PRACTICE_ACTIVE respond to on_response_key, not space; PRACTICE_FOREPERIOD advances via tick().
-            # COMPLETE: the runner decides when to move on.
-            self.space_tally.record("not accepted in this phase")
+            # QUIZ responds to on_response_key, not space; a running attempt cannot be skipped; PRACTICE_FOREPERIOD
+            # advances via tick(). COMPLETE: the runner decides when to move on.
+            self.space_tally.record("during trial" if self._phase is Phase.PRACTICE_ACTIVE else "not accepted in this phase")
 
     def _on_calibration(self, final_ratios: tuple[float, float, float] | None) -> None:
         if final_ratios is not None:
@@ -201,13 +205,9 @@ class TutorialSession:
             else:
                 self._quiz_streak = 0
                 self._quiz_side = _random_side()
-        elif self._phase is Phase.PRACTICE_ACTIVE:
-            if self._responded or not self._response_window_open:
-                return
-            now = self._clock.now()
-            if now <= self._response_deadline:
-                self._responded = True
-                self._answer_side = answer
+        elif self._phase is Phase.PRACTICE_ACTIVE and self._flash_decided and not self._responded:
+            self._responded = True
+            self._answer_side = answer
 
     def _enter_quiz(self) -> None:
         self._quiz_streak = 0
@@ -235,8 +235,8 @@ class TutorialSession:
         self._line_visible = False
         self._line_frames_remaining = 0
         self._line_actually_shown = False
-        self._response_window_open = False
-        self._response_deadline = 0.0
+        self._gaze_record_closed = False
+        self._answer_first = AnswerFirst()
         self._responded = False
         self._answer_side = None
         self._flash_leg = self._leg_bag.draw() if self._leg_bag is not None else "out"
@@ -269,17 +269,18 @@ class TutorialSession:
         now = self._clock.now()
         legs = self._active_legs
         new_samples = self._feed.new_samples(self._gaze.latest_sample())
+        if self._answer_first.judge(self._responded, self.space_tally):
+            self._space_ahead = True
 
-        measured = legs.measure_out_onset(new_samples)
-        if measured is not None:
-            self._rt.add(measured[0])
+        if not self._gaze_record_closed:
+            measured = legs.measure_out_onset(new_samples)
+            if measured is not None:
+                self._rt.add(measured[0])
 
         flash_fired_this_tick = False
         if not self._flash_decided and now >= self._flash_scheduled_at:
             self._flash_decided = True
             flash_fired_this_tick = True
-            self._response_window_open = True
-            self._response_deadline = now + ms_to_s(RESPONSE_WINDOW_MS)
             self._line_visible = True
             self._line_frames_remaining = LINE_DURATION_FRAMES
             self._line_actually_shown = True
@@ -289,19 +290,36 @@ class TutorialSession:
             if self._line_frames_remaining <= 0:
                 self._line_visible = False
 
-        if self._response_window_open and now > self._response_deadline:
-            self._response_window_open = False
+        if not self._gaze_record_closed:
+            if self._return_jump:
+                self._tick_return_jump(new_samples, now)
+            else:
+                legs.track_out_landing(new_samples)
+        self._finish_if_over(now)
 
-        if self._return_jump:
-            self._tick_return_jump(new_samples, now)
-            return
-
-        legs.track_out_landing(new_samples)
-        if legs.out_timed_out(now):
+    def _finish_if_over(self, now: float) -> None:
+        """Same rule as ExperimentSession._finish_if_over: an answer is required, with no deadline."""
+        legs = self._active_legs
+        if legs.timed_out(now, self._return_jump) and not (legs.leg_moved(self._flash_leg) and self._line_actually_shown):
             self._finish_attempt()
             return
-        if legs.out_landing.landed and self._flash_decided and (self._responded or not self._response_window_open):
+        self._gaze_record_closed = self._flash_decided and legs.movement_over(now, self._return_jump)
+        if self._gaze_record_closed and not self._line_visible and self._responded:
             self._finish_attempt()
+
+    @property
+    def answer_reminder_showing(self) -> bool:
+        """True while the running attempt shows ANSWER_FIRST: the runner then lets keys through while it is spoken."""
+        return self._phase is Phase.PRACTICE_ACTIVE and self._answer_first.reminding
+
+    def _deliver_space_ahead(self) -> None:
+        if not self._space_ahead or self._phase is Phase.PRACTICE_ACTIVE:
+            return
+        self._space_ahead = False
+        if self._phase is Phase.PRACTICE_AWAITING_SPACE:
+            self._start_foreperiod()
+        else:  # never skips the "practice done" screen
+            self.space_tally.record("early press, no trial left to start")
 
     def _tick_return_jump(self, new_samples, now: float) -> None:
         """Same steps as ExperimentSession._tick_return_jump (shared TrialLegs rules); only the logging differs."""
@@ -312,20 +330,9 @@ class TutorialSession:
         if forced is not None:
             self._jump_back(now, forced=forced)
 
-        return_latency_ms, just_landed = legs.track_return(new_samples)
+        return_latency_ms = legs.track_return(new_samples)
         if return_latency_ms is not None and not legs.jump_forced:
             self._return_rt.add(return_latency_ms)
-        if legs.jump_at is None:
-            return
-        if just_landed and self._flash_decided and not self._responded:
-            self._response_window_open = True
-            self._response_deadline = max(self._response_deadline, now + ms_to_s(RESPONSE_WINDOW_MS))
-
-        if legs.return_timed_out(now):
-            self._finish_attempt()
-            return
-        if legs.return_landing.landed and self._flash_decided and (self._responded or not self._response_window_open):
-            self._finish_attempt()
 
     def _jump_back(self, now: float, forced: bool) -> None:
         self._active_legs.mark_jump(now, forced)
@@ -353,6 +360,7 @@ class TutorialSession:
             self._tick_foreperiod()
         elif self._phase is Phase.PRACTICE_ACTIVE:
             self._tick_active()
+        self._deliver_space_ahead()
 
     # -- rendering -------------------------------------------------------------
 
@@ -368,11 +376,16 @@ class TutorialSession:
         if self._phase is Phase.PRACTICE_INTRO:
             return words.PRACTICE_INTRO
         if self._phase in (Phase.PRACTICE_AWAITING_SPACE, Phase.PRACTICE_FOREPERIOD, Phase.PRACTICE_ACTIVE):
-            # Said once, before the first trial; silent afterwards (the narrator re-speaks on every text change).
-            if self._attempt > 0:
-                return ""
-            return words.PRACTICE_START_RETURN_JUMP if self._return_jump else words.RT_TEST_INTRO
+            return self._practice_instructions()
         return words.PRACTICE_DONE
+
+    def _practice_instructions(self) -> str:
+        if self.answer_reminder_showing:
+            return words.ANSWER_FIRST
+        # Said once, before the first trial; silent afterwards (the narrator re-speaks on every text change).
+        if self._attempt > 0:
+            return ""
+        return words.PRACTICE_START_RETURN_JUMP if self._return_jump else words.RT_TEST_INTRO
 
     def _tutorial_text(self) -> tuple[str | None, str]:
         """(text, position) for the larger instructional text stim shown only

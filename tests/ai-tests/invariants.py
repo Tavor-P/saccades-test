@@ -14,11 +14,9 @@ from include.experiment.constants import (
     FLASH_WINDOW_MAX_MS,
     FLASH_WINDOW_MIN_MS,
     PRACTICE_CONTRAST,
-    RESPONSE_WINDOW_MS,
     RETURN_JUMP_LANDING_TIMEOUT_MS,
     RETURN_LEG_FLASH_FRACTION,
     SACCADE_ONSET_STABILITY_MS,
-    SACCADE_TIMEOUT_MS,
     TIMING_JITTER_MS,
     TIMING_OFFSETS_MS,
 )
@@ -116,18 +114,15 @@ def _check_flash_fields(r, tag: str, sim: SimulationResult) -> list[str]:
 
 
 def _check_response_fields(r, tag: str) -> list[str]:
-    """Response data, its window, and that the outcome agrees with the answer."""
+    """Response data, and that the outcome agrees with the answer (there is no answer deadline)."""
     v: list[str] = []
+    if r.flash_shown and not r.responded and r.outcome != "timeout":
+        v.append(f"{tag}: flashed trial ended without an answer as {r.outcome!r} (forced choice)")
     if r.responded:
         if r.flash_shown and r.response_time_ms is None:
             v.append(f"{tag}: responded to a flash but no response_time_ms")
-        limit_ms = RESPONSE_WINDOW_MS
-        if r.jump_back_ms_after_go_cue is not None and r.scheduled_delay_ms is not None:
-            # Return jump: the window is (re)opened in full at the return landing, which may come up to
-            # SACCADE_TIMEOUT_MS after the jump-back.
-            limit_ms = max(limit_ms, r.jump_back_ms_after_go_cue - r.scheduled_delay_ms + SACCADE_TIMEOUT_MS + RESPONSE_WINDOW_MS)
-        if r.response_time_ms is not None and not (0 <= r.response_time_ms <= limit_ms + 2 * FRAME_MS):
-            v.append(f"{tag}: response_time_ms {r.response_time_ms:.0f} outside [0, response window]")
+        if r.response_time_ms is not None and r.response_time_ms < 0:
+            v.append(f"{tag}: negative response_time_ms {r.response_time_ms:.0f}")
     else:
         if r.response_time_ms is not None or r.answer_side is not None:
             v.append(f"{tag}: not responded but response data present")
