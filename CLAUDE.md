@@ -18,7 +18,7 @@ backend. Participant/experimenter docs: [README.md](README.md).
   (initially `DEFAULT_REACTION_TIME_MS`).
 - **Onset-triggered flashes** (dialog "Onset-triggered flashes", default `ONSET_TRIGGER_DEFAULT` off, remembered; `SessionConfig.onset_trigger`, session.json `settings.onset_trigger`): `ONSET_TRIGGER_FRACTION` 1/3 of the
   main trials that drew a bell-curve label (shuffled bag; control trials never, so the overall share is the fraction x 9/11) flash on the same tick the live `OnsetDetector` confirms an onset on the flash's own leg
-  (+ `ONSET_TRIGGER_DELAY_MS` 0): ~10 ms debounce + ~15 ms gaze delay + up to one frame after the true onset. `TrialSpec.flash_trigger`, trials.csv `flash_trigger` ('scheduled' | 'onset', every saccade row).
+  (+ `ONSET_TRIGGER_DELAY_MS` 0): after the true onset that is threshold crossing (~15 ms in the sim) + ~10 ms debounce + ~15 ms gaze delay + up to one frame (+ display lag). `TrialSpec.flash_trigger`, trials.csv `flash_trigger` ('scheduled' | 'onset', every saccade row).
   No onset = flash given up (out leg with return jump: at `RETURN_JUMP_LANDING_TIMEOUT_MS`, which then forces the jump; else when that leg's movement is over) and the trial ends as a flash-less 'timeout', no answer.
   `scheduled_delay_ms` stays flash minus go cue (analysis derives the go cue from it; analysis unchanged). Practice/tutorial stay scheduled. Pooling does NOT separate runs with the mode on from off.
   Sim (`--set ONSET_TRIGGER_DEFAULT=true`; 150 trials, 5 seeds, return latency 207 +- 118 ms, default participant): analysis saccade-gate flashes 29 off, 60 at 1/3, 78 at 1/2; fixation-gate 57 / 45 / 40; triggered flashes 41-61 ms

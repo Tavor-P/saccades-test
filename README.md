@@ -75,7 +75,7 @@ Click a field's name or its **?** for a help bubble. The last values are remembe
    and the eye follows it, so a trial has an out and a return saccade but still only ONE flash: on the return leg in `RETURN_LEG_FLASH_FRACTION` (0.8) of trials (timed from the jump, spread `RETURN_FLASH_SPREAD_SD_MS` 110 ms,
    from one real run's measured 118 ms; recheck on more runs), else on the out leg.
    With **Onset-triggered flashes** on, `ONSET_TRIGGER_FRACTION` (1/3) of the bell-curve trials instead flash on the first frame after the live detector sees the eye leave on the flash's leg (plus `ONSET_TRIGGER_DELAY_MS`, 0),
-   so they reach the eye mid-movement: about 10 ms detection + ~15 ms gaze delay + up to one frame (+ screen lag) after the true start. The control flashes and the other trials are unchanged; practice and tutorial trials are never triggered.
+   so they reach the eye about 40-60 ms (simulator) after the true start: crossing the detection threshold + 10 ms confirmation + ~15 ms gaze delay + up to one frame, plus screen lag. This only lands mid-movement if saccades last longer than that. The control flashes and the other trials are unchanged; practice and tutorial trials are never triggered.
    If no movement is detected in time there is no flash and no answer is asked: the trial ends as `timeout`. Not yet tried on glasses.
 5. **End.** A plain-language summary is printed, and the run is analysed automatically (top of the report printed; rerun with `analyze_session`, see below). Fixation data come from the control flashes and far-from-saccade flashes of the same trials, sorted after the fact.
 

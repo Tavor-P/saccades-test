@@ -183,7 +183,9 @@ CONTROL_OFFSETS_MS = (400, 500)
 # flashes on the first frame after the live OnsetDetector fires on the flash's own leg (out or return) instead. Control trials
 # are never triggered, so the fixation baseline keeps its flashes: of all main trials the triggered share is the fraction x 9/11.
 # The other trials stay scheduled, which keeps flashes before onset. Practice and tutorial trials are always scheduled.
-# Real delay from the eye's onset = SACCADE_ONSET_STABILITY_MS + gaze delay (~15 ms) + up to one frame (+ display lag).
+# Real delay from the eye's onset = the time to move past SACCADE_ONSET_DISPLACEMENT (~15 ms in the simulator) +
+# SACCADE_ONSET_STABILITY_MS + gaze delay (~15 ms) + up to one frame (+ display lag): about 40-60 ms in the simulator. A
+# saccade shorter than that is over before the flash, so check real saccade durations (analyze_session reports the median).
 # No onset on that leg by the time the trial gives up waiting for it = no flash, logged as a 'timeout' trial.
 # 1/3 is a guess (not yet run on glasses): enough triggered flashes to raise the saccade-gate count, few enough that the
 # flash does not become something the participant expects with every eye movement.
