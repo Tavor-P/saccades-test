@@ -28,7 +28,7 @@ backend. Participant/experimenter docs: [README.md](README.md).
   `RETURN_JUMP_MAIN_DWELL_MIN_MS`-`MAX_MS` 200-400 (trials.csv `jump_back_dwell_ms`; their return latencies feed the return average, and their return leg is listened to only from the completed stay, so a corrective
   saccade during it is no return); "onset" main trials never wait. Tutorial practice and the saccade phase's RT test/practice wait the fixed `RETURN_JUMP_DWELL_MS` 400 with either trigger (the RT test with or without
   return jump, its latency still measured at onset); those practice trials add no return latencies, so the main block's return average starts empty. Pooling does NOT separate runs from before the main-trial stay
-  (jump on the first in-target sample, no `jump_back_dwell_ms`) from newer ones (same run kind). So
+  (jump on the first in-target sample, no `jump_back_dwell_ms`) from newer ones (same run kind). With the jump,
   each trial has an out and a return saccade but still ONE flash: `RETURN_LEG_FLASH_FRACTION` 0.8 on the return leg (timed
   from the jump frame, spread `RETURN_FLASH_SPREAD_SD_MS` 110, from one real 150-trial run's return-latency robust SD of 118 ms; recheck on more runs), else the out leg. trials.csv: `flash_leg`, `out_arrival_ms_after_go_cue`, signed `return_reaction_ms`
   (negative = left before the jump), `left_target_before_jump`. `analyze_session` gates each flash against its own leg's saccade (return must move back >= half the out amplitude),
