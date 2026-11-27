@@ -420,7 +420,7 @@ def _tutorial_at_practice(fake_gaze) -> TutorialSession:
     return session
 
 
-def test_tutorial_practice_jumps_back_and_collects_return_latencies(fake_gaze, fake_time):
+def test_tutorial_practice_jumps_back_after_the_dwell_and_collects_no_return_latency(fake_gaze, fake_time):
     session = _tutorial_at_practice(fake_gaze)
     assert words.TUTORIAL_INTRO_RETURN_JUMP in session._intro_lines
     session._flash_leg = "return"
@@ -498,3 +498,38 @@ def test_tutorial_practice_jumps_only_after_the_eye_has_stayed_on_the_target(fak
     fake_time(RETURN_JUMP_LANDING_TIMEOUT_MS / 1000 + 0.001)
     session.tick()  # never on the target
     assert session._legs.jump_forced is True
+
+
+def test_tutorial_return_before_the_jump_counts_like_in_the_real_trials(fake_gaze, fake_time, monkeypatch):
+    """Shared TrialLegs rules: the return leg is listened to from the out arrival, so a return made while a late out-leg
+    flash holds the jump has already landed when the target jumps, and its latency is negative (the old tutorial copy
+    started the return landing only at the jump). Without the practice dwell, which never jumps on such a trial this early."""
+    monkeypatch.setattr(tutorial_module, "RETURN_JUMP_DWELL_MS", 0)
+    session = _tutorial_at_practice(fake_gaze)
+    session._flash_leg = "out"
+    session._leg_bag = ShuffledBag(["out"])
+    fake_gaze.zone = GazeZone.LEFT
+    session.on_space()
+    fake_time(FOREPERIOD_MAX_MS / 1000 + 0.1)
+    session.tick()
+    session._flash_scheduled_at = session._trial_start + 1.0  # a late out-leg flash holds the jump back
+    fake_time(0.2)
+    fake_gaze.zone = GazeZone.RIGHT
+    session.tick()  # out arrival
+    fake_time(SACCADE_ONSET_STABILITY_MS / 1000 + 0.01)
+    session.tick()
+    fake_gaze.zone = GazeZone.LEFT  # back on the dot before the jump
+    fake_time(0.05)
+    session.tick()
+    fake_time(GAZE_LANDING_STABILITY_MS / 1000 + 0.01)
+    session.tick()
+    assert session._jump_at is None and session._out_arrived
+
+    fake_time(session._flash_scheduled_at - session._clock.now() + 0.001)
+    session.tick()  # the out-leg flash is drawn
+    session.tick()  # ... and gone: the target jumps back
+    assert session._jump_at is not None
+    assert len(session.return_rt_samples_ms) == 1 and session.return_rt_samples_ms[0] < 0
+    session.on_response_key(session._line_side)
+    session.tick()  # already back on the dot: the attempt ends at once
+    assert session.render_state()["hud"]["phase"] == "PRACTICE_AWAITING_SPACE"

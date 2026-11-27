@@ -17,7 +17,7 @@ backend. Participant/experimenter docs: [README.md](README.md).
 - Rolling RT = `robust_average_ms` over the last `RT_AVERAGE_ROLLING_WINDOW` (12) latencies; fewer than `RT_MIN_SAMPLES_FOR_AVERAGE` (3) plausible samples keep the previous value
   (initially `DEFAULT_REACTION_TIME_MS`).
 - **Return jump** (dialog "Return jump", default `RETURN_JUMP_DEFAULT` on): after the out saccade the target jumps back to the start symbol (`RETURN_JUMP_TRIGGER` "arrival" (default)
-  or "onset"; `RETURN_JUMP_LANDING_TIMEOUT_MS` forces it; main trials only: tutorial practice and the saccade phase's RT test/practice wait for a continuous stay of
+  or "onset"; `RETURN_JUMP_LANDING_TIMEOUT_MS` forces it: the main trials' rule; tutorial practice and the saccade phase's RT test/practice instead wait for a continuous stay of
   `RETURN_JUMP_DWELL_MS` 400 on the target, `trial_legs.ArrivalDwell` - the RT test with or without return jump, its latency still measured at onset; those practice
   trials add no return latencies, so the main block's return average starts empty; "arrival" itself fires ~19 ms before the true landing in the simulator), so
   each trial has an out and a return saccade but still ONE flash: `RETURN_LEG_FLASH_FRACTION` 0.8 on the return leg (timed
