@@ -24,7 +24,10 @@ backend. Participant/experimenter docs: [README.md](README.md).
   Sim (`--set ONSET_TRIGGER_DEFAULT=true`; 150 trials, 5 seeds, return latency 207 +- 118 ms, default participant): analysis saccade-gate flashes 29 off, 60 at 1/3, 78 at 1/2; fixation-gate 57 / 45 / 40; triggered flashes 41-61 ms
   after the TRUE onset (median ~50). The sim's saccades last ~110 ms: with 45-60 ms saccades 38 of 41 triggered flashes are still in flight, with 30-40 ms only 5, so check real saccade durations first. Unvalidated on glasses.
 - **Return jump** (dialog "Return jump", default `RETURN_JUMP_DEFAULT` on): after the out saccade the target jumps back to the start symbol (`RETURN_JUMP_TRIGGER` "arrival" (default)
-  or "onset"; `RETURN_JUMP_LANDING_TIMEOUT_MS` forces it), so each trial has an out and a return saccade but still ONE flash: `RETURN_LEG_FLASH_FRACTION` 0.8 on the return leg (timed
+  or "onset"; `RETURN_JUMP_LANDING_TIMEOUT_MS` forces it: the main trials' rule; tutorial practice and the saccade phase's RT test/practice instead wait for a continuous stay of
+  `RETURN_JUMP_DWELL_MS` 400 on the target, `trial_legs.ArrivalDwell` - the RT test with or without return jump, its latency still measured at onset; those practice
+  trials add no return latencies, so the main block's return average starts empty; "arrival" itself fires ~19 ms before the true landing in the simulator), so
+  each trial has an out and a return saccade but still ONE flash: `RETURN_LEG_FLASH_FRACTION` 0.8 on the return leg (timed
   from the jump frame, spread `RETURN_FLASH_SPREAD_SD_MS` 110, from one real 150-trial run's return-latency robust SD of 118 ms; recheck on more runs), else the out leg. trials.csv: `flash_leg`, `out_arrival_ms_after_go_cue`, signed `return_reaction_ms`
   (negative = left before the jump), `left_target_before_jump`. `analyze_session` gates each flash against its own leg's saccade (return must move back >= half the out amplitude),
   reports out / return / pooled indices and a return-latency report; summary.json schema 5 (3 added `analysis_thresholds`, 4 `companion` + `timecourse`, 5 `secondary_onset_window`) pools only one run kind (`single` | `return_jump/<trigger>`); `compare` refuses mixed kinds.
@@ -109,7 +112,7 @@ Paths are checked by `tests/test_docs.py` - keep them real.
 | `include/eye_tracking/interfaces.py`, `types.py` | `GazeSource` (the only gaze interface sessions use); `GazeZone`, `GazeSample` |
 | `src/experiment/session.py` | `ExperimentSession`: saccade phase state machine (core logic) |
 | `src/experiment/session_config.py` | `SessionConfig` (run settings) + `TutorialHandoff` (tutorial calibration/RT samples): `ExperimentSession(gaze, logger, clock, config=, handoff=)` |
-| `src/experiment/trial_legs.py` | `TrialLegs` (out onset/landing, return jump, return onset/landing per trial) + `SampleFeed` (new samples, capture times): shared by session and tutorial |
+| `src/experiment/trial_legs.py` | `TrialLegs` (out onset/landing, return jump, return onset/landing per trial) + `ArrivalDwell` (practice/RT-test wait on the target) + `SampleFeed` (new samples, capture times): shared by session and tutorial |
 | `src/experiment/trial_record.py` | `saccade_trial_result()`: a finished main trial's `TrialResult` row |
 | `src/experiment/tutorial_session.py` | `TutorialSession`: intro -> calibration -> quiz -> 8 practice trials |
 | `src/experiment/run_experiment.py` | entry point (hands over to `startup_launch` above its imports): `main`, phase loops, dialog -> session wiring (`SaccadePhaseOptions`); re-exports the rendering names tests patch |
@@ -223,7 +226,8 @@ SPACE presses are never silently dropped; every ignored one is counted in `sessi
 
 ## Tutorial hand-off and narration
 
-- Tutorial calibration ratios and RT samples (`precomputed_calibration_ratios`, `precomputed_rt_samples_ms`) go to `run_saccade_phase`, which then skips calibration/RT test/practice and seeds `RollingReactionTime`.
+- Tutorial calibration ratios and RT samples (`precomputed_calibration_ratios`, `precomputed_rt_samples_ms`) go to `run_saccade_phase`, which then skips calibration/RT test/practice and seeds `RollingReactionTime`
+  (return-latency samples are handed over too, but stay empty while `RETURN_JUMP_DWELL_MS` > 0).
 - `update_caption()` shows and speaks in lockstep (`narrate_if_changed`); it re-speaks on every text change, so narrated strings stay under ~15 words and are never repeated. A new line replaces older speech (`Narrator.speak`), so skipped screens are not read afterwards; blank text keeps the old caption and lets its line finish; `hide_caption` turning on cuts it off (`silence()`). The head warning is queued (`interrupt=False`) after the frame's caption. `hide_caption` is True in real main trials except while the answer reminder is up; the HUD is Test-mode only.
 
 ## Gotchas that cost real debugging time

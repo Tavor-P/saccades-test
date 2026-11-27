@@ -65,6 +65,8 @@ Click a field's name or its **?** for a help bubble. The last values are remembe
 
 1. **Tutorial** (optional, narrated and captioned): intro, calibration, a how-to-answer quiz (line above/below a dot, 3 correct in a row) and 8 practice trials that seed the reaction-time average. No feedback on answers.
 2. **Calibration**: look steadily at each of 3 targets, 3 rounds (without the tutorial, a short reaction-time test and practice follow).
+   In the tutorial's practice trials and in that test and practice, the symbols swap back only after the eye has stayed on the
+   target for `RETURN_JUMP_DWELL_MS` (400 ms); the real trials do not wait.
 3. **Green sync flashes**: the screen flashes green three times before the first trial and once at the end (announced aloud; normal). They align the phone's video to the PC clock.
 4. **Trials** (150 Real, 30 Test). The participant presses **SPACE** to start each trial (the wait is their break). 0.5-1 s later the dot swaps to the cross with a beep and they look to it as fast as they can.
    A thin line flashes for one frame 2 deg above or below the target, at a random time on a bell curve centred on the average reaction time (0-500 ms after the swap), plus some control flashes

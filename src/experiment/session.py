@@ -29,6 +29,7 @@ from include.experiment.constants import (
     ONSET_TRIGGER_FRACTION,
     PRACTICE_CONTRAST,
     RETURN_FLASH_SPREAD_SD_MS,
+    RETURN_JUMP_DWELL_MS,
     RETURN_JUMP_LANDING_TIMEOUT_MS,
     RETURN_JUMP_TRIGGER,
     RETURN_LEG_FLASH_FRACTION,
@@ -51,7 +52,7 @@ from src.experiment.scoring import is_valid_for_saccadic_analysis, score_outcome
 from src.experiment.session_config import SessionConfig, TutorialHandoff
 from src.experiment.space_input import AnswerFirst, SpaceTally
 from src.experiment.trial_factory import build_saccade_sequence, generate_next_saccade_trial
-from src.experiment.trial_legs import SampleFeed, TrialLegs, clamped_gaze_latency_ms, timestamp_latency_s
+from src.experiment.trial_legs import ArrivalDwell, SampleFeed, TrialLegs, clamped_gaze_latency_ms, timestamp_latency_s
 from src.experiment.trial_mechanics import (
     OnsetDetector,
     RollingReactionTime,
@@ -192,6 +193,8 @@ class ExperimentSession:
         self._rt_test_attempt = 0
         self._rt_test_onset_detector: OnsetDetector = OnsetDetector(zone_for(Target.DOT))
         self._rt_test_start_time = 0.0
+        self._rt_test_reaction_ms: float | None = None  # measured at onset; logged once the cross has been looked at
+        self._rt_test_dwell = ArrivalDwell(zone_for(Target.CROSS), RETURN_JUMP_DWELL_MS)
         self._avg_reaction_time_ms: float | None = None
         # One rolling window for the RT test, practice and main trials (and the tutorial's practice samples): every
         # detected eye movement is added and _avg_reaction_time_ms follows at once (see _record_reaction_time).
@@ -405,6 +408,8 @@ class ExperimentSession:
         self._clear_trial_state()
         self._phase = Phase.RT_TEST_AWAITING_SPACE
         self._rt_test_onset_detector = OnsetDetector(zone_for(Target.DOT))
+        self._rt_test_reaction_ms = None
+        self._rt_test_dwell = ArrivalDwell(zone_for(Target.CROSS), RETURN_JUMP_DWELL_MS)
         self._dot_visible = True
         self._cross_visible = False
 
@@ -433,17 +438,25 @@ class ExperimentSession:
 
     def _tick_rt_test_active(self) -> None:
         now = self._clock.now()
-        for sample, sample_t in self._feed.new_samples(self._gaze.latest_sample()):
-            if sample_t < self._rt_test_start_time:
-                continue  # captured before the go-cue (it just arrived after it): cannot be a reaction to it
-            if self._rt_test_onset_detector.update(sample, sample_t):
-                since = self._rt_test_onset_detector.since
-                assert since is not None  # update() returned True
-                self._finish_rt_test_attempt(s_to_ms(since - self._rt_test_start_time))
-                return
+        # Samples captured before the go-cue (they just arrived after it) cannot be a reaction to it.
+        samples = [(s, t) for s, t in self._feed.new_samples(self._gaze.latest_sample()) if t >= self._rt_test_start_time]
+        self._rt_test_dwell.feed(samples)
+        if self._rt_test_reaction_ms is None:
+            for sample, sample_t in samples:
+                if self._rt_test_onset_detector.update(sample, sample_t):
+                    since = self._rt_test_onset_detector.since
+                    assert since is not None  # update() returned True
+                    self._rt_test_reaction_ms = s_to_ms(since - self._rt_test_start_time)
+                    break
 
-        if now - self._rt_test_start_time >= ms_to_s(SACCADE_TIMEOUT_MS):
-            self._finish_rt_test_attempt(None)
+        reaction_ms = self._rt_test_reaction_ms
+        if reaction_ms is None:
+            if now - self._rt_test_start_time >= ms_to_s(SACCADE_TIMEOUT_MS):
+                self._finish_rt_test_attempt(None)
+        # The cross stays until it has been looked at (RETURN_JUMP_DWELL_MS, with or without return jump). The give-up time
+        # counts from the onset, so a slow starter is not cut off mid-flight.
+        elif self._rt_test_dwell.due(now, self._rt_test_start_time + ms_to_s(reaction_ms)) is not None:
+            self._finish_rt_test_attempt(reaction_ms)
 
     def _finish_rt_test_attempt(self, reaction_time_ms: float | None) -> None:
         result = TrialResult(
@@ -577,7 +590,8 @@ class ExperimentSession:
         self._trial_start_time = self._clock.now()
         self._feed.last_sample_ts = self._gaze.latest_sample().timestamp
         self._legs = TrialLegs(
-            zone_for(trial.source), zone_for(trial.target), self._trial_start_time, trigger=self._return_jump_trigger
+            zone_for(trial.source), zone_for(trial.target), self._trial_start_time, trigger=self._return_jump_trigger,
+            dwell_ms=RETURN_JUMP_DWELL_MS if trial.practice else 0,
         )
         # Open-loop: the flash fires at a fixed delay from this instant, not when the gaze classifier detects onset. The
         # average is always set here: the RT test (or seeded samples) comes first. A return-leg flash is scheduled the same
@@ -729,8 +743,9 @@ class ExperimentSession:
         # The return leg is listened to from the out arrival (or the jump, if that came first): a predictive return
         # saccade may start BEFORE the jump frame (negative return latency), e.g. while a late out-leg flash holds the jump.
         return_latency_ms = legs.track_return(new_samples)
-        if return_latency_ms is not None and not legs.jump_forced:
-            # After a forced jump the eye may not be on the target: no clean return latency.
+        if return_latency_ms is not None and not legs.jump_forced and legs.dwell is None:
+            # After a forced jump the eye may not be on the target: no clean return latency. After a practice dwell the
+            # movement is not the main trials' one (RETURN_JUMP_DWELL_MS).
             self._return_rt.add(return_latency_ms)
 
     def _jump_back(self, trial: TrialSpec, now: float, forced: bool) -> None:

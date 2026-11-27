@@ -70,10 +70,11 @@ class SampleFeed:
 
 class LandingTracker:
     """Landing on `zone`: gaze must stay there for GAZE_LANDING_STABILITY_MS of capture time. `since` = first sample of the
-    current in-zone run (the landing time once `landed`)."""
+    current in-zone run (the landing time once `landed`). `stability_ms` replaces that default (ArrivalDwell)."""
 
-    def __init__(self, zone: GazeZone) -> None:
+    def __init__(self, zone: GazeZone, stability_ms: float | None = None) -> None:
         self.zone = zone
+        self._stability_ms = GAZE_LANDING_STABILITY_MS if stability_ms is None else stability_ms
         self.since: float | None = None
         self.landed = False
 
@@ -84,7 +85,7 @@ class LandingTracker:
             if s.face_found and s.zone is self.zone:
                 if self.since is None:
                     self.since = s_t
-                elif s_t - self.since >= ms_to_s(GAZE_LANDING_STABILITY_MS):
+                elif s_t - self.since >= ms_to_s(self._stability_ms):
                     self.landed = True
             else:
                 self.since = None
@@ -94,6 +95,28 @@ class LandingTracker:
         self.since, self.landed = t, True
 
 
+class ArrivalDwell:
+    """Practice and reaction-time-test trials: the symbols stay until the eye has been on `zone` for `dwell_ms` without a
+    break. `due`: None = keep waiting; False = the stay is complete; True = given up, RETURN_JUMP_LANDING_TIMEOUT_MS after
+    `start` with the eye never on `zone` (one that arrived but did not stay gets `dwell_ms` on top)."""
+
+    def __init__(self, zone: GazeZone, dwell_ms: float) -> None:
+        self._dwell_ms = dwell_ms
+        self._stay = LandingTracker(zone, dwell_ms)
+        self._arrived = False
+
+    def feed(self, samples) -> None:
+        """Samples captured from the go cue on."""
+        self._arrived = self._arrived or any(s.face_found and s.zone is self._stay.zone for s, _ in samples)
+        self._stay.feed(samples)
+
+    def due(self, now: float, start: float) -> bool | None:
+        if self._stay.landed:
+            return False
+        limit_ms = RETURN_JUMP_LANDING_TIMEOUT_MS + (self._dwell_ms if self._arrived else 0)
+        return True if now - start >= ms_to_s(limit_ms) else None
+
+
 class TrialLegs:
     """The gaze side of one trial, from the go cue on.
 
@@ -101,13 +124,16 @@ class TrialLegs:
     Return-jump trials: the out ARRIVAL (first in-target sample) is the out landing; the target jumps back on `trigger`
     ("arrival", or "onset" = out onset confirmed) or at RETURN_JUMP_LANDING_TIMEOUT_MS (forced); the return leg is listened
     to from the arrival (or the jump, if that came first), so a predictive return can start before the jump frame
-    (negative, signed return latency).
+    (negative, signed return latency). With `dwell_ms` > 0 (practice) the jump waits for an ArrivalDwell, not `trigger`.
 
     Per tick the session calls, in this order: `measure_out_onset`, then `track_out_landing` (single leg) or
     `track_arrival` -> `jump_due` / `mark_jump` -> `track_return` (return jump)."""
 
-    def __init__(self, source_zone: GazeZone, target_zone: GazeZone, go_cue_at: float, trigger: str = "arrival") -> None:
+    def __init__(
+        self, source_zone: GazeZone, target_zone: GazeZone, go_cue_at: float, trigger: str = "arrival", dwell_ms: float = 0
+    ) -> None:
         self.go_cue_at = go_cue_at
+        self.dwell = ArrivalDwell(target_zone, dwell_ms) if dwell_ms > 0 else None
         self.trigger = trigger
         self._target_zone = target_zone
         self.onset = OnsetDetector(source_zone)
@@ -154,6 +180,8 @@ class TrialLegs:
 
     def track_arrival(self, samples) -> None:
         """The out arrival (= out landing in return-jump mode) and whether the eye was still on the target before the jump."""
+        if self.dwell is not None:
+            self.dwell.feed([(s, s_t) for s, s_t in samples if s_t >= self.go_cue_at])
         for s, s_t in samples:
             if s_t < self.go_cue_at or not s.face_found:
                 continue
@@ -165,9 +193,12 @@ class TrialLegs:
 
     def jump_due(self, now: float, out_flash_done: bool) -> bool | None:
         """None = no jump yet; else jump now, with the value saying whether it is forced (no trigger by
-        RETURN_JUMP_LANDING_TIMEOUT_MS). `out_flash_done`: an out-leg flash is drawn (and gone) before the target jumps."""
+        RETURN_JUMP_LANDING_TIMEOUT_MS; with a dwell, see ArrivalDwell.due). `out_flash_done`: an out-leg flash is drawn
+        (and gone) before the target jumps."""
         if self.jump_at is not None or not out_flash_done:
             return None
+        if self.dwell is not None:
+            return self.dwell.due(now, self.go_cue_at)
         triggered = self.onset.confirmed if self.trigger == "onset" else self.out_arrived_at is not None
         if triggered:
             return False
