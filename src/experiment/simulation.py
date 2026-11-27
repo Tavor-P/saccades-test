@@ -22,7 +22,14 @@ import statistics
 from collections import deque
 from dataclasses import dataclass, field
 
-from include.experiment.constants import CROSS_POSITION, DOT_POSITION, RETURN_JUMP_DEFAULT, SCREEN_HEIGHT_CM, VIEWING_DISTANCE_CM
+from include.experiment.constants import (
+    CROSS_POSITION,
+    DOT_POSITION,
+    ONSET_TRIGGER_DEFAULT,
+    RETURN_JUMP_DEFAULT,
+    SCREEN_HEIGHT_CM,
+    VIEWING_DISTANCE_CM,
+)
 from include.experiment.types import Side, TrialResult
 from include.eye_tracking.interfaces import GazeSource
 from include.eye_tracking.types import GazeSample, GazeZone
@@ -531,16 +538,19 @@ def simulate_session(  # noqa: C901 - simulator main loop, split later
     test_mode: bool = True,
     skip_practice_trials: bool = True,
     return_jump: bool | None = None,
+    onset_trigger: bool | None = None,
 ) -> SimulationResult:
     """Runs the real ExperimentSession end-to-end against a simulated
     participant until `max_trials` saccade-phase trials have been logged (or
     the session completes on its own). Deterministic for a given seed. The
     global `random` state is saved and restored, since the session draws
-    foreperiods and trial sequences from it. `return_jump` None = RETURN_JUMP_DEFAULT,
-    read at call time (so a constant override such as `--set RETURN_JUMP_DEFAULT=false` switches it)."""
+    foreperiods and trial sequences from it. `return_jump` / `onset_trigger` None = RETURN_JUMP_DEFAULT /
+    ONSET_TRIGGER_DEFAULT, read at call time (so a constant override such as `--set RETURN_JUMP_DEFAULT=false` switches it)."""
     profile = profile or ParticipantProfile()
     if return_jump is None:
         return_jump = RETURN_JUMP_DEFAULT
+    if onset_trigger is None:
+        onset_trigger = ONSET_TRIGGER_DEFAULT
     saved_state = random.getstate()
     random.seed(seed)
     try:
@@ -550,7 +560,9 @@ def simulate_session(  # noqa: C901 - simulator main loop, split later
         events: list[tuple[float, str]] = []
         session = ExperimentSession(
             gaze, logger=logger, clock=clock,
-            config=SessionConfig(test_mode=test_mode, skip_practice_trials=skip_practice_trials, return_jump=return_jump),
+            config=SessionConfig(
+                test_mode=test_mode, skip_practice_trials=skip_practice_trials, return_jump=return_jump, onset_trigger=onset_trigger
+            ),
         )
         if profile.head_spikes:
             gaze.head_motion = HeadMotionTracker()
@@ -622,7 +634,7 @@ def print_trial_timeline(sim: SimulationResult) -> None:
     for name in (
         "outcome", "flash_shown", "contrast", "line_side", "responded", "response_time_ms",
         "reaction_latency_ms", "onset_detection_lag_ms", "timing_offset_ms", "flash_during_saccade", "tracking_ok",
-        "flash_leg", "jump_back_ms_after_go_cue", "return_reaction_ms", "jump_back_forced",
+        "flash_leg", "flash_trigger", "flash_relative_to_onset_ms", "jump_back_ms_after_go_cue", "return_reaction_ms", "jump_back_forced",
     ):
         print(f"  {name:24s} {getattr(result, name)}")
     print(f"\n(Simulated {sim.duration_s:.1f} s of session time, including calibration and the RT test.)")

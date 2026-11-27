@@ -96,7 +96,7 @@ def test_logger_writes_and_dashboard_reads_tracking_ok(tmp_path, monkeypatch):
             index=0, phase="saccade", source=Target.DOT, target=Target.CROSS, saccade_duration_ms=50.0,
             flash_shown=True, contrast=0.1, line_side=Side.ABOVE, responded=True,
             answer_side=Side.ABOVE, response_time_ms=300.0, outcome="correct",
-            flash_during_saccade=True, tracking_ok=False,
+            flash_during_saccade=True, tracking_ok=False, flash_trigger="onset",
         )
     )
     log.close()
@@ -104,12 +104,15 @@ def test_logger_writes_and_dashboard_reads_tracking_ok(tmp_path, monkeypatch):
     assert "tracking_ok" in csv_path.read_text().splitlines()[0]
     monkeypatch.setattr(data_access, "DATA_DIR", tmp_path)
     timestamp = str(json.loads(csv_path.with_name("session.json").read_text())["run"]["unix_timestamp"])
-    assert read_trials(data_access.csv_path_for(timestamp))[0].tracking_ok is False
+    saved = read_trials(data_access.csv_path_for(timestamp))[0]
+    assert saved.tracking_ok is False and saved.flash_trigger == "onset"
 
-    # A CSV logged before this column existed loads as "unknown", not a failure.
+    # A CSV logged before these columns existed loads as "unknown", not a failure.
     old = csv_path.read_text().splitlines()
     header, row = old[0].split(","), old[1].split(",")
-    drop = header.index("tracking_ok")
-    del header[drop], row[drop]
+    for name in ("tracking_ok", "flash_trigger"):
+        drop = header.index(name)
+        del header[drop], row[drop]
     csv_path.write_text(",".join(header) + "\n" + ",".join(row) + "\n")
-    assert read_trials(data_access.csv_path_for(timestamp))[0].tracking_ok is None
+    loaded = read_trials(data_access.csv_path_for(timestamp))[0]
+    assert loaded.tracking_ok is None and loaded.flash_trigger is None

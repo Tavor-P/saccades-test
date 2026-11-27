@@ -56,6 +56,7 @@ Printable version: [docs/experimenter_checklist.md](docs/experimenter_checklist.
 | *Advanced*: Saccade contrast min / max (%) | the fixed contrasts, spaced between these (defaults 2 and 4: levels 2, 3, 4) |
 | *Advanced*: Flash timing spread (ms) | width (SD) of the bell curve of flash times around the average reaction time; default 80 (10-250) |
 | Return jump | default on: after the eye reaches the target it jumps back to the start (see step 4 below); off = one-jump trials |
+| Onset-triggered flashes | default off: on = some flashes appear when the tracker sees the eye start to move, instead of at a timed moment (see step 4 below) |
 | *Advanced*: Show gaze indicator | debug aid |
 
 Click a field's name or its **?** for a help bubble. The last values are remembered; an invalid entry shows a message and keeps what you typed.
@@ -73,6 +74,9 @@ Click a field's name or its **?** for a help bubble. The last values are remembe
    With **Return jump** on, once the eye has arrived (`RETURN_JUMP_TRIGGER` "arrival"; "onset" jumps at the start of the movement; `RETURN_JUMP_LANDING_TIMEOUT_MS` forces it) the target jumps back to the start symbol
    and the eye follows it, so a trial has an out and a return saccade but still only ONE flash: on the return leg in `RETURN_LEG_FLASH_FRACTION` (0.8) of trials (timed from the jump, spread `RETURN_FLASH_SPREAD_SD_MS` 110 ms,
    from one real run's measured 118 ms; recheck on more runs), else on the out leg.
+   With **Onset-triggered flashes** on, `ONSET_TRIGGER_FRACTION` (1/3) of the bell-curve trials instead flash on the first frame after the live detector sees the eye leave on the flash's leg (plus `ONSET_TRIGGER_DELAY_MS`, 0),
+   so they reach the eye mid-movement: about 10 ms detection + ~15 ms gaze delay + up to one frame (+ screen lag) after the true start. The control flashes and the other trials are unchanged; practice and tutorial trials are never triggered.
+   If no movement is detected in time there is no flash and no answer is asked: the trial ends as `timeout`. Not yet tried on glasses.
 5. **End.** A plain-language summary is printed, and the run is analysed automatically (top of the report printed; rerun with `analyze_session`, see below). Fixation data come from the control flashes and far-from-saccade flashes of the same trials, sorted after the fact.
 
 The phone records the scene video during the trials; a failure there never stops the session. `Esc` quits at once.
@@ -108,7 +112,7 @@ data/comparisons/<date-time>_<A>_vs_<B>/   report.txt, comparison.csv, compariso
 Test-mode runs (`_test`) are left out of every pooled analysis, comparison and study summary unless you ask (`--include-test`, or **Include test runs** in the dashboard).
 
 `trials.csv` columns (booleans `yes`/`no`; practice trials not written): `phase`, `trial`, `contrast_pct`, `flash_shown`, `flash_during_saccade` (live, unreliable), `answered`, `correct`,
-`outcome` (correct / wrong / timeout / detected; `no_answer` only in runs from before answers were required, still scored as wrong), `line_side` (above / below), `answer_side`, `flash_leg` (out / return), `flash_ms_after_go_cue`, `out_arrival_ms_after_go_cue`, `jump_back_ms_after_go_cue`, `reaction_ms`, `return_reaction_ms` (negative = left before the jump), `answer_ms`,
+`outcome` (correct / wrong / timeout / detected; `no_answer` only in runs from before answers were required, still scored as wrong), `line_side` (above / below), `answer_side`, `flash_leg` (out / return), `flash_trigger` (scheduled / onset), `flash_ms_after_go_cue`, `out_arrival_ms_after_go_cue`, `jump_back_ms_after_go_cue`, `reaction_ms`, `return_reaction_ms` (negative = left before the jump), `answer_ms`,
 `flash_unix_ms`, `jump_back_forced`, `left_target_before_jump`, `tracking_ok`.
 `session.json` sections: `participant`, `run`, `settings`, `hardware`, `results`, `gaze_quality` (rate, gaps, latency, clock offset), `head_motion`, `ignored_space_presses`, `glasses_video`.
 

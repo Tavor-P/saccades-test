@@ -181,7 +181,7 @@ def test_main_stops_before_the_run_folder_and_window_when_the_neon_is_missing(mo
     from src.experiment.geometry import Geometry
 
     monkeypatch.setattr(run_experiment.sys, "setswitchinterval", lambda *_: None)
-    monkeypatch.setattr(run_experiment, "prompt_session_info", lambda: ("P01", False, True, False, (0.04,), Geometry.default(), 80.0, "", True))
+    monkeypatch.setattr(run_experiment, "prompt_session_info", lambda: ("P01", False, True, False, (0.04,), Geometry.default(), 80.0, "", True, True))
     monkeypatch.setattr(run_experiment, "resolve_neon_address", lambda a, p, progress: _resolution(False))
     monkeypatch.setattr(run_experiment, "network_summary", lambda: {})
     boxes = []
@@ -198,7 +198,7 @@ def test_main_passes_the_found_address_to_both_gaze_sources_and_session_json(mon
     from src.experiment.geometry import Geometry
 
     monkeypatch.setattr(run_experiment.sys, "setswitchinterval", lambda *_: None)
-    monkeypatch.setattr(run_experiment, "prompt_session_info", lambda: ("P01", False, True, False, (0.04,), Geometry.default(), 80.0, "", True))
+    monkeypatch.setattr(run_experiment, "prompt_session_info", lambda: ("P01", False, True, False, (0.04,), Geometry.default(), 80.0, "", True, True))
     monkeypatch.setattr(run_experiment, "resolve_neon_address", lambda a, p, progress: _resolution(True))
     logger = MagicMock()
     monkeypatch.setattr(run_experiment, "ResultLogger", Mock(return_value=logger))
@@ -216,6 +216,7 @@ def test_main_passes_the_found_address_to_both_gaze_sources_and_session_json(mon
     assert tutorial.call_args.kwargs["neon_address"] == ("192.168.43.1", 8080)
     assert tutorial.call_args.kwargs["return_jump"] is True
     logger.set_return_jump.assert_called_once_with(True)
+    logger.set_onset_trigger.assert_called_once_with(True)
     logger.set_neon_device.assert_called_once_with("192.168.43.1:8080 (PC's gateway (phone hotspot))")
     assert run_experiment._address_kwargs(("192.168.43.1", 8080)) == {"address": "192.168.43.1", "port": 8080}
     assert run_experiment._address_kwargs(None) == {}
@@ -232,7 +233,7 @@ def test_main_turns_a_lost_neon_into_a_plain_message_box_and_exit_2_after_closin
     from src.eye_tracking.neon_source import NeonConnectionError
 
     monkeypatch.setattr(run_experiment.sys, "setswitchinterval", lambda *_: None)
-    monkeypatch.setattr(run_experiment, "prompt_session_info", lambda: ("P01", False, False, False, (0.04,), Geometry.default(), 80.0, "", True))
+    monkeypatch.setattr(run_experiment, "prompt_session_info", lambda: ("P01", False, False, False, (0.04,), Geometry.default(), 80.0, "", True, True))
     monkeypatch.setattr(run_experiment, "resolve_neon_address", lambda a, p, progress: _resolution(True))
     logger = MagicMock()
     monkeypatch.setattr(run_experiment, "ResultLogger", Mock(return_value=logger))

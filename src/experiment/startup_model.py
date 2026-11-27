@@ -7,6 +7,8 @@ from pathlib import Path
 from include.experiment.constants import (
     FLASH_SPREAD_SD_MS,
     HARDWARE_CONTRAST_FLOOR,
+    ONSET_TRIGGER_DEFAULT,
+    ONSET_TRIGGER_FRACTION,
     RETURN_JUMP_DEFAULT,
     RETURN_LEG_FLASH_FRACTION,
     SCREEN_HEIGHT_CM,
@@ -42,6 +44,7 @@ FIELD_LABELS = {
     "viewing_distance_cm": "Viewing distance (cm)",
     "neon_address": "Neon address",
     "return_jump": "Return jump",
+    "onset_trigger": "Onset-triggered flashes",
     "contrast_min_percent": "Saccade contrast min (%)",
     "contrast_max_percent": "Saccade contrast max (%)",
     "flash_spread_sd_ms": "Flash timing spread (ms)",
@@ -76,6 +79,11 @@ HELP_TEXTS = {
         f"Each trial still flashes once, on the way out or (about {RETURN_LEG_FLASH_FRACTION:.0%} of trials) on the way back. "
         "Off: the old one-jump trials."
     ),
+    "onset_trigger": (
+        f"On: about {ONSET_TRIGGER_FRACTION:.0%} of the timed flashes appear as soon as the tracker sees the eye start to move, "
+        "so more flashes land during the movement. The other trials (the late comparison flashes included) are unchanged. "
+        "Off: every flash is timed from the average reaction time."
+    ),
 }
 
 
@@ -94,6 +102,7 @@ class StartupSettings:
     show_gaze_indicator: bool = False
     neon_address: str = NEON_DEVICE_ADDRESS or ""  # "" = find automatically (see src/eye_tracking/neon_address.py)
     return_jump: bool = RETURN_JUMP_DEFAULT
+    onset_trigger: bool = ONSET_TRIGGER_DEFAULT
 
     @property
     def geometry(self) -> Geometry:
@@ -132,6 +141,7 @@ def validate(  # noqa: PLR0913 - one arg per dialog setting
     flash_spread_text: str = f"{FLASH_SPREAD_SD_MS:g}",
     neon_address_text: str = "",
     return_jump: bool = RETURN_JUMP_DEFAULT,
+    onset_trigger: bool = ONSET_TRIGGER_DEFAULT,
 ) -> StartupSettings:
     """The dialog's raw field values -> StartupSettings, or ValueError with a message for the status line."""
     if mode == MODE_REAL and not participant_id.strip():
@@ -157,6 +167,7 @@ def validate(  # noqa: PLR0913 - one arg per dialog setting
         show_gaze_indicator=bool(show_gaze_indicator),
         neon_address=neon_address_text.strip(),
         return_jump=bool(return_jump),
+        onset_trigger=bool(onset_trigger),
     )
 
 

@@ -17,6 +17,7 @@ class SessionConfig:
     geometry: Geometry | None = None  # None = Geometry.default()
     flash_spread_sd_ms: float | None = None  # None = FLASH_SPREAD_SD_MS
     return_jump: bool = False
+    onset_trigger: bool = False  # ONSET_TRIGGER_FRACTION of the bell-curve trials flash at the live saccade onset
 
 
 @dataclass(frozen=True)

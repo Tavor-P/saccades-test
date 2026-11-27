@@ -1,9 +1,10 @@
 """ExperimentSession: the saccade phase as a PsychoPy-free state machine (calibration -> reaction-time test -> practice -> real block, generated trial by trial; stops at `SACCADE_FIXED_TRIALS_*`).
-Drive it with on_space/on_response_key/tick/render_state. Flash timing is open-loop (scheduled off the measured reaction time); see CLAUDE.md. Headless
-runs of this class: src/experiment/simulation.py."""
+Drive it with on_space/on_response_key/tick/render_state. Flash timing is open-loop (scheduled off the measured reaction time), except for the
+share of trials triggered by the live saccade onset when that mode is on; see CLAUDE.md. Headless runs of this class: src/experiment/simulation.py."""
 
 import math
 import random
+from dataclasses import replace
 from enum import Enum, auto
 from typing import Protocol
 
@@ -24,8 +25,11 @@ from include.experiment.constants import (
     NUM_PRACTICE_TRIALS_TEST,
     NUM_RT_TEST_TRIALS_REAL,
     NUM_RT_TEST_TRIALS_TEST,
+    ONSET_TRIGGER_DELAY_MS,
+    ONSET_TRIGGER_FRACTION,
     PRACTICE_CONTRAST,
     RETURN_FLASH_SPREAD_SD_MS,
+    RETURN_JUMP_LANDING_TIMEOUT_MS,
     RETURN_JUMP_TRIGGER,
     RETURN_LEG_FLASH_FRACTION,
     SACCADE_FIXED_CONTRASTS,
@@ -54,6 +58,7 @@ from src.experiment.trial_mechanics import (
     ShuffledBag,
     flash_leg_pool,
     line_position,
+    share_pool,
     spread_flash_delay_ms,
     zone_for,
 )
@@ -174,6 +179,13 @@ class ExperimentSession:
             self._flash_leg_bag = ShuffledBag(flash_leg_pool(RETURN_LEG_FLASH_FRACTION))
             self._practice_flash_leg_bag = ShuffledBag(flash_leg_pool(RETURN_LEG_FLASH_FRACTION))
         self.forced_jump_backs = 0  # main trials whose jump back came at RETURN_JUMP_LANDING_TIMEOUT_MS (session.json summary)
+        # Onset-triggered flashes (startup dialog): which bell-curve main trials flash at the live onset instead. Like the
+        # leg bags, only built (and drawn from) when on, so the off case consumes no extra random numbers.
+        self._onset_trigger = bool(config.onset_trigger)
+        self._onset_trigger_delay_ms = float(ONSET_TRIGGER_DELAY_MS)
+        self._trigger_bag: ShuffledBag[str] | None = None
+        if self._onset_trigger:
+            self._trigger_bag = ShuffledBag(share_pool(ONSET_TRIGGER_FRACTION, "onset", "scheduled"))
 
         # -- reaction-time test + rolling average (see constants.py) --
         self._rt_test_target_attempts = NUM_RT_TEST_TRIALS_TEST if test_mode else NUM_RT_TEST_TRIALS_REAL
@@ -239,6 +251,8 @@ class ExperimentSession:
         self._line_actually_shown = False
         self._flash_during_saccade: bool | None = None
         self._tracking_lost_near_flash = False
+        self._lost_sample_times: list[float] = []  # capture times without a face: an onset-triggered flash's time is known late
+        self._flash_given_up = False  # onset-triggered trial whose onset can no longer come: it ends without a flash
         self._head_moved_near_flash = False
         self._trial_contrast: float | None = None  # contrast actually used for this trial's flash, if any
         self._reaction_latency_ms: float | None = None
@@ -478,8 +492,16 @@ class ExperimentSession:
             self._main_trial_counter, self._trial_source, self._timing_offset_bag, alternate=not self._return_jump
         )
         self._main_trial_counter += 1
-        self._current_trial_spec = trial
+        self._current_trial_spec = self._maybe_onset_triggered(trial)
         self._begin_foreperiod()
+
+    def _maybe_onset_triggered(self, trial: TrialSpec) -> TrialSpec:
+        """The main trial as generated, or turned into an onset-triggered one (mode on; control trials never are)."""
+        if self._trigger_bag is None or trial.timing_offset_ms not in TIMING_OFFSETS_MS:
+            return trial
+        if self._trigger_bag.draw() != "onset":
+            return trial
+        return replace(trial, flash_trigger="onset", timing_offset_ms=None)
 
     @property
     def _completed_main_trial_count(self) -> int:
@@ -568,8 +590,8 @@ class ExperimentSession:
             self._flash_leg = bag.draw()
         else:
             self._flash_leg = "out"
-        if self._flash_leg == "return":
-            self._flash_scheduled_at = math.inf  # scheduled at the jump back
+        if self._flash_leg == "return" or trial.flash_trigger == "onset":
+            self._flash_scheduled_at = math.inf  # scheduled at the jump back / at the live onset
             return
         self._trial_avg_rt_ms = self._avg_reaction_time_ms
         self._trial_scheduled_delay_ms = self._flash_delay_ms(trial, self._average_ms)
@@ -627,11 +649,9 @@ class ExperimentSession:
             if self._line_frames_remaining <= 0:
                 self._line_visible = False
 
-        if any(
-            not s.face_found and abs(s_t - self._flash_scheduled_at) <= ms_to_s(TRACKING_LOSS_WINDOW_MS)
-            for s, s_t in new_samples
-        ):
-            self._tracking_lost_near_flash = True
+        lost_times = [s_t for s, s_t in new_samples if not s.face_found]
+        self._lost_sample_times += lost_times
+        self._check_tracking_near_flash(lost_times)
         # Checked on every tick: the head monitor keeps only HEAD_BUFFER_S of samples and the answer has no deadline.
         self._head_moved_near_flash = self._head_moved_near_flash or self._head_speed_spike_near_flash()
 
@@ -640,27 +660,68 @@ class ExperimentSession:
                 self._tick_return_jump(trial, new_samples, now)
             else:
                 self._active_legs.track_out_landing(new_samples)
+        # After the gaze tracking, so a trigger on this tick's onset (either leg) is drawn on the very next frame.
+        self._tick_onset_trigger(trial, now)
         self._finish_if_over(now)
+
+    def _check_tracking_near_flash(self, lost_times: list[float]) -> None:
+        window = ms_to_s(TRACKING_LOSS_WINDOW_MS)
+        if any(abs(t - self._flash_scheduled_at) <= window for t in lost_times):
+            self._tracking_lost_near_flash = True
+
+    def _tick_onset_trigger(self, trial: TrialSpec, now: float) -> None:
+        """Onset-triggered trials: the first tick with a confirmed onset on the flash's leg sets the flash time
+        ONSET_TRIGGER_DELAY_MS later (0 = fired at once; a later one is fired by _fire_flash_if_due). Once no onset can come
+        any more the flash is given up. Does nothing for scheduled trials."""
+        if trial.flash_trigger != "onset" or self._flash_given_up or not math.isinf(self._flash_scheduled_at):
+            return
+        if not self._flash_leg_onset_confirmed():
+            self._flash_given_up = self._onset_wait_over(now)
+            return
+        self._flash_scheduled_at = now + ms_to_s(self._onset_trigger_delay_ms)
+        # Flash minus GO CUE on both legs, as for scheduled flashes (analyze_session derives the go cue from it).
+        self._trial_scheduled_delay_ms = s_to_ms(now - self._trial_start_time) + self._onset_trigger_delay_ms
+        self._check_tracking_near_flash(self._lost_sample_times)  # samples that arrived before the flash time was known
+        self._fire_flash_if_due(trial, now)
+
+    def _flash_leg_onset_confirmed(self) -> bool:
+        legs = self._active_legs
+        if self._flash_leg == "return":
+            # Never before the target has jumped back: there is no return leg yet.
+            return legs.jump_at is not None and legs.return_onset is not None and legs.return_onset.confirmed
+        return legs.onset.confirmed
+
+    def _onset_wait_over(self, now: float) -> bool:
+        """True once the flash leg's onset can no longer trigger. Out leg of a return-jump trial: at the forced-jump time
+        (the jump waits for the out flash, and no out onset is detected after it). Otherwise: that leg's movement is over
+        (landed without a detected onset, or timed out)."""
+        legs = self._active_legs
+        if self._return_jump and self._flash_leg == "out":
+            return now - legs.go_cue_at >= ms_to_s(RETURN_JUMP_LANDING_TIMEOUT_MS)
+        return legs.movement_over(now, self._return_jump)
 
     def _finish_if_over(self, now: float) -> None:
         """A trial ends once the flash has fired, the eye movements are over (landing or timeout) AND the participant has
         answered; there is no answer deadline. Only one that reaches its timeout as a 'timeout' trial (no saccade on the
-        flash's leg) ends by itself."""
+        flash's leg) ends by itself, as does an onset-triggered one that gave up its flash (nothing to answer)."""
         legs = self._active_legs
         if legs.timed_out(now, self._return_jump) and self._ends_as_timeout():
             self._finish_trial()
             return
+        movements_over = legs.movement_over(now, self._return_jump)
         # The flash condition: a fast lander (common at a +40 ms offset against a stale average) must still get their flash.
-        self._gaze_record_closed = self._flash_decided and legs.movement_over(now, self._return_jump)
-        if self._gaze_record_closed and not self._line_visible and self._responded:
+        self._gaze_record_closed = self._flash_decided and movements_over
+        answered = self._gaze_record_closed and not self._line_visible and self._responded
+        if answered or (self._flash_given_up and movements_over):
             self._finish_trial()
 
     def _tick_return_jump(self, trial: TrialSpec, new_samples, now: float) -> None:
         """The gaze side of a return-jump trial tick: out arrival / onset -> jump back -> return onset/landing."""
         legs = self._active_legs
         legs.track_arrival(new_samples)
-        # An out-leg flash is drawn (and gone) before the target jumps, so the jump never overlaps it.
-        out_flash_done = self._flash_leg == "return" or (self._flash_decided and not self._line_visible)
+        # An out-leg flash is drawn (and gone), or given up, before the target jumps: the jump never overlaps it.
+        flash_over = self._flash_given_up or (self._flash_decided and not self._line_visible)
+        out_flash_done = self._flash_leg == "return" or flash_over
         forced = legs.jump_due(now, out_flash_done)
         if forced is not None:
             self._jump_back(trial, now, forced=forced)
@@ -674,13 +735,13 @@ class ExperimentSession:
 
     def _jump_back(self, trial: TrialSpec, now: float, forced: bool) -> None:
         """The target jumps back: the start symbol reappears (the new saccade target), the one just reached disappears.
-        A return-leg flash is scheduled from this frame."""
+        A scheduled return-leg flash is scheduled from this frame."""
         self._active_legs.mark_jump(now, forced)
         if forced and not trial.practice:
             self.forced_jump_backs += 1
         self._dot_visible = trial.source is Target.DOT
         self._cross_visible = trial.source is Target.CROSS
-        if self._flash_leg == "return":
+        if self._flash_leg == "return" and trial.flash_trigger == "scheduled":
             average_ms = self._return_average_ms()
             if average_ms <= 0 and trial.timing_offset_ms in TIMING_OFFSETS_MS:
                 delay_ms = 0.0  # anticipatory returns: the jump frame is the earliest a return flash can be
@@ -731,7 +792,7 @@ class ExperimentSession:
             self._onset_detection_lag_ms = lag_ms
 
     def _fire_flash_if_due(self, trial: TrialSpec, now: float) -> bool:
-        """Open-loop: the flash fires once, at its scheduled absolute time, independent of onset detection."""
+        """The flash fires once, at its absolute time: scheduled open-loop, or set by _tick_onset_trigger."""
         if self._flash_decided or now < self._flash_scheduled_at:
             return False
         self._flash_decided = True

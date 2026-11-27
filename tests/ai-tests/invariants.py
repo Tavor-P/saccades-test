@@ -13,6 +13,7 @@ from include.experiment.constants import (
     FLASH_SPREAD_SD_MS,
     FLASH_WINDOW_MAX_MS,
     FLASH_WINDOW_MIN_MS,
+    ONSET_TRIGGER_DELAY_MS,
     PRACTICE_CONTRAST,
     RETURN_JUMP_LANDING_TIMEOUT_MS,
     RETURN_LEG_FLASH_FRACTION,
@@ -47,6 +48,8 @@ def check_session(sim: SimulationResult, max_trials_cap: int | None = None) -> l
     # The session's own copies: simulate() has restored any overridden constants by the time this runs.
     trigger = getattr(sim.session, "_return_jump_trigger", _constants.RETURN_JUMP_TRIGGER)
     return_sd = getattr(sim.session, "_return_flash_sd_ms", _constants.RETURN_FLASH_SPREAD_SD_MS)
+    onset_on = bool(getattr(sim.session, "_onset_trigger", False))
+    onset_delay = getattr(sim.session, "_onset_trigger_delay_ms", ONSET_TRIGGER_DELAY_MS)
 
     v: list[str] = []
     for r in sim.results:
@@ -55,6 +58,7 @@ def check_session(sim: SimulationResult, max_trials_cap: int | None = None) -> l
             v += _check_rt_row(r, tag)
         elif r.phase == "saccade":
             v += _check_saccade_row(r, tag, sim, return_jump, trigger, return_sd)
+            v += _check_flash_trigger(r, tag, onset_on, onset_delay)
         else:
             v.append(f"{tag}: unexpected phase {r.phase!r}")
     saccade_rows = [r for r in sim.results if r.phase == "saccade"]
@@ -183,6 +187,29 @@ def _check_flash_delay(r, tag: str, return_sd: float) -> list[str]:
             expected = 0.0  # clamped to the jump-back frame
         if abs(leg_delay_ms - expected) > TIMING_JITTER_MS + 1e-6 and not (on_return and abs(leg_delay_ms) < 1e-6):
             v.append(f"{tag}: control flash delay {leg_delay_ms:.1f} ms not avg RT + {r.timing_offset_ms} +/- jitter")
+    return v
+
+
+def _check_flash_trigger(r, tag: str, onset_on: bool, onset_delay_ms: float) -> list[str]:
+    """An onset-triggered flash comes after its leg's confirmed onset (debounce + delay) and carries no schedule."""
+    if r.flash_trigger not in ("scheduled", "onset"):
+        return [f"{tag}: bad flash_trigger {r.flash_trigger!r}"]
+    if r.flash_trigger == "scheduled":
+        return [f"{tag}: scheduled trial without a timing offset"] if r.timing_offset_ms is None else []
+    v: list[str] = []
+    if not onset_on:
+        v.append(f"{tag}: onset-triggered trial with the mode off")
+    if r.timing_offset_ms is not None or r.avg_rt_used_ms is not None:
+        v.append(f"{tag}: onset-triggered trial carries schedule data")
+    if r.flash_shown:
+        rel = r.flash_relative_to_onset_ms
+        earliest = SACCADE_ONSET_STABILITY_MS + onset_delay_ms
+        if rel is None or rel < earliest - 1e-6:
+            v.append(f"{tag}: onset-triggered flash {rel} ms after onset, earlier than {earliest} ms")
+        if r.scheduled_delay_ms is None:
+            v.append(f"{tag}: onset-triggered flash without flash_ms_after_go_cue")
+    elif r.scheduled_delay_ms is not None:
+        v.append(f"{tag}: flash given up but flash_ms_after_go_cue {r.scheduled_delay_ms}")
     return v
 
 

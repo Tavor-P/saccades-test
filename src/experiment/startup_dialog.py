@@ -138,6 +138,8 @@ class StartupDialog(QtWidgets.QDialog):
         self.gaze_indicator.setChecked(self._initial.show_gaze_indicator)
         self.return_jump = QtWidgets.QCheckBox()
         self.return_jump.setChecked(self._initial.return_jump)
+        self.onset_trigger = QtWidgets.QCheckBox()
+        self.onset_trigger.setChecked(self._initial.onset_trigger)
 
         outer = QtWidgets.QVBoxLayout(self)
         outer.setSizeConstraint(QtWidgets.QLayout.SizeConstraint.SetFixedSize)  # the dialog follows the Advanced section
@@ -153,6 +155,7 @@ class StartupDialog(QtWidgets.QDialog):
         self._add_row(main, 5, "viewing_distance_cm", self.viewing_distance)
         self._add_row(main, 6, "neon_address", self.neon_address)
         self._add_row(main, 7, "return_jump", self.return_jump)
+        self._add_row(main, 8, "onset_trigger", self.onset_trigger)
 
         self.advanced_toggle = QtWidgets.QPushButton()
         self.advanced_toggle.setFlat(True)
@@ -330,6 +333,7 @@ class StartupDialog(QtWidgets.QDialog):
                 self.flash_spread.text(),
                 self.neon_address.text(),
                 self.return_jump.isChecked(),
+                self.onset_trigger.isChecked(),
             )
         except ValueError as error:
             self.set_status(str(error), error=True)
@@ -360,6 +364,7 @@ def prompt_startup_settings(data_dir: Path | None = None) -> StartupSettings | N
             "show_gaze_indicator": chosen.show_gaze_indicator,
             "neon_address": chosen.neon_address,
             "return_jump": chosen.return_jump,
+            "onset_trigger": chosen.onset_trigger,
         }
     )
     return chosen

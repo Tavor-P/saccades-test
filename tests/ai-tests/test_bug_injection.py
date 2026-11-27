@@ -13,9 +13,10 @@ def _violations(trials=14, seed=2, **kwargs):
     return check_session(simulate_session(max_trials=trials, seed=seed, **kwargs))
 
 
+@pytest.mark.parametrize("onset_trigger", [True, False])
 @pytest.mark.parametrize("return_jump", [True, False])
-def test_baseline_is_clean(return_jump):
-    assert _violations(return_jump=return_jump) == []
+def test_baseline_is_clean(return_jump, onset_trigger):
+    assert _violations(return_jump=return_jump, onset_trigger=onset_trigger) == []
 
 
 def test_catches_scoring_that_always_says_correct(monkeypatch):
