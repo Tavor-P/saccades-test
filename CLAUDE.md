@@ -114,7 +114,7 @@ Paths are checked by `tests/test_docs.py` - keep them real.
 | `src/experiment/scoring.py` | `score_outcome`, `is_valid_for_saccadic_analysis` (the validity gate) |
 | `src/experiment/trial_mechanics.py` | `OnsetDetector`, `ShuffledBag`, `line_position`, `robust_average_ms`, `spread_flash_delay_ms`, `RollingReactionTime` |
 | `src/experiment/calibration.py` | `CalibrationRounds` (3 points x 3 rounds), `average_calibration_rounds` |
-| `src/experiment/space_input.py` | `CalibrationLatch`, `NarrationKeyGate`, `SpaceTally`, `deliver_space`, `leaves_complete_screen` |
+| `src/experiment/space_input.py` | `CalibrationLatch`, `NarrationKeyGate`, `SpaceTally`, `AnswerFirst`, `deliver_space`, `leaves_complete_screen` |
 | `src/timebase.py` | the ONE time source: `now()` = `perf_counter()`; `unix_now()`, `unix_ms()`; `ms_to_s()`/`s_to_ms()` (the only place the factor 1000 is written for time) |
 | `src/experiment/trial_factory.py` | trial sequences; every trial flashes |
 | `src/experiment/logger.py` | `ResultLogger`: `TRIAL_COLUMNS`, `DROPPED_FROM_CSV`, `trial_from_row`, `read_trial_rows`/`read_trials` (plain-named + grating-era columns) |
@@ -205,18 +205,18 @@ Paths are checked by `tests/test_docs.py` - keep them real.
 
 SPACE presses are never silently dropped; every ignored one is counted in `session.space_tally` (phase + reason) and saved as `ignored_space_presses`.
 - Calibration: one press suffices; if `average_recent_ratio()` is still `None` it is latched and `tick()` completes the step when the window is full ("TRACKING LOST?" after 3 s).
-- Trials: accepted in `AWAITING_SPACE`; the swap follows `FOREPERIOD_MIN_MS`-`FOREPERIOD_MAX_MS` (500-1000 ms). Ignored during the foreperiod. **No answer deadline**: UP/DOWN counts from the flash until the trial ends
-  (`answer_ms` can be many seconds). A trial ends once the flash has fired, the movements are over (final landing or `SACCADE_TIMEOUT_MS`; `TrialLegs.movement_over`) and it is answered or SPACE gave it up (`no_answer`);
-  a 'timeout' trial that never got a landing still ends by itself at the timeout. During a running trial SPACE is carried over to start the next one if already answered or only the answer is pending, else ignored
-  (a mid-flight press is not latched: it would turn nearly every such trial into a miss at landing). The carried press acts on the next tick, so an answer in the same frame counts. Same rule in tutorial practice.
-  From then on the legs stop listening (`_gaze_record_closed`) and a head spike near the flash is latched per tick (`HEAD_BUFFER_S` is only 10 s).
+- Trials: accepted in `AWAITING_SPACE`; the swap follows `FOREPERIOD_MIN_MS`-`FOREPERIOD_MAX_MS` (500-1000 ms). Ignored during the foreperiod. **Forced choice, no answer deadline**: UP/DOWN counts from the flash until the trial ends
+  (`answer_ms` can be many seconds). A trial ends once the flash has fired, the movements are over (final landing or `SACCADE_TIMEOUT_MS`; `TrialLegs.movement_over`) AND it is answered; only one that reaches the timeout
+  with no saccade on the flash's leg ends by itself ('timeout'), so new runs have no `no_answer`. During a running trial SPACE is carried over to start the next one once answered, else ignored and not latched: after the flash
+  (`AnswerFirst`) it is tallied as not answered yet and `ANSWER_FIRST` is shown and spoken until the trial ends. That press is judged on the next tick, so an answer in the same frame counts. Same rules in tutorial practice.
+  Once only the answer is awaited the legs stop listening (`_gaze_record_closed`); a head spike near the flash is latched per tick (`HEAD_BUFFER_S` is only 10 s).
 - Same-frame repeats collapse to one; a press before a phase's first screen is discarded; the press in the frame COMPLETE first appears doesn't dismiss it.
-- Tutorial: `run_tutorial_phase` withholds key/tick forwarding while `narrator.is_speaking` and delivers one held SPACE afterwards.
+- Tutorial: `run_tutorial_phase` withholds key/tick forwarding while `narrator.is_speaking` (except while `answer_reminder_showing`) and delivers one held SPACE afterwards.
 
 ## Tutorial hand-off and narration
 
 - Tutorial calibration ratios and RT samples (`precomputed_calibration_ratios`, `precomputed_rt_samples_ms`) go to `run_saccade_phase`, which then skips calibration/RT test/practice and seeds `RollingReactionTime`.
-- `update_caption()` shows and speaks in lockstep (`narrate_if_changed`); it re-speaks on every text change, so narrated strings stay under ~15 words and are never repeated. `hide_caption` is True in real main trials; the HUD is Test-mode only.
+- `update_caption()` shows and speaks in lockstep (`narrate_if_changed`); it re-speaks on every text change, so narrated strings stay under ~15 words and are never repeated. `hide_caption` is True in real main trials except while the answer reminder is up; the HUD is Test-mode only.
 
 ## Gotchas that cost real debugging time
 
