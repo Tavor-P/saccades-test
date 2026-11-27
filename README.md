@@ -53,7 +53,7 @@ Printable version: [docs/experimenter_checklist.md](docs/experimenter_checklist.
 | Mode | **Real** (150 trials) or **Test** (30 trials, debug text top-left) |
 | Run tutorial | first-timer on-ramp; defaults to Yes for an ID without a folder under `data/` |
 | Screen height (cm) / Viewing distance (cm) | measure them (5-100 / 20-300; decimal comma accepted); saved in `session.json` |
-| *Advanced*: Saccade contrast min / max (%) | the fixed contrasts, spaced between these (defaults 1.5 and 3: levels 1.5, 2.25, 3) |
+| *Advanced*: Saccade contrast min / max (%) | the fixed contrasts, spaced between these (defaults 2 and 4: levels 2, 3, 4) |
 | *Advanced*: Flash timing spread (ms) | width (SD) of the bell curve of flash times around the average reaction time; default 80 (10-250) |
 | Return jump | default on: after the eye reaches the target it jumps back to the start (see step 4 below); off = one-jump trials |
 | *Advanced*: Show gaze indicator | debug aid |
@@ -237,13 +237,13 @@ participant's pooled analysis with it).
 | Flash trigger | live, 15 ms after online onset detection | scheduled on a bell curve around the person's average reaction time, judged **after the fact** from the raw trace |
 | Display | 120 Hz, 8 ms flash | 60 Hz, one frame (~17 ms) |
 | Saccade size | 10 deg | ~30-40 deg on a large screen (dot at 15 %, cross at 85 % of the width); depends on geometry |
-| Thresholds | staircase, then psychometric fit | fixed contrasts (default 1.5/2.25/3 %), then a Weibull fit |
+| Thresholds | staircase, then psychometric fit | fixed contrasts (default 2/3/4 %), then a Weibull fit |
 | Viewing | 90 cm, lab | chin rest, geometry from the startup dialog |
 
 ## Known limitations
 
 - **Untested on glasses:** line rendering at 60 Hz, tutorial and captions, results layout, phone recording and sync flashes, head monitor, every contrast level, and the dashboard pages in a real browser.
-- **Contrasts rest on one run.** The first real 150-trial run at 3/5.5/8 % was at ceiling, so the defaults are now 1.5/2.25/3 % (1 % did not show on the screen used). That is only ~2-4 grey steps on an 8-bit display, so levels
+- **Contrasts rest on one run.** The first real 150-trial run at 3/5.5/8 % was at ceiling, so the defaults are now 2/3/4 % (a one-frame check with the eyes still was all correct from 2 % up; fainter would vanish during a saccade). That is only ~3-5 grey steps on an 8-bit display, so levels
   are very coarse, and the screen is not gamma-corrected, so the real contrast is probably higher than the nominal one. Re-pilot and adjust in the startup dialog (it remembers the last values: type the new ones once).
   Runs with different contrasts are not pooled together.
 - **Screen geometry is only as good as what you type in**; the placeholders (26 cm at 50 cm) make degrees approximate. The geometry used is saved in `session.json` and printed in the analysis report.

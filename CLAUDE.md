@@ -13,7 +13,7 @@ backend. Participant/experimenter docs: [README.md](README.md).
 - Geometry: the startup dialog asks for screen height and viewing distance; `geometry.Geometry` (built once in `main`) gives the line's offset/SD in screen-height units, passed to
   `ExperimentSession`/`TutorialSession` (`trial_mechanics.line_position`) and `build_stimuli(geometry=)`. `Geometry.default()` = the placeholder constants
   (`VIEWING_DISTANCE_CM`/`SCREEN_HEIGHT_CM`). Used geometry is in `session.json` `settings` and the `analyze_session` header.
-- **Contrasts rest on one run**: `SACCADE_FIXED_CONTRASTS` 1.5/2.25/3 % (dialog min 1.5 / max 3, 3 levels; ~1.9-3.8 grey steps, screen not gamma-corrected; the first real run at 3/5.5/8 % was at ceiling and 1 % did not show on the user's screen), `HARDWARE_CONTRAST_FLOOR` 0.78 % (README "Known limitations").
+- **Contrasts rest on one run**: `SACCADE_FIXED_CONTRASTS` 2/3/4 % (dialog min 2 / max 4, 3 levels; ~2.6-5.1 grey steps, screen not gamma-corrected; the first real run at 3/5.5/8 % was at ceiling; a one-frame fixation check on the user's screen was all correct from 2 % up, so 2 % is the floor), `HARDWARE_CONTRAST_FLOOR` 0.78 % (README "Known limitations").
 - Rolling RT = `robust_average_ms` over the last `RT_AVERAGE_ROLLING_WINDOW` (12) latencies; fewer than `RT_MIN_SAMPLES_FOR_AVERAGE` (3) plausible samples keep the previous value
   (initially `DEFAULT_REACTION_TIME_MS`).
 - **Return jump** (dialog "Return jump", default `RETURN_JUMP_DEFAULT` on): after the out saccade the target jumps back to the start symbol (`RETURN_JUMP_TRIGGER` "arrival" (default)
