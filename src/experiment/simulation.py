@@ -116,7 +116,7 @@ class ParticipantProfile:
     # Direction dependence: dot->cross (rightward) saccades are this much slower than cross->dot
     # ones; split +-half around the mean so the overall mean is unchanged.
     reaction_dir_offset_ms: float = 0.0
-    # Return jump (the target jumps back once the out landing is confirmed): latency from the jump-back to the
+    # Return jump (the target jumps back after the out saccade, see RETURN_JUMP_TRIGGER): latency from the jump-back to the
     # return saccade's start. None = 0.8 x reaction_ms_mean / 0.6 x reaction_ms_sd - A GUESS (a second, predictable
     # jump back to a just-seen place should be faster and less variable), not measured on this setup.
     return_reaction_ms_mean: float | None = None
@@ -125,7 +125,9 @@ class ParticipantProfile:
     # the participant has seen one jump-back, every later return is PLANNED at the go cue, independent of when the jump
     # comes: latency from the TRUE out landing starts at ~reaction_ms_mean/_sd and shrinks with each return-jump trial n
     # towards return_learned_ms/_sd_ms (exp(-n / return_learn_trials)). So returns can start before the jump frame
-    # (negative return_reaction_ms). All three numbers are GUESSES (predictive saccades to a just-left place).
+    # (negative return_reaction_ms). All three numbers are GUESSES (predictive saccades to a just-left place). With the
+    # main trials' stay on the target (RETURN_JUMP_MAIN_DWELL_*) such a return leaves before the stay is complete, so
+    # nearly every jump of this participant is forced.
     return_mode: str = "reactive"
     return_learned_ms: float = 40.0
     return_learned_sd_ms: float = 15.0

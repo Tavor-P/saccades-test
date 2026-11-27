@@ -96,14 +96,21 @@ class LandingTracker:
 
 
 class ArrivalDwell:
-    """Practice and reaction-time-test trials: the symbols stay until the eye has been on `zone` for `dwell_ms` without a
-    break. `due`: None = keep waiting; False = the stay is complete; True = given up, RETURN_JUMP_LANDING_TIMEOUT_MS after
-    `start` with the eye never on `zone` (one that arrived but did not stay gets `dwell_ms` on top)."""
+    """The symbols stay until the eye has been on `zone` for `dwell_ms` without a break (practice and reaction-time-test
+    trials, and "arrival" return-jump main trials). `due`: None = keep waiting; False = the stay is complete; True = given
+    up, RETURN_JUMP_LANDING_TIMEOUT_MS after `start` with the eye never on `zone` (one that arrived but did not stay gets
+    `dwell_ms` on top)."""
 
     def __init__(self, zone: GazeZone, dwell_ms: float) -> None:
-        self._dwell_ms = dwell_ms
+        self.dwell_ms = dwell_ms
         self._stay = LandingTracker(zone, dwell_ms)
         self._arrived = False
+
+    @property
+    def completed_at(self) -> float | None:
+        """Capture time at which the stay reached `dwell_ms`; None while it has not."""
+        since = self._stay.since
+        return since + ms_to_s(self.dwell_ms) if self._stay.landed and since is not None else None
 
     def feed(self, samples) -> None:
         """Samples captured from the go cue on."""
@@ -113,7 +120,7 @@ class ArrivalDwell:
     def due(self, now: float, start: float) -> bool | None:
         if self._stay.landed:
             return False
-        limit_ms = RETURN_JUMP_LANDING_TIMEOUT_MS + (self._dwell_ms if self._arrived else 0)
+        limit_ms = RETURN_JUMP_LANDING_TIMEOUT_MS + (self.dwell_ms if self._arrived else 0)
         return True if now - start >= ms_to_s(limit_ms) else None
 
 
@@ -122,9 +129,11 @@ class TrialLegs:
 
     Single-leg trials (return jump off): out onset + out landing (stable stay on the target).
     Return-jump trials: the out ARRIVAL (first in-target sample) is the out landing; the target jumps back on `trigger`
-    ("arrival", or "onset" = out onset confirmed) or at RETURN_JUMP_LANDING_TIMEOUT_MS (forced); the return leg is listened
-    to from the arrival (or the jump, if that came first), so a predictive return can start before the jump frame
-    (negative, signed return latency). With `dwell_ms` > 0 (practice) the jump waits for an ArrivalDwell, not `trigger`.
+    ("arrival", or "onset" = out onset confirmed) or at RETURN_JUMP_LANDING_TIMEOUT_MS (forced). With `dwell_ms` > 0 (the
+    sessions: practice, and "arrival" main trials) the jump waits for an ArrivalDwell, not `trigger`. The return leg is
+    listened to from the arrival, or with a dwell from the moment the stay is complete (a corrective saccade during the stay
+    is not a return), and in either case at the latest from the jump; so a return made while an out-leg flash holds the jump
+    can start before the jump frame (negative, signed return latency).
 
     Per tick the session calls, in this order: `measure_out_onset`, then `track_out_landing` (single leg) or
     `track_arrival` -> `jump_due` / `mark_jump` -> `track_return` (return jump)."""
@@ -153,8 +162,8 @@ class TrialLegs:
     def measure_out_onset(self, samples) -> tuple[float, float] | None:
         """Out-leg onset detection (a measurement only). Returns (reaction latency ms, detection lag ms) on the call that
         confirms it, else None. Samples captured after a jump back belong to the return leg - unless the out saccade already
-        arrived before the jump (the "arrival" trigger jumps on the first in-target sample, which can come before
-        SACCADE_ONSET_STABILITY_MS has confirmed the out onset)."""
+        arrived before the jump (without a dwell the "arrival" trigger jumps on the first in-target sample, which can come
+        before SACCADE_ONSET_STABILITY_MS has confirmed the out onset)."""
         for s, s_t in samples:
             if s_t < self.go_cue_at:
                 continue  # captured before the go-cue (it just arrived after it): cannot be a reaction to it
@@ -213,7 +222,8 @@ class TrialLegs:
     def track_return(self, samples) -> float | None:
         """Feeds the return-leg onset detector and landing. Returns the signed return latency (ms) if this call measured it."""
         if self.return_feed_from is None:
-            self.return_feed_from = self.out_arrived_at if self.out_arrived_at is not None else self.jump_at
+            start = self.out_arrived_at if self.dwell is None else self.dwell.completed_at
+            self.return_feed_from = start if start is not None else self.jump_at
         if self.return_feed_from is None:
             return None
         if self.return_onset is None:

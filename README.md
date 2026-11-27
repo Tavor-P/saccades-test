@@ -55,7 +55,7 @@ Printable version: [docs/experimenter_checklist.md](docs/experimenter_checklist.
 | Screen height (cm) / Viewing distance (cm) | measure them (5-100 / 20-300; decimal comma accepted); saved in `session.json` |
 | *Advanced*: Saccade contrast min / max (%) | the fixed contrasts, spaced between these (defaults 2 and 4: levels 2, 3, 4) |
 | *Advanced*: Flash timing spread (ms) | width (SD) of the bell curve of flash times around the average reaction time; default 80 (10-250) |
-| Return jump | default on: after the eye reaches the target it jumps back to the start (see step 4 below); off = one-jump trials |
+| Return jump | default on: after the eye has settled on the target it jumps back to the start (see step 4 below); off = one-jump trials |
 | Onset-triggered flashes | default off: on = some flashes appear when the tracker sees the eye start to move, instead of at a timed moment (see step 4 below) |
 | *Advanced*: Show gaze indicator | debug aid |
 
@@ -66,14 +66,15 @@ Click a field's name or its **?** for a help bubble. The last values are remembe
 1. **Tutorial** (optional, narrated and captioned): intro, calibration, a how-to-answer quiz (line above/below a dot, 3 correct in a row) and 8 practice trials that seed the reaction-time average. No feedback on answers.
 2. **Calibration**: look steadily at each of 3 targets, 3 rounds (without the tutorial, a short reaction-time test and practice follow).
    In the tutorial's practice trials and in that test and practice, the symbols swap back only after the eye has stayed on the
-   target for `RETURN_JUMP_DWELL_MS` (400 ms); the real trials do not wait.
+   target for `RETURN_JUMP_DWELL_MS` (400 ms); the real trials with **Return jump** on wait a shorter, random time (step 4).
 3. **Green sync flashes**: the screen flashes green three times before the first trial and once at the end (announced aloud; normal). They align the phone's video to the PC clock.
-4. **Trials** (150 Real, 30 Test). The participant presses **SPACE** to start each trial (the wait is their break). 0.5-1 s later the dot swaps to the cross with a beep and they look to it as fast as they can.
+4. **Trials** (150 Real, 30 Test). The participant presses **SPACE** to start each trial (the wait is their break). 0.25-1.5 s later (random, so it cannot be timed) the dot swaps to the cross with a beep and they look to it as fast as they can.
    A thin line flashes for one frame 2 deg above or below the target, at a random time on a bell curve centred on the average reaction time (0-500 ms after the swap), plus some control flashes
    (about 2 in 11) 400-500 ms after it, when the eye has already landed. They must press **Up** or **Down**, guessing if they are not sure (forced choice). Every trial flashes. There is no time limit.
    A trial ends once it is answered and the eye has landed; **SPACE** never skips an unanswered flash (it shows and speaks a "guess" reminder instead). The one exception: if no saccade on the flash's leg is seen by the
    15 s timeout (`SACCADE_TIMEOUT_MS`), the trial ends by itself (`timeout`).
-   With **Return jump** on, once the eye has arrived (`RETURN_JUMP_TRIGGER` "arrival"; "onset" jumps at the start of the movement; `RETURN_JUMP_LANDING_TIMEOUT_MS` forces it) the target jumps back to the start symbol
+   With **Return jump** on, once the eye has arrived and stayed on the target without a break for a random 200-400 ms (`RETURN_JUMP_MAIN_DWELL_MIN_MS`/`_MAX_MS`, drawn per trial and saved as `jump_back_dwell_ms`;
+   this is `RETURN_JUMP_TRIGGER` "arrival", while "onset" jumps at the start of the movement without waiting; `RETURN_JUMP_LANDING_TIMEOUT_MS`, plus that stay if the eye had arrived, forces it) the target jumps back to the start symbol
    and the eye follows it, so a trial has an out and a return saccade but still only ONE flash: on the return leg in `RETURN_LEG_FLASH_FRACTION` (0.8) of trials (timed from the jump, spread `RETURN_FLASH_SPREAD_SD_MS` 110 ms,
    from one real run's measured 118 ms; recheck on more runs), else on the out leg.
    With **Onset-triggered flashes** on, `ONSET_TRIGGER_FRACTION` (1/3) of the bell-curve trials instead flash on the first frame after the live detector sees the eye leave on the flash's leg (plus `ONSET_TRIGGER_DELAY_MS`, 0),
@@ -114,7 +115,7 @@ data/comparisons/<date-time>_<A>_vs_<B>/   report.txt, comparison.csv, compariso
 Test-mode runs (`_test`) are left out of every pooled analysis, comparison and study summary unless you ask (`--include-test`, or **Include test runs** in the dashboard).
 
 `trials.csv` columns (booleans `yes`/`no`; practice trials not written): `phase`, `trial`, `contrast_pct`, `flash_shown`, `flash_during_saccade` (live, unreliable), `answered`, `correct`,
-`outcome` (correct / wrong / timeout / detected; `no_answer` only in runs from before answers were required, still scored as wrong), `line_side` (above / below), `answer_side`, `flash_leg` (out / return), `flash_trigger` (scheduled / onset), `flash_ms_after_go_cue`, `out_arrival_ms_after_go_cue`, `jump_back_ms_after_go_cue`, `reaction_ms`, `return_reaction_ms` (negative = left before the jump), `answer_ms`,
+`outcome` (correct / wrong / timeout / detected; `no_answer` only in runs from before answers were required, still scored as wrong), `line_side` (above / below), `answer_side`, `flash_leg` (out / return), `flash_trigger` (scheduled / onset), `flash_ms_after_go_cue`, `out_arrival_ms_after_go_cue`, `jump_back_ms_after_go_cue`, `jump_back_dwell_ms` (the stay on the target the jump waited for), `reaction_ms`, `return_reaction_ms` (negative = left before the jump), `answer_ms`,
 `flash_unix_ms`, `jump_back_forced`, `left_target_before_jump`, `tracking_ok`.
 `session.json` sections: `participant`, `run`, `settings`, `hardware`, `results`, `gaze_quality` (rate, gaps, latency, clock offset), `head_motion`, `ignored_space_presses`, `glasses_video`.
 
@@ -234,7 +235,7 @@ participant's pooled analysis with it).
 ## Research background
 
 - **Diamond, Ross & Morrone (2000)**, *J Neurosci* 20:3449-3455: the original design (fixate, jittered wait, saccade target, one-frame flash, detection during saccades and fixation). The paper was not checked for this
-  README. Here the wait is 500-1000 ms after the participant's own SPACE, the tone is a go cue at target onset, contrasts are fixed (no staircase), and the fixation condition comes from the saccade phase's own flashes.
+  README. Here the wait is 250-1500 ms after the participant's own SPACE, the tone is a go cue at target onset, contrasts are fixed (no staircase), and the fixation condition comes from the saccade phase's own flashes.
 - **Braun, Schutz & Gegenfurtner (2021)**, "Age effects on saccadic suppression of luminance and color", *J Vis* 21(6):11, <https://pmc.ncbi.nlm.nih.gov/articles/PMC8237129/> (abstract and Methods read): the line stimulus
   (full-width horizontal line, vertical Gaussian SD 0.15 deg, one refresh, 2 deg above/below the target), the above/below task, the saccade/fixation gates, and the index `1 - CS_saccade / CS_fixation` (CS = 1 / threshold).
 

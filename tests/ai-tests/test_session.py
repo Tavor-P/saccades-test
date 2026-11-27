@@ -456,7 +456,8 @@ def test_average_updates_at_every_detected_eye_movement_and_the_next_trial_uses_
         assert row.avg_rt_used_ms == pytest.approx(before)  # the running trial kept the schedule it started with
         assert row.reaction_latency_ms == pytest.approx(300.0)
         averages.append(session._avg_reaction_time_ms)
-    assert averages == sorted(averages) and averages[0] >= 200.0
+    # Non-decreasing from 200 ms, to float noise (the clock times depend on the random foreperiods).
+    assert all(b >= a - 1e-6 for a, b in zip([200.0, *averages], averages))
     assert 200.0 < averages[NUM_RT_TEST_TRIALS_TEST - 1] < 300.0  # moves before the window is full of slow trials
     assert averages[-1] == pytest.approx(300.0)
 
