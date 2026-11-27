@@ -903,7 +903,7 @@ class ExperimentSession:
                 "x": CENTER_POSITION[0],
                 "y": CENTER_POSITION[1],
             },
-            # The flashed line: centred LINE_OFFSET_DEG (constants.py) above/below the
+            # The flashed line: centred 2 deg above/below the
             # saccade TARGET (the symbol the eye is moving to), at the trial's contrast.
             "line": self._line_state(trial),
             "gaze_indicator": self._gaze_indicator_state(sample),

@@ -23,7 +23,7 @@ Once per computer.
 4. Start the Neon Companion app on the phone. Type the phone's IP (shown in the Companion app) into **Neon address** in the start dialog, or leave it blank to search automatically. Before the window opens the
    experiment checks that address, then auto-discovery, then the PC's gateway (the phone, when the PC is on its hotspot); if none answers it shows what it tried and stops.
 5. **Measure your screen** (once per monitor and seat position): the visible picture's height (cm) and the eye-to-screen distance (cm). You type them into the startup dialog; the line's offset
-   (3 deg) and thickness, and the saccade size in degrees, follow them. Until you do, the dialog warns that the values are placeholders (26 cm / 50 cm).
+   (2 deg) and thickness, and the saccade size in degrees, follow them. Until you do, the dialog warns that the values are placeholders (26 cm / 50 cm).
 
 You can double-click `run_experiment.bat` (in the project folder) or `analyze_latest.bat` / `run_tests.bat` (in `launchers\`). Typing `scripts\py.ps1` into Command Prompt or Explorer opens it in an editor instead; from any shell use
 `powershell -ExecutionPolicy Bypass -File scripts\py.ps1 -m src.experiment.run_experiment`.
@@ -66,7 +66,7 @@ Click a field's name or its **?** for a help bubble. The last values are remembe
 2. **Calibration**: look steadily at each of 3 targets, 3 rounds (without the tutorial, a short reaction-time test and practice follow).
 3. **Green sync flashes**: the screen flashes green three times before the first trial and once at the end (announced aloud; normal). They align the phone's video to the PC clock.
 4. **Trials** (150 Real, 30 Test). The participant presses **SPACE** to start each trial (the wait is their break). 0.5-1 s later the dot swaps to the cross with a beep and they look to it as fast as they can.
-   A thin line flashes for one frame 3 deg above or below the target, at a random time on a bell curve centred on the average reaction time (0-500 ms after the swap), plus some control flashes
+   A thin line flashes for one frame 2 deg above or below the target, at a random time on a bell curve centred on the average reaction time (0-500 ms after the swap), plus some control flashes
    (about 2 in 11) 400-500 ms after it, when the eye has already landed. They must press **Up** or **Down**, guessing if they are not sure (forced choice). Every trial flashes. There is no time limit.
    A trial ends once it is answered and the eye has landed; **SPACE** never skips an unanswered flash (it shows and speaks a "guess" reminder instead). The one exception: if no saccade on the flash's leg is seen by the
    15 s timeout (`SACCADE_TIMEOUT_MS`), the trial ends by itself (`timeout`).
@@ -239,7 +239,6 @@ participant's pooled analysis with it).
 | Saccade size | 10 deg | ~30-40 deg on a large screen (dot at 15 %, cross at 85 % of the width); depends on geometry |
 | Thresholds | staircase, then psychometric fit | fixed contrasts (default 1.5/2.25/3 %), then a Weibull fit |
 | Viewing | 90 cm, lab | chin rest, geometry from the startup dialog |
-| Line offset from target | 2 deg | 3 deg (since 2026-11-27: one real run was at ceiling with the line at 2 deg). Runs at 2 and 3 deg are never pooled |
 
 ## Known limitations
 
