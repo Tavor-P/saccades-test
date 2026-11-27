@@ -217,7 +217,7 @@ SPACE presses are never silently dropped; every ignored one is counted in `sessi
 
 ## Gotchas that cost real debugging time
 
-- **PsychoPy is imported after the startup dialog** (it took ~9 s to appear, now ~1 s; the ~9 s wait is after OK): keep the `__main__` hand-over at the top of `run_experiment.py` above the imports, and PsychoPy/pyglet/pandas out of whatever `startup_launch` imports (`test_architecture_rules.py`).
+- **PsychoPy is imported after the startup dialog** (it took ~9 s to appear, now ~1 s; PsychoPy then loads for ~5 s after OK): keep the `__main__` hand-over at the top of `run_experiment.py` above the imports, and PsychoPy/pyglet/pandas out of whatever `startup_launch` imports (`test_architecture_rules.py`).
   No `psychopy.gui` for the dialog (~4 s with pandas; `ensure_qt_app()` makes the QApplication, which PsychoPy adopts), and no pre-import on a thread (pyglet ties its hidden GL window and event loop to the importing thread).
 - **Gaze latency (was ~90-100 ms, now ~13-20 ms)**: in Oct 2026 real sessions showed ~95 ms (`gaze_quality.latency_ms_median`) with the rate falling 200 -> ~160/s once the render loop started: the receiver thread
   starved by the render loop (same process/GIL). `run_experiment.main` has since set `sys.setswitchinterval(0.0005)` (5f5a0c6, 2026-10-22); every run on disk after it (2026-11-01..11-23) shows a median of 12.5-19.8 ms

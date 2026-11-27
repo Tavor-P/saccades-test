@@ -1,5 +1,5 @@
 """The start of a run: the startup dialog, shown before PsychoPy is imported. `-m src.experiment.run_experiment` hands over to launch() above its
-own imports, because PsychoPy (with the pandas, scipy and matplotlib it pulls in) takes ~8 s to import and the dialog needs only PyQt6.
+own imports, because PsychoPy (with the pandas, scipy and matplotlib it pulls in) takes seconds to import and the dialog needs only PyQt6.
 Nothing imported here may load PsychoPy or pyglet (test_architecture_rules.py checks)."""
 
 import sys

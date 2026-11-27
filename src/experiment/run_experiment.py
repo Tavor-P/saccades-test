@@ -5,7 +5,7 @@ PsychoPy."""
 # ruff: noqa: E402 - the hand-over to the startup dialog has to run above the imports
 
 if __name__ == "__main__":
-    # Keep this above every other import: PsychoPy takes ~8 s to import, so startup_launch shows the dialog first and only after OK imports
+    # Keep this above every other import: PsychoPy takes seconds to import, so startup_launch shows the dialog first and only after OK imports
     # this module under its real name and calls main().
     from src.experiment import startup_launch
 
