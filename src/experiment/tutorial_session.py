@@ -402,7 +402,7 @@ class TutorialSession:
         return False, False, False
 
     def _line_state(self) -> dict:
-        """The flashed line: in the quiz 2 deg above/below the dot, in a practice trial
+        """The flashed line: in the quiz LINE_OFFSET_DEG (constants.py) above/below the dot, in a practice trial
         above/below the symbol the eye is moving to."""
         if self._phase is Phase.QUIZ:
             x, y = line_position(DOT_POSITION, self._quiz_side or Side.ABOVE, self._geometry)

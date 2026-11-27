@@ -5,7 +5,7 @@ PsychoPy gaze-contingent saccade experiment (Diamond, Ross & Morrone 2000 design
 backend. Participant/experimenter docs: [README.md](README.md).
 
 **`main` is the line-stimulus version** (the grating version is on the `grating` branch):
-- Flash = thin horizontal line (Braun, Schutz & Gegenfurtner 2021): full screen width, vertical Gaussian (`LINE_SD_DEG` 0.15), `LINE_OFFSET_DEG` (2 deg) above/below the saccade TARGET,
+- Flash = thin horizontal line (Braun, Schutz & Gegenfurtner 2021): full screen width, vertical Gaussian (`LINE_SD_DEG` 0.15), `LINE_OFFSET_DEG` (3 deg since 2026-11-27, was 2) above/below the saccade TARGET,
   drawn `LINE_DURATION_FRAMES` (1) frame. Answer UP (above) / DOWN (below).
 - `Side.ABOVE/BELOW`. `TrialResult` fields `line_side` / `answer_side` (hold 'above'/'below'), `flash_shown`, `flash_unix_ms` match the `trials.csv` columns of the same names.
   A trials.csv with the grating-era columns (`orientation` / `response_orientation` / `grating_shown` / `grating_shown_at_unix_ms`, 'vertical'/'horizontal' values) loads via
